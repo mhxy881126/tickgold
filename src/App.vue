@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
 import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
 import { check as checkForUpdate } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import WatchList from "./components/WatchList.vue";
@@ -14,22 +15,73 @@ const quotes = useQuotesStore();
 const alerts = useAlertStore();
 
 const selected = ref<string | null>(null);
-const updateState = ref<"idle" | "checking" | "available" | "uptodate" | "error">("idle");
+
+// ===== 自动更新 =====
+const curVersion = ref("");
+type UpdState =
+  | "idle"
+  | "checking"
+  | "newfound"
+  | "downloading"
+  | "installing"
+  | "uptodate"
+  | "error";
+const updState = ref<UpdState>("idle");
+const newVer = ref("");
+const pct = ref(0);
+
+function resetUpd() {
+  updState.value = "idle";
+  newVer.value = "";
+  pct.value = 0;
+}
 
 async function checkUpdate() {
-  updateState.value = "checking";
+  if (updState.value === "checking" || updState.value === "downloading") return;
+  updState.value = "checking";
   try {
     const update = await checkForUpdate();
-    if (update) {
-      updateState.value = "available";
-      await update.downloadAndInstall();
-      await relaunch();
-    } else {
-      updateState.value = "uptodate";
+    if (!update) {
+      updState.value = "uptodate";
+      setTimeout(resetUpd, 2500);
+      return;
     }
-  } catch (e) {
-    console.error("[updater]", e);
-    updateState.value = "error";
+    // 有新版本，开始下载
+    newVer.value = update.version;
+    updState.value = "downloading";
+    let got = 0;
+    let total = 0;
+    await update.downloadAndInstall((e) => {
+      switch (e.event) {
+        case "Started":
+          total = e.data.contentLength || 0;
+          break;
+        case "Progress":
+          got += e.data.chunkLength;
+          pct.value = total ? Math.round((got / total) * 100) : 0;
+          break;
+        case "Finished":
+          pct.value = 100;
+          break;
+      }
+    });
+    updState.value = "installing";
+    await relaunch();
+  } catch (err) {
+    console.error("[updater]", err);
+    updState.value = "error";
+    setTimeout(resetUpd, 3000);
+  }
+}
+
+function updLabel(): string {
+  switch (updState.value) {
+    case "checking": return "检查中…";
+    case "newfound": return `新版本 v${newVer.value}`;
+    case "installing": return "安装中，即将重启…";
+    case "uptodate": return "已是最新";
+    case "error": return "更新失败";
+    default: return "检查更新";
   }
 }
 
@@ -46,12 +98,11 @@ watch(
 
 onMounted(async () => {
   try {
-    // 先加载 SQLite：分组/自选/预警
+    curVersion.value = await getVersion();
     await wl.load();
     await alerts.load();
     if (wl.codes.length) selected.value = wl.codes[0];
     quotes.start(2000);
-    // 灵动岛点击股票 -> 主窗口切换
     unlisten = await listen<string>("island:select", (e) => {
       selected.value = e.payload;
       if (!wl.codes.includes(e.payload)) wl.add(e.payload);
@@ -75,12 +126,21 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
         <span class="sep">|</span>
         {{ quotes.lastUpdate ? new Date(quotes.lastUpdate).toLocaleTimeString() : "--:--:--" }}
         <span class="sep">|</span>
-        <button class="upd" @click="checkUpdate">
-          {{ updateState === "checking" ? "检查中…"
-            : updateState === "available" ? "更新中…"
-            : updateState === "uptodate" ? "已是最新"
-            : updateState === "error" ? "检查失败"
-            : "检查更新" }}
+        <span class="ver" :title="`当前版本 v${curVersion}`">v{{ curVersion }}</span>
+
+        <!-- 更新区域 -->
+        <span class="sep">|</span>
+        <div v-if="updState === 'downloading'" class="upd-progress">
+          <span class="upd-text">下载 v{{ newVer }} {{ pct }}%</span>
+          <div class="bar"><div class="fill" :style="{ width: pct + '%' }"></div></div>
+        </div>
+        <button
+          v-else
+          class="upd"
+          :class="{ busy: updState !== 'idle', bad: updState === 'error' }"
+          @click="checkUpdate"
+        >
+          {{ updLabel() }}
         </button>
       </div>
     </header>
@@ -112,10 +172,11 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
   -webkit-app-region: drag;
 }
 .brand { font-weight: 700; letter-spacing: 1px; }
-.status { font-size: 12px; color: var(--text-dim); -webkit-app-region: no-drag; }
+.status { font-size: 12px; color: var(--text-dim); -webkit-app-region: no-drag; display: flex; align-items: center; }
 .sep { margin: 0 8px; }
 .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #555; margin-right: 5px; }
 .dot.on { background: #26d07c; }
+.ver { color: var(--text-dim); opacity: 0.8; }
 .body { flex: 1; display: flex; min-height: 0; }
 .left { width: 320px; border-right: 1px solid var(--border); overflow: hidden; }
 .right { flex: 1; min-width: 0; }
@@ -127,9 +188,20 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
 .alabel { color: #f23645; font-weight: 600; }
 .alog { display: flex; flex-direction: column; }
 .item { color: #ffb3b8; }
+
 .upd {
   background: transparent; color: var(--text-dim); border: 1px solid var(--border);
   border-radius: 5px; padding: 2px 9px; font-size: 12px; cursor: pointer;
 }
 .upd:hover { color: var(--text); border-color: var(--text-dim); }
+.upd.busy { color: #4ea1ff; border-color: #4ea1ff; cursor: default; }
+.upd.bad { color: #f23645; border-color: #f23645; }
+
+.upd-progress { display: flex; align-items: center; gap: 8px; }
+.upd-text { font-size: 12px; color: #4ea1ff; white-space: nowrap; }
+.bar {
+  width: 120px; height: 5px; border-radius: 3px;
+  background: var(--border); overflow: hidden;
+}
+.fill { height: 100%; background: #4ea1ff; transition: width 0.2s; }
 </style>
