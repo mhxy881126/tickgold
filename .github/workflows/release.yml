@@ -111,9 +111,12 @@ jobs:
           REL_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name==\"$TAG\") | .id")
           ASSETS=$(gh api "repos/$GITHUB_REPOSITORY/releases/$REL_ID/assets")
 
-          win_url=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("x64-setup.exe")) | .browser_download_url')
+          # 用正式下载路径（草稿阶段的 browser_download_url 是 untagged 临时地址，发布后会 404）
+          win_name=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("x64-setup.exe")) | .name')
+          win_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$win_name"
           win_sig_id=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("x64-setup.exe.sig")) | .id')
-          mac_url=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("aarch64.app.tar.gz")) | .browser_download_url')
+          mac_name=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("aarch64.app.tar.gz")) | .name')
+          mac_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$mac_name"
           mac_sig_id=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("aarch64.app.tar.gz.sig")) | .id')
 
           echo "win=$win_url"
