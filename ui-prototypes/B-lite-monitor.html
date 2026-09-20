@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>方案B · 极简盯盘（现有风格增强）</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --border:#21262d;
+  --text:#e6edf3; --dim:#8b949e; --up:#f23645; --down:#089981; --accent:#2f6fed;
+}
+*{box-sizing:border-box; margin:0; padding:0; font-family:"Microsoft YaHei",sans-serif;}
+body{background:var(--bg); color:var(--text); height:100vh; overflow:hidden; font-size:12px;}
+.app{display:grid; grid-template-rows:44px 36px 1fr; grid-template-columns:220px 1fr 240px; height:100vh;}
+
+.topbar{grid-column:1/4; display:flex; align-items:center; gap:14px; padding:0 14px; background:var(--panel); border-bottom:1px solid var(--border);}
+.logo{font-weight:700; color:var(--accent);}
+.idxbar{flex:1; display:flex; gap:18px;}
+.idx .n{color:var(--dim); margin-right:4px;}
+.idx .v{font-weight:600;}
+.ver{color:var(--dim);}
+
+.left{grid-column:1; grid-row:2/4; background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column;}
+.ltabs{display:flex; border-bottom:1px solid var(--border);}
+.ltab{flex:1; text-align:center; padding:8px 0; color:var(--dim); cursor:pointer;}
+.ltab.on{color:var(--text); border-bottom:2px solid var(--accent);}
+.list{flex:1; overflow-y:auto;}
+.row{display:grid; grid-template-columns:24px 1fr 60px 60px; padding:7px 10px; cursor:pointer; align-items:center; border-bottom:1px solid #1a1f27;}
+.row:hover{background:var(--bg);}
+.row .nm{font-weight:600;} .row .cd{font-size:10px; color:var(--dim);}
+.row .p{text-align:right;} .row .pc{text-align:right;}
+.row .up{color:var(--up);} .row .down{color:var(--down);}
+.idx-num{color:var(--dim); font-size:11px;}
+
+.center{grid-column:2; grid-row:2/4; display:flex; flex-direction:column; min-height:0;}
+.toolbar{display:flex; align-items:center; gap:4px; padding:0 10px; height:36px; background:var(--panel); border-bottom:1px solid var(--border);}
+.toolbar button{background:transparent; color:var(--dim); border:none; padding:4px 9px; cursor:pointer; border-radius:4px; font-size:12px;}
+.toolbar button.on{color:var(--text); background:#1f2630;}
+.toolbar .sep{color:var(--border); margin:0 4px;}
+.hoverbar{display:flex; gap:14px; padding:4px 12px; font-size:11px; color:var(--dim); border-bottom:1px solid var(--border); font-variant-numeric:tabular-nums;}
+.hoverbar .up{color:var(--up);} .hoverbar .down{color:var(--down);}
+.chart{flex:1; min-height:0;}
+
+.right{grid-column:3; grid-row:2/4; background:var(--panel); border-left:1px solid var(--border); overflow-y:auto;}
+.card{padding:10px 12px; border-bottom:1px solid var(--border);}
+.card h4{font-size:11px; color:var(--dim); font-weight:500; margin-bottom:6px;}
+.bigprice{font-size:24px; font-weight:700;}
+.meta{display:flex; gap:8px; color:var(--dim); margin-top:2px;}
+.up{color:var(--up);} .down{color:var(--down);}
+table{width:100%; font-variant-numeric:tabular-nums;}
+td{padding:2px 0;} .l{color:var(--dim);} .p{text-align:right;} .v{text-align:right; color:var(--dim);}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="logo">金睛盯盘</div>
+    <div class="idxbar">
+      <span class="idx"><span class="n">上证</span><span class="v up">3911.87</span> <span class="up">+0.94%</span></span>
+      <span class="idx"><span class="n">深成</span><span class="v up">13640.87</span> <span class="up">+1.72%</span></span>
+      <span class="idx"><span class="n">创业板</span><span class="v up">3372.68</span> <span class="up">+2.25%</span></span>
+      <span class="idx"><span class="n">沪深300</span><span class="v up">4507.39</span> <span class="up">+1.06%</span></span>
+    </div>
+    <span class="ver">v0.3.0 · 检查更新</span>
+  </div>
+
+  <div class="left">
+    <div class="ltabs"><div class="ltab on">自选</div><div class="ltab">榜单</div><div class="ltab">板块</div></div>
+    <div class="list">
+      <div class="row"><span class="idx-num">1</span><div><div class="nm">贵州茅台</div><div class="cd">600519</div></div><span class="p up">1688.00</span><span class="pc up">+1.24%</span></div>
+      <div class="row"><span class="idx-num">2</span><div><div class="nm">宁德时代</div><div class="cd">300750</div></div><span class="p up">218.50</span><span class="pc up">+2.10%</span></div>
+      <div class="row"><span class="idx-num">3</span><div><div class="nm">比亚迪</div><div class="cd">002594</div></div><span class="p down">245.30</span><span class="pc down">-0.85%</span></div>
+      <div class="row"><span class="idx-num">4</span><div><div class="nm">引力传媒</div><div class="cd">603598</div></div><span class="p up">17.24</span><span class="pc up">+0.29%</span></div>
+      <div class="row"><span class="idx-num">5</span><div><div class="nm">中际旭创</div><div class="cd">300308</div></div><span class="p up">152.80</span><span class="pc up">+3.45%</span></div>
+      <div class="row"><span class="idx-num">6</span><div><div class="nm">东方财富</div><div class="cd">300059</div></div><span class="p down">13.42</span><span class="pc down">-1.12%</span></div>
+      <div class="row"><span class="idx-num">7</span><div><div class="nm">中信证券</div><div class="cd">600030</div></div><span class="p up">26.78</span><span class="pc up">+0.56%</span></div>
+      <div class="row"><span class="idx-num">8</span><div><div class="nm">隆基绿能</div><div class="cd">601012</div></div><span class="p down">18.90</span><span class="pc down">-2.03%</span></div>
+    </div>
+  </div>
+
+  <div class="center">
+    <div class="toolbar">
+      <button class="on">分时</button><button>5分</button><button>日K</button><button>周K</button>
+      <span class="sep">|</span>
+      <button class="on">MA</button><button>BOLL</button><button>TD9</button>
+      <span class="sep">|</span>
+      <button class="on">VOL</button><button>MACD</button>
+      <span class="sep">|</span>
+      <button style="color:var(--dim);">⚙均线</button>
+    </div>
+    <div class="hoverbar">
+      <span>09:35</span><span>开 17.15</span><span>高 17.30</span><span>低 17.12</span><span>收 <b class="up">17.24</b></span><span>量 1.6亿</span><span class="up">+0.29%</span>
+    </div>
+    <div class="chart" id="c"></div>
+  </div>
+
+  <div class="right">
+    <div class="card">
+      <div class="bigprice up">17.24 <span style="font-size:12px" class="up">+0.05 +0.29%</span></div>
+      <div class="meta"><span>开 17.15</span><span>高 17.30</span><span>低 17.12</span></div>
+    </div>
+    <div class="card">
+      <h4>五档</h4>
+      <table>
+        <tr><td class="l">卖5</td><td class="p up">17.29</td><td class="v">130手</td></tr>
+        <tr><td class="l">卖1</td><td class="p up">17.25</td><td class="v">968手</td></tr>
+        <tr><td class="l">买1</td><td class="p down">17.24</td><td class="v">74手</td></tr>
+        <tr><td class="l">买5</td><td class="p down">17.20</td><td class="v">366手</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h4>今日概览</h4>
+      <table>
+        <tr><td class="l">成交额</td><td class="p">1.63亿</td></tr>
+        <tr><td class="l">换手</td><td class="p">5.76%</td></tr>
+        <tr><td class="l">量比</td><td class="p">1.86</td></tr>
+        <tr><td class="l">市值</td><td class="p">46.55亿</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h4>资金</h4>
+      <table>
+        <tr><td class="l">主力</td><td class="p up">+1.23亿</td></tr>
+        <tr><td class="l">散户</td><td class="p down">-0.42亿</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const xs=[],p=[];let v=17.15;
+  for(let i=0;i<240;i++){const t=9*60+30+i;xs.push(String(Math.floor(t/60)).padStart(2,"0")+":"+String(t%60).padStart(2,"0"));v+=(Math.random()-0.48)*0.03;p.push(+v.toFixed(2));}
+  const c=echarts.init(document.getElementById("c"));
+  c.setOption({
+    backgroundColor:"transparent",
+    grid:{left:50,right:60,top:10,bottom:20},
+    xAxis:{type:"category",data:xs,axisLine:{lineStyle:{color:"#21262d"}},axisLabel:{color:"#8b949e",fontSize:10}},
+    yAxis:{scale:true,position:"right",splitLine:{lineStyle:{color:"#161b22"}},axisLabel:{color:"#8b949e",fontSize:10}},
+    series:[{type:"line",data:p,showSymbol:false,lineStyle:{color:"#e6edf3",width:1.2}}]
+  });
+  window.addEventListener("resize",()=>c.resize());
+})();
+</script>
+</body>
+</html>

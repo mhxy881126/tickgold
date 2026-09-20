@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>方案A · 经典专业终端（仿同花顺）</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+:root{
+  --bg:#0a0e14; --panel:#11161f; --panel2:#161d29; --border:#1e2634;
+  --text:#e6edf3; --dim:#7d8a9c; --up:#f23645; --down:#089981; --accent:#2f6fed;
+}
+*{box-sizing:border-box; margin:0; padding:0; font-family:"Microsoft YaHei","Segoe UI",sans-serif;}
+body{background:var(--bg); color:var(--text); height:100vh; overflow:hidden; font-size:12px;}
+.app{display:grid; grid-template-rows:38px 34px 1fr 90px; grid-template-columns:46px 1fr 300px; height:100vh;}
+
+/* 顶栏 */
+.topbar{grid-column:1/4; display:flex; align-items:center; gap:14px; padding:0 12px; background:var(--panel); border-bottom:1px solid var(--border);}
+.logo{font-weight:700; color:var(--accent); font-size:14px;}
+.search{flex:0 0 220px; background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--dim); padding:4px 10px;}
+.idxbar{flex:1; display:flex; gap:22px; align-items:center;}
+.idx{display:flex; gap:6px; align-items:baseline;}
+.idx .n{color:var(--dim);} .idx .v{font-weight:600;}
+.time{color:var(--dim);}
+
+/* 左导航 */
+.nav{background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; align-items:center; padding-top:8px; gap:4px;}
+.nav .item{width:38px; height:38px; border-radius:6px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--dim); cursor:pointer; font-size:10px;}
+.nav .item.on{background:var(--panel2); color:var(--accent);}
+.nav .item .dot{font-size:14px; line-height:1;}
+
+/* 工具条 */
+.toolbar{grid-column:2; display:flex; align-items:center; gap:4px; padding:0 10px; background:var(--panel); border-bottom:1px solid var(--border);}
+.toolbar button{background:transparent; color:var(--dim); border:none; padding:4px 9px; cursor:pointer; border-radius:4px; font-size:12px;}
+.toolbar button.on{color:var(--text); background:var(--panel2);}
+.toolbar .sep{color:var(--border); margin:0 4px;}
+.symbol{font-weight:700; margin-right:14px;}
+
+/* 中间图区 */
+.center{grid-column:2; grid-row:3; display:flex; flex-direction:column; background:var(--bg); min-height:0;}
+.chart-main{flex:1; min-height:0;}
+.chart-vol{height:90px; border-top:1px solid var(--border);}
+
+/* 右栏 */
+.right{grid-column:3; grid-row:2/4; background:var(--panel); border-left:1px solid var(--border); overflow-y:auto;}
+.rblock{padding:8px 12px; border-bottom:1px solid var(--border);}
+.rblock h4{font-size:11px; color:var(--dim); font-weight:500; margin-bottom:6px;}
+.price-big{font-size:28px; font-weight:700;}
+.price-meta{display:flex; gap:10px; color:var(--dim); margin-top:2px;}
+.ordertbl{width:100%; font-variant-numeric:tabular-nums;}
+.ordertbl td{padding:2px 0;}
+.ordertbl .l{color:var(--dim);} .ordertbl .p{text-align:right;} .ordertbl .v{text-align:right; color:var(--dim);}
+.up{color:var(--up);} .down{color:var(--down);}
+
+/* 底部新闻 */
+.news{grid-column:2/4; background:var(--panel); border-top:1px solid var(--border); display:flex; overflow:hidden;}
+.news .col{flex:1; padding:6px 12px; overflow:hidden;}
+.news h5{font-size:11px; color:var(--dim); margin-bottom:4px;}
+.news li{list-style:none; padding:2px 0; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.news li .t{color:var(--dim); margin-left:8px;}
+.news .tag{color:var(--accent); margin-right:4px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- 顶栏 -->
+  <div class="topbar">
+    <div class="logo">金睛盯盘</div>
+    <div class="search">搜索代码 / 名称 / 拼音</div>
+    <div class="idxbar">
+      <div class="idx"><span class="n">上证</span><span class="v up">3911.87</span><span class="up">+0.94%</span></div>
+      <div class="idx"><span class="n">深成</span><span class="v up">13640.87</span><span class="up">+1.72%</span></div>
+      <div class="idx"><span class="n">创业板</span><span class="v up">3372.68</span><span class="up">+2.25%</span></div>
+      <div class="idx"><span class="n">沪深300</span><span class="v up">4507.39</span><span class="up">+1.06%</span></div>
+      <div class="idx"><span class="n">科创50</span><span class="v up">1652.63</span><span class="up">+2.88%</span></div>
+    </div>
+    <div class="time">09:35:22</div>
+  </div>
+
+  <!-- 左导航 -->
+  <div class="nav">
+    <div class="item on"><span class="dot">▦</span>行情</div>
+    <div class="item"><span class="dot">★</span>自选</div>
+    <div class="item"><span class="dot">≡</span>榜单</div>
+    <div class="item"><span class="dot">▣</span>板块</div>
+    <div class="item"><span class="dot">◔</span>资讯</div>
+    <div class="item"><span class="dot">⚙</span>设置</div>
+  </div>
+
+  <!-- 工具条 -->
+  <div class="toolbar">
+    <span class="symbol">引力传媒 603598</span>
+    <button class="on">分时</button><button>5分</button><button>日K</button><button>周K</button>
+    <span class="sep">|</span>
+    <button class="on">MA</button><button>BOLL</button><button>TD9</button>
+    <span class="sep">|</span>
+    <button class="on">VOL</button><button>MACD</button><button>KDJ</button>
+    <span class="sep">|</span>
+    <button style="color:var(--dim);">多窗口</button>
+  </div>
+
+  <!-- 中间图 -->
+  <div class="center">
+    <div class="chart-main" id="main"></div>
+    <div class="chart-vol" id="vol"></div>
+  </div>
+
+  <!-- 右栏 -->
+  <div class="right">
+    <div class="rblock">
+      <div class="price-big up">17.24</div>
+      <div class="price-meta"><span class="up">+0.05</span><span class="up">+0.29%</span><span>成交 1.63亿</span></div>
+    </div>
+    <div class="rblock">
+      <h4>五档盘口</h4>
+      <table class="ordertbl">
+        <tr><td class="l">卖5</td><td class="p up">17.29</td><td class="v">13.0万</td></tr>
+        <tr><td class="l">卖4</td><td class="p up">17.28</td><td class="v">26.3万</td></tr>
+        <tr><td class="l">卖3</td><td class="p up">17.27</td><td class="v">21.9万</td></tr>
+        <tr><td class="l">卖2</td><td class="p up">17.26</td><td class="v">55.9万</td></tr>
+        <tr><td class="l">卖1</td><td class="p up">17.25</td><td class="v">96.8万</td></tr>
+        <tr><td class="l">买1</td><td class="p down">17.24</td><td class="v">7.4万</td></tr>
+        <tr><td class="l">买2</td><td class="p down">17.23</td><td class="v">145.4万</td></tr>
+        <tr><td class="l">买3</td><td class="p down">17.22</td><td class="v">37.4万</td></tr>
+        <tr><td class="l">买4</td><td class="p down">17.21</td><td class="v">38.0万</td></tr>
+        <tr><td class="l">买5</td><td class="p down">17.20</td><td class="v">36.6万</td></tr>
+      </table>
+    </div>
+    <div class="rblock">
+      <h4>资金流向</h4>
+      <table class="ordertbl">
+        <tr><td class="l">主力净流入</td><td class="p up">+1.23亿</td></tr>
+        <tr><td class="l">超大单</td><td class="p up">+8600万</td></tr>
+        <tr><td class="l">大单</td><td class="p up">+3700万</td></tr>
+        <tr><td class="l">散户</td><td class="p down">-4200万</td></tr>
+      </table>
+    </div>
+    <div class="rblock">
+      <h4>筹码分布</h4>
+      <div id="chip" style="height:90px;"></div>
+    </div>
+    <div class="rblock">
+      <h4>涨停统计</h4>
+      <table class="ordertbl">
+        <tr><td class="l">涨停次数</td><td class="p">14</td></tr>
+        <tr><td class="l">封板成功率</td><td class="p">78.6%</td></tr>
+        <tr><td class="l">连板天数</td><td class="p">2</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 底部新闻 -->
+  <div class="news">
+    <div class="col"><h5>个股资讯</h5>
+      <li><span class="tag">资讯</span>引力传媒连续三年荣登北京民营企业百强<span class="t">09-17</span></li>
+      <li><span class="tag">观点</span>券商观点：三重董高减持计划届满<span class="t">09-07</span></li>
+    </div>
+    <div class="col"><h5>公司公告</h5>
+      <li><span class="tag">公告</span>董事、高管人员减持股份结果公告<span class="t">09-08</span></li>
+      <li><span class="tag">公告</span>2026年半年度业绩说明会<span class="t">08-29</span></li>
+    </div>
+    <div class="col"><h5>行业热点</h5>
+      <li><span class="tag">热点</span>传媒板块午后拉升 多股涨停<span class="t">09-18</span></li>
+      <li><span class="tag">研报</span>AIGC应用落地加速 关注内容公司<span class="t">09-16</span></li>
+    </div>
+  </div>
+</div>
+
+<script>
+// 假数据：分时走势
+(function(){
+  const xs=[], prices=[], avg=[], vols=[];
+  let p=17.10;
+  for(let i=0;i<240;i++){
+    const t=9*60+30+i;
+    const h=String(Math.floor(t/60)).padStart(2,"0"), m=String(t%60).padStart(2,"0");
+    xs.push(h+":"+m);
+    p += (Math.random()-0.48)*0.03;
+    prices.push(+p.toFixed(2));
+    avg.push(+(17.12 + Math.sin(i/30)*0.05 + i*0.0003).toFixed(2));
+    vols.push(Math.round(200+Math.random()*800));
+  }
+  const main=echarts.init(document.getElementById("main"));
+  main.setOption({
+    backgroundColor:"transparent",
+    grid:{left:50,right:60,top:10,bottom:20},
+    xAxis:{type:"category",data:xs,axisLine:{lineStyle:{color:"#1e2634"}},axisLabel:{color:"#7d8a9c",fontSize:10}},
+    yAxis:{scale:true,position:"right",axisLine:{lineStyle:{color:"#1e2634"}},axisLabel:{color:"#7d8a9c",fontSize:10},splitLine:{lineStyle:{color:"#161d29"}}},
+    tooltip:{trigger:"axis"},
+    series:[
+      {name:"价格",type:"line",data:prices,showSymbol:false,lineStyle:{color:"#e6edf3",width:1.2},areaStyle:{color:"rgba(47,111,237,.08)"}},
+      {name:"均价",type:"line",data:avg,showSymbol:false,lineStyle:{color:"#e8b339",width:1}}
+    ]
+  });
+  const vol=echarts.init(document.getElementById("vol"));
+  vol.setOption({
+    backgroundColor:"transparent",
+    grid:{left:50,right:60,top:6,bottom:20},
+    xAxis:{type:"category",data:xs,axisLabel:{show:false}},
+    yAxis:{splitNumber:2,axisLabel:{color:"#7d8a9c",fontSize:10}},
+    series:[{type:"bar",data:vols,itemStyle:{color:"#f23645"}}]
+  });
+  const chip=echarts.init(document.getElementById("chip"));
+  chip.setOption({
+    grid:{left:0,right:0,top:0,bottom:0},
+    xAxis:{type:"value",show:false},yAxis:{type:"category",show:false,data:["16","17","18","19"]},
+    series:[{type:"bar",data:[20,70,45,15],itemStyle:{color:"#2f6fed"},barWidth:8}]
+  });
+  window.addEventListener("resize",()=>{main.resize();vol.resize();chip.resize();});
+})();
+</script>
+</body>
+</html>
