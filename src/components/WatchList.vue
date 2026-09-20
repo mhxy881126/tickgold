@@ -183,7 +183,7 @@ async function commitEdit(g: { id: number }) {
 </template>
 
 <style scoped>
-.panel { display: flex; flex-direction: column; height: 100%; }
+.panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .search { position: relative; padding: 8px; }
 .search input { width: 100%; }
 .results {

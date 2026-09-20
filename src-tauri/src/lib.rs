@@ -26,6 +26,16 @@ async fn search_stocks(keyword: String) -> Result<Vec<market::StockItem>, String
     market::search_stocks(keyword).await
 }
 
+#[tauri::command]
+async fn get_index_quotes() -> Result<Vec<market::Quote>, String> {
+    market::get_index_quotes().await
+}
+
+#[tauri::command]
+async fn get_rank(sort: String, pz: i64) -> Result<Vec<market::Quote>, String> {
+    market::get_rank(sort, pz).await
+}
+
 /// 老板键：切换所有窗口显隐
 fn boss_toggle(app: &tauri::AppHandle) {
     let state = app.state::<BossHidden>();
@@ -169,7 +179,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_quotes,
             get_kline,
-            search_stocks
+            search_stocks,
+            get_index_quotes,
+            get_rank
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

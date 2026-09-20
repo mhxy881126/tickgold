@@ -134,6 +134,48 @@ pub async fn search(keyword: &str) -> Result<Vec<StockItem>, String> {
     Ok(out)
 }
 
+/// 榜单：gainers=涨幅榜 losers=跌幅榜 amount=成交额榜（沪深 A 股）
+pub async fn rank(sort: &str, pz: i64) -> Result<Vec<Quote>, String> {
+    let (fid, po) = match sort {
+        "losers" => ("f3", 0),  // 按涨跌幅升序
+        "amount" => ("f6", 1),  // 按成交额降序
+        _ => ("f3", 1),         // gainers 默认按涨跌幅降序
+    };
+    let url = format!(
+        "http://push2.eastmoney.com/api/qt/clist/get?pn=1&pz={pz}&po={po}&np=1&fltt=2&invt=2&fid={fid}&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048&fields=f12,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18"
+    );
+    let resp = http()
+        .get(&url)
+        .header("Referer", "https://quote.eastmoney.com/")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let json: ListResp = resp.json().await.map_err(|e| e.to_string())?;
+    let now = now_millis();
+    let out = json
+        .data
+        .and_then(|d| d.diff)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|q| Quote {
+            code: q.code,
+            name: q.name,
+            price: nf(&q.price),
+            change: nf(&q.change),
+            pct: nf(&q.pct),
+            open: nf(&q.open),
+            high: nf(&q.high),
+            low: nf(&q.low),
+            prev_close: nf(&q.prev_close),
+            volume: nf(&q.volume),
+            amount: nf(&q.amount),
+            time: now,
+            source: "eastmoney".to_string(),
+        })
+        .collect();
+    Ok(out)
+}
+
 fn urlencode(s: &str) -> String {
     let mut out = String::new();
     for b in s.as_bytes() {
@@ -143,4 +185,43 @@ fn urlencode(s: &str) -> String {
         }
     }
     out
+}
+
+/// 大盘指数行情（固定 secid：上证/深成/创业板/沪深300/科创50）
+pub async fn index_quotes() -> Result<Vec<Quote>, String> {
+    let secids = ["1.000001", "0.399001", "0.399006", "1.000300", "1.000688"];
+    let url = format!(
+        "http://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18&secids={}",
+        secids.join(",")
+    );
+    let resp = http()
+        .get(&url)
+        .header("Referer", "https://quote.eastmoney.com/")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let json: ListResp = resp.json().await.map_err(|e| e.to_string())?;
+    let now = now_millis();
+    let out = json
+        .data
+        .and_then(|d| d.diff)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|q| Quote {
+            code: q.code,
+            name: q.name,
+            price: nf(&q.price),
+            change: nf(&q.change),
+            pct: nf(&q.pct),
+            open: nf(&q.open),
+            high: nf(&q.high),
+            low: nf(&q.low),
+            prev_close: nf(&q.prev_close),
+            volume: nf(&q.volume),
+            amount: nf(&q.amount),
+            time: now,
+            source: "eastmoney".to_string(),
+        })
+        .collect();
+    Ok(out)
 }

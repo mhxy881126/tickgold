@@ -29,13 +29,33 @@ export async function fetchKLine(
   }
 }
 
-/** 搜索股票（代码/名称拼音） */
+/** 搜索股票（代码/名称/拼音） */
 export async function searchStocks(keyword: string): Promise<StockItem[]> {
   if (!keyword.trim()) return [];
   try {
     return await invoke<StockItem[]>("search_stocks", { keyword });
   } catch (e) {
     console.error("search_stocks failed", e);
+    return [];
+  }
+}
+
+/** 大盘指数行情（上证/深成/创业板/沪深300/科创50） */
+export async function fetchIndexQuotes(): Promise<Quote[]> {
+  try {
+    return await invoke<Quote[]>("get_index_quotes");
+  } catch (e) {
+    console.error("get_index_quotes failed", e);
+    return [];
+  }
+}
+
+/** 榜单：gainers=涨幅榜 losers=跌幅榜 amount=成交额榜 */
+export async function fetchRank(sort: "gainers" | "losers" | "amount", pz = 30): Promise<Quote[]> {
+  try {
+    return await invoke<Quote[]>("get_rank", { sort, pz });
+  } catch (e) {
+    console.error("get_rank failed", e);
     return [];
   }
 }

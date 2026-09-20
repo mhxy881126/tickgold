@@ -19,13 +19,20 @@ const periods = [
   { label: "周K", value: 102 },
   { label: "月K", value: 103 },
 ];
+
+type MainInd = "MA" | "BOLL";
+type SubInd = "VOL" | "MACD" | "KDJ" | "RSI";
+const mainInd = ref<MainInd>("MA");
+const subInd = ref<SubInd>("VOL");
+const mainInds: MainInd[] = ["MA", "BOLL"];
+const subInds: SubInd[] = ["VOL", "MACD", "KDJ", "RSI"];
+
 let chart: Chart | null = null;
 
 async function load() {
   if (!props.code) return;
   loading.value = true;
   const bars: KBar[] = await fetchKLine(props.code, period.value, 800);
-  // await 期间组件可能已卸载（快速切换），重新判断
   if (chart) {
     chart.applyNewData(
       bars.map((b) => ({
@@ -53,9 +60,29 @@ function setupChart() {
   });
   if (!c) return;
   chart = c;
-  c.createIndicator("MA", false, { id: "candle_pane" });
-  c.createIndicator("VOL", false, { id: "pane_vol" });
-  c.createIndicator("MACD");
+  applyIndicators();
+}
+
+/** 应用主图 + 副图指标 */
+function applyIndicators() {
+  if (!chart) return;
+  // 主图：替换 candle_pane 指标
+  chart.createIndicator(mainInd.value, false, { id: "candle_pane" });
+  // 副图：先清空 pane_sub 旧指标，再创建新的
+  const existing = chart.getIndicatorByPaneId("pane_sub") || {};
+  for (const name of Object.keys(existing)) {
+    chart.removeIndicator(name);
+  }
+  chart.createIndicator(subInd.value, false, { id: "pane_sub" });
+}
+
+function setMainInd(m: MainInd) {
+  mainInd.value = m;
+  if (chart) chart.createIndicator(m, false, { id: "candle_pane" });
+}
+function setSubInd(s: SubInd) {
+  subInd.value = s;
+  applyIndicators();
 }
 
 watch(() => [props.code, period.value], load);
@@ -80,6 +107,20 @@ onBeforeUnmount(() => {
         :class="{ on: period === p.value }"
         @click="period = p.value"
       >{{ p.label }}</button>
+      <span class="sep">|</span>
+      <button
+        v-for="m in mainInds"
+        :key="m"
+        :class="{ on: mainInd === m }"
+        @click="setMainInd(m)"
+      >{{ m }}</button>
+      <span class="sep">|</span>
+      <button
+        v-for="s in subInds"
+        :key="s"
+        :class="{ on: subInd === s }"
+        @click="setSubInd(s)"
+      >{{ s }}</button>
       <span v-if="loading" class="ld">加载中…</span>
     </div>
     <div ref="box" class="chart"></div>
@@ -95,6 +136,7 @@ onBeforeUnmount(() => {
 }
 .toolbar button.on { color: var(--text); background: var(--bg-hover); border-color: var(--border); }
 .toolbar button:hover { color: var(--text); }
+.toolbar .sep { color: var(--border); margin: 0 4px; }
 .ld { margin-left: auto; color: var(--text-dim); align-self: center; }
 .chart { flex: 1; min-height: 0; }
 </style>

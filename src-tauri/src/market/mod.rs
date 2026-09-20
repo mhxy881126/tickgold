@@ -224,6 +224,40 @@ pub async fn get_kline(code: String, period: i64, count: i64) -> Result<Vec<KBar
     }
 }
 
+/// 榜单：gainers / losers / amount，默认东财
+pub async fn get_rank(sort: String, pz: i64) -> Result<Vec<Quote>, String> {
+    match tokio::time::timeout(
+        Duration::from_secs(QUOTE_TIMEOUT),
+        eastmoney::rank(&sort, pz),
+    )
+    .await
+    {
+        Ok(Ok(v)) if valid_quotes(&v) => Ok(v),
+        Ok(Ok(_)) => Ok(vec![]),
+        Ok(Err(e)) => Err(format!("东财榜单: {e}")),
+        Err(_) => Err("东财榜单: 超时".to_string()),
+    }
+}
+
+/// 大盘指数行情：东财为主，失败静默返回空（指数非核心，不弹错）
+pub async fn get_index_quotes() -> Result<Vec<Quote>, String> {
+    if is_open("eastmoney_idx") {
+        match tokio::time::timeout(
+            Duration::from_secs(QUOTE_TIMEOUT),
+            eastmoney::index_quotes(),
+        )
+        .await
+        {
+            Ok(Ok(v)) if valid_quotes(&v) => {
+                record_ok("eastmoney_idx");
+                return Ok(v);
+            }
+            _ => record_fail("eastmoney_idx"),
+        }
+    }
+    Ok(vec![])
+}
+
 /// 搜索：东财 → 腾讯
 pub async fn search_stocks(keyword: String) -> Result<Vec<StockItem>, String> {
     if !keyword.trim().is_empty() {

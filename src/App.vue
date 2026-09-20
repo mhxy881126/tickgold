@@ -6,6 +6,8 @@ import { check as checkForUpdate } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import WatchList from "./components/WatchList.vue";
 import StockChart from "./components/StockChart.vue";
+import Indices from "./components/Indices.vue";
+import RankBoard from "./components/RankBoard.vue";
 import { useWatchlistStore } from "./stores/watchlist";
 import { useQuotesStore } from "./stores/quotes";
 import { useAlertStore } from "./stores/alert";
@@ -15,6 +17,7 @@ const quotes = useQuotesStore();
 const alerts = useAlertStore();
 
 const selected = ref<string | null>(null);
+const sideTab = ref<"watch" | "rank">("watch");
 
 // ===== 自动更新 =====
 const curVersion = ref("");
@@ -145,9 +148,16 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
       </div>
     </header>
 
+    <Indices />
+
     <div class="body">
       <aside class="left">
-        <WatchList :selected="selected" @select="onSelect" />
+        <div class="side-tabs">
+          <button :class="{ active: sideTab === 'watch' }" @click="sideTab = 'watch'">自选</button>
+          <button :class="{ active: sideTab === 'rank' }" @click="sideTab = 'rank'">榜单</button>
+        </div>
+        <WatchList v-if="sideTab === 'watch'" :selected="selected" @select="onSelect" />
+        <RankBoard v-else @select="onSelect" />
       </aside>
       <section class="right">
         <StockChart v-if="selected" :key="selected" :code="selected" />
@@ -178,7 +188,14 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
 .dot.on { background: #26d07c; }
 .ver { color: var(--text-dim); opacity: 0.8; }
 .body { flex: 1; display: flex; min-height: 0; }
-.left { width: 320px; border-right: 1px solid var(--border); overflow: hidden; }
+.left { width: 320px; border-right: 1px solid var(--border); overflow: hidden; display: flex; flex-direction: column; }
+.side-tabs { display: flex; gap: 6px; padding: 8px 8px 0; }
+.side-tabs button {
+  flex: 1; padding: 4px 0; font-size: 12px; border-radius: 6px 6px 0 0;
+  background: transparent; border: 1px solid var(--border); border-bottom: none;
+  color: var(--text-dim); cursor: pointer;
+}
+.side-tabs button.active { color: var(--text); background: var(--bg-hover); }
 .right { flex: 1; min-width: 0; }
 .placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); }
 .alertbar {
