@@ -89,3 +89,4 @@ jobs:
             - 通过顶栏"检查更新"即可自动升级。
           releaseDraft: true
           prerelease: false
+          args: --bundles ${{ matrix.target }}
