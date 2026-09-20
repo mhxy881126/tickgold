@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, reactive } from "vue";
-import { init, dispose, type Chart, registerIndicator } from "klinecharts";
+import { init, dispose, type Chart } from "klinecharts";
 import { fetchKLine } from "../api/market";
 import type { KBar } from "../api/types";
 
@@ -22,11 +22,11 @@ const periods = [
   { label: "月K", value: 103 },
 ];
 
-type MainInd = "MA" | "BOLL" | "TD9";
+type MainInd = "MA" | "BOLL";
 type SubInd = "VOL" | "MACD" | "KDJ" | "RSI";
 const mainInd = ref<MainInd>("MA");
 const subInd = ref<SubInd>("VOL");
-const mainInds: MainInd[] = ["MA", "BOLL", "TD9"];
+const mainInds: MainInd[] = ["MA", "BOLL"];
 const subInds: SubInd[] = ["VOL", "MACD", "KDJ", "RSI"];
 
 // 均线参数
@@ -42,99 +42,33 @@ const hover = reactive({
 
 let chart: Chart | null = null;
 
-// 注册神奇九转（TD 序列）指标
-let td9Registered = false;
-function ensureTD9() {
-  if (td9Registered) return;
-  td9Registered = true;
-  registerIndicator({
-    name: "TD9",
-    shortName: "九转",
-    calc: (dataList: any[]) => {
-      const result: any[] = [];
-      let up = 0, down = 0;
-      for (let i = 0; i < dataList.length; i++) {
-        const cur = dataList[i]?.close;
-        const prev4 = i >= 4 ? dataList[i - 4]?.close : undefined;
-        if (cur != null && prev4 != null) {
-          if (cur > prev4) { up++; down = 0; }
-          else if (cur < prev4) { down++; up = 0; }
-          else { up = 0; down = 0; }
-        }
-        const markUp = up >= 9 ? 9 : up >= 1 ? up : 0;
-        const markDown = down >= 9 ? 9 : down >= 1 ? down : 0;
-        result.push({
-          up: markUp || undefined,
-          down: markDown || undefined,
-        });
-      }
-      return result;
-    },
-    draw: (ctx: any, data: any, overlay: any) => {
-      const { kLineDataList, boundingBarSpace, barSpace } = overlay;
-      const { result } = data;
-      if (!result) return false;
-      const { width, height } = overlay.chartStore.chartPaneWidget.barSpace;
-      // 在每根 K 线位置标数字
-      for (let i = 0; i < result.length; i++) {
-        const r = result[i];
-        if (!r) continue;
-        const x = width / 2 + i * barSpace;
-        if (x < 0 || x > width) continue;
-        const d = kLineDataList[i];
-        if (!d) continue;
-        ctx.font = "10px sans-serif";
-        ctx.textAlign = "center";
-        if (r.up) {
-          const y = overlay.chartStore.yAxisConvert(d.high) - 4;
-          ctx.fillStyle = "#f23645";
-          ctx.fillText(String(r.up), x, y);
-        }
-        if (r.down) {
-          const y = overlay.chartStore.yAxisConvert(d.low) + 12;
-          ctx.fillStyle = "#089981";
-          ctx.fillText(String(r.down), x, y);
-        }
-      }
-      return true;
-    },
-    calcParams: () => [],
-    precision: () => 0,
-    shouldOhlc: false,
-    shouldLastValue: false,
-  } as any);
-}
-
 async function load() {
-  if (!props.code) return;
+  if (!props.code || !chart) return;
   loading.value = true;
   // 分时：拉 1 分钟数据
   const loadPeriod = period.value === 0 ? 1 : period.value;
   const bars: KBar[] = await fetchKLine(props.code, loadPeriod, 800);
-  if (chart) {
-    chart.applyNewData(
-      bars.map((b) => ({
-        timestamp: b.timestamp,
-        open: b.open,
-        high: b.high,
-        low: b.low,
-        close: b.close,
-        volume: b.volume,
-      }))
-    );
-  }
+  chart.applyNewData(
+    bars.map((b) => ({
+      timestamp: b.timestamp,
+      open: b.open,
+      high: b.high,
+      low: b.low,
+      close: b.close,
+      volume: b.volume,
+    }))
+  );
   loading.value = false;
 }
 
 function setupChart() {
-  if (!box.value) return;
-  ensureTD9();
+  if (!box.value || chart) return;
   const isTS = period.value === 0;
   const c = init(box.value, {
     styles: {
       grid: { horizontal: { color: "#1b2129" }, vertical: { color: "#1b2129" } },
       candle: {
-        type: (isTS ? "line" : "candle_solid") as any,
+        type: (isTS ? "time_sharing" : "candle_solid") as any,
         priceMark: { high: { color: "#f23645" }, low: { color: "#089981" } },
       },
     },
@@ -142,7 +76,6 @@ function setupChart() {
   if (!c) return;
   chart = c;
   applyIndicators();
-  // 悬停十字线 -> 盘口浮层
   c.subscribeAction("onCrosshairChange" as any, (data: any) => {
     const d = data?.kLineData;
     if (!d) { hover.show = false; return; }
@@ -163,20 +96,15 @@ function setupChart() {
 function applyIndicators() {
   if (!chart) return;
   const isTS = period.value === 0;
-  // 分时模式不叠加主图指标
   if (isTS) {
     try { chart.removeIndicator("MA"); } catch {}
     try { chart.removeIndicator("BOLL"); } catch {}
-    try { chart.removeIndicator("TD9"); } catch {}
   } else {
+    chart.createIndicator(mainInd.value, false, { id: "candle_pane" });
     if (mainInd.value === "MA") {
-      chart.createIndicator("MA", false, { id: "candle_pane" });
       chart.overrideIndicator({ id: "candle_pane", name: "MA", calcParams: [...maParams] } as any);
-    } else {
-      chart.createIndicator(mainInd.value, false, { id: "candle_pane" });
     }
   }
-  // 副图
   const existing = chart.getIndicatorByPaneId("pane_sub") || {};
   for (const name of Object.keys(existing)) {
     try { chart.removeIndicator(name); } catch {}
@@ -218,13 +146,15 @@ function cls(p: number) {
   return p > 0.001 ? "up" : p < -0.001 ? "down" : "flat";
 }
 
-watch(() => [props.code, period.value], async () => {
-  await nextTick();
-  // 切分时/切周期：重建图以切换 candle type
-  if (chart && box.value) { dispose(box.value); chart = null; }
-  setupChart();
-  load();
+// 切周期：只切 candle 样式 + 重新拉数据，不重建实例
+watch(period, async () => {
+  if (!chart) return;
+  const isTS = period.value === 0;
+  chart.setStyles({ candle: { type: (isTS ? "time_sharing" : "candle_solid") as any } });
+  applyIndicators();
+  await load();
 });
+watch(() => props.code, load);
 
 onMounted(async () => {
   await nextTick();
@@ -263,7 +193,6 @@ onBeforeUnmount(() => {
       >{{ s }}</button>
       <span v-if="loading" class="ld">加载中…</span>
     </div>
-    <!-- 同花顺样式盘口悬浮条 -->
     <div v-if="hover.show" class="hover-bar" :class="cls(hover.pct)">
       <span>{{ hover.time }}</span>
       <span>开 {{ fmt(hover.open) }}</span>
@@ -275,7 +204,6 @@ onBeforeUnmount(() => {
     </div>
     <div ref="box" class="chart"></div>
 
-    <!-- 均线参数设置弹窗 -->
     <div v-if="showMaSettings" class="modal-mask" @click.self="showMaSettings = false">
       <div class="modal">
         <h3>均线参数</h3>
