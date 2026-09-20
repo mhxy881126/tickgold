@@ -102,8 +102,7 @@ pub async fn kline(code: &str, period: i64, count: i64) -> Result<Vec<KBar>, Str
 }
 
 /// 新浪日期串 -> ms 时间戳（沿用近似换算，足够横轴使用）
-fn parse_date(s: &str, period: i64) -> i64 {
-    use std::time::{Duration, UNIX_EPOCH};
+fn parse_date(s: &str, period: i64) -> i64 {    use std::time::{Duration, UNIX_EPOCH};
     let (date_part, time_part) = match s.split_once(' ') {
         Some((d, t)) => (d, t),
         None => (s, "00:00"),
@@ -124,4 +123,80 @@ fn parse_date(s: &str, period: i64) -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
+}
+
+/// 榜单：gainers=涨幅榜 losers=跌幅榜 amount=成交额榜（沪深 A 股，新浪公开接口）
+pub async fn rank(sort: &str, pz: i64) -> Result<Vec<Quote>, String> {
+    let (sort_key, asc) = match sort {
+        "losers" => ("changepercent", 1),
+        "amount" => ("amount", 0),
+        _ => ("changepercent", 0),
+    };
+    let url = format!(
+        "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page=1&num={pz}&sort={sort_key}&asc={asc}&node=hs_a&symbol=&_s_r_a=init"
+    );
+    let resp = http()
+        .get(&url)
+        .header("Referer", "https://finance.sina.com.cn/")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let txt = resp.text().await.map_err(|e| e.to_string())?;
+    parse_rank(&txt)
+}
+
+/// 从单条 JS 字面量对象里取字段值（key 无引号）
+fn gv<'a>(s: &'a str, key: &str) -> &'a str {
+    let pat = format!("{key}:");
+    let Some(i) = s.find(&pat) else { return "" };
+    let rest = s[i + pat.len()..].trim_start();
+    if rest.starts_with('"') {
+        let end = rest[1..].find('"').unwrap_or(0);
+        &rest[1..1 + end]
+    } else {
+        let end = rest.find(|c| c == ',' || c == '}').unwrap_or(rest.len());
+        &rest[..end]
+    }
+}
+
+fn parse_rank(txt: &str) -> Result<Vec<Quote>, String> {
+    let body = txt.trim().trim_start_matches('[').trim_end_matches(']');
+    let now = now_millis();
+    let mut out = Vec::new();
+    for item in body.split("},{") {
+        let item = item.trim().trim_start_matches('{').trim_end_matches('}');
+        let code = gv(item, "code").to_string();
+        if code.len() != 6 {
+            continue;
+        }
+        let name = gv(item, "name").to_string();
+        let price: f64 = gv(item, "trade").parse().unwrap_or(0.0);
+        let change: f64 = gv(item, "pricechange").parse().unwrap_or(0.0);
+        let pct: f64 = gv(item, "changepercent").parse().unwrap_or(0.0);
+        let open: f64 = gv(item, "open").parse().unwrap_or(0.0);
+        let high: f64 = gv(item, "high").parse().unwrap_or(0.0);
+        let low: f64 = gv(item, "low").parse().unwrap_or(0.0);
+        let prev_close: f64 = gv(item, "settlement").parse().unwrap_or(0.0);
+        let volume_shares: f64 = gv(item, "volume").parse().unwrap_or(0.0);
+        let amount: f64 = gv(item, "amount").parse().unwrap_or(0.0);
+        out.push(Quote {
+            code,
+            name,
+            price,
+            change,
+            pct,
+            open,
+            high,
+            low,
+            prev_close,
+            volume: volume_shares / 100.0,
+            amount,
+            time: now,
+            source: "sina".to_string(),
+        });
+    }
+    if out.is_empty() {
+        return Err("新浪榜单返回空".to_string());
+    }
+    Ok(out)
 }

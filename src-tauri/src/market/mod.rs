@@ -224,8 +224,17 @@ pub async fn get_kline(code: String, period: i64, count: i64) -> Result<Vec<KBar
     }
 }
 
-/// 榜单：gainers / losers / amount，默认东财
+/// 榜单：gainers / losers / amount，新浪为主，东财兜底
 pub async fn get_rank(sort: String, pz: i64) -> Result<Vec<Quote>, String> {
+    match tokio::time::timeout(
+        Duration::from_secs(QUOTE_TIMEOUT),
+        sina::rank(&sort, pz),
+    )
+    .await
+    {
+        Ok(Ok(v)) if valid_quotes(&v) => return Ok(v),
+        _ => {}
+    }
     match tokio::time::timeout(
         Duration::from_secs(QUOTE_TIMEOUT),
         eastmoney::rank(&sort, pz),
@@ -233,9 +242,9 @@ pub async fn get_rank(sort: String, pz: i64) -> Result<Vec<Quote>, String> {
     .await
     {
         Ok(Ok(v)) if valid_quotes(&v) => Ok(v),
-        Ok(Ok(v)) => Err(format!("东财榜单返回空（{} 条）", v.len())),
-        Ok(Err(e)) => Err(format!("东财榜单: {e}")),
-        Err(_) => Err("东财榜单: 超时".to_string()),
+        Ok(Ok(v)) => Err(format!("榜单返回空（{} 条）", v.len())),
+        Ok(Err(e)) => Err(format!("榜单: {e}")),
+        Err(_) => Err("榜单: 超时".to_string()),
     }
 }
 
