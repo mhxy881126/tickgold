@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主窗口与灵动岛权限",
+  "windows": ["main", "island"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-size",
+    "notification:default",
+    "global-shortcut:default",
+    "sql:default",
+    "sql:allow-execute",
+    "updater:default",
+    "process:default"
+  ]
+}

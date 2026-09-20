@@ -1,0 +1,32 @@
+:root {
+  --bg: #0e1116;
+  --bg-panel: #161b22;
+  --bg-hover: #1f2630;
+  --border: #2a313c;
+  --text: #e6edf3;
+  --text-dim: #8b98a5;
+  --up: #f23645;      /* A股红涨 */
+  --down: #089981;    /* 绿跌 */
+  --flat: #8b98a5;
+  --accent: #3b82f6;
+  font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+}
+
+html, body, #app { height: 100%; }
+body { background: var(--bg); color: var(--text); font-size: 13px; }
+
+.up { color: var(--up); }
+.down { color: var(--down); }
+.flat { color: var(--flat); }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+button { font-family: inherit; }
+input {
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 8px; outline: none;
+}
+input:focus { border-color: var(--accent); }

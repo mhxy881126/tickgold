@@ -1,0 +1,12 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/keys/*.key
+!src-tauri/keys/*.pub
+*.db
+*.log
+.DS_Store
+_*.txt
+_*.py
+_*.rs
