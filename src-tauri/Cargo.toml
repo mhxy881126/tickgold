@@ -25,6 +25,10 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["full"] }
 encoding_rs = "0.8"
 
+# macOS 透明窗口（灵动岛毛玻璃）需要私有 API
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri = { version = "2", features = ["macos-private-api"] }
+
 [profile.release]
 panic = "abort"
 codegen-units = 1
