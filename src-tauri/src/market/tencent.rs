@@ -178,6 +178,68 @@ fn tencent_ts(s: &str, period: i64) -> i64 {
         .unwrap_or(0)
 }
 
+// ===== 当日分时（同花顺式分时图数据源）=====
+/// 返回当日分时数据，映射为 KBar（open=close=high=low=price，volume=当分钟量）
+pub async fn minute(code: &str) -> Result<Vec<KBar>, String> {
+    let sym = cnc_symbol(code);
+    let url = format!("https://web.ifzq.gtimg.cn/appstock/app/minute/query?code={sym}");
+    let v: Value = http()
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let node = &v["data"][sym]["data"];
+    let date_str = node["date"].as_str().unwrap_or("");
+    let arr = node["data"].as_array().ok_or("分时数据为空")?;
+    let mut out = Vec::new();
+    let mut prev_vol = 0.0f64;
+    for item in arr {
+        let s = item.as_str().ok_or("分时项格式错")?;
+        let parts: Vec<&str> = s.split_whitespace().collect();
+        if parts.len() < 4 { continue; }
+        let hhmm = parts[0];
+        let price: f64 = parts[1].parse().unwrap_or(0.0);
+        let cumvol: f64 = parts[3].parse().unwrap_or(0.0);
+        let vol = (cumvol - prev_vol).max(0.0);
+        prev_vol = cumvol;
+        let ts = minute_ts(date_str, hhmm);
+        out.push(KBar {
+            timestamp: ts,
+            open: price,
+            close: price,
+            high: price,
+            low: price,
+            volume: vol,
+        });
+    }
+    if out.is_empty() {
+        return Err("分时返回空".to_string());
+    }
+    Ok(out)
+}
+
+/// "20260918" + "0930" -> ms
+fn minute_ts(date: &str, hhmm: &str) -> i64 {
+    use std::time::{Duration, UNIX_EPOCH};
+    if date.len() != 8 || hhmm.len() != 4 {
+        return 0;
+    }
+    let y: i64 = date[0..4].parse().unwrap_or(1970);
+    let mo: i64 = date[4..6].parse().unwrap_or(1);
+    let d: i64 = date[6..8].parse().unwrap_or(1);
+    let h: i64 = hhmm[0..2].parse().unwrap_or(0);
+    let mi: i64 = hhmm[2..4].parse().unwrap_or(0);
+    let days = (y - 1970) * 365 + (y - 1969) / 4 + (mo - 1) * 30 + (d - 1);
+    let secs = days * 86400 + h * 3600 + mi * 60;
+    (UNIX_EPOCH + Duration::from_secs(secs as u64))
+        .duration_since(UNIX_EPOCH)
+        .map(|x| x.as_millis() as i64)
+        .unwrap_or(0)
+}
+
 // ===== 搜索（smartbox，GBK） =====
 pub async fn search(keyword: &str) -> Result<Vec<StockItem>, String> {
     let url = format!(

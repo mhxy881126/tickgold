@@ -224,6 +224,13 @@ pub async fn get_kline(code: String, period: i64, count: i64) -> Result<Vec<KBar
     }
 }
 
+/// 当日分时：腾讯
+pub async fn get_minute(code: String) -> Result<Vec<KBar>, String> {
+    tokio::time::timeout(Duration::from_secs(KLINE_TIMEOUT), tencent::minute(&code))
+        .await
+        .map_err(|_| "分时: 超时".to_string())?
+}
+
 /// 榜单：gainers / losers / amount，新浪为主，东财兜底
 pub async fn get_rank(sort: String, pz: i64) -> Result<Vec<Quote>, String> {
     match tokio::time::timeout(

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, reactive } from "vue";
 import { init, dispose, type Chart } from "klinecharts";
-import { fetchKLine } from "../api/market";
+import { fetchKLine, fetchMinute } from "../api/market";
 import type { KBar } from "../api/types";
 
 const props = defineProps<{ code: string | null }>();
@@ -45,9 +45,13 @@ let chart: Chart | null = null;
 async function load() {
   if (!props.code || !chart) return;
   loading.value = true;
-  // 分时：拉 1 分钟数据
-  const loadPeriod = period.value === 0 ? 1 : period.value;
-  const bars: KBar[] = await fetchKLine(props.code, loadPeriod, 800);
+  let bars: KBar[];
+  if (period.value === 0) {
+    // 分时：当日分时（腾讯）
+    bars = await fetchMinute(props.code);
+  } else {
+    bars = await fetchKLine(props.code, period.value, 800);
+  }
   chart.applyNewData(
     bars.map((b) => ({
       timestamp: b.timestamp,

@@ -22,6 +22,11 @@ async fn get_kline(code: String, period: i64, count: i64) -> Result<Vec<market::
 }
 
 #[tauri::command]
+async fn get_minute(code: String) -> Result<Vec<market::KBar>, String> {
+    market::get_minute(code).await
+}
+
+#[tauri::command]
 async fn search_stocks(keyword: String) -> Result<Vec<market::StockItem>, String> {
     market::search_stocks(keyword).await
 }
@@ -179,6 +184,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_quotes,
             get_kline,
+            get_minute,
             search_stocks,
             get_index_quotes,
             get_rank

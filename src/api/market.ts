@@ -50,6 +50,11 @@ export async function fetchIndexQuotes(): Promise<Quote[]> {
   }
 }
 
+/** 当日分时（同花顺式分时图） */
+export async function fetchMinute(code: string): Promise<KBar[]> {
+  return await invoke<KBar[]>("get_minute", { code });
+}
+
 /** 榜单：gainers=涨幅榜 losers=跌幅榜 amount=成交额榜（失败抛出错误供上层展示） */
 export async function fetchRank(sort: "gainers" | "losers" | "amount", pz = 30): Promise<Quote[]> {
   return await invoke<Quote[]>("get_rank", { sort, pz });
