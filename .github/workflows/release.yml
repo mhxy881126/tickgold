@@ -108,7 +108,7 @@ jobs:
           VERSION="${TAG#v}"
           echo "Generating latest.json for $TAG (version $VERSION)"
 
-          REL_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .id)
+          REL_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name==\"$TAG\") | .id")
           ASSETS=$(gh api "repos/$GITHUB_REPOSITORY/releases/$REL_ID/assets")
 
           win_url=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("x64-setup.exe")) | .browser_download_url')
