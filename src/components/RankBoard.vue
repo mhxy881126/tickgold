@@ -10,6 +10,7 @@ type Tab = "gainers" | "losers" | "amount";
 const tab = ref<Tab>("gainers");
 const list = ref<Quote[]>([]);
 const loading = ref(false);
+const errorMsg = ref("");
 const wl = useWatchlistStore();
 
 const tabs: { k: Tab; label: string }[] = [
@@ -20,8 +21,15 @@ const tabs: { k: Tab; label: string }[] = [
 
 async function load() {
   loading.value = true;
-  list.value = await fetchRank(tab.value, 40);
-  loading.value = false;
+  errorMsg.value = "";
+  try {
+    list.value = await fetchRank(tab.value, 40);
+  } catch (e: any) {
+    list.value = [];
+    errorMsg.value = String(e?.message || e || "加载失败");
+  } finally {
+    loading.value = false;
+  }
 }
 
 watch(tab, load);
@@ -86,7 +94,10 @@ function addOne(q: Quote) {
           </td>
         </tr>
         <tr v-if="!loading && list.length === 0">
-          <td colspan="6" class="empty">暂无数据</td>
+          <td colspan="6" class="empty">
+            <div v-if="errorMsg" class="err">{{ errorMsg }}</div>
+            <div v-else>暂无数据</div>
+          </td>
         </tr>
       </tbody>
     </table>
@@ -123,4 +134,5 @@ td { padding: 6px 8px; border-bottom: 1px solid #1b2129; }
 .add:hover { background: var(--bg-hover); }
 .inwl { font-size: 11px; color: var(--text-dim); }
 .empty { text-align: center; color: var(--text-dim); padding: 30px; }
+.err { color: #f23645; font-size: 12px; padding: 0 16px; }
 </style>

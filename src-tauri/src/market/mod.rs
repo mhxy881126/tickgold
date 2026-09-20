@@ -233,7 +233,7 @@ pub async fn get_rank(sort: String, pz: i64) -> Result<Vec<Quote>, String> {
     .await
     {
         Ok(Ok(v)) if valid_quotes(&v) => Ok(v),
-        Ok(Ok(_)) => Ok(vec![]),
+        Ok(Ok(v)) => Err(format!("东财榜单返回空（{} 条）", v.len())),
         Ok(Err(e)) => Err(format!("东财榜单: {e}")),
         Err(_) => Err("东财榜单: 超时".to_string()),
     }

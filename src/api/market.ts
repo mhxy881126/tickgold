@@ -50,12 +50,7 @@ export async function fetchIndexQuotes(): Promise<Quote[]> {
   }
 }
 
-/** 榜单：gainers=涨幅榜 losers=跌幅榜 amount=成交额榜 */
+/** 榜单：gainers=涨幅榜 losers=跌幅榜 amount=成交额榜（失败抛出错误供上层展示） */
 export async function fetchRank(sort: "gainers" | "losers" | "amount", pz = 30): Promise<Quote[]> {
-  try {
-    return await invoke<Quote[]>("get_rank", { sort, pz });
-  } catch (e) {
-    console.error("get_rank failed", e);
-    return [];
-  }
+  return await invoke<Quote[]>("get_rank", { sort, pz });
 }
