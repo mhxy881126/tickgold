@@ -25,7 +25,7 @@ jobs:
           - platform: windows-latest
             target: nsis
           - platform: macos-latest
-            target: dmg
+            target: dmg,app
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -90,3 +90,59 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: --bundles ${{ matrix.target }}
+
+  # 汇总 job：等两个平台都构建完成后，读取各自 .sig，生成 Tauri updater 需要的
+  # latest.json 并上传到 Release。解决并行 matrix 下 tauri-action 漏传 latest.json 的问题。
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Generate latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "Generating latest.json for $TAG (version $VERSION)"
+
+          REL_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .id)
+          ASSETS=$(gh api "repos/$GITHUB_REPOSITORY/releases/$REL_ID/assets")
+
+          win_url=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("x64-setup.exe")) | .browser_download_url')
+          win_sig_id=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("x64-setup.exe.sig")) | .id')
+          mac_url=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("aarch64.app.tar.gz")) | .browser_download_url')
+          mac_sig_id=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("aarch64.app.tar.gz.sig")) | .id')
+
+          echo "win=$win_url"
+          echo "mac=$mac_url"
+
+          win_sig=$(gh api "repos/$GITHUB_REPOSITORY/releases/assets/$win_sig_id" -H "Accept: application/octet-stream")
+          mac_sig=$(gh api "repos/$GITHUB_REPOSITORY/releases/assets/$mac_sig_id" -H "Accept: application/octet-stream")
+
+          PUBDATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          jq -n \
+            --arg v "$VERSION" \
+            --arg d "$PUBDATE" \
+            --arg wu "$win_url" --arg ws "$win_sig" \
+            --arg mu "$mac_url" --arg ms "$mac_sig" \
+            '{
+              version: $v,
+              notes: "",
+              pub_date: $d,
+              platforms: {
+                "windows-x86_64": { signature: $ws, url: $wu },
+                "darwin-aarch64": { signature: $ms, url: $mu }
+              }
+            }' > latest.json
+
+          cat latest.json
+
+          old_id=$(echo "$ASSETS" | jq -r '.[] | select(.name=="latest.json") | .id')
+          if [ -n "$old_id" ] && [ "$old_id" != "null" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/releases/assets/$old_id" -X DELETE
+          fi
+          gh release upload "$TAG" latest.json --repo "$GITHUB_REPOSITORY"
+          echo "latest.json uploaded."
