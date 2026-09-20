@@ -3,7 +3,7 @@ import { ref, watch, onMounted, onBeforeUnmount } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
 import { check as checkForUpdate } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { exit } from "@tauri-apps/plugin-process";
 import WatchList from "./components/WatchList.vue";
 import StockChart from "./components/StockChart.vue";
 import Indices from "./components/Indices.vue";
@@ -69,7 +69,11 @@ async function checkUpdate() {
       }
     });
     updState.value = "installing";
-    await relaunch();
+    // 下载完成、NSIS 安装器已启动；先退出整个主程序（含灵动岛），
+    // 让安装器干净替换正在运行的 stock-dock.exe，避免"Error opening file for writing"。
+    // 短暂停顿让用户看到提示，随后退出；安装器装完会自动启动新版。
+    await new Promise((r) => setTimeout(r, 800));
+    await exit(0);
   } catch (err) {
     console.error("[updater]", err);
     updState.value = "error";
@@ -81,7 +85,7 @@ function updLabel(): string {
   switch (updState.value) {
     case "checking": return "检查中…";
     case "newfound": return `新版本 v${newVer.value}`;
-    case "installing": return "安装中，即将重启…";
+    case "installing": return "即将退出并安装…";
     case "uptodate": return "已是最新";
     case "error": return "更新失败";
     default: return "检查更新";
