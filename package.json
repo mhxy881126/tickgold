@@ -1,9 +1,9 @@
 {
   "name": "stock-dock",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
-  "description": "鐏靛姩宀涚増鑲＄エ鐩洏缁堢 - A鑲¤交閲忚法骞冲彴鐪嬬洏杞欢",
+  "description": "灵动岛版股票盯盘终端 - A股轻量跨平台看盘软件",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
