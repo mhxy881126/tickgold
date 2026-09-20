@@ -47,6 +47,29 @@ pub struct StockItem {
     pub market: String, // SH / SZ / BJ
 }
 
+/// 五档盘口
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderLevel {
+    pub price: f64,
+    pub vol: f64,
+}
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderBook {
+    pub name: String,
+    pub code: String,
+    pub price: f64,
+    pub prev_close: f64,
+    pub open: f64,
+    pub high: f64,
+    pub low: f64,
+    pub volume: f64,
+    pub amount: f64,
+    pub asks: Vec<OrderLevel>,
+    pub bids: Vec<OrderLevel>,
+}
+
 const QUOTE_TIMEOUT: u64 = 5;
 const KLINE_TIMEOUT: u64 = 8;
 
@@ -222,6 +245,13 @@ pub async fn get_kline(code: String, period: i64, count: i64) -> Result<Vec<KBar
         Ok(Err(e)) => Err(format!("K线全部失败 → {last_err}; 腾讯: {e}")),
         Err(_) => Err(format!("K线全部失败 → {last_err}; 腾讯: 超时")),
     }
+}
+
+/// 五档盘口：腾讯
+pub async fn get_orderbook(code: String) -> Result<OrderBook, String> {
+    tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), tencent::orderbook(&code))
+        .await
+        .map_err(|_| "盘口: 超时".to_string())?
 }
 
 /// 当日分时：腾讯

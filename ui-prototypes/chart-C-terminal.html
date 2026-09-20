@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>K线效果图 C · 专业终端密集风</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+:root{--bg:#000;--panel:#0d1117;--border:#1c2128;--text:#c9d1d9;--dim:#6e7681;--up:#f85149;--down:#3fb950;--accent:#58a6ff;--gold:#e3b341;}
+*{box-sizing:border-box;margin:0;padding:0;font-family:"Consolas","Microsoft YaHei",monospace;font-size:11px;}
+body{background:var(--bg);color:var(--text);padding:12px;}
+.tag{font-size:14px;font-weight:700;margin-bottom:10px;color:var(--accent);font-family:"Microsoft YaHei",sans-serif;}
+.wrap{display:grid;grid-template-columns:1fr 260px;gap:1px;background:var(--border);border:1px solid var(--border);}
+.left{background:var(--panel);display:flex;flex-direction:column;}
+.toolbar{display:flex;gap:0;padding:4px 6px;border-bottom:1px solid var(--border);background:#161b22;}
+.toolbar button{background:transparent;color:var(--dim);border:none;padding:3px 8px;cursor:pointer;}
+.toolbar button.on{color:var(--text);background:#21262d;}
+.toolbar .sep{color:var(--border);margin:0 2px;}
+.symbol{font-weight:700;margin-right:10px;color:var(--gold);}
+.main{height:300px;}
+.vol{height:70px;border-top:1px solid var(--border);}
+.macd{height:70px;border-top:1px solid var(--border);}
+.right{background:var(--panel);overflow-y:auto;}
+.cell{padding:6px 10px;border-bottom:1px solid var(--border);}
+.cell h4{color:var(--dim);font-weight:400;margin-bottom:4px;font-size:10px;}
+.big{font-size:24px;font-weight:700;}
+table{width:100%;font-variant-numeric:tabular-nums;}
+td{padding:1px 0;} .l{color:var(--dim);} .p{text-align:right;}
+.up{color:var(--up);}.down{color:var(--down);}.gold{color:var(--gold);}
+</style>
+</head>
+<body>
+<div class="tag">方案C · 专业终端密集风（纯黑底 / 等宽字体 / 多面板 / 彭博感）</div>
+<div class="wrap">
+  <div class="left">
+    <div class="toolbar">
+      <span class="symbol">603598</span>
+      <button class="on">分时</button><button>日K</button><button>周K</button><button>月K</button>
+      <span class="sep">|</span>
+      <button class="on">MA</button><button>BOLL</button><button>VOL</button><button>MACD</button><button>KDJ</button><button>RSI</button>
+    </div>
+    <div class="main" id="m"></div>
+    <div class="vol" id="v"></div>
+    <div class="macd" id="d"></div>
+  </div>
+  <div class="right">
+    <div class="cell">
+      <div class="big up">17.24</div>
+      <div><span class="up">+0.05 +0.29%</span></div>
+    </div>
+    <div class="cell">
+      <h4>ORDER BOOK</h4>
+      <table>
+        <tr><td class="l">ASK5</td><td class="p up">17.29</td><td class="p">130</td></tr>
+        <tr><td class="l">ASK4</td><td class="p up">17.28</td><td class="p">263</td></tr>
+        <tr><td class="l">ASK3</td><td class="p up">17.27</td><td class="p">219</td></tr>
+        <tr><td class="l">ASK2</td><td class="p up">17.26</td><td class="p">559</td></tr>
+        <tr><td class="l">ASK1</td><td class="p up">17.25</td><td class="p">968</td></tr>
+        <tr><td class="l">BID1</td><td class="p down">17.24</td><td class="p">74</td></tr>
+        <tr><td class="l">BID2</td><td class="p down">17.23</td><td class="p">1454</td></tr>
+        <tr><td class="l">BID3</td><td class="p down">17.22</td><td class="p">374</td></tr>
+        <tr><td class="l">BID4</td><td class="p down">17.21</td><td class="p">380</td></tr>
+        <tr><td class="l">BID5</td><td class="p down">17.20</td><td class="p">366</td></tr>
+      </table>
+    </div>
+    <div class="cell">
+      <h4>KEY STATS</h4>
+      <table>
+        <tr><td class="l">OPEN</td><td class="p">17.15</td></tr>
+        <tr><td class="l">HIGH</td><td class="p up">17.30</td></tr>
+        <tr><td class="l">LOW</td><td class="p down">17.12</td></tr>
+        <tr><td class="l">PREV</td><td class="p">17.19</td></tr>
+        <tr><td class="l">VOL</td><td class="p">421491</td></tr>
+        <tr><td class="l">AMT</td><td class="p">6.45亿</td></tr>
+        <tr><td class="l">PE</td><td class="p">46.55</td></tr>
+        <tr><td class="l">MKT</td><td class="p gold">46.55亿</td></tr>
+      </table>
+    </div>
+    <div class="cell">
+      <h4>FLOW</h4>
+      <table>
+        <tr><td class="l">MAIN</td><td class="p up">+1.23亿</td></tr>
+        <tr><td class="l">XL</td><td class="p up">+8600万</td></tr>
+        <tr><td class="l">RET</td><td class="p down">-4200万</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const days=[],ohlc=[];let p=16.5;
+  for(let i=0;i<60;i++){const d=new Date();d.setDate(d.getDate()-(60-i));days.push((d.getMonth()+1)+"/"+d.getDate());const o=p,c=p+(Math.random()-0.48)*0.3,h=Math.max(o,c)+Math.random()*0.1,l=Math.min(o,c)-Math.random()*0.1;ohlc.push([o,c,h,l]);p=c;}
+  const m=echarts.init(document.getElementById("m"));
+  m.setOption({backgroundColor:"transparent",grid:{left:46,right:56,top:16,bottom:16},
+    xAxis:{type:"category",data:days,axisLine:{lineStyle:{color:"#1c2128"}},axisLabel:{color:"#6e7681",fontSize:9}},
+    yAxis:{scale:true,position:"right",splitLine:{lineStyle:{color:"#161b22"}},axisLabel:{color:"#6e7681",fontSize:9}},
+    series:[{type:"candlestick",data:ohlc,itemStyle:{color:"#f85149",color0:"#3fb950",borderColor:"#f85149",borderColor0:"#3fb950"}}]});
+  const v=echarts.init(document.getElementById("v"));
+  v.setOption({grid:{left:46,right:56,top:4,bottom:16},xAxis:{type:"category",data:days,axisLabel:{show:false}},yAxis:{splitNumber:2,axisLabel:{color:"#6e7681",fontSize:9}},series:[{type:"bar",data:ohlc.map((x,i)=>({value:Math.random()*5000,itemStyle:{color:x[1]>=x[0]?"#f85149":"#3fb950"}}))}]});
+  const dd=echarts.init(document.getElementById("d"));
+  dd.setOption({grid:{left:46,right:56,top:4,bottom:16},xAxis:{type:"category",data:days,axisLabel:{show:false}},yAxis:{splitNumber:2,axisLabel:{color:"#6e7681",fontSize:9}},series:[{type:"line",data:ohlc.map(x=>x[2]-17),showSymbol:false,lineStyle:{color:"#58a6ff",width:1}}]});
+  window.addEventListener("resize",()=>{m.resize();v.resize();dd.resize();});
+})();
+</script>
+</body>
+</html>

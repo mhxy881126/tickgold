@@ -1,5 +1,5 @@
 // 腾讯数据源：实时行情（GBK，qt.gtimg.cn）、K线（UTF-8，web.ifzq.gtimg.cn）、搜索（GBK，smartbox）
-use super::{cnc_symbol, http, now_millis, KBar, Quote, StockItem};
+use super::{cnc_symbol, http, now_millis, KBar, OrderBook, OrderLevel, Quote, StockItem};
 use serde_json::Value;
 
 // ===== 实时行情 =====
@@ -51,6 +51,45 @@ pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
         });
     }
     Ok(out)
+}
+
+// ===== 五档盘口（单股） =====
+pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
+    let sym = cnc_symbol(code);
+    let url = format!("https://qt.gtimg.cn/q={sym}");
+    let resp = http().get(&url).send().await.map_err(|e| e.to_string())?;
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    let (txt, _, _) = encoding_rs::GBK.decode(&bytes);
+    let line = txt.lines().next().unwrap_or("");
+    let Some((_, right)) = line.split_once('=') else {
+        return Err("盘口数据为空".to_string());
+    };
+    let payload = right.trim().trim_end_matches(';').trim_matches('"');
+    let f: Vec<&str> = payload.split('~').collect();
+    if f.len() < 38 {
+        return Err("盘口字段不足".to_string());
+    }
+    let p = |i: usize| f[i].parse::<f64>().unwrap_or(0.0);
+    // 腾讯 f[9..19] 卖1-5价量，f[19..29] 买1-5价量
+    let asks: Vec<OrderLevel> = (0..5)
+        .map(|i| OrderLevel { price: p(9 + i * 2), vol: p(10 + i * 2) })
+        .collect();
+    let bids: Vec<OrderLevel> = (0..5)
+        .map(|i| OrderLevel { price: p(19 + i * 2), vol: p(20 + i * 2) })
+        .collect();
+    Ok(OrderBook {
+        name: f[1].to_string(),
+        code: f[2].to_string(),
+        price: p(3),
+        prev_close: p(4),
+        open: p(5),
+        volume: p(6),
+        high: p(33),
+        low: p(34),
+        amount: p(37) * 1e4,
+        asks,
+        bids,
+    })
 }
 
 // ===== K线 =====

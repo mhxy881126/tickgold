@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { useQuotesStore } from "../stores/quotes";
+import { ref, watch, onMounted, onBeforeUnmount } from "vue";
+import { invoke } from "@tauri-apps/api/core";
 
 const props = defineProps<{ code: string | null }>();
-const quotes = useQuotesStore();
 
-const q = computed(() => (props.code ? quotes.map[props.code] : null));
+interface OrderLevel { price: number; vol: number; }
+interface OrderBook {
+  name: string; code: string; price: number; prevClose: number;
+  open: number; high: number; low: number; volume: number; amount: number;
+  asks: OrderLevel[]; bids: OrderLevel[];
+}
+
+const ob = ref<OrderBook | null>(null);
+let timer: number | null = null;
 
 function fmt(n: number | undefined, d = 2) {
   return n == null ? "--" : n.toFixed(d);
@@ -20,61 +27,79 @@ function cls(p: number | undefined) {
   if (p == null) return "";
   return p > 0.001 ? "up" : p < -0.001 ? "down" : "";
 }
+function chg(): number {
+  if (!ob.value) return 0;
+  return ob.value.price - ob.value.prevClose;
+}
+function pct(): number {
+  if (!ob.value || ob.value.prevClose === 0) return 0;
+  return (chg() / ob.value.prevClose) * 100;
+}
+
+async function load() {
+  if (!props.code) { ob.value = null; return; }
+  try {
+    ob.value = await invoke<OrderBook>("get_orderbook", { code: props.code });
+  } catch (e) {
+    console.error("orderbook", e);
+  }
+}
+
+watch(() => props.code, load);
+onMounted(() => {
+  load();
+  timer = window.setInterval(load, 3000);
+});
+onBeforeUnmount(() => { if (timer) clearInterval(timer); });
 </script>
 
 <template>
   <div class="right">
     <!-- 大价格 -->
-    <div class="rblock price-block">
-      <div v-if="q" class="price-line">
-        <span class="name">{{ q.name }}</span>
-        <span class="code">{{ q.code }}</span>
+    <div v-if="ob" class="rblock price-block">
+      <div class="price-line">
+        <span class="name">{{ ob.name }}</span>
+        <span class="code">{{ ob.code }}</span>
       </div>
-      <div v-if="q" class="bigprice" :class="cls(q.pct)">
-        {{ fmt(q.price) }}
-        <span class="chg" :class="cls(q.pct)">
-          {{ q.change >= 0 ? "+" : "" }}{{ fmt(q.change) }}
-          {{ q.pct >= 0 ? "+" : "" }}{{ fmt(q.pct) }}%
+      <div class="bigprice" :class="cls(pct())">
+        {{ fmt(ob.price) }}
+        <span class="chg" :class="cls(pct())">
+          {{ chg() >= 0 ? "+" : "" }}{{ fmt(chg()) }}
+          {{ pct() >= 0 ? "+" : "" }}{{ fmt(pct()) }}%
         </span>
       </div>
-      <div v-else class="empty-tip">选择一只股票</div>
+    </div>
+    <div v-else class="rblock"><div class="empty-tip">选择一只股票</div></div>
+
+    <!-- 五档盘口 -->
+    <div v-if="ob" class="rblock">
+      <h4>五档盘口</h4>
+      <table class="kv">
+        <tr v-for="(a, i) in ob.asks.slice().reverse()" :key="'a'+i">
+          <td class="l">卖{{ 5 - i }}</td>
+          <td class="v up">{{ fmt(a.price) }}</td>
+          <td class="w">{{ amt(a.vol * 100) }}</td>
+        </tr>
+        <tr class="mid"><td></td><td></td><td></td></tr>
+        <tr v-for="(b, i) in ob.bids" :key="'b'+i">
+          <td class="l buy">买{{ i + 1 }}</td>
+          <td class="v down">{{ fmt(b.price) }}</td>
+          <td class="w">{{ amt(b.vol * 100) }}</td>
+        </tr>
+      </table>
     </div>
 
     <!-- 今日概览 -->
-    <div v-if="q" class="rblock">
+    <div v-if="ob" class="rblock">
       <h4>今日概览</h4>
       <table class="kv">
-        <tr><td class="l">今开</td><td class="v" :class="cls(q.open - q.prevClose)">{{ fmt(q.open) }}</td></tr>
-        <tr><td class="l">最高</td><td class="v up">{{ fmt(q.high) }}</td></tr>
-        <tr><td class="l">最低</td><td class="v down">{{ fmt(q.low) }}</td></tr>
-        <tr><td class="l">昨收</td><td class="v">{{ fmt(q.prevClose) }}</td></tr>
-        <tr><td class="l">成交量</td><td class="v">{{ amt(q.volume * 100) }}</td></tr>
-        <tr><td class="l">成交额</td><td class="v">{{ amt(q.amount) }}</td></tr>
+        <tr><td class="l">今开</td><td class="v">{{ fmt(ob.open) }}</td></tr>
+        <tr><td class="l">最高</td><td class="v up">{{ fmt(ob.high) }}</td></tr>
+        <tr><td class="l">最低</td><td class="v down">{{ fmt(ob.low) }}</td></tr>
+        <tr><td class="l">昨收</td><td class="v">{{ fmt(ob.prevClose) }}</td></tr>
+        <tr><td class="l">成交量</td><td class="v">{{ amt(ob.volume * 100) }}</td></tr>
+        <tr><td class="l">成交额</td><td class="v">{{ amt(ob.amount) }}</td></tr>
       </table>
-    </div>
-
-    <!-- 五档盘口（P2 接真实接口） -->
-    <div class="rblock">
-      <h4>五档盘口</h4>
-      <table class="kv">
-        <tr><td class="l">卖5</td><td class="v dim">--</td><td class="w dim">--</td></tr>
-        <tr><td class="l">卖4</td><td class="v dim">--</td><td class="w dim">--</td></tr>
-        <tr><td class="l">卖3</td><td class="v dim">--</td><td class="w dim">--</td></tr>
-        <tr><td class="l">卖2</td><td class="v dim">--</td><td class="w dim">--</td></tr>
-        <tr><td class="l">卖1</td><td class="v dim">--</td><td class="w dim">--</td></tr>
-        <tr><td class="l buy">买1</td><td class="v dim">--</td><td class="w dim">--</td></tr>
-        <tr><td class="l buy">买2</td><td class="v dim">--</td><td class="w dim">--</td></tr>
-        <tr><td class="l buy">买3</td><td class="v dim">--</td><td class="w dim">--</td></tr>
-        <tr><td class="l buy">买4</td><td class="v dim">--</td><td class="w dim">--</td></tr>
-        <tr><td class="l buy">买5</td><td class="v dim">--</td><td class="w dim">--</td></tr>
-      </table>
-      <div class="todo">五档接口 P2 接入</div>
-    </div>
-
-    <!-- 资金流向（P3） -->
-    <div class="rblock">
-      <h4>资金流向</h4>
-      <div class="todo">资金流向接口 P3 接入</div>
     </div>
   </div>
 </template>
@@ -94,7 +119,6 @@ h4 { font-size: 11px; color: var(--text-dim); font-weight: 500; margin-bottom: 6
 .kv td { padding: 2px 0; }
 .l { color: var(--text-dim); } .l.buy { color: var(--down); }
 .v { text-align: right; } .w { text-align: right; color: var(--text-dim); }
-.dim { color: var(--text-dim); }
+.mid td { height: 4px; }
 .up { color: var(--up); } .down { color: var(--down); }
-.todo { font-size: 11px; color: var(--text-dim); opacity: 0.6; padding-top: 4px; }
 </style>

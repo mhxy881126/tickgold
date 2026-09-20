@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>K线效果图 A · 同花顺经典专业风</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+:root{--bg:#0a0e14;--panel:#11161f;--border:#1e2634;--text:#e6edf3;--dim:#7d8a9c;--up:#f23645;--down:#089981;--accent:#2f6fed;}
+*{box-sizing:border-box;margin:0;padding:0;font-family:"Microsoft YaHei",sans-serif;}
+body{background:var(--bg);color:var(--text);font-size:12px;padding:16px;}
+.tag{font-size:16px;font-weight:700;margin-bottom:12px;color:var(--accent);}
+.wrap{display:grid;grid-template-columns:1fr 280px;gap:1px;background:var(--border);border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+.left{background:var(--panel);display:flex;flex-direction:column;}
+.toolbar{display:flex;align-items:center;gap:2px;padding:6px 8px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+.toolbar button{background:transparent;color:var(--dim);border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px;}
+.toolbar button.on{color:var(--text);background:#1f2630;}
+.toolbar .sep{color:var(--border);margin:0 4px;}
+.symbol{font-weight:700;margin-right:12px;font-size:14px;}
+.subbar{display:flex;gap:14px;padding:4px 10px;font-size:11px;color:var(--dim);border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;}
+.subbar .up{color:var(--up);}
+.main{height:340px;}
+.vol{height:90px;border-top:1px solid var(--border);}
+.macd{height:90px;border-top:1px solid var(--border);}
+.right{background:var(--panel);padding:10px 12px;overflow-y:auto;}
+.bigprice{font-size:26px;font-weight:700;}
+.meta{color:var(--dim);margin:4px 0 10px;font-size:12px;}
+table{width:100%;font-variant-numeric:tabular-nums;margin-bottom:10px;}
+td{padding:1.5px 0;} .l{color:var(--dim);} .p{text-align:right;} .v{text-align:right;color:var(--dim);}
+.up{color:var(--up);}.down{color:var(--down);}
+h4{font-size:11px;color:var(--dim);font-weight:500;margin:8px 0 4px;border-bottom:1px solid var(--border);padding-bottom:2px;}
+</style>
+</head>
+<body>
+<div class="tag">方案A · 同花顺经典专业风（深色 / 红涨绿跌 / 信息密集）</div>
+<div class="wrap">
+  <div class="left">
+    <div class="toolbar">
+      <span class="symbol">引力传媒 603598</span>
+      <button class="on">分时</button><button>5分</button><button>日K</button><button>周K</button>
+      <span class="sep">|</span>
+      <button class="on">MA</button><button>BOLL</button><button>MACD</button><button>KDJ</button>
+      <span class="sep">|</span>
+      <button>10档</button><button>汇总</button>
+    </div>
+    <div class="subbar">
+      <span>9/18 14:42</span><span>开 17.15</span><span>高 17.30</span><span>低 17.12</span><span>收 <b class="up">17.24</b></span><span>量 1.63亿</span><span class="up">+0.29%</span>
+    </div>
+    <div class="main" id="m"></div>
+    <div class="vol" id="v"></div>
+    <div class="macd" id="d"></div>
+  </div>
+  <div class="right">
+    <div class="bigprice up">17.24</div>
+    <div class="meta"><span class="up">+0.05 +0.29%</span> &nbsp; 成交 1.63亿</div>
+    <h4>五档盘口</h4>
+    <table>
+      <tr><td class="l">卖5</td><td class="p up">17.29</td><td class="v">13.0万</td></tr>
+      <tr><td class="l">卖4</td><td class="p up">17.28</td><td class="v">26.3万</td></tr>
+      <tr><td class="l">卖3</td><td class="p up">17.27</td><td class="v">21.9万</td></tr>
+      <tr><td class="l">卖2</td><td class="p up">17.26</td><td class="v">55.9万</td></tr>
+      <tr><td class="l">卖1</td><td class="p up">17.25</td><td class="v">96.8万</td></tr>
+      <tr><td class="l">买1</td><td class="p down">17.24</td><td class="v">7.4万</td></tr>
+      <tr><td class="l">买2</td><td class="p down">17.23</td><td class="v">145.4万</td></tr>
+      <tr><td class="l">买3</td><td class="p down">17.22</td><td class="v">37.4万</td></tr>
+      <tr><td class="l">买4</td><td class="p down">17.21</td><td class="v">38.0万</td></tr>
+      <tr><td class="l">买5</td><td class="p down">17.20</td><td class="v">36.6万</td></tr>
+    </table>
+    <h4>资金</h4>
+    <table>
+      <tr><td class="l">主力净流入</td><td class="p up">+1.23亿</td></tr>
+      <tr><td class="l">超大单</td><td class="p up">+8600万</td></tr>
+      <tr><td class="l">散户</td><td class="p down">-4200万</td></tr>
+    </table>
+  </div>
+</div>
+<script>
+(function(){
+  // 假数据：60 根日K
+  const days=[], ohlc=[], vols=[];
+  let p=16.5;
+  for(let i=0;i<60;i++){
+    const d=new Date(); d.setDate(d.getDate()-(60-i));
+    days.push((d.getMonth()+1)+"/"+d.getDate());
+    const o=p, c=p+(Math.random()-0.48)*0.3, h=Math.max(o,c)+Math.random()*0.1, l=Math.min(o,c)-Math.random()*0.1;
+    ohlc.push([o,c,h,l]); vols.push(Math.round(2000+Math.random()*6000));
+    p=c;
+  }
+  const m=echarts.init(document.getElementById("m"));
+  m.setOption({
+    backgroundColor:"transparent",
+    grid:{left:50,right:60,top:20,bottom:20},
+    xAxis:{type:"category",data:days,axisLine:{lineStyle:{color:"#1e2634"}},axisLabel:{color:"#7d8a9c",fontSize:10}},
+    yAxis:{scale:true,position:"right",splitLine:{lineStyle:{color:"#161d29"}},axisLabel:{color:"#7d8a9c",fontSize:10}},
+    tooltip:{trigger:"axis"},
+    series:[{type:"candlestick",data:ohlc,itemStyle:{color:"#f23645",color0:"#089981",borderColor:"#f23645",borderColor0:"#089981"}}]
+  });
+  const v=echarts.init(document.getElementById("v"));
+  v.setOption({grid:{left:50,right:60,top:6,bottom:20},xAxis:{type:"category",data:days,axisLabel:{show:false}},yAxis:{splitNumber:2,axisLabel:{color:"#7d8a9c",fontSize:10}},series:[{type:"bar",data:vols.map((x,i)=>({value:x,itemStyle:{color:ohlc[i][1]>=ohlc[i][0]?"#f23645":"#089981"}}))}]});
+  const dd=echarts.init(document.getElementById("d"));
+  dd.setOption({grid:{left:50,right:60,top:6,bottom:20},xAxis:{type:"category",data:days,axisLabel:{show:false}},yAxis:{splitNumber:2,axisLabel:{color:"#7d8a9c",fontSize:10}},series:[{type:"bar",data:vols.map(x=>x/1000-5),itemStyle:{color:"#2f6fed"}}]});
+  window.addEventListener("resize",()=>{m.resize();v.resize();dd.resize();});
+})();
+</script>
+</body>
+</html>
