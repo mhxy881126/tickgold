@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
-import { init, dispose, type Chart } from "klinecharts";
+import { ref, watch, onMounted, onBeforeUnmount, nextTick, reactive } from "vue";
+import { init, dispose, type Chart, registerIndicator } from "klinecharts";
 import { fetchKLine } from "../api/market";
 import type { KBar } from "../api/types";
 
@@ -8,8 +8,10 @@ const props = defineProps<{ code: string | null }>();
 
 const box = ref<HTMLDivElement | null>(null);
 const loading = ref(false);
+// period: 0=分时 1/5/15/30/60 分钟 101 日 102 周 103 月
 const period = ref(101);
 const periods = [
+  { label: "分时", value: 0 },
   { label: "1分", value: 1 },
   { label: "5分", value: 5 },
   { label: "15分", value: 15 },
@@ -20,19 +22,95 @@ const periods = [
   { label: "月K", value: 103 },
 ];
 
-type MainInd = "MA" | "BOLL";
+type MainInd = "MA" | "BOLL" | "TD9";
 type SubInd = "VOL" | "MACD" | "KDJ" | "RSI";
 const mainInd = ref<MainInd>("MA");
 const subInd = ref<SubInd>("VOL");
-const mainInds: MainInd[] = ["MA", "BOLL"];
+const mainInds: MainInd[] = ["MA", "BOLL", "TD9"];
 const subInds: SubInd[] = ["VOL", "MACD", "KDJ", "RSI"];
 
+// 均线参数
+const maParams = reactive([5, 10, 20, 30, 60]);
+const showMaSettings = ref(false);
+const maInput = ref("5,10,20,30,60");
+
+// 悬停盘口浮层
+const hover = reactive({
+  time: "", open: 0, high: 0, low: 0, close: 0,
+  volume: 0, change: 0, pct: 0, show: false,
+});
+
 let chart: Chart | null = null;
+
+// 注册神奇九转（TD 序列）指标
+let td9Registered = false;
+function ensureTD9() {
+  if (td9Registered) return;
+  td9Registered = true;
+  registerIndicator({
+    name: "TD9",
+    shortName: "九转",
+    calc: (dataList: any[]) => {
+      const result: any[] = [];
+      let up = 0, down = 0;
+      for (let i = 0; i < dataList.length; i++) {
+        const cur = dataList[i]?.close;
+        const prev4 = i >= 4 ? dataList[i - 4]?.close : undefined;
+        if (cur != null && prev4 != null) {
+          if (cur > prev4) { up++; down = 0; }
+          else if (cur < prev4) { down++; up = 0; }
+          else { up = 0; down = 0; }
+        }
+        const markUp = up >= 9 ? 9 : up >= 1 ? up : 0;
+        const markDown = down >= 9 ? 9 : down >= 1 ? down : 0;
+        result.push({
+          up: markUp || undefined,
+          down: markDown || undefined,
+        });
+      }
+      return result;
+    },
+    draw: (ctx: any, data: any, overlay: any) => {
+      const { kLineDataList, boundingBarSpace, barSpace } = overlay;
+      const { result } = data;
+      if (!result) return false;
+      const { width, height } = overlay.chartStore.chartPaneWidget.barSpace;
+      // 在每根 K 线位置标数字
+      for (let i = 0; i < result.length; i++) {
+        const r = result[i];
+        if (!r) continue;
+        const x = width / 2 + i * barSpace;
+        if (x < 0 || x > width) continue;
+        const d = kLineDataList[i];
+        if (!d) continue;
+        ctx.font = "10px sans-serif";
+        ctx.textAlign = "center";
+        if (r.up) {
+          const y = overlay.chartStore.yAxisConvert(d.high) - 4;
+          ctx.fillStyle = "#f23645";
+          ctx.fillText(String(r.up), x, y);
+        }
+        if (r.down) {
+          const y = overlay.chartStore.yAxisConvert(d.low) + 12;
+          ctx.fillStyle = "#089981";
+          ctx.fillText(String(r.down), x, y);
+        }
+      }
+      return true;
+    },
+    calcParams: () => [],
+    precision: () => 0,
+    shouldOhlc: false,
+    shouldLastValue: false,
+  } as any);
+}
 
 async function load() {
   if (!props.code) return;
   loading.value = true;
-  const bars: KBar[] = await fetchKLine(props.code, period.value, 800);
+  // 分时：拉 1 分钟数据
+  const loadPeriod = period.value === 0 ? 1 : period.value;
+  const bars: KBar[] = await fetchKLine(props.code, loadPeriod, 800);
   if (chart) {
     chart.applyNewData(
       bars.map((b) => ({
@@ -50,10 +128,13 @@ async function load() {
 
 function setupChart() {
   if (!box.value) return;
+  ensureTD9();
+  const isTS = period.value === 0;
   const c = init(box.value, {
     styles: {
       grid: { horizontal: { color: "#1b2129" }, vertical: { color: "#1b2129" } },
       candle: {
+        type: (isTS ? "line" : "candle_solid") as any,
         priceMark: { high: { color: "#f23645" }, low: { color: "#089981" } },
       },
     },
@@ -61,31 +142,89 @@ function setupChart() {
   if (!c) return;
   chart = c;
   applyIndicators();
+  // 悬停十字线 -> 盘口浮层
+  c.subscribeAction("onCrosshairChange" as any, (data: any) => {
+    const d = data?.kLineData;
+    if (!d) { hover.show = false; return; }
+    hover.show = true;
+    hover.close = d.close ?? 0;
+    hover.open = d.open ?? 0;
+    hover.high = d.high ?? 0;
+    hover.low = d.low ?? 0;
+    hover.volume = d.volume ?? 0;
+    hover.change = hover.close - hover.open;
+    hover.pct = hover.open ? (hover.change / hover.open) * 100 : 0;
+    const dt = new Date(d.timestamp);
+    hover.time = `${dt.getMonth() + 1}/${dt.getDate()} ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
+  });
 }
 
 /** 应用主图 + 副图指标 */
 function applyIndicators() {
   if (!chart) return;
-  // 主图：替换 candle_pane 指标
-  chart.createIndicator(mainInd.value, false, { id: "candle_pane" });
-  // 副图：先清空 pane_sub 旧指标，再创建新的
+  const isTS = period.value === 0;
+  // 分时模式不叠加主图指标
+  if (isTS) {
+    try { chart.removeIndicator("MA"); } catch {}
+    try { chart.removeIndicator("BOLL"); } catch {}
+    try { chart.removeIndicator("TD9"); } catch {}
+  } else {
+    if (mainInd.value === "MA") {
+      chart.createIndicator("MA", false, { id: "candle_pane" });
+      chart.overrideIndicator({ id: "candle_pane", name: "MA", calcParams: [...maParams] } as any);
+    } else {
+      chart.createIndicator(mainInd.value, false, { id: "candle_pane" });
+    }
+  }
+  // 副图
   const existing = chart.getIndicatorByPaneId("pane_sub") || {};
   for (const name of Object.keys(existing)) {
-    chart.removeIndicator(name);
+    try { chart.removeIndicator(name); } catch {}
   }
   chart.createIndicator(subInd.value, false, { id: "pane_sub" });
 }
 
 function setMainInd(m: MainInd) {
   mainInd.value = m;
-  if (chart) chart.createIndicator(m, false, { id: "candle_pane" });
+  applyIndicators();
 }
 function setSubInd(s: SubInd) {
   subInd.value = s;
   applyIndicators();
 }
 
-watch(() => [props.code, period.value], load);
+function openMaSettings() {
+  maInput.value = maParams.join(",");
+  showMaSettings.value = true;
+}
+function applyMaParams() {
+  const nums = maInput.value.split(/[,，\s]+/).map((s) => parseInt(s, 10)).filter((n) => n > 0 && n < 500).slice(0, 5);
+  if (nums.length) {
+    maParams.splice(0, maParams.length, ...nums);
+    applyIndicators();
+  }
+  showMaSettings.value = false;
+}
+
+function fmt(n: number) {
+  return n.toFixed(2);
+}
+function vol(v: number) {
+  if (v >= 1e8) return (v / 1e8).toFixed(2) + "亿";
+  if (v >= 1e4) return (v / 1e4).toFixed(2) + "万";
+  return v.toFixed(0);
+}
+function cls(p: number) {
+  return p > 0.001 ? "up" : p < -0.001 ? "down" : "flat";
+}
+
+watch(() => [props.code, period.value], async () => {
+  await nextTick();
+  // 切分时/切周期：重建图以切换 candle type
+  if (chart && box.value) { dispose(box.value); chart = null; }
+  setupChart();
+  load();
+});
 
 onMounted(async () => {
   await nextTick();
@@ -114,6 +253,7 @@ onBeforeUnmount(() => {
         :class="{ on: mainInd === m }"
         @click="setMainInd(m)"
       >{{ m }}</button>
+      <button class="gear" title="均线参数" @click="openMaSettings">⚙</button>
       <span class="sep">|</span>
       <button
         v-for="s in subInds"
@@ -123,13 +263,36 @@ onBeforeUnmount(() => {
       >{{ s }}</button>
       <span v-if="loading" class="ld">加载中…</span>
     </div>
+    <!-- 同花顺样式盘口悬浮条 -->
+    <div v-if="hover.show" class="hover-bar" :class="cls(hover.pct)">
+      <span>{{ hover.time }}</span>
+      <span>开 {{ fmt(hover.open) }}</span>
+      <span>高 {{ fmt(hover.high) }}</span>
+      <span>低 {{ fmt(hover.low) }}</span>
+      <span>收 {{ fmt(hover.close) }}</span>
+      <span>量 {{ vol(hover.volume) }}</span>
+      <span :class="cls(hover.pct)">{{ hover.pct >= 0 ? "+" : "" }}{{ fmt(hover.pct) }}%</span>
+    </div>
     <div ref="box" class="chart"></div>
+
+    <!-- 均线参数设置弹窗 -->
+    <div v-if="showMaSettings" class="modal-mask" @click.self="showMaSettings = false">
+      <div class="modal">
+        <h3>均线参数</h3>
+        <p class="hint">逗号分隔，1~5 个正整数</p>
+        <input v-model="maInput" class="ma-inp" />
+        <div class="modal-btns">
+          <button @click="showMaSettings = false">取消</button>
+          <button class="ok" @click="applyMaParams">应用</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.chart-wrap { display: flex; flex-direction: column; height: 100%; }
-.toolbar { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.chart-wrap { display: flex; flex-direction: column; height: 100%; position: relative; }
+.toolbar { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border); align-items: center; }
 .toolbar button {
   background: transparent; color: var(--text-dim); border: 1px solid transparent;
   border-radius: 5px; padding: 3px 9px; cursor: pointer; font-size: 12px;
@@ -137,6 +300,35 @@ onBeforeUnmount(() => {
 .toolbar button.on { color: var(--text); background: var(--bg-hover); border-color: var(--border); }
 .toolbar button:hover { color: var(--text); }
 .toolbar .sep { color: var(--border); margin: 0 4px; }
+.toolbar .gear { color: var(--text-dim); }
 .ld { margin-left: auto; color: var(--text-dim); align-self: center; }
 .chart { flex: 1; min-height: 0; }
+.hover-bar {
+  display: flex; gap: 14px; padding: 4px 10px; font-size: 12px;
+  border-bottom: 1px solid var(--border); color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.hover-bar.up { color: #f23645; }
+.hover-bar.down { color: #089981; }
+.modal-mask {
+  position: absolute; inset: 0; background: rgba(0,0,0,.5);
+  display: flex; align-items: center; justify-content: center; z-index: 10;
+}
+.modal {
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 16px; width: 260px;
+}
+.modal h3 { margin: 0 0 6px; font-size: 14px; }
+.hint { margin: 0 0 8px; font-size: 12px; color: var(--text-dim); }
+.ma-inp {
+  width: 100%; box-sizing: border-box; background: var(--bg-input);
+  border: 1px solid var(--border); color: var(--text); padding: 6px 8px;
+  border-radius: 4px; font-size: 13px;
+}
+.modal-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.modal-btns button {
+  background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+  padding: 4px 12px; border-radius: 4px; cursor: pointer;
+}
+.modal-btns button.ok { background: var(--accent); border-color: var(--accent); color: #fff; }
 </style>
