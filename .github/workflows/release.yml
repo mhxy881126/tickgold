@@ -24,7 +24,9 @@ jobs:
         include:
           - platform: windows-latest
             target: nsis
-          - platform: macos-latest
+          - platform: macos-latest # Apple Silicon (arm64 / aarch64)
+            target: dmg,app
+          - platform: macos-13 # Intel (x86_64)
             target: dmg,app
     runs-on: ${{ matrix.platform }}
     steps:
@@ -115,29 +117,36 @@ jobs:
           win_name=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("x64-setup.exe")) | .name')
           win_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$win_name"
           win_sig_id=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("x64-setup.exe.sig")) | .id')
-          mac_name=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("aarch64.app.tar.gz")) | .name')
-          mac_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$mac_name"
-          mac_sig_id=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("aarch64.app.tar.gz.sig")) | .id')
+          mac_arm_name=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("aarch64.app.tar.gz")) | .name')
+          mac_arm_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$mac_arm_name"
+          mac_arm_sig_id=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("aarch64.app.tar.gz.sig")) | .id')
+          mac_x64_name=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("x64.app.tar.gz")) | .name')
+          mac_x64_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$mac_x64_name"
+          mac_x64_sig_id=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("x64.app.tar.gz.sig")) | .id')
 
           echo "win=$win_url"
-          echo "mac=$mac_url"
+          echo "mac_arm=$mac_arm_url"
+          echo "mac_x64=$mac_x64_url"
 
           win_sig=$(gh api "repos/$GITHUB_REPOSITORY/releases/assets/$win_sig_id" -H "Accept: application/octet-stream")
-          mac_sig=$(gh api "repos/$GITHUB_REPOSITORY/releases/assets/$mac_sig_id" -H "Accept: application/octet-stream")
+          mac_arm_sig=$(gh api "repos/$GITHUB_REPOSITORY/releases/assets/$mac_arm_sig_id" -H "Accept: application/octet-stream")
+          mac_x64_sig=$(gh api "repos/$GITHUB_REPOSITORY/releases/assets/$mac_x64_sig_id" -H "Accept: application/octet-stream")
 
           PUBDATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           jq -n \
             --arg v "$VERSION" \
             --arg d "$PUBDATE" \
             --arg wu "$win_url" --arg ws "$win_sig" \
-            --arg mu "$mac_url" --arg ms "$mac_sig" \
+            --arg mau "$mac_arm_url" --arg mas "$mac_arm_sig" \
+            --arg mxu "$mac_x64_url" --arg mxs "$mac_x64_sig" \
             '{
               version: $v,
               notes: "",
               pub_date: $d,
               platforms: {
                 "windows-x86_64": { signature: $ws, url: $wu },
-                "darwin-aarch64": { signature: $ms, url: $mu }
+                "darwin-aarch64": { signature: $mas, url: $mau },
+                "darwin-x86_64": { signature: $mxs, url: $mxu }
               }
             }' > latest.json
 
