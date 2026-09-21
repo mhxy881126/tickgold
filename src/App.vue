@@ -5,12 +5,12 @@ import { getVersion } from "@tauri-apps/api/app";
 import { check as checkForUpdate } from "@tauri-apps/plugin-updater";
 import { exit } from "@tauri-apps/plugin-process";
 import WatchList from "./components/WatchList.vue";
-import StockChart from "./components/StockChart.vue";
 import Indices from "./components/Indices.vue";
 import RankBoard from "./components/RankBoard.vue";
 import RightPanel from "./components/RightPanel.vue";
 import NewsBar from "./components/NewsBar.vue";
 import SearchBox from "./components/SearchBox.vue";
+import StockChart from "./components/StockChart.vue";
 import { useWatchlistStore } from "./stores/watchlist";
 import { useQuotesStore } from "./stores/quotes";
 import { useAlertStore } from "./stores/alert";
@@ -164,9 +164,16 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
       <RankBoard v-else @select="onSelect" />
     </aside>
 
-    <!-- 中间榜单 -->
+    <!-- 中间：K线面板 或 榜单 -->
     <section class="center">
-      <RankBoard @select="onSelect" />
+      <div v-if="selected" class="chart-wrap">
+        <div class="chart-head">
+          <button class="back" @click="selected = null">← 返回榜单</button>
+          <span class="cur">{{ selected }}</span>
+        </div>
+        <StockChart :code="selected" />
+      </div>
+      <RankBoard v-else @select="onSelect" />
     </section>
 
     <!-- 右栏盘口 -->
@@ -268,4 +275,9 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
 .upd-text { font-size: 12px; color: #4ea1ff; white-space: nowrap; }
 .bar { width: 120px; height: 5px; border-radius: 3px; background: var(--border); overflow: hidden; }
 .fill { height: 100%; background: #4ea1ff; transition: width 0.2s; }
+.chart-wrap { display: flex; flex-direction: column; height: 100%; }
+.chart-head { display: flex; align-items: center; gap: 12px; padding: 6px 12px; border-bottom: 1px solid var(--border); }
+.chart-head .back { background: transparent; border: 1px solid var(--border); color: var(--text-dim); padding: 3px 10px; border-radius: 3px; cursor: pointer; font-size: 12px; }
+.chart-head .back:hover { background: var(--bg-hover); color: var(--text); }
+.chart-head .cur { color: var(--text-dim); font-size: 12px; }
 </style>
