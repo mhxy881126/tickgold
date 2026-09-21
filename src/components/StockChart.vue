@@ -18,24 +18,16 @@ async function load() {
     if (period.value === "minute") {
       const bars = await fetchMinute(props.code);
       const data = bars.map((b) => ({
-        timestamp: b.timestamp,
-        open: b.open,
-        close: b.close,
-        low: b.low,
-        high: b.high,
-        volume: b.volume,
+        timestamp: b.timestamp, open: b.open, close: b.close,
+        low: b.low, high: b.high, volume: b.volume,
       }));
       chart.applyNewData(data);
     } else {
       const periodNum = period.value === "day" ? 101 : period.value === "week" ? 102 : 103;
-      const bars = await fetchKLine(props.code, periodNum, 200);
+      const bars = await fetchKLine(props.code, periodNum, 300);
       const data = bars.map((b) => ({
-        timestamp: b.timestamp,
-        open: b.open,
-        close: b.close,
-        low: b.low,
-        high: b.high,
-        volume: b.volume,
+        timestamp: b.timestamp, open: b.open, close: b.close,
+        low: b.low, high: b.high, volume: b.volume,
       }));
       chart.applyNewData(data);
     }
@@ -55,9 +47,21 @@ onMounted(() => {
   if (!chartRef.value) return;
   chart = init(chartRef.value, {
     styles: {
-      grid: { horizontal: { color: "#1e2433" }, vertical: { color: "#1e2433" } },
-    },
+      grid: {
+        horizontal: { color: "#1c2333", size: 0.5 },
+        vertical: { color: "#1c2333", size: 0.5 },
+      },
+      candle: {
+        tooltip: {
+          text: { size: 11, color: "#ccc" },
+        },
+      },
+    } as any,
   });
+  const c: any = chart;
+  c.createIndicator("MA", false, { id: "candle_pane" });
+  c.createIndicator("VOL", false, { id: "pane_vol", height: 80 });
+  c.createIndicator("MACD", false, { id: "pane_macd", height: 80 });
   load();
 });
 
@@ -83,14 +87,14 @@ watch(() => props.code, load);
 </template>
 
 <style scoped>
-.chart-panel { display: flex; flex-direction: column; height: 100%; }
-.toolbar { display: flex; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.chart-panel { display: flex; flex-direction: column; height: 100%; background: #0d1117; }
+.toolbar { display: flex; gap: 4px; padding: 6px 10px; border-bottom: 1px solid #1c2333; background: #0d1117; }
 .toolbar button {
-  background: transparent; border: none; color: var(--text-dim); padding: 4px 10px;
+  background: transparent; border: none; color: #666; padding: 4px 10px;
   border-radius: 3px; cursor: pointer; font-size: 12px;
 }
-.toolbar button.on { background: var(--accent); color: #fff; }
-.toolbar button:hover { background: var(--bg-hover); color: var(--text); }
-.loading { margin-left: auto; color: var(--text-dim); font-size: 11px; }
+.toolbar button.on { background: #1e6fff; color: #fff; }
+.toolbar button:hover { background: #1c2333; color: #ccc; }
+.loading { margin-left: auto; color: #666; font-size: 11px; }
 .chart { flex: 1; }
 </style>

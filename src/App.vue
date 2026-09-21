@@ -164,16 +164,10 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
       <RankBoard v-else @select="onSelect" />
     </aside>
 
-    <!-- 中间：K线面板 或 榜单 -->
+    <!-- 中间主干：K线图 -->
     <section class="center">
-      <div v-if="selected" class="chart-wrap">
-        <div class="chart-head">
-          <button class="back" @click="selected = null">← 返回榜单</button>
-          <span class="cur">{{ selected }}</span>
-        </div>
-        <StockChart :code="selected" />
-      </div>
-      <RankBoard v-else @select="onSelect" />
+      <StockChart v-if="selected" :key="selected" :code="selected" />
+      <div v-else class="placeholder">从左侧自选或榜单选择一只股票</div>
     </section>
 
     <!-- 右栏盘口 -->
