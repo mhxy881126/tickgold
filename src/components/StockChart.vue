@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
 // @ts-ignore
-import { Chart } from "hqchart/lib/main.js";
+import HQChart from "hqchart";
+import "hqchart/src/jscommon/umychart.resource/css/tools.css";
+import "hqchart/src/jscommon/umychart.resource/font/iconfont.css";
 
 const props = defineProps<{ code: string }>();
 
@@ -17,34 +19,37 @@ function getHQSymbol(code: string): string {
 function load() {
   if (!chart) return;
   const sym = getHQSymbol(props.code);
-  if (period.value === "minute") {
-    chart.ChangePeriod("分时");
-  } else if (period.value === "day") {
-    chart.ChangePeriod("日线");
-  } else if (period.value === "week") {
-    chart.ChangePeriod("周线");
-  } else {
-    chart.ChangePeriod("月线");
-  }
-  chart.ChangeSymbol(sym);
+  chart.SetSymbol(sym);
 }
 
 function switchPeriod(p: "minute" | "day" | "week" | "month") {
   period.value = p;
-  load();
+  if (!chart) return;
+  if (p === "minute") {
+    chart.ChangePeriod("分时");
+  } else if (p === "day") {
+    chart.ChangePeriod("日线");
+  } else if (p === "week") {
+    chart.ChangePeriod("周线");
+  } else {
+    chart.ChangePeriod("月线");
+  }
 }
 
 onMounted(() => {
   if (!chartRef.value) return;
-  chart = Chart.jsChartInit(chartRef.value, {
-    type: "historykline",
-    symbol: getHQSymbol(props.code),
-    language: "cn",
+  chart = HQChart.Chart.JSChart.Init(chartRef.value);
+  chart.SetOption({
+    Type: "历史K线图",
+    Symbol: getHQSymbol(props.code),
     Windows: [
-      { index: "MA" },
-      { index: "VOL" },
-      { index: "MACD" },
+      { Index: "MA", Modify: false, Change: false },
+      { Index: "VOL", Modify: false, Change: false },
+      { Index: "MACD", Modify: false, Change: false },
     ],
+    IsShowCorssCursorInfo: true,
+    Border: { Left: 1, Right: 1, Top: 25, Bottom: 25 },
+    KLine: { Right: 1, Period: 0, PageSize: 70, IsShowTooltip: true },
   });
 });
 
