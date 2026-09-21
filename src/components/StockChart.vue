@@ -4,6 +4,7 @@ import { ref, watch, onMounted, onBeforeUnmount } from "vue";
 import HQChart from "hqchart";
 import "hqchart/src/jscommon/umychart.resource/css/tools.css";
 import "hqchart/src/jscommon/umychart.resource/font/iconfont.css";
+import { fetchKLine } from "../api/market";
 
 const props = defineProps<{ code: string }>();
 
@@ -16,24 +17,39 @@ function getHQSymbol(code: string): string {
   return "sz" + code;
 }
 
-function load() {
+async function load() {
   if (!chart) return;
   const sym = getHQSymbol(props.code);
   chart.SetSymbol(sym);
+  try {
+    const periodNum = period.value === "day" ? 101 : period.value === "week" ? 102 : 103;
+    const bars = await fetchKLine(props.code, periodNum, 300);
+    // 转成 HQChart 格式
+    const hisData = {
+      Date: bars.map((b) => {
+        const d = new Date(b.timestamp);
+        return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+      }),
+      Open: bars.map((b) => b.open),
+      High: bars.map((b) => b.high),
+      Low: bars.map((b) => b.low),
+      Close: bars.map((b) => b.close),
+      Volume: bars.map((b) => b.volume),
+    };
+    // 直接填数据
+    if (chart.ChartPaint && chart.ChartPaint[0]) {
+      chart.ChartPaint[0].Data = hisData;
+      chart.ChartPaint[0].Symbol = sym;
+      chart.UpdateData();
+    }
+  } catch (e) {
+    console.error("chart load", e);
+  }
 }
 
 function switchPeriod(p: "minute" | "day" | "week" | "month") {
   period.value = p;
-  if (!chart) return;
-  if (p === "minute") {
-    chart.ChangePeriod("分时");
-  } else if (p === "day") {
-    chart.ChangePeriod("日线");
-  } else if (p === "week") {
-    chart.ChangePeriod("周线");
-  } else {
-    chart.ChangePeriod("月线");
-  }
+  load();
 }
 
 onMounted(() => {
@@ -51,6 +67,7 @@ onMounted(() => {
     Border: { Left: 1, Right: 1, Top: 25, Bottom: 25 },
     KLine: { Right: 1, Period: 0, PageSize: 70, IsShowTooltip: true },
   });
+  load();
 });
 
 onBeforeUnmount(() => {
