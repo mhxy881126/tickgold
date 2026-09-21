@@ -69,9 +69,19 @@ async function checkUpdate() {
       }
     });
     updState.value = "installing";
-    // 下载完成，退出主程序，updater 会自动启动安装器
+    // 下载完成，手动运行安装器（显示图形化安装向导）
     await new Promise((r) => setTimeout(r, 500));
-    await exit(0);
+    // 用 shell 打开安装包，让用户手动安装
+    const { Command } = await import("@tauri-apps/plugin-shell");
+    const installerPath = await (update as any).installerPath?.();
+    if (installerPath) {
+      const cmd = Command.create(installerPath, []);
+      await cmd.execute();
+      await exit(0);
+    } else {
+      // fallback: 直接退出，让 updater 自动安装
+      await exit(0);
+    }
   } catch (err) {
     console.error("[updater]", err);
     updState.value = "error";
