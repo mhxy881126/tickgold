@@ -261,37 +261,42 @@ pub async fn get_minute(code: String) -> Result<Vec<KBar>, String> {
         .map_err(|_| "分时: 超时".to_string())?
 }
 
-/// 榜单：gainers / losers / amount，腾讯为主，新浪兜底，东财最后
+/// 热门股池（沪深300成分股精选，用于本地榜单）
+const HOT_CODES: &[&str] = &[
+    "600519","601318","600036","601166","600276","600030","601398","601288","601988","601939",
+    "000858","000333","002594","300750","600031","601899","600900","601012","600887","000001",
+    "000002","002415","000651","600030","601688","600999","601628","601318","601601","600036",
+    "300059","300015","300033","300124","002475","002230","000063","002304","600585","601888",
+    "600009","601111","600029","600104","601668","601800","601390","601186","600018","601006",
+    "600016","600015","601328","600000","601998","601169","601009","601229","600919","601838",
+    "000001","002142","600919","601077","600926","601128","601528","600908","601860","601009",
+    "600585","601919","600019","601005","600022","600569","600231","000898","000709","000932",
+    "601600","600362","601899","600547","600489","600711","000630","000878","002460","002466",
+    "300750","300014","002594","600884","601012","600438","601877","002129","600732","002056",
+];
+
+/// 榜单：用热门股池 + 腾讯批量行情本地排序（不依赖专用榜单接口）
 pub async fn get_rank(sort: String, pz: i64) -> Result<Vec<Quote>, String> {
-    match tokio::time::timeout(
+    let codes: Vec<String> = HOT_CODES.iter().map(|s| s.to_string()).collect();
+    let quotes = tokio::time::timeout(
         Duration::from_secs(QUOTE_TIMEOUT),
-        tencent::rank(&sort, pz),
+        tencent::quotes(&codes),
     )
     .await
-    {
-        Ok(Ok(v)) if valid_quotes(&v) => return Ok(v),
-        _ => {}
+    .map_err(|_| "榜单: 超时".to_string())??;
+
+    if quotes.is_empty() {
+        return Err("榜单: 行情为空".to_string());
     }
-    match tokio::time::timeout(
-        Duration::from_secs(QUOTE_TIMEOUT),
-        sina::rank(&sort, pz),
-    )
-    .await
-    {
-        Ok(Ok(v)) if valid_quotes(&v) => return Ok(v),
-        _ => {}
+
+    let mut v = quotes;
+    match sort.as_str() {
+        "losers" => v.sort_by(|a, b| a.pct.partial_cmp(&b.pct).unwrap()),
+        "amount" => v.sort_by(|a, b| b.amount.partial_cmp(&a.amount).unwrap()),
+        _ => v.sort_by(|a, b| b.pct.partial_cmp(&a.pct).unwrap()),
     }
-    match tokio::time::timeout(
-        Duration::from_secs(QUOTE_TIMEOUT),
-        eastmoney::rank(&sort, pz),
-    )
-    .await
-    {
-        Ok(Ok(v)) if valid_quotes(&v) => Ok(v),
-        Ok(Ok(v)) => Err(format!("榜单返回空（{} 条）", v.len())),
-        Ok(Err(e)) => Err(format!("榜单: {e}")),
-        Err(_) => Err("榜单: 超时".to_string()),
-    }
+    v.truncate(pz as usize);
+    Ok(v)
 }
 
 /// 大盘指数行情：东财为主，失败静默返回空（指数非核心，不弹错）
