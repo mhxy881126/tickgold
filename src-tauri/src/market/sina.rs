@@ -1,5 +1,5 @@
 // 新浪数据源：实时行情（GBK，hq.sinajs.cn）+ K线（UTF-8 JSON，money.finance.sina）
-use super::{cnc_symbol, http, now_millis, FundFlow, FundLevel, KBar, Quote};
+use super::{cnc_symbol, http, now_millis, FundFlow, FundLevel, KBar, Quote, Sector};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -124,6 +124,48 @@ pub async fn fund_flow(code: &str) -> Result<FundFlow, String> {
         net_amount: g("netamount"),
         levels,
     })
+}
+
+// ===== 板块行情（行业 / 概念，UTF-8 JSON） =====
+pub async fn sectors(kind: &str) -> Result<Vec<Sector>, String> {
+    // industry=申万行业(fenlei0), concept=概念(fenlei1)
+    let fl = if kind == "concept" { "1" } else { "0" };
+    let url = format!(
+        "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/MoneyFlow.ssl_bkzj_bk?page=1&num=200&sort=avg_changeratio&asc=0&bankuai=ssl_hy&fenlei={fl}"
+    );
+    let arr: Vec<Value> = http()
+        .get(&url)
+        .header("Referer", "https://finance.sina.com.cn/")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let g = |x: &Value, k: &str| {
+        x[k].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0)
+    };
+    let out: Vec<Sector> = arr
+        .iter()
+        .filter_map(|x| {
+            Some(Sector {
+                code: x["category"].as_str()?.to_string(),
+                name: x["name"].as_str()?.to_string(),
+                change_pct: g(x, "avg_changeratio") * 100.0,
+                net_amount: g(x, "netamount"),
+                in_amount: g(x, "inamount"),
+                out_amount: g(x, "outamount"),
+                lead_code: x["ts_symbol"].as_str().unwrap_or("").to_string(),
+                lead_name: x["ts_name"].as_str().unwrap_or("").to_string(),
+                lead_pct: g(x, "ts_changeratio") * 100.0,
+            })
+        })
+        .collect();
+    if out.is_empty() {
+        return Err("板块返回空".to_string());
+    }
+    Ok(out)
 }
 
 /// period: 1/5/15/30/60 分钟, 101 日, 102 周, 103 月

@@ -97,6 +97,21 @@ pub struct FundFlow {
     pub levels: Vec<FundLevel>,
 }
 
+/// 板块（行业 / 概念）
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Sector {
+    pub code: String, // category，如 new_swzz / gn_jycx
+    pub name: String,
+    pub change_pct: f64, // 板块平均涨跌幅 %
+    pub net_amount: f64, // 净流入（元）
+    pub in_amount: f64,
+    pub out_amount: f64,
+    pub lead_code: String, // 领涨股
+    pub lead_name: String,
+    pub lead_pct: f64, // 领涨股涨幅 %
+}
+
 const QUOTE_TIMEOUT: u64 = 5;
 const KLINE_TIMEOUT: u64 = 8;
 
@@ -286,6 +301,13 @@ pub async fn get_fund_flow(code: String) -> Result<FundFlow, String> {
     tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), sina::fund_flow(&code))
         .await
         .map_err(|_| "资金流向: 超时".to_string())?
+}
+
+/// 板块行情：新浪（kind: industry=行业, concept=概念）
+pub async fn get_sectors(kind: String) -> Result<Vec<Sector>, String> {
+    tokio::time::timeout(Duration::from_secs(KLINE_TIMEOUT), sina::sectors(&kind))
+        .await
+        .map_err(|_| "板块: 超时".to_string())?
 }
 
 /// 当日分时：腾讯

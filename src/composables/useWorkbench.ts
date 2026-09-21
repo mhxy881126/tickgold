@@ -1,6 +1,6 @@
 import { ref, computed } from "vue";
 
-export type CardId = "chart" | "order" | "fundflow" | "watch" | "rank";
+export type CardId = "chart" | "sector" | "order" | "fundflow" | "watch" | "rank";
 
 export interface CardMeta {
   title: string;
@@ -11,20 +11,22 @@ export interface CardMeta {
 // 卡片元信息
 export const CARD_META: Record<CardId, CardMeta> = {
   chart: { title: "K线图", accent: "#2f6fed", kind: "chart" },
+  sector: { title: "板块行情", accent: "#35c4a8", kind: "chart" },
   order: { title: "五档盘口", accent: "#d9a23b", kind: "narrow" },
   fundflow: { title: "资金流向", accent: "#f0883e", kind: "narrow" },
   watch: { title: "自选股", accent: "#26d07c", kind: "narrow" },
   rank: { title: "榜单", accent: "#e0556b", kind: "narrow" },
 };
 
-// 窄卡片在工作台上的纵向排列顺序（盘口、资金优先靠上）
+// 宽卡片（主干区域，可上下并列）与窄卡片（右侧）的排列顺序
+const WIDE_ORDER: CardId[] = ["chart", "sector"];
 const NARROW_ORDER: CardId[] = ["order", "fundflow", "watch", "rank"];
 
 // 模式预设：一键切换一整套卡片
 export const MODES: Record<string, CardId[]> = {
   pro: ["chart", "order", "fundflow", "watch"],
   scanner: ["rank", "watch"],
-  full: ["chart", "order", "fundflow", "watch", "rank"],
+  full: ["chart", "sector", "order", "fundflow", "watch", "rank"],
   chart: ["chart"],
 };
 
@@ -67,13 +69,21 @@ export function useWorkbench() {
   // 布局：返回每个卡片的定位
   const layout = computed<Record<string, Record<string, string>>>(() => {
     const open = openCards.value;
-    const hasChart = open.includes("chart");
+    const wides = WIDE_ORDER.filter((id) => open.includes(id));
+    const w = wides.length;
     const narrows = NARROW_ORDER.filter((id) => open.includes(id));
     const n = narrows.length;
     const style: Record<string, Record<string, string>> = {};
 
-    if (hasChart) {
-      style.chart = cell(1, 7, 1, 3);
+    if (w > 0) {
+      // 宽卡片占主干 col1-7：一个全高，两个上下分
+      if (w === 1) {
+        style[wides[0]] = cell(1, 7, 1, 3);
+      } else {
+        style[wides[0]] = cell(1, 7, 1, 2);
+        style[wides[1]] = cell(1, 7, 2, 3);
+      }
+      // 窄卡片在右侧 col7-13
       if (n === 1) {
         style[narrows[0]] = cell(7, 13, 1, 3);
       } else if (n === 2) {
@@ -90,7 +100,7 @@ export function useWorkbench() {
         style[narrows[3]] = cell(10, 13, 2, 3);
       }
     } else {
-      // 无主卡片：窄卡片横向均分、全高
+      // 无宽卡片：窄卡片横向均分、全高
       const spans: Record<number, [number, number][]> = {
         1: [[1, 13]],
         2: [[1, 7], [7, 13]],

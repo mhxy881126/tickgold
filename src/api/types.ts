@@ -58,6 +58,19 @@ export interface FundFlow {
   levels: FundLevel[];
 }
 
+/** 板块（行业 / 概念） */
+export interface Sector {
+  code: string;
+  name: string;
+  changePct: number; // 板块平均涨跌幅 %
+  netAmount: number; // 净流入（元）
+  inAmount: number;
+  outAmount: number;
+  leadCode: string; // 领涨股
+  leadName: string;
+  leadPct: number; // 领涨股涨幅 %
+}
+
 /** 预警规则 */
 export interface AlertRule {
   id: string;

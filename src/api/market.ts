@@ -1,6 +1,6 @@
 // 行情 API：通过 Tauri command 调 Rust 端（Rust 负责请求东财/新浪公开接口，避免浏览器 CORS 与限频）
 import { invoke } from "@tauri-apps/api/core";
-import type { Quote, KBar, StockItem, FundFlow } from "./types";
+import type { Quote, KBar, StockItem, FundFlow, Sector } from "./types";
 
 /** 批量拉实时行情 */
 export async function fetchQuotes(codes: string[]): Promise<Quote[]> {
@@ -60,7 +60,12 @@ export async function fetchRank(sort: "gainers" | "losers" | "amount", pz = 30):
   return await invoke<Quote[]>("get_rank", { sort, pz });
 }
 
-/** 个股资金流向（主力 / 散户 + 多日趋势） */
+/** 个股资金流向（主力 / 散户 + 四档分布） */
 export async function fetchFundFlow(code: string): Promise<FundFlow> {
   return await invoke<FundFlow>("get_fund_flow", { code });
+}
+
+/** 板块行情：industry=行业板块, concept=概念板块 */
+export async function fetchSectors(kind: "industry" | "concept"): Promise<Sector[]> {
+  return await invoke<Sector[]>("get_sectors", { kind });
 }
