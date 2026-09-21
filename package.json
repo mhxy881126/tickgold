@@ -1,7 +1,7 @@
 {
   "name": "stock-dock",
   "private": true,
-  "version": "0.4.9",
+  "version": "0.5.0",
   "type": "module",
   "description": "灵动岛版股票盯盘终端 - A股轻量跨平台看盘软件",
   "scripts": {
