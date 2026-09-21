@@ -1,6 +1,6 @@
 import { ref, computed } from "vue";
 
-export type CardId = "chart" | "order" | "watch" | "rank";
+export type CardId = "chart" | "order" | "fundflow" | "watch" | "rank";
 
 export interface CardMeta {
   title: string;
@@ -12,18 +12,19 @@ export interface CardMeta {
 export const CARD_META: Record<CardId, CardMeta> = {
   chart: { title: "K线图", accent: "#2f6fed", kind: "chart" },
   order: { title: "五档盘口", accent: "#d9a23b", kind: "narrow" },
+  fundflow: { title: "资金流向", accent: "#f0883e", kind: "narrow" },
   watch: { title: "自选股", accent: "#26d07c", kind: "narrow" },
   rank: { title: "榜单", accent: "#e0556b", kind: "narrow" },
 };
 
-// 窄卡片在工作台上的纵向排列顺序（盘口优先靠上）
-const NARROW_ORDER: CardId[] = ["order", "watch", "rank"];
+// 窄卡片在工作台上的纵向排列顺序（盘口、资金优先靠上）
+const NARROW_ORDER: CardId[] = ["order", "fundflow", "watch", "rank"];
 
 // 模式预设：一键切换一整套卡片
 export const MODES: Record<string, CardId[]> = {
-  pro: ["chart", "order", "watch"],
+  pro: ["chart", "order", "fundflow", "watch"],
   scanner: ["rank", "watch"],
-  full: ["chart", "order", "watch", "rank"],
+  full: ["chart", "order", "fundflow", "watch", "rank"],
   chart: ["chart"],
 };
 

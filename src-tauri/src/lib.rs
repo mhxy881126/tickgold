@@ -32,6 +32,11 @@ async fn get_orderbook(code: String) -> Result<market::OrderBook, String> {
 }
 
 #[tauri::command]
+async fn get_fund_flow(code: String) -> Result<market::FundFlow, String> {
+    market::get_fund_flow(code).await
+}
+
+#[tauri::command]
 async fn search_stocks(keyword: String) -> Result<Vec<market::StockItem>, String> {
     market::search_stocks(keyword).await
 }
@@ -192,6 +197,7 @@ pub fn run() {
             get_kline,
             get_minute,
             get_orderbook,
+            get_fund_flow,
             search_stocks,
             get_index_quotes,
             get_rank

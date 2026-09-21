@@ -34,6 +34,30 @@ export interface StockItem {
   market: "SH" | "SZ" | "BJ";
 }
 
+/** 单档资金（特大 / 大 / 中 / 小单） */
+export interface FundLevel {
+  name: string;
+  net: number; // 净流入（元）
+  inFlow: number;
+  outFlow: number;
+}
+
+/** 个股当日资金流向 */
+export interface FundFlow {
+  code: string;
+  name: string;
+  mainNet: number; // 主力（特大+大单）净流入
+  mainIn: number;
+  mainOut: number;
+  mainNetPct: number;
+  retailNet: number; // 散户（中+小单）净流入
+  retailIn: number;
+  retailOut: number;
+  retailNetPct: number;
+  netAmount: number; // 全部净流入
+  levels: FundLevel[];
+}
+
 /** 预警规则 */
 export interface AlertRule {
   id: string;

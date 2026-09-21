@@ -70,6 +70,33 @@ pub struct OrderBook {
     pub bids: Vec<OrderLevel>,
 }
 
+/// 单档资金（特大 / 大 / 中 / 小单）
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FundLevel {
+    pub name: String,
+    pub net: f64, // 净流入（元）
+    pub in_flow: f64,
+    pub out_flow: f64,
+}
+/// 个股当日资金流向
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FundFlow {
+    pub code: String,
+    pub name: String,
+    pub main_net: f64, // 主力（特大+大单）净流入
+    pub main_in: f64,
+    pub main_out: f64,
+    pub main_net_pct: f64,
+    pub retail_net: f64, // 散户（中+小单）净流入
+    pub retail_in: f64,
+    pub retail_out: f64,
+    pub retail_net_pct: f64,
+    pub net_amount: f64, // 全部净流入
+    pub levels: Vec<FundLevel>,
+}
+
 const QUOTE_TIMEOUT: u64 = 5;
 const KLINE_TIMEOUT: u64 = 8;
 
@@ -252,6 +279,13 @@ pub async fn get_orderbook(code: String) -> Result<OrderBook, String> {
     tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), tencent::orderbook(&code))
         .await
         .map_err(|_| "盘口: 超时".to_string())?
+}
+
+/// 资金流向：新浪（当日实时，特大/大/中/小单）
+pub async fn get_fund_flow(code: String) -> Result<FundFlow, String> {
+    tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), sina::fund_flow(&code))
+        .await
+        .map_err(|_| "资金流向: 超时".to_string())?
 }
 
 /// 当日分时：腾讯

@@ -1,6 +1,7 @@
 // 新浪数据源：实时行情（GBK，hq.sinajs.cn）+ K线（UTF-8 JSON，money.finance.sina）
-use super::{cnc_symbol, http, now_millis, Quote, KBar};
+use super::{cnc_symbol, http, now_millis, FundFlow, FundLevel, KBar, Quote};
 use serde::Deserialize;
+use serde_json::Value;
 
 pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
     let symbols: Vec<String> = codes.iter().map(|c| cnc_symbol(c)).collect();
@@ -64,6 +65,65 @@ struct SinaBar {
     low: String,
     close: String,
     volume: String,
+}
+
+// ===== 资金流向（当日实时，UTF-8 JSON） =====
+pub async fn fund_flow(code: &str) -> Result<FundFlow, String> {
+    let sym = cnc_symbol(code);
+    let url = format!(
+        "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/MoneyFlow.ssi_ssfx_flzjtj?daima={sym}"
+    );
+    let v: Value = http()
+        .get(&url)
+        .header("Referer", "https://finance.sina.com.cn/")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // r0 特大单 r1 大单 r2 中单 r3 小单
+    let g = |key: &str| {
+        v[key].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0)
+    };
+    let names = ["特大单", "大单", "中单", "小单"];
+    let mut levels: Vec<FundLevel> = Vec::new();
+    for (i, nm) in names.iter().enumerate() {
+        let in_f = g(&format!("r{i}_in"));
+        let out_f = g(&format!("r{i}_out"));
+        levels.push(FundLevel {
+            name: nm.to_string(),
+            net: in_f - out_f,
+            in_flow: in_f,
+            out_flow: out_f,
+        });
+    }
+    // 主力 = 特大+大（0,1），散户 = 中+小（2,3）
+    let main_in = levels[0].in_flow + levels[1].in_flow;
+    let main_out = levels[0].out_flow + levels[1].out_flow;
+    let main_net = main_in - main_out;
+    let retail_in = levels[2].in_flow + levels[3].in_flow;
+    let retail_out = levels[2].out_flow + levels[3].out_flow;
+    let retail_net = retail_in - retail_out;
+    let pct = |net: f64, i: f64, o: f64| {
+        if i + o != 0.0 { net / (i + o) * 100.0 } else { 0.0 }
+    };
+
+    Ok(FundFlow {
+        code: code.to_string(),
+        name: v["name"].as_str().unwrap_or("").to_string(),
+        main_net,
+        main_in,
+        main_out,
+        main_net_pct: pct(main_net, main_in, main_out),
+        retail_net,
+        retail_in,
+        retail_out,
+        retail_net_pct: pct(retail_net, retail_in, retail_out),
+        net_amount: g("netamount"),
+        levels,
+    })
 }
 
 /// period: 1/5/15/30/60 分钟, 101 日, 102 周, 103 月

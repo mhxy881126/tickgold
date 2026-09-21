@@ -1,5 +1,7 @@
 // 腾讯数据源：实时行情（GBK，qt.gtimg.cn）、K线（UTF-8，web.ifzq.gtimg.cn）、搜索（GBK，smartbox）
-use super::{cnc_symbol, http, now_millis, KBar, OrderBook, OrderLevel, Quote, StockItem};
+use super::{
+    cnc_symbol, http, now_millis, KBar, OrderBook, OrderLevel, Quote, StockItem,
+};
 use serde_json::Value;
 
 // ===== 实时行情 =====

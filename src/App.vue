@@ -9,6 +9,7 @@ import WatchList from "./components/WatchList.vue";
 import Indices from "./components/Indices.vue";
 import RankBoard from "./components/RankBoard.vue";
 import RightPanel from "./components/RightPanel.vue";
+import FundFlow from "./components/FundFlow.vue";
 import SearchBox from "./components/SearchBox.vue";
 import StockChart from "./components/StockChart.vue";
 import { useWatchlistStore } from "./stores/watchlist";
@@ -29,6 +30,7 @@ const CARD_NAV: { id: CardId; label: string; icon: string }[] = [
   { id: "rank", label: "榜单", icon: "M3 5h18v2H3zm0 4h18v2H3zm0 4h12v2H3zm0 4h12v2H3z" },
   { id: "chart", label: "K线", icon: "M6 3h2v4H6zm0 14h2v4H6zM5 8h4v8H5zm11-9h2v3h-2zm0 12h2v5h-2zm-1-7h4v7h-4z" },
   { id: "order", label: "盘口", icon: "M5 3h14v18H5zm2 4h10v2H7zm0 4h10v2H7zm0 4h7v2H7z" },
+  { id: "fundflow", label: "资金", icon: "M12 3c-4 0-7 1.3-7 3v12c0 1.7 3 3 7 3s7-1.3 7-3V6c0-1.7-3-3-7-3zm0 2c3.3 0 5 .9 5 1s-1.7 1-5 1-5-.9-5-1 1.7-1 5-1zm-5 4.5c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V12c0 .1-1.7 1-5 1s-5-.9-5-1zm0 4c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V16c0 .1-1.7 1-5 1s-5-.9-5-1z" },
 ];
 
 // ===== 模式预设 =====
@@ -238,6 +240,7 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
               <StockChart v-if="selected" :key="selected" :code="selected" />
               <div v-else class="card-empty">从自选或榜单选择一只股票</div>
             </div>
+            <FundFlow v-else-if="id === 'fundflow'" :code="selected" />
             <RightPanel v-else :code="selected" />
           </CardShell>
         </div>
