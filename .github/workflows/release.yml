@@ -23,11 +23,17 @@ jobs:
       matrix:
         include:
           - platform: windows-latest
+            arch: x64
             target: nsis
-          - platform: macos-latest # Apple Silicon (arm64 / aarch64)
+            rust_target: ""
+          - platform: macos-latest # Apple Silicon 原生
+            arch: aarch64
             target: dmg,app
-          - platform: macos-13 # Intel (x86_64)
+            rust_target: ""
+          - platform: macos-latest # Intel：在 arm runner 上交叉编译，避免排队 macos-13
+            arch: x64
             target: dmg,app
+            rust_target: "x86_64-apple-darwin"
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +58,10 @@ jobs:
 
       - name: Install JS deps
         run: pnpm install --frozen-lockfile
+
+      - name: Add Rust cross target (macOS x64)
+        if: matrix.rust_target != ''
+        run: rustup target add ${{ matrix.rust_target }}
 
       # —— macOS 才需要：Apple 开发者证书做 codesign（否则 Gatekeeper 拦截）——
       # 若你有 Developer ID 证书，把 base64 串配成 secret APPLE_CERTIFICATE、密码 APPLE_CERT_PASSWORD，
@@ -91,7 +101,7 @@ jobs:
             - 通过顶栏"检查更新"即可自动升级。
           releaseDraft: true
           prerelease: false
-          args: --bundles ${{ matrix.target }}
+          args: --bundles ${{ matrix.target }} ${{ matrix.rust_target && format('--target {0}', matrix.rust_target) || '' }}
 
   # 汇总 job：等两个平台都构建完成后，读取各自 .sig，生成 Tauri updater 需要的
   # latest.json 并上传到 Release。解决并行 matrix 下 tauri-action 漏传 latest.json 的问题。
