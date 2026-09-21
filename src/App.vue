@@ -10,6 +10,7 @@ import Indices from "./components/Indices.vue";
 import RankBoard from "./components/RankBoard.vue";
 import RightPanel from "./components/RightPanel.vue";
 import NewsBar from "./components/NewsBar.vue";
+import SearchBox from "./components/SearchBox.vue";
 import { useWatchlistStore } from "./stores/watchlist";
 import { useQuotesStore } from "./stores/quotes";
 import { useAlertStore } from "./stores/alert";
@@ -87,6 +88,11 @@ function updLabel(): string {
 }
 
 function onSelect(code: string) { selected.value = code; }
+function onSearchSelect(code: string, name: string) {
+  selected.value = code;
+  if (!wl.codes.includes(code)) wl.add(code, name);
+  drawer.value = "watch";
+}
 
 let unlisten: (() => void) | null = null;
 
@@ -115,7 +121,7 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
     <!-- 顶栏 -->
     <header class="topbar">
       <div class="brand">金睛盯盘</div>
-      <div class="search">搜索代码 / 名称 / 拼音</div>
+      <SearchBox @select="onSearchSelect" />
       <div class="status">
         <span :class="quotes.polling ? 'dot on' : 'dot'"></span>
         {{ quotes.polling ? "实时" : "已暂停" }}
