@@ -158,10 +158,9 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
       <RankBoard v-else @select="onSelect" />
     </aside>
 
-    <!-- 中间 K线 -->
+    <!-- 中间榜单 -->
     <section class="center">
-      <StockChart v-if="selected" :key="selected" :code="selected" />
-      <div v-else class="placeholder">从左侧选择一只股票开始看盘</div>
+      <RankBoard @select="onSelect" />
     </section>
 
     <!-- 右栏盘口 -->

@@ -53,6 +53,80 @@ pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
     Ok(out)
 }
 
+// ===== 排行榜（沪深A股） =====
+/// sort: gainers=涨幅榜 losers=跌幅榜 amount=成交额榜
+pub async fn rank(sort: &str, pz: i64) -> Result<Vec<Quote>, String> {
+    // o=0 降序, o=1 升序
+    let o = match sort {
+        "losers" => 1,
+        _ => 0,
+    };
+    let t = match sort {
+        "amount" => "rankash/amt",
+        _ => "rankash/chr",
+    };
+    let url = format!(
+        "https://stock.gtimg.cn/data/view/rank.php?t={t}&p=1&o={o}&l={pz}&v=list_data"
+    );
+    let resp = http()
+        .get(&url)
+        .header("Referer", "https://stockapp.finance.qq.com/")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    let (txt, _, _) = encoding_rs::GBK.decode(&bytes);
+    parse_rank(&txt)
+}
+
+/// 腾讯 rank.php 返回 list_data=[["sh600519","贵州茅台",1688.00,1.24,...],...]
+fn parse_rank(txt: &str) -> Result<Vec<Quote>, String> {
+    let Some(start) = txt.find("=[") else {
+        return Err("榜单格式不对".to_string());
+    };
+    let body = txt[start + 2..].trim_end_matches(';').trim_end();
+    let body = body.trim_end_matches(']');
+    let now = now_millis();
+    let mut out = Vec::new();
+    for item in body.split("],[") {
+        let item = item.trim().trim_start_matches('[').trim_end_matches(']');
+        let f: Vec<&str> = item.split(',').collect();
+        if f.len() < 7 {
+            continue;
+        }
+        // f[0]=sh600519, f[1]=名称, f[2]=现价, f[3]=涨跌幅%, f[4]=涨跌额, f[5]=成交量(手), f[6]=成交额(万)
+        let code = f[0].trim().trim_start_matches("sh").trim_start_matches("sz").trim_start_matches("bj").to_string();
+        if code.len() != 6 {
+            continue;
+        }
+        let name = f[1].trim_matches('"').to_string();
+        let price: f64 = f[2].parse().unwrap_or(0.0);
+        let pct: f64 = f[3].parse().unwrap_or(0.0);
+        let change: f64 = f[4].parse().unwrap_or(0.0);
+        let volume: f64 = f[5].parse().unwrap_or(0.0);
+        let amount_wan: f64 = f[6].parse().unwrap_or(0.0);
+        out.push(Quote {
+            code,
+            name,
+            price,
+            change,
+            pct,
+            open: 0.0,
+            high: 0.0,
+            low: 0.0,
+            prev_close: 0.0,
+            volume,
+            amount: amount_wan * 1e4,
+            time: now,
+            source: "tencent".to_string(),
+        });
+    }
+    if out.is_empty() {
+        return Err("腾讯榜单返回空".to_string());
+    }
+    Ok(out)
+}
+
 // ===== 五档盘口（单股） =====
 pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
     let sym = cnc_symbol(code);

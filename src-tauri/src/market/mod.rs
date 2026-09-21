@@ -261,8 +261,17 @@ pub async fn get_minute(code: String) -> Result<Vec<KBar>, String> {
         .map_err(|_| "分时: 超时".to_string())?
 }
 
-/// 榜单：gainers / losers / amount，新浪为主，东财兜底
+/// 榜单：gainers / losers / amount，腾讯为主，新浪兜底，东财最后
 pub async fn get_rank(sort: String, pz: i64) -> Result<Vec<Quote>, String> {
+    match tokio::time::timeout(
+        Duration::from_secs(QUOTE_TIMEOUT),
+        tencent::rank(&sort, pz),
+    )
+    .await
+    {
+        Ok(Ok(v)) if valid_quotes(&v) => return Ok(v),
+        _ => {}
+    }
     match tokio::time::timeout(
         Duration::from_secs(QUOTE_TIMEOUT),
         sina::rank(&sort, pz),
