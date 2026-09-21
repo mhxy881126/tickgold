@@ -72,19 +72,22 @@ onBeforeUnmount(() => {
         <div class="pct" :class="cls(current.pct)" data-tauri-drag-region>
           {{ current.pct > 0 ? "+" : "" }}{{ current.pct.toFixed(2) }}%
         </div>
-        <button class="chev" title="展开" @click="toggleExpand">⌄</button>
+        <button class="chev" title="展开" @click.stop="toggleExpand">⌄</button>
       </template>
       <div v-else class="loading" data-tauri-drag-region>加载中…</div>
     </div>
 
     <!-- 展开态：金色通知列表 -->
     <div v-else class="open-wrap">
-      <div class="open-head" data-tauri-drag-region>
+      <div class="open-head" data-tauri-drag-region @click="toggleExpand">
         <span class="head-title">
           <span class="head-icon">⚡</span>
           智能异动提醒
         </span>
-        <span class="head-count">{{ quotes.length }} 只</span>
+        <span class="head-right">
+          <span class="head-count">{{ quotes.length }} 只</span>
+          <button class="chev up" title="收起">⌃</button>
+        </span>
       </div>
       <div class="open-list">
         <div
@@ -156,7 +159,7 @@ html, body { background: transparent !important; }
 .chev:hover { color: #ffaa00; }
 .loading { color: #ffd700; width: 100%; text-align: center; }
 
-/* 展开态：金色通知卡片 */
+/* 展开态：金色通知卡片 - 圆角 */
 .open-wrap {
   height: 300px;
   display: flex; flex-direction: column;
@@ -168,7 +171,9 @@ html, body { background: transparent !important; }
 .open-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 16px;
+  cursor: pointer;
 }
+.head-right { display: flex; align-items: center; gap: 8px; }
 .head-title {
   display: flex;
   align-items: center;
