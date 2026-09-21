@@ -60,7 +60,8 @@ async function checkUpdate() {
     updState.value = "downloading";
     let got = 0;
     let total = 0;
-    await update.downloadAndInstall((e) => {
+    // 先下载，下载完后退出主程序，让安装器干净写入
+    await update.download((e: any) => {
       switch (e.event) {
         case "Started": total = e.data.contentLength || 0; break;
         case "Progress": got += e.data.chunkLength; pct.value = total ? Math.round((got / total) * 100) : 0; break;
@@ -68,7 +69,8 @@ async function checkUpdate() {
       }
     });
     updState.value = "installing";
-    await new Promise((r) => setTimeout(r, 800));
+    // 下载完成，退出主程序，updater 会自动启动安装器
+    await new Promise((r) => setTimeout(r, 500));
     await exit(0);
   } catch (err) {
     console.error("[updater]", err);

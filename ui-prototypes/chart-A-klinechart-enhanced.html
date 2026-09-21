@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>方案A · KLineChart 增强版</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0d1117; color:#e0e0e0; font-family:"Microsoft YaHei",sans-serif; font-size:12px; }
+  .topbar { display:flex; align-items:center; gap:12px; padding:8px 16px; background:#161b22; border-bottom:1px solid #30363d; }
+  .brand { font-weight:700; color:#58a6ff; }
+  .sym { font-weight:700; font-size:16px; }
+  .price { font-size:20px; font-weight:700; color:#f85149; }
+  .chg { color:#f85149; }
+  .toolbar { display:flex; gap:2px; padding:6px 12px; background:#0d1117; border-bottom:1px solid #30363d; }
+  .toolbar button { background:transparent; border:none; color:#8b949e; padding:4px 10px; cursor:pointer; font-size:12px; }
+  .toolbar button.on { background:#1f6feb; color:#fff; border-radius:3px; }
+  .main { display:flex; height:calc(100vh - 90px); }
+  .left-info { width:130px; padding:8px; background:#0d1117; border-right:1px solid #30363d; font-size:11px; line-height:1.8; }
+  .left-info .row { display:flex; justify-content:space-between; }
+  .left-info .l { color:#8b949e; }
+  .chart-area { flex:1; display:flex; flex-direction:column; }
+  #chart { flex:3; }
+  #vol { height:80px; }
+  #macd { height:80px; }
+  .right-panel { width:180px; background:#0d1117; border-left:1px solid #30363d; padding:8px; }
+  .orderbook table { width:100%; font-size:11px; }
+  .orderbook td { padding:1px 0; }
+  .up { color:#f85149; } .down { color:#3fb950; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="brand">金睛盯盘</span>
+  <span class="sym">中兵红箭 000519</span>
+  <span class="price">15.39</span>
+  <span class="chg">+0.24 +1.58%</span>
+</div>
+<div class="toolbar">
+  <button>分时</button><button class="on">日K</button><button>周K</button><button>月K</button>
+  <span style="width:20px"></span>
+  <button>MA</button><button>VOL</button><button>MACD</button><button>KDJ</button><button>BOLL</button>
+</div>
+<div class="main">
+  <div class="left-info">
+    <div class="row"><span class="l">时间</span><span>09-21 09:30</span></div>
+    <div class="row"><span class="l">开</span><span class="up">15.15</span></div>
+    <div class="row"><span class="l">高</span><span class="up">15.47</span></div>
+    <div class="row"><span class="l">低</span><span class="down">15.15</span></div>
+    <div class="row"><span class="l">收</span><span class="up">15.39</span></div>
+    <div class="row"><span class="l">量</span><span>421491手</span></div>
+    <div class="row"><span class="l">额</span><span>6.45亿</span></div>
+    <div class="row"><span class="l">换手</span><span>3.02%</span></div>
+    <div class="row"><span class="l">振幅</span><span>2.11%</span></div>
+    <div class="row"><span class="l">市盈</span><span>87.5</span></div>
+  </div>
+  <div class="chart-area">
+    <div id="chart"></div>
+    <div id="vol"></div>
+    <div id="macd"></div>
+  </div>
+  <div class="right-panel orderbook">
+    <table>
+      <tr><td class="l">卖5</td><td class="up">15.34</td><td>938手</td></tr>
+      <tr><td class="l">卖4</td><td class="up">15.35</td><td>784手</td></tr>
+      <tr><td class="l">卖3</td><td class="up">15.36</td><td>592手</td></tr>
+      <tr><td class="l">卖2</td><td class="up">15.37</td><td>1092手</td></tr>
+      <tr><td class="l">卖1</td><td class="up">15.38</td><td>1275手</td></tr>
+      <tr><td colspan="3" style="height:8px"></td></tr>
+      <tr><td class="l">买1</td><td class="down">15.39</td><td>630手</td></tr>
+      <tr><td class="l">买2</td><td class="down">15.40</td><td>2538手</td></tr>
+      <tr><td class="l">买3</td><td class="down">15.41</td><td>469手</td></tr>
+      <tr><td class="l">买4</td><td class="down">15.42</td><td>661手</td></tr>
+      <tr><td class="l">买5</td><td class="down">15.43</td><td>685手</td></tr>
+    </table>
+  </div>
+</div>
+<script>
+const data = [
+  [15.20,15.45,15.10,15.35,12000],[15.35,15.60,15.30,15.55,15000],
+  [15.55,15.40,15.25,15.30,18000],[15.30,15.10,15.00,15.05,22000],
+  [15.05,15.20,14.95,15.15,16000],[15.15,15.50,15.10,15.45,20000],
+  [15.45,15.30,15.15,15.20,14000],[15.20,15.60,15.15,15.55,25000],
+  [15.55,15.40,15.20,15.30,18000],[15.30,15.10,15.00,15.05,21000],
+  [15.05,15.30,15.00,15.25,17000],[15.25,15.50,15.20,15.45,19000],
+  [15.45,15.60,15.35,15.55,23000],[15.55,15.40,15.25,15.30,16000],
+  [15.30,15.50,15.20,15.45,20000],[15.45,15.30,15.15,15.20,15000],
+  [15.20,15.40,15.10,15.35,18000],[15.35,15.60,15.30,15.55,24000],
+  [15.55,15.40,15.25,15.30,17000],[15.30,15.10,15.00,15.05,22000],
+  [15.05,15.30,15.00,15.25,18000],[15.25,15.50,15.20,15.45,20000],
+  [15.45,15.60,15.35,15.55,25000],[15.55,15.40,15.25,15.30,19000],
+  [15.30,15.50,15.20,15.45,21000],[15.45,15.30,15.15,15.20,16000],
+  [15.20,15.40,15.10,15.35,19000],[15.35,15.60,15.30,15.55,26000],
+  [15.55,15.40,15.25,15.30,18000],[15.30,15.10,15.00,15.05,23000],
+];
+const closes = data.map(d=>d[3]);
+function ma(n){return closes.map((_,i)=>i<n-1?null:+(closes.slice(i-n+1,i+1).reduce((a,b)=>a+b,0)/n).toFixed(2));}
+const base = { grid:{left:50,right:60,top:10,bottom:20}, xAxis:{type:'category',data:data.map((_,i)=>'D'+i),axisLabel:{color:'#8b949e'}}, yAxis:{scale:true,axisLabel:{color:'#8b949e'},splitLine:{lineStyle:{color:'#21262d'}}}};
+echarts.init(document.getElementById('chart')).setOption({
+  ...base, grid:{...base.grid,bottom:30},
+  series:[
+    {type:'candlestick',data:data.map(d=>[d[1],d[2],d[3],d[0]]),itemStyle:{color:'#f85149',color0:'#3fb950',borderColor:'#f85149',borderColor0:'#3fb950'}},
+    {type:'line',data:ma(5),smooth:true,showSymbol:false,lineStyle:{color:'#e3b341',width:1}},
+    {type:'line',data:ma(10),smooth:true,showSymbol:false,lineStyle:{color:'#58a6ff',width:1}},
+    {type:'line',data:ma(20),smooth:true,showSymbol:false,lineStyle:{color:'#bc8cff',width:1}},
+  ]
+});
+echarts.init(document.getElementById('vol')).setOption({
+  ...base, grid:{...base.grid,top:10},
+  series:[{type:'bar',data:data.map(d=>({value:d[4],itemStyle:{color:d[3]>=d[1]?'#f85149':'#3fb950'}}))}]
+});
+echarts.init(document.getElementById('macd')).setOption({
+  ...base, grid:{...base.grid,top:10},
+  series:[{type:'bar',data:data.map(d=>(d[3]-d[1])*1000),itemStyle:{color:'#f85149'}},{type:'line',data:data.map((_,i)=>i<9?null:+(closes.slice(i-9,i+1).reduce((a,b)=>a+b,0)/10).toFixed(2)),showSymbol:false,lineStyle:{color:'#58a6ff'}}]
+});
+</script>
+</body>
+</html>

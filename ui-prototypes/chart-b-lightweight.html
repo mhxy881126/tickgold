@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>方案B · TradingView Lightweight Charts</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#131722; color:#d1d4dc; font-family:"Microsoft YaHei",sans-serif; font-size:12px; }
+  .topbar { display:flex; align-items:center; gap:12px; padding:8px 16px; background:#1e222d; border-bottom:1px solid #2a2e39; }
+  .brand { font-weight:700; color:#2962ff; }
+  .sym { font-weight:700; font-size:16px; }
+  .price { font-size:20px; font-weight:700; color:#f23645; }
+  .chg { color:#f23645; }
+  .toolbar { display:flex; gap:2px; padding:6px 12px; background:#131722; border-bottom:1px solid #2a2e39; }
+  .toolbar button { background:transparent; border:none; color:#787b86; padding:4px 10px; cursor:pointer; font-size:12px; }
+  .toolbar button.on { background:#2962ff; color:#fff; border-radius:3px; }
+  .main { display:flex; height:calc(100vh - 90px); }
+  .left-info { width:140px; padding:8px; background:#131722; border-right:1px solid #2a2e39; font-size:11px; line-height:1.9; }
+  .left-info .row { display:flex; justify-content:space-between; }
+  .left-info .l { color:#787b86; }
+  .chart-area { flex:1; display:flex; flex-direction:column; }
+  #chart { flex:3; }
+  #vol { height:70px; }
+  .right-panel { width:170px; background:#131722; border-left:1px solid #2a2e39; padding:8px; }
+  .orderbook table { width:100%; font-size:11px; }
+  .orderbook td { padding:1px 0; }
+  .up { color:#f23645; } .down { color:#089981; }
+  .tag { background:#2962ff; color:#fff; padding:1px 6px; border-radius:2px; font-size:10px; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="brand">金睛盯盘</span>
+  <span class="sym">贵州茅台 600519</span>
+  <span class="price">1257.12</span>
+  <span class="chg">-9.00 -0.71%</span>
+  <span class="tag">自选</span>
+</div>
+<div class="toolbar">
+  <button>分时</button><button class="on">日K</button><button>周K</button><button>月K</button><button>1分</button><button>5分</button>
+  <span style="width:20px"></span>
+  <button>MA</button><button>VOL</button><button>MACD</button><button>RSI</button>
+</div>
+<div class="main">
+  <div class="left-info">
+    <div class="row"><span class="l">时间</span><span>09-21 09:30</span></div>
+    <div class="row"><span class="l">开</span><span class="up">1259.00</span></div>
+    <div class="row"><span class="l">高</span><span class="up">1259.00</span></div>
+    <div class="row"><span class="l">低</span><span class="down">1251.00</span></div>
+    <div class="row"><span class="l">收</span><span class="down">1257.12</span></div>
+    <div class="row"><span class="l">量</span><span>24191手</span></div>
+    <div class="row"><span class="l">额</span><span>3.04亿</span></div>
+    <div class="row"><span class="l">换手</span><span>0.19%</span></div>
+    <div class="row"><span class="l">振幅</span><span>0.64%</span></div>
+    <div class="row"><span class="l">市盈</span><span>27.8</span></div>
+    <div class="row"><span class="l">流通值</span><span>1.58万亿</span></div>
+  </div>
+  <div class="chart-area">
+    <div id="chart"></div>
+    <div id="vol"></div>
+  </div>
+  <div class="right-panel orderbook">
+    <table>
+      <tr><td class="l">卖5</td><td class="up">1257.50</td><td>2手</td></tr>
+      <tr><td class="l">卖4</td><td class="up">1257.80</td><td>1手</td></tr>
+      <tr><td class="l">卖3</td><td class="up">1257.90</td><td>1手</td></tr>
+      <tr><td class="l">卖2</td><td class="up">1258.00</td><td>1手</td></tr>
+      <tr><td class="l">卖1</td><td class="up">1258.08</td><td>1手</td></tr>
+      <tr><td colspan="3" style="height:8px"></td></tr>
+      <tr><td class="l">买1</td><td class="down">1259.00</td><td>28手</td></tr>
+      <tr><td class="l">买2</td><td class="down">1259.80</td><td>1手</td></tr>
+      <tr><td class="l">买3</td><td class="down">1259.98</td><td>1手</td></tr>
+      <tr><td class="l">买4</td><td class="down">1259.99</td><td>1手</td></tr>
+      <tr><td class="l">买5</td><td class="down">1260.00</td><td>2手</td></tr>
+    </table>
+  </div>
+</div>
+<script>
+const data = [
+  [1260,1265,1255,1258,8000],[1258,1262,1254,1260,10000],
+  [1260,1255,1250,1252,12000],[1252,1248,1245,1246,15000],
+  [1246,1250,1244,1248,11000],[1248,1255,1247,1253,13000],
+  [1253,1250,1246,1248,9000],[1248,1258,1247,1256,16000],
+  [1256,1252,1248,1250,12000],[1250,1246,1242,1244,14000],
+  [1244,1248,1243,1247,10000],[1247,1255,1246,1253,12000],
+  [1253,1258,1252,1256,14000],[1256,1252,1248,1250,11000],
+  [1250,1246,1243,1245,13000],[1245,1250,1244,1248,10000],
+  [1248,1255,1247,1253,12000],[1253,1258,1252,1256,15000],
+  [1256,1252,1248,1250,12000],[1250,1246,1242,1244,14000],
+  [1244,1248,1243,1247,11000],[1247,1255,1246,1253,13000],
+  [1253,1258,1252,1256,16000],[1256,1252,1248,1250,12000],
+  [1250,1246,1243,1245,15000],[1245,1250,1244,1248,11000],
+  [1248,1255,1247,1253,13000],[1253,1258,1252,1256,17000],
+  [1256,1252,1248,1250,14000],[1250,1246,1242,1244,16000],
+];
+const closes = data.map(d=>d[3]);
+function ma(n){return closes.map((_,i)=>i<n-1?null:+(closes.slice(i-n+1,i+1).reduce((a,b)=>a+b,0)/n).toFixed(2));}
+const base = { grid:{left:55,right:65,top:10,bottom:20}, xAxis:{type:'category',data:data.map((_,i)=>'D'+i),axisLabel:{color:'#787b86'}}, yAxis:{scale:true,axisLabel:{color:'#787b86'},splitLine:{lineStyle:{color:'#2a2e39'}}}};
+echarts.init(document.getElementById('chart')).setOption({
+  ...base, grid:{...base.grid,bottom:30},
+  series:[
+    {type:'candlestick',data:data.map(d=>[d[1],d[2],d[3],d[0]]),itemStyle:{color:'#f23645',color0:'#089981',borderColor:'#f23645',borderColor0:'#089981'}},
+    {type:'line',data:ma(5),smooth:true,showSymbol:false,lineStyle:{color:'#ff9800',width:1}},
+    {type:'line',data:ma(10),smooth:true,showSymbol:false,lineStyle:{color:'#2962ff',width:1}},
+    {type:'line',data:ma(20),smooth:true,showSymbol:false,lineStyle:{color:'#ab47bc',width:1}},
+  ]
+});
+echarts.init(document.getElementById('vol')).setOption({
+  ...base, grid:{...base.grid,top:10},
+  series:[{type:'bar',data:data.map(d=>({value:d[4],itemStyle:{color:d[3]>=d[1]?'#f23645':'#089981'}}))}]
+});
+</script>
+</body>
+</html>

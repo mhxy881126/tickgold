@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>方案C · 同花顺完整复刻</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#1a1a2e; color:#e0e0e0; font-family:"Microsoft YaHei",sans-serif; font-size:12px; }
+  .topbar { display:flex; align-items:center; gap:12px; padding:6px 16px; background:#16162a; border-bottom:1px solid #2a2a4a; }
+  .brand { font-weight:700; color:#e94560; }
+  .sym { font-weight:700; font-size:15px; }
+  .price { font-size:22px; font-weight:700; color:#e94560; }
+  .chg { color:#e94560; }
+  .toolbar { display:flex; gap:2px; padding:5px 12px; background:#1a1a2e; border-bottom:1px solid #2a2a4a; }
+  .toolbar button { background:transparent; border:none; color:#8888aa; padding:3px 8px; cursor:pointer; font-size:11px; }
+  .toolbar button.on { background:#e94560; color:#fff; border-radius:2px; }
+  .main { display:flex; height:calc(100vh - 80px); }
+  .left-info { width:110px; padding:6px; background:#1a1a2e; border-right:1px solid #2a2a4a; font-size:11px; line-height:1.7; }
+  .left-info .row { display:flex; justify-content:space-between; }
+  .left-info .l { color:#8888aa; }
+  .chart-area { flex:1; display:flex; flex-direction:column; }
+  #chart { flex:3; }
+  #vol { height:60px; }
+  #macd { height:60px; }
+  .right-panel { width:160px; background:#1a1a2e; border-left:1px solid #2a2a4a; padding:6px; }
+  .orderbook table { width:100%; font-size:11px; }
+  .orderbook td { padding:1px 0; }
+  .up { color:#e94560; } .down { color:#00d9a6; }
+  .bottom { height:60px; background:#16162a; border-top:1px solid #2a2a4a; display:flex; padding:6px; gap:12px; }
+  .news-col { flex:1; font-size:10px; color:#8888aa; }
+  .news-col h5 { color:#ccc; margin-bottom:3px; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="brand">金睛盯盘</span>
+  <span class="sym">宁德时代 300750</span>
+  <span class="price">301.95</span>
+  <span class="chg">-2.26 -0.74%</span>
+</div>
+<div class="toolbar">
+  <button>分时</button><button class="on">日K</button><button>周K</button><button>月K</button>
+  <span style="width:16px"></span>
+  <button>MA</button><button>BOLL</button><button>VOL</button><button>MACD</button><button>KDJ</button><button>RSI</button>
+  <span style="width:16px"></span>
+  <button>预警</button><button>复权</button><button>设置</button>
+</div>
+<div class="main">
+  <div class="left-info">
+    <div class="row"><span class="l">时间</span><span>09-21</span></div>
+    <div class="row"><span class="l">开</span><span class="up">303.04</span></div>
+    <div class="row"><span class="l">高</span><span class="up">305.50</span></div>
+    <div class="row"><span class="l">低</span><span class="down">301.00</span></div>
+    <div class="row"><span class="l">收</span><span class="down">301.95</span></div>
+    <div class="row"><span class="l">量</span><span>58万手</span></div>
+    <div class="row"><span class="l">额</span><span>176亿</span></div>
+    <div class="row"><span class="l">换手</span><span>2.63%</span></div>
+    <div class="row"><span class="l">振幅</span><span>1.49%</span></div>
+    <div class="row"><span class="l">市盈</span><span>22.1</span></div>
+    <div class="row"><span class="l">流通值</span><span>1.33万亿</span></div>
+  </div>
+  <div class="chart-area">
+    <div id="chart"></div>
+    <div id="vol"></div>
+    <div id="macd"></div>
+  </div>
+  <div class="right-panel orderbook">
+    <table>
+      <tr><td class="l">卖5</td><td class="up">302.10</td><td>236手</td></tr>
+      <tr><td class="l">卖4</td><td class="up">302.05</td><td>189手</td></tr>
+      <tr><td class="l">卖3</td><td class="up">302.00</td><td>342手</td></tr>
+      <tr><td class="l">卖2</td><td class="up">301.98</td><td>156手</td></tr>
+      <tr><td class="l">卖1</td><td class="up">301.96</td><td>278手</td></tr>
+      <tr><td colspan="3" style="height:6px"></td></tr>
+      <tr><td class="l">买1</td><td class="down">301.95</td><td>412手</td></tr>
+      <tr><td class="l">买2</td><td class="down">301.90</td><td>298手</td></tr>
+      <tr><td class="l">买3</td><td class="down">301.85</td><td>167手</td></tr>
+      <tr><td class="l">买4</td><td class="down">301.80</td><td>234手</td></tr>
+      <tr><td class="l">买5</td><td class="down">301.75</td><td>356手</td></tr>
+    </table>
+  </div>
+</div>
+<div class="bottom">
+  <div class="news-col"><h5>个股资讯</h5>宁德时代发布Q3业绩预告...</div>
+  <div class="news-col"><h5>公司公告</h5>关于向特定对象发行股票...</div>
+  <div class="news-col"><h5>行业热点</h5>动力电池产业联盟成立...</div>
+</div>
+<script>
+const data = [
+  [300,305,298,302,50000],[302,308,300,306,60000],[306,303,298,300,70000],
+  [300,296,292,294,80000],[294,298,293,296,60000],[296,302,295,300,70000],
+  [300,298,294,296,50000],[296,305,295,303,90000],[303,300,296,298,70000],
+  [298,294,290,292,80000],[292,296,291,295,60000],[295,302,294,300,70000],
+  [300,305,299,303,80000],[303,300,296,298,60000],[298,294,291,293,70000],
+  [293,297,292,296,60000],[296,303,295,301,80000],[301,305,300,304,90000],
+  [304,301,297,299,70000],[299,295,292,294,80000],[294,298,293,297,60000],
+  [297,303,296,301,70000],[301,305,300,304,80000],[304,301,298,300,60000],
+  [300,297,294,296,70000],[296,300,295,299,60000],[299,304,298,302,80000],
+  [302,300,296,298,70000],[298,295,292,294,60000],[294,298,293,297,70000],
+];
+const closes = data.map(d=>d[3]);
+function ma(n){return closes.map((_,i)=>i<n-1?null:+(closes.slice(i-n+1,i+1).reduce((a,b)=>a+b,0)/n).toFixed(2));}
+const base = { grid:{left:50,right:60,top:10,bottom:20}, xAxis:{type:'category',data:data.map((_,i)=>'D'+i),axisLabel:{color:'#8888aa'}}, yAxis:{scale:true,axisLabel:{color:'#8888aa'},splitLine:{lineStyle:{color:'#2a2a4a'}}}};
+echarts.init(document.getElementById('chart')).setOption({
+  ...base, grid:{...base.grid,bottom:30},
+  series:[
+    {type:'candlestick',data:data.map(d=>[d[1],d[2],d[3],d[0]]),itemStyle:{color:'#e94560',color0:'#00d9a6',borderColor:'#e94560',borderColor0:'#00d9a6'}},
+    {type:'line',data:ma(5),smooth:true,showSymbol:false,lineStyle:{color:'#ffd166',width:1}},
+    {type:'line',data:ma(10),smooth:true,showSymbol:false,lineStyle:{color:'#118ab2',width:1}},
+    {type:'line',data:ma(20),smooth:true,showSymbol:false,lineStyle:{color:'#ef476f',width:1}},
+  ]
+});
+echarts.init(document.getElementById('vol')).setOption({
+  ...base, grid:{...base.grid,top:10},
+  series:[{type:'bar',data:data.map(d=>({value:d[4],itemStyle:{color:d[3]>=d[1]?'#e94560':'#00d9a6'}}))}]
+});
+echarts.init(document.getElementById('macd')).setOption({
+  ...base, grid:{...base.grid,top:10},
+  series:[{type:'bar',data:data.map(d=>(d[3]-d[1])*1000),itemStyle:{color:'#e94560'}},{type:'line',data:data.map((_,i)=>i<9?null:+(closes.slice(i-9,i+1).reduce((a,b)=>a+b,0)/10).toFixed(2)),showSymbol:false,lineStyle:{color:'#118ab2'}}]
+});
+</script>
+</body>
+</html>
