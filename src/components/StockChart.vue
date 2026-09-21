@@ -7,6 +7,7 @@ const props = defineProps<{ code: string }>();
 
 const chartRef = ref<HTMLDivElement | null>(null);
 let chart: echarts.ECharts | null = null;
+let ro: ResizeObserver | null = null;
 const period = ref<"minute" | "day" | "week" | "month">("day");
 const loading = ref(false);
 
@@ -53,7 +54,7 @@ async function load() {
     const ma20 = calcMA(closes, 20);
 
     chart.setOption({
-      backgroundColor: "#0d1117",
+      backgroundColor: "transparent",
       animation: false,
       legend: {
         data: ["MA5", "MA10", "MA20"],
@@ -121,10 +122,13 @@ onMounted(() => {
   if (!chartRef.value) return;
   chart = echarts.init(chartRef.value);
   load();
-  window.addEventListener("resize", () => chart?.resize());
+  ro = new ResizeObserver(() => chart?.resize());
+  ro.observe(chartRef.value);
 });
 
 onBeforeUnmount(() => {
+  ro?.disconnect();
+  ro = null;
   chart?.dispose();
   chart = null;
 });
@@ -146,13 +150,13 @@ watch(() => props.code, load);
 </template>
 
 <style scoped>
-.chart-panel { display: flex; flex-direction: column; height: 100%; background: #0d1117; }
-.toolbar { display: flex; gap: 4px; padding: 6px 10px; border-bottom: 1px solid #30363d; background: #161b22; }
+.chart-panel { display: flex; flex-direction: column; height: 100%; }
+.toolbar { display: flex; gap: 4px; padding: 6px 10px; border-bottom: 1px solid #20272f; }
 .toolbar button {
   background: transparent; border: none; color: #8b949e; padding: 4px 10px;
   border-radius: 3px; cursor: pointer; font-size: 12px;
 }
-.toolbar button.on { background: #1f6feb; color: #fff; }
+.toolbar button.on { background: #2f6fed; color: #fff; }
 .loading { margin-left: auto; color: #8b949e; font-size: 11px; }
 .chart { flex: 1; }
 </style>

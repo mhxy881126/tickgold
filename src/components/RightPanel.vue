@@ -105,7 +105,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer); });
 </template>
 
 <style scoped>
-.right { background: var(--bg-panel); border-left: 1px solid var(--border); overflow-y: auto; height: 100%; }
+.right { overflow-y: auto; height: 100%; }
 .rblock { padding: 10px 12px; border-bottom: 1px solid var(--border); }
 h4 { font-size: 11px; color: var(--text-dim); font-weight: 500; margin-bottom: 6px; }
 .price-block { padding: 12px; }
