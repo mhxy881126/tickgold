@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>灵动岛悬浮窗 UI 设计方案</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a1a;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  color: #fff;
+  padding: 40px;
+}
+h1 { text-align: center; margin-bottom: 40px; font-size: 28px; }
+h2 { margin: 40px 0 20px; font-size: 20px; color: #888; }
+.demo {
+  background: #2a2a2a;
+  border-radius: 16px;
+  padding: 40px;
+  margin-bottom: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.demo-label { color: #666; font-size: 13px; }
+
+/* 通用灵动岛样式 */
+.island {
+  background: #000;
+  border-radius: 999px;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  transition: all 0.3s ease;
+}
+.island .name { color: #ccc; }
+.island .price { font-weight: 600; }
+.island .up { color: #ef5350; }
+.island .down { color: #26a69a; }
+.island .arrow { margin-left: 8px; opacity: 0.5; }
+
+/* 方案1：经典灵动岛（纯胶囊） */
+.island-1 {
+  min-width: 280px;
+}
+
+/* 方案2：展开式灵动岛 */
+.island-2 {
+  min-width: 360px;
+  flex-direction: column;
+  align-items: stretch;
+  border-radius: 28px;
+  padding: 16px 20px;
+}
+.island-2 .row1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.island-2 .details {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #222;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  font-size: 12px;
+}
+.island-2 .details .item { text-align: center; }
+.island-2 .details .label { color: #666; font-size: 11px; }
+.island-2 .details .value { margin-top: 2px; }
+
+/* 方案3：多股票滚动 */
+.island-3 {
+  min-width: 320px;
+  overflow: hidden;
+}
+.island-3 .track {
+  display: flex;
+  gap: 30px;
+  animation: scroll 10s linear infinite;
+}
+.island-3 .stock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+@keyframes scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* 方案4：迷你K线灵动岛 */
+.island-4 {
+  min-width: 340px;
+  padding: 10px 16px;
+}
+.island-4 .info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.island-4 .mini-chart {
+  width: 100px;
+  height: 30px;
+  margin-left: 12px;
+}
+
+/* 方案5：通知式灵动岛 */
+.island-5 {
+  min-width: 300px;
+  background: linear-gradient(135deg, #1a1a1a, #2a1a1a);
+  border: 1px solid #ef5350;
+}
+.island-5 .badge {
+  background: #ef5350;
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-right: 8px;
+}
+</style>
+</head>
+<body>
+
+<h1>灵动岛悬浮窗 UI 设计方案（5套）</h1>
+
+<!-- 方案1：经典灵动岛 -->
+<h2>方案 1 · 经典灵动岛（纯胶囊）</h2>
+<div class="demo">
+  <div class="island island-1">
+    <span class="name">宁德时代</span>
+    <span class="price down">297.10</span>
+    <span class="down">-1.61%</span>
+    <span class="arrow">▾</span>
+  </div>
+  <div class="demo-label">最简洁，类似 iPhone 灵动岛默认样式</div>
+</div>
+
+<!-- 方案2：展开式灵动岛 -->
+<h2>方案 2 · 展开式灵动岛（点击展开详情）</h2>
+<div class="demo">
+  <div class="island island-2">
+    <div class="row1">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span class="name">宁德时代</span>
+        <span class="price up">+4.25%</span>
+      </div>
+      <span class="up">297.10</span>
+    </div>
+    <div class="details">
+      <div class="item">
+        <div class="label">今开</div>
+        <div class="value">303.04</div>
+      </div>
+      <div class="item">
+        <div class="label">最高</div>
+        <div class="value">303.60</div>
+      </div>
+      <div class="item">
+        <div class="label">最低</div>
+        <div class="value">295.50</div>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">点击后展开，显示今开/最高/最低</div>
+</div>
+
+<!-- 方案3：多股票滚动 -->
+<h2>方案 3 · 多股票滚动（自动轮播自选股）</h2>
+<div class="demo">
+  <div class="island island-3">
+    <div class="track">
+      <div class="stock">
+        <span class="name">宁德时代</span>
+        <span class="price down">297.10</span>
+        <span class="down">-1.61%</span>
+      </div>
+      <div class="stock">
+        <span class="name">贵州茅台</span>
+        <span class="price up">1252.57</span>
+        <span class="up">+0.85%</span>
+      </div>
+      <div class="stock">
+        <span class="name">平安银行</span>
+        <span class="price up">11.73</span>
+        <span class="up">+1.26%</span>
+      </div>
+      <!-- 复制一遍实现无缝滚动 -->
+      <div class="stock">
+        <span class="name">宁德时代</span>
+        <span class="price down">297.10</span>
+        <span class="down">-1.61%</span>
+      </div>
+      <div class="stock">
+        <span class="name">贵州茅台</span>
+        <span class="price up">1252.57</span>
+        <span class="up">+0.85%</span>
+      </div>
+      <div class="stock">
+        <span class="name">平安银行</span>
+        <span class="price up">11.73</span>
+        <span class="up">+1.26%</span>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">自动滚动轮播多只自选股</div>
+</div>
+
+<!-- 方案4：迷你K线灵动岛 -->
+<h2>方案 4 · 迷你K线灵动岛（带走势图）</h2>
+<div class="demo">
+  <div class="island island-4">
+    <div class="info">
+      <div>
+        <span class="name">宁德时代</span>
+        <span class="price down" style="margin-left:8px;">297.10</span>
+      </div>
+      <span class="down" style="font-size:12px;">-1.61%</span>
+    </div>
+    <svg class="mini-chart" viewBox="0 0 100 30">
+      <polyline fill="none" stroke="#26a69a" stroke-width="1.5"
+        points="0,20 10,18 20,22 30,15 40,17 50,12 60,14 70,10 80,13 90,8 100,10" />
+    </svg>
+  </div>
+  <div class="demo-label">右侧带迷你走势图，直观看到趋势</div>
+</div>
+
+<!-- 方案5：通知式灵动岛 -->
+<h2>方案 5 · 通知式灵动岛（涨跌提醒弹出）</h2>
+<div class="demo">
+  <div class="island island-5">
+    <span class="badge">涨停</span>
+    <span class="name">贵州茅台</span>
+    <span class="price up">1252.57</span>
+    <span class="up">+9.99%</span>
+  </div>
+  <div class="demo-label">触发条件（涨停/跌破支撑位）时弹出提醒</div>
+</div>
+
+</body>
+</html>

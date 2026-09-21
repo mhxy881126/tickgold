@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>组合式通知灵动岛 UI 设计（5款）</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a1a;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  color: #fff;
+  padding: 40px;
+}
+h1 { text-align: center; margin-bottom: 40px; font-size: 28px; }
+h2 { margin: 40px 0 20px; font-size: 20px; color: #888; }
+.demo {
+  background: #2a2a2a;
+  border-radius: 16px;
+  padding: 40px;
+  margin-bottom: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.demo-label { color: #666; font-size: 13px; }
+
+/* 通用 */
+.island {
+  background: #000;
+  border-radius: 999px;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  transition: all 0.3s ease;
+}
+.island .name { color: #ccc; }
+.island .price { font-weight: 600; }
+.island .up { color: #ef5350; }
+.island .down { color: #26a69a; }
+
+/* 款1：突破提醒+脉冲动画（方案3+5） */
+.island-1 {
+  min-width: 340px;
+  background: #1a1a1a;
+  border: 1px solid #ff9800;
+  animation: pulse-orange 2s ease-in-out infinite;
+}
+@keyframes pulse-orange {
+  0%, 100% { box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+  50% { box-shadow: 0 4px 30px rgba(255,152,0,0.4); }
+}
+.island-1 .icon {
+  width: 24px;
+  height: 24px;
+  background: #ff9800;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: #000;
+  font-weight: 700;
+}
+.island-1 .msg { color: #ff9800; font-size: 12px; }
+
+/* 款2：多股列表+突破图标（方案4+3） */
+.island-2 {
+  min-width: 380px;
+  flex-direction: column;
+  align-items: stretch;
+  border-radius: 28px;
+  padding: 14px 18px;
+}
+.island-2 .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.island-2 .header .title { font-size: 12px; color: #888; }
+.island-2 .header .badge {
+  background: #ff9800;
+  color: #000;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.island-2 .list { display: flex; flex-direction: column; gap: 8px; }
+.island-2 .item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.island-2 .item .icon {
+  width: 18px;
+  height: 18px;
+  background: #ff9800;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #000;
+  font-weight: 700;
+}
+
+/* 款3：多股列表+脉冲动画（方案4+5） */
+.island-3 {
+  min-width: 360px;
+  flex-direction: column;
+  align-items: stretch;
+  border-radius: 28px;
+  padding: 14px 18px;
+  border: 1px solid #e040fb;
+  animation: pulse-purple 2s ease-in-out infinite;
+}
+@keyframes pulse-purple {
+  0%, 100% { box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+  50% { box-shadow: 0 4px 30px rgba(224,64,251,0.4); }
+}
+.island-3 .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.island-3 .header .title { font-size: 12px; color: #e040fb; }
+.island-3 .header .count {
+  background: #e040fb;
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.island-3 .list { display: flex; flex-direction: column; gap: 6px; }
+.island-3 .item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+/* 款4：三合一完整通知（方案3+4+5） */
+.island-4 {
+  min-width: 400px;
+  flex-direction: column;
+  align-items: stretch;
+  border-radius: 28px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #1a1a1a 0%, #2a1a2a 100%);
+  border: 1px solid #e040fb;
+  animation: pulse-purple 2s ease-in-out infinite;
+}
+.island-4 .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.island-4 .header .title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.island-4 .header .icon {
+  width: 20px;
+  height: 20px;
+  background: #e040fb;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #000;
+  font-weight: 700;
+}
+.island-4 .header .count {
+  background: #e040fb;
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.island-4 .list { display: flex; flex-direction: column; gap: 8px; }
+.island-4 .item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.island-4 .item .arrow {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+/* 款5：突破提醒+迷你走势图（方案3变体） */
+.island-5 {
+  min-width: 360px;
+  background: #1a1a1a;
+  border: 1px solid #ff9800;
+}
+.island-5 .icon {
+  width: 24px;
+  height: 24px;
+  background: #ff9800;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: #000;
+  font-weight: 700;
+}
+.island-5 .info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.island-5 .msg { color: #ff9800; font-size: 11px; }
+.island-5 .mini-chart {
+  width: 80px;
+  height: 28px;
+  margin-left: 10px;
+}
+</style>
+</head>
+<body>
+
+<h1>组合式通知灵动岛 UI 设计（5款）</h1>
+
+<!-- 款1：突破提醒+脉冲动画 -->
+<h2>款 1 · 突破提醒 + 脉冲动画（方案3+5）</h2>
+<div class="demo">
+  <div class="island island-1">
+    <span class="icon">↑</span>
+    <div style="display:flex; flex-direction:column; gap:2px;">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <span class="name">宁德时代</span>
+        <span class="price up">突破压力位</span>
+      </div>
+      <span class="msg">已突破 295.00 压力位</span>
+    </div>
+  </div>
+  <div class="demo-label">突破提醒 + 橙色脉冲动画，吸引注意</div>
+</div>
+
+<!-- 款2：多股列表+突破图标 -->
+<h2>款 2 · 多股列表 + 突破图标（方案4+3）</h2>
+<div class="demo">
+  <div class="island island-2">
+    <div class="header">
+      <span class="title">突破提醒</span>
+      <span class="badge">3 只</span>
+    </div>
+    <div class="list">
+      <div class="item">
+        <span class="icon">↑</span>
+        <span class="name">贵州茅台</span>
+        <span class="up" style="margin-left:auto;">突破 1250</span>
+      </div>
+      <div class="item">
+        <span class="icon">↓</span>
+        <span class="name">宁德时代</span>
+        <span class="down" style="margin-left:auto;">跌破 295</span>
+      </div>
+      <div class="item">
+        <span class="icon">↑</span>
+        <span class="name">中国平安</span>
+        <span class="up" style="margin-left:auto;">突破 53</span>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">多股列表 + 每只带突破方向图标</div>
+</div>
+
+<!-- 款3：多股列表+脉冲动画 -->
+<h2>款 3 · 多股列表 + 脉冲动画（方案4+5）</h2>
+<div class="demo">
+  <div class="island island-3">
+    <div class="header">
+      <span class="title">⚠ 价格预警</span>
+      <span class="count">3 只</span>
+    </div>
+    <div class="list">
+      <div class="item">
+        <span class="name">贵州茅台</span>
+        <span class="up">+9.99% 涨停</span>
+      </div>
+      <div class="item">
+        <span class="name">宁德时代</span>
+        <span class="down">-1.61% 跌破支撑</span>
+      </div>
+      <div class="item">
+        <span class="name">中国平安</span>
+        <span class="up">+2.35% 放量突破</span>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">多股列表 + 紫色脉冲动画</div>
+</div>
+
+<!-- 款4：三合一完整通知 -->
+<h2>款 4 · 三合一完整通知（方案3+4+5）</h2>
+<div class="demo">
+  <div class="island island-4">
+    <div class="header">
+      <span class="title">
+        <span class="icon">⚡</span>
+        智能异动提醒
+      </span>
+      <span class="count">3 只</span>
+    </div>
+    <div class="list">
+      <div class="item">
+        <span class="arrow up">↑</span>
+        <span class="name">贵州茅台</span>
+        <span class="up" style="margin-left:auto;">+9.99% 涨停</span>
+      </div>
+      <div class="item">
+        <span class="arrow down">↓</span>
+        <span class="name">宁德时代</span>
+        <span class="down" style="margin-left:auto;">-1.61% 跌破支撑</span>
+      </div>
+      <div class="item">
+        <span class="arrow up">↑</span>
+        <span class="name">中国平安</span>
+        <span class="up" style="margin-left:auto;">+2.35% 放量突破</span>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">三合一：脉冲动画 + 多股列表 + 方向图标</div>
+</div>
+
+<!-- 款5：突破提醒+迷你走势图 -->
+<h2>款 5 · 突破提醒 + 迷你走势图（方案3变体）</h2>
+<div class="demo">
+  <div class="island island-5">
+    <span class="icon">↑</span>
+    <div class="info">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <span class="name">宁德时代</span>
+        <span class="price up">突破压力位</span>
+      </div>
+      <span class="msg">已突破 295.00 压力位</span>
+    </div>
+    <svg class="mini-chart" viewBox="0 0 80 28">
+      <polyline fill="none" stroke="#ff9800" stroke-width="1.5"
+        points="0,20 10,18 20,22 30,15 40,17 50,12 60,14 70,10 80,8" />
+    </svg>
+  </div>
+  <div class="demo-label">突破提醒 + 右侧迷你走势图，直观看突破</div>
+</div>
+
+</body>
+</html>

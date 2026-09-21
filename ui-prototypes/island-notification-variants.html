@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>三合一完整通知灵动岛 - 5款变体</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a1a;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  color: #fff;
+  padding: 40px;
+}
+h1 { text-align: center; margin-bottom: 40px; font-size: 28px; }
+h2 { margin: 40px 0 20px; font-size: 20px; color: #888; }
+.demo {
+  background: #2a2a2a;
+  border-radius: 16px;
+  padding: 40px;
+  margin-bottom: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.demo-label { color: #666; font-size: 13px; }
+
+/* 通用 */
+.island {
+  background: #000;
+  border-radius: 28px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  font-size: 14px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  transition: all 0.3s ease;
+}
+.island .name { color: #ccc; }
+.island .up { color: #ef5350; }
+.island .down { color: #26a69a; }
+.island .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.island .list { display: flex; flex-direction: column; gap: 8px; }
+.island .item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+/* 款1：紫色渐变+脉冲（原版） */
+.island-1 {
+  min-width: 400px;
+  background: linear-gradient(135deg, #1a1a1a 0%, #2a1a2a 100%);
+  border: 1px solid #e040fb;
+  animation: pulse-purple 2s ease-in-out infinite;
+}
+@keyframes pulse-purple {
+  0%, 100% { box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+  50% { box-shadow: 0 4px 30px rgba(224,64,251,0.4); }
+}
+.island-1 .header .title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.island-1 .header .icon {
+  width: 20px;
+  height: 20px;
+  background: #e040fb;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #000;
+  font-weight: 700;
+}
+.island-1 .header .count {
+  background: #e040fb;
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* 款2：深色简约+红色高亮 */
+.island-2 {
+  min-width: 400px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+}
+.island-2 .header .title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #8b949e;
+}
+.island-2 .header .icon {
+  width: 20px;
+  height: 20px;
+  background: #ef5350;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #fff;
+  font-weight: 700;
+}
+.island-2 .header .count {
+  background: #ef5350;
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.island-2 .item .arrow {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+/* 款3：圆角胶囊+左侧色条 */
+.island-3 {
+  min-width: 400px;
+  background: #1a1a1a;
+  border-left: 3px solid #e040fb;
+  border-radius: 16px;
+}
+.island-3 .header .title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #e040fb;
+}
+.island-3 .header .icon {
+  width: 20px;
+  height: 20px;
+  background: #e040fb;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #000;
+  font-weight: 700;
+}
+.island-3 .header .count {
+  background: transparent;
+  color: #e040fb;
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid #e040fb;
+  border-radius: 10px;
+}
+
+/* 款4：毛玻璃效果 */
+.island-4 {
+  min-width: 400px;
+  background: rgba(30, 30, 40, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(224, 64, 251, 0.3);
+}
+.island-4 .header .title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.island-4 .header .icon {
+  width: 20px;
+  height: 20px;
+  background: linear-gradient(135deg, #e040fb, #ff9800);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #fff;
+  font-weight: 700;
+}
+.island-4 .header .count {
+  background: linear-gradient(135deg, #e040fb, #ff9800);
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* 款5：紧凑横条+右侧展开 */
+.island-5 {
+  min-width: 420px;
+  flex-direction: row;
+  align-items: center;
+  border-radius: 999px;
+  padding: 12px 20px;
+  background: #1a1a1a;
+  border: 1px solid #e040fb;
+}
+.island-5 .header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 16px;
+}
+.island-5 .header .icon {
+  width: 20px;
+  height: 20px;
+  background: #e040fb;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #000;
+  font-weight: 700;
+}
+.island-5 .header .title { font-size: 13px; }
+.island-5 .list {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+}
+.island-5 .item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+</style>
+</head>
+<body>
+
+<h1>三合一完整通知灵动岛 - 5款变体</h1>
+
+<!-- 款1：紫色渐变+脉冲（原版） -->
+<h2>款 1 · 紫色渐变 + 脉冲动画（原版）</h2>
+<div class="demo">
+  <div class="island island-1">
+    <div class="header">
+      <span class="title">
+        <span class="icon">⚡</span>
+        智能异动提醒
+      </span>
+      <span class="count">3 只</span>
+    </div>
+    <div class="list">
+      <div class="item">
+        <span class="arrow up">↑</span>
+        <span class="name">贵州茅台</span>
+        <span class="up" style="margin-left:auto;">+9.99% 涨停</span>
+      </div>
+      <div class="item">
+        <span class="arrow down">↓</span>
+        <span class="name">宁德时代</span>
+        <span class="down" style="margin-left:auto;">-1.61% 跌破支撑</span>
+      </div>
+      <div class="item">
+        <span class="arrow up">↑</span>
+        <span class="name">中国平安</span>
+        <span class="up" style="margin-left:auto;">+2.35% 放量突破</span>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">紫色渐变背景 + 脉冲动画 + 圆角展开卡片</div>
+</div>
+
+<!-- 款2：深色简约+红色高亮 -->
+<h2>款 2 · 深色简约 + 红色高亮</h2>
+<div class="demo">
+  <div class="island island-2">
+    <div class="header">
+      <span class="title">
+        <span class="icon">!</span>
+        异动提醒
+      </span>
+      <span class="count">3 只</span>
+    </div>
+    <div class="list">
+      <div class="item">
+        <span class="arrow up">↑</span>
+        <span class="name">贵州茅台</span>
+        <span class="up" style="margin-left:auto;">+9.99% 涨停</span>
+      </div>
+      <div class="item">
+        <span class="arrow down">↓</span>
+        <span class="name">宁德时代</span>
+        <span class="down" style="margin-left:auto;">-1.61% 跌破支撑</span>
+      </div>
+      <div class="item">
+        <span class="arrow up">↑</span>
+        <span class="name">中国平安</span>
+        <span class="up" style="margin-left:auto;">+2.35% 放量突破</span>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">深色简约风格 + 红色方形图标 + 直角标签</div>
+</div>
+
+<!-- 款3：圆角胶囊+左侧色条 -->
+<h2>款 3 · 左侧色条 + 圆角卡片</h2>
+<div class="demo">
+  <div class="island island-3">
+    <div class="header">
+      <span class="title">
+        <span class="icon">⚡</span>
+        智能异动提醒
+      </span>
+      <span class="count">3 只</span>
+    </div>
+    <div class="list">
+      <div class="item">
+        <span class="arrow up">↑</span>
+        <span class="name">贵州茅台</span>
+        <span class="up" style="margin-left:auto;">+9.99% 涨停</span>
+      </div>
+      <div class="item">
+        <span class="arrow down">↓</span>
+        <span class="name">宁德时代</span>
+        <span class="down" style="margin-left:auto;">-1.61% 跌破支撑</span>
+      </div>
+      <div class="item">
+        <span class="arrow up">↑</span>
+        <span class="name">中国平安</span>
+        <span class="up" style="margin-left:auto;">+2.35% 放量突破</span>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">左侧紫色色条 + 圆角卡片 + 描边标签</div>
+</div>
+
+<!-- 款4：毛玻璃效果 -->
+<h2>款 4 · 毛玻璃效果</h2>
+<div class="demo">
+  <div class="island island-4">
+    <div class="header">
+      <span class="title">
+        <span class="icon">⚡</span>
+        智能异动提醒
+      </span>
+      <span class="count">3 只</span>
+    </div>
+    <div class="list">
+      <div class="item">
+        <span class="arrow up">↑</span>
+        <span class="name">贵州茅台</span>
+        <span class="up" style="margin-left:auto;">+9.99% 涨停</span>
+      </div>
+      <div class="item">
+        <span class="arrow down">↓</span>
+        <span class="name">宁德时代</span>
+        <span class="down" style="margin-left:auto;">-1.61% 跌破支撑</span>
+      </div>
+      <div class="item">
+        <span class="arrow up">↑</span>
+        <span class="name">中国平安</span>
+        <span class="up" style="margin-left:auto;">+2.35% 放量突破</span>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">毛玻璃半透明效果 + 紫橙渐变图标</div>
+</div>
+
+<!-- 款5：紧凑横条+右侧展开 -->
+<h2>款 5 · 紧凑横条 + 右侧股票列表</h2>
+<div class="demo">
+  <div class="island island-5">
+    <div class="header">
+      <span class="icon">⚡</span>
+      <span class="title">异动提醒</span>
+    </div>
+    <div class="list">
+      <div class="item">
+        <span class="up">↑</span>
+        <span class="name">茅台</span>
+        <span class="up">+9.99%</span>
+      </div>
+      <div class="item">
+        <span class="down">↓</span>
+        <span class="name">宁德</span>
+        <span class="down">-1.61%</span>
+      </div>
+      <div class="item">
+        <span class="up">↑</span>
+        <span class="name">平安</span>
+        <span class="up">+2.35%</span>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">紧凑横条样式，左侧标题+右侧股票列表</div>
+</div>
+
+</body>
+</html>
