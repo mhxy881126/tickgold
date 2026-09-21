@@ -15,6 +15,13 @@ export interface Quote {
   amount: number;      // 成交额（元）
   time: number;        // 行情时间戳 ms
   source: string;      // 数据源：eastmoney/sina/tencent
+  turnover: number;    // 换手率 %
+  pe: number;          // 市盈率
+  pb: number;          // 市净率
+  amplitude: number;   // 振幅 %
+  volumeRatio: number; // 量比
+  circMv: number;      // 流通市值（亿元）
+  totalMv: number;     // 总市值（亿元）
 }
 
 /** K线单根 */
@@ -69,6 +76,37 @@ export interface Sector {
   leadCode: string; // 领涨股
   leadName: string;
   leadPct: number; // 领涨股涨幅 %
+}
+
+/** 条件选股过滤器（区间留空表示不限） */
+export interface ScreenFilter {
+  priceMin?: number | null;
+  priceMax?: number | null;
+  pctMin?: number | null;
+  pctMax?: number | null;
+  turnoverMin?: number | null;
+  turnoverMax?: number | null;
+  vrMin?: number | null;
+  vrMax?: number | null;
+  peMin?: number | null;
+  peMax?: number | null;
+  pbMin?: number | null;
+  pbMax?: number | null;
+  mcapMin?: number | null; // 流通市值（亿）
+  mcapMax?: number | null;
+  ampMin?: number | null; // 振幅 %
+  ampMax?: number | null;
+  maBull: boolean;    // 均线多头
+  macdGolden: boolean; // MACD 金叉
+  volumeUp: boolean;  // 放量上涨
+  breakout: boolean;  // 突破新高
+  aboveMa20: boolean; // 站上20日线
+  limit: number;
+}
+
+/** 选股结果（Quote 字段 + 命中信号） */
+export interface ScreenResult extends Quote {
+  signals: string[];
 }
 
 /** 预警规则 */

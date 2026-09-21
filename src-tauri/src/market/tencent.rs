@@ -22,7 +22,7 @@ pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
         let Some((_, right)) = line.split_once('=') else { continue };
         let payload = right.trim().trim_end_matches(';').trim_matches('"');
         let f: Vec<&str> = payload.split('~').collect();
-        if f.len() < 38 { continue };
+        if f.len() < 50 { continue };
         let p = |i: usize| f[i].parse::<f64>().unwrap_or(0.0);
         let name = f[1].to_string();
         let code = f[2].to_string();
@@ -50,6 +50,13 @@ pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
             amount,
             time: now,
             source: "tencent".to_string(),
+            turnover: p(38),
+            pe: p(39),
+            pb: p(46),
+            amplitude: p(43),
+            volume_ratio: p(49),
+            circ_mv: p(44),
+            total_mv: p(45),
         });
     }
     Ok(out)
@@ -121,6 +128,13 @@ fn parse_rank(txt: &str) -> Result<Vec<Quote>, String> {
             amount: amount_wan * 1e4,
             time: now,
             source: "tencent".to_string(),
+            turnover: 0.0,
+            pe: 0.0,
+            pb: 0.0,
+            amplitude: 0.0,
+            volume_ratio: 0.0,
+            circ_mv: 0.0,
+            total_mv: 0.0,
         });
     }
     if out.is_empty() {

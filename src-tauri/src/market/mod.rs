@@ -27,6 +27,14 @@ pub struct Quote {
     pub amount: f64,
     pub time: i64,
     pub source: String,
+    // 扩展字段（腾讯批量行情提供，用于条件选股；其他源缺省为 0）
+    pub turnover: f64,     // 换手率 %
+    pub pe: f64,           // 市盈率
+    pub pb: f64,           // 市净率
+    pub amplitude: f64,    // 振幅 %
+    pub volume_ratio: f64, // 量比
+    pub circ_mv: f64,      // 流通市值（亿元）
+    pub total_mv: f64,     // 总市值（亿元）
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -110,6 +118,71 @@ pub struct Sector {
     pub lead_code: String, // 领涨股
     pub lead_name: String,
     pub lead_pct: f64, // 领涨股涨幅 %
+}
+
+/// 条件选股过滤器（区间为 None 表示不限）
+#[derive(Deserialize, Debug, Clone)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ScreenFilter {
+    pub price_min: Option<f64>,
+    pub price_max: Option<f64>,
+    pub pct_min: Option<f64>,
+    pub pct_max: Option<f64>,
+    pub turnover_min: Option<f64>,
+    pub turnover_max: Option<f64>,
+    pub vr_min: Option<f64>,
+    pub vr_max: Option<f64>,
+    pub pe_min: Option<f64>,
+    pub pe_max: Option<f64>,
+    pub pb_min: Option<f64>,
+    pub pb_max: Option<f64>,
+    pub mcap_min: Option<f64>, // 流通市值（亿）
+    pub mcap_max: Option<f64>,
+    pub amp_min: Option<f64>, // 振幅 %
+    pub amp_max: Option<f64>,
+    pub ma_bull: bool,    // 均线多头排列
+    pub macd_golden: bool, // MACD 金叉
+    pub volume_up: bool,  // 放量上涨
+    pub breakout: bool,   // 突破新高
+    pub above_ma20: bool, // 站上 20 日线
+    pub limit: i64,
+}
+impl Default for ScreenFilter {
+    fn default() -> Self {
+        ScreenFilter {
+            price_min: None,
+            price_max: None,
+            pct_min: None,
+            pct_max: None,
+            turnover_min: None,
+            turnover_max: None,
+            vr_min: None,
+            vr_max: None,
+            pe_min: None,
+            pe_max: None,
+            pb_min: None,
+            pb_max: None,
+            mcap_min: None,
+            mcap_max: None,
+            amp_min: None,
+            amp_max: None,
+            ma_bull: false,
+            macd_golden: false,
+            volume_up: false,
+            breakout: false,
+            above_ma20: false,
+            limit: 50,
+        }
+    }
+}
+
+/// 选股结果（Quote 字段平铺 + 命中的技术信号）
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenResult {
+    #[serde(flatten)]
+    pub quote: Quote,
+    pub signals: Vec<String>,
 }
 
 const QUOTE_TIMEOUT: u64 = 5;
@@ -399,4 +472,208 @@ pub async fn search_stocks(keyword: String) -> Result<Vec<StockItem>, String> {
         Ok(_) => Err("未找到匹配股票".to_string()),
         Err(e) => Err(format!("搜索失败: {e}")),
     }
+}
+
+// ===== 条件选股 =====
+
+fn in_range(v: f64, lo: Option<f64>, hi: Option<f64>) -> bool {
+    if let Some(l) = lo {
+        if v < l {
+            return false;
+        }
+    }
+    if let Some(h) = hi {
+        if v > h {
+            return false;
+        }
+    }
+    true
+}
+
+/// 基本面 / 当日行情条件（批量字段，本地即时筛选）
+fn basic_match(q: &Quote, f: &ScreenFilter) -> bool {
+    in_range(q.price, f.price_min, f.price_max)
+        && in_range(q.pct, f.pct_min, f.pct_max)
+        && in_range(q.turnover, f.turnover_min, f.turnover_max)
+        && in_range(q.volume_ratio, f.vr_min, f.vr_max)
+        && in_range(q.pe, f.pe_min, f.pe_max)
+        && in_range(q.pb, f.pb_min, f.pb_max)
+        && in_range(q.circ_mv, f.mcap_min, f.mcap_max)
+        && in_range(q.amplitude, f.amp_min, f.amp_max)
+}
+
+// —— 技术指标 ——
+fn sma(v: &[f64], n: usize) -> f64 {
+    if v.len() < n {
+        return 0.0;
+    }
+    v[v.len() - n..].iter().sum::<f64>() / n as f64
+}
+fn ema_series(v: &[f64], n: usize) -> Vec<f64> {
+    if v.is_empty() {
+        return vec![];
+    }
+    let k = 2.0 / (n as f64 + 1.0);
+    let mut out = Vec::with_capacity(v.len());
+    let mut e = v[0];
+    out.push(e);
+    for &x in &v[1..] {
+        e = x * k + e * (1.0 - k);
+        out.push(e);
+    }
+    out
+}
+fn closes(bars: &[KBar]) -> Vec<f64> {
+    bars.iter().map(|b| b.close).collect()
+}
+
+/// 均线多头排列：MA5>MA10>MA20>MA30 且股价站上 MA5
+fn signal_ma_bull(bars: &[KBar]) -> bool {
+    if bars.len() < 31 {
+        return false;
+    }
+    let c = closes(bars);
+    let ma5 = sma(&c, 5);
+    let ma10 = sma(&c, 10);
+    let ma20 = sma(&c, 20);
+    let ma30 = sma(&c, 30);
+    ma5 > ma10 && ma10 > ma20 && ma20 > ma30 && *c.last().unwrap() > ma5
+}
+
+/// MACD 金叉：近 3 日内 DIF 上穿 DEA
+fn signal_macd(bars: &[KBar]) -> bool {
+    if bars.len() < 35 {
+        return false;
+    }
+    let c = closes(bars);
+    let e12 = ema_series(&c, 12);
+    let e26 = ema_series(&c, 26);
+    let dif: Vec<f64> = e12.iter().zip(e26).map(|(a, b)| a - b).collect();
+    let dea = ema_series(&dif, 9);
+    let n = dif.len();
+    for i in (n - 3)..n {
+        if i > 0 && dif[i] > dea[i] && dif[i - 1] <= dea[i - 1] {
+            return true;
+        }
+    }
+    false
+}
+
+/// 放量上涨：今日量 > 5 日均量 ×1.5，且收阳、收盘价高于昨日
+fn signal_volume_up(bars: &[KBar]) -> bool {
+    let n = bars.len();
+    if n < 7 {
+        return false;
+    }
+    let today = &bars[n - 1];
+    let prev_vol = bars[n - 6..n - 1].iter().map(|b| b.volume).sum::<f64>() / 5.0;
+    today.volume > prev_vol * 1.5 && today.close > today.open && today.close > bars[n - 2].close
+}
+
+/// 突破新高：今日收盘 ≥ 近 20 日（不含今日）最高价
+fn signal_breakout(bars: &[KBar]) -> bool {
+    let n = bars.len();
+    if n < 21 {
+        return false;
+    }
+    let recent_high = bars[n - 21..n - 1]
+        .iter()
+        .map(|b| b.high)
+        .fold(f64::MIN, f64::max);
+    bars[n - 1].close >= recent_high
+}
+
+/// 站上 20 日均线
+fn signal_above_ma20(bars: &[KBar]) -> bool {
+    if bars.len() < 21 {
+        return false;
+    }
+    let c = closes(bars);
+    *c.last().unwrap() > sma(&c, 20)
+}
+
+/// 条件选股：股池批量行情 → 基础筛选 → （可选）并发拉日K做技术形态筛选
+pub async fn get_screener(f: ScreenFilter) -> Result<Vec<ScreenResult>, String> {
+    // 股池（去重）
+    let mut codes: Vec<String> = HOT_CODES.iter().map(|s| s.to_string()).collect();
+    codes.sort();
+    codes.dedup();
+
+    let quotes = tokio::time::timeout(
+        Duration::from_secs(QUOTE_TIMEOUT),
+        tencent::quotes(&codes),
+    )
+    .await
+    .map_err(|_| "选股: 行情超时".to_string())??;
+
+    let candidates: Vec<Quote> = quotes.into_iter().filter(|q| basic_match(q, &f)).collect();
+
+    let need = f.ma_bull as usize
+        + f.macd_golden as usize
+        + f.volume_up as usize
+        + f.breakout as usize
+        + f.above_ma20 as usize;
+
+    let mut results: Vec<ScreenResult> = Vec::new();
+
+    if need == 0 {
+        for q in candidates {
+            results.push(ScreenResult {
+                quote: q,
+                signals: vec![],
+            });
+        }
+    } else {
+        // 对候选并发拉日K（近 70 日），并发上限 8
+        use std::sync::Arc;
+        use tokio::sync::Semaphore;
+        use tokio::task::JoinSet;
+        let sem = Arc::new(Semaphore::new(8));
+        let mut set = JoinSet::new();
+        for q in candidates {
+            let permit = sem.clone().acquire_owned().await.map_err(|e| e.to_string())?;
+            set.spawn(async move {
+                let _p = permit;
+                let r = tencent::kline(&q.code, 101, 70).await;
+                (q, r)
+            });
+        }
+        while let Some(joined) = set.join_next().await {
+            let (q, r) = joined.map_err(|e| e.to_string())?;
+            let bars = match r {
+                Ok(b) => b,
+                Err(_) => continue,
+            };
+            let mut sigs: Vec<String> = Vec::new();
+            if f.ma_bull && signal_ma_bull(&bars) {
+                sigs.push("均线多头".to_string());
+            }
+            if f.macd_golden && signal_macd(&bars) {
+                sigs.push("MACD金叉".to_string());
+            }
+            if f.volume_up && signal_volume_up(&bars) {
+                sigs.push("放量上涨".to_string());
+            }
+            if f.breakout && signal_breakout(&bars) {
+                sigs.push("突破新高".to_string());
+            }
+            if f.above_ma20 && signal_above_ma20(&bars) {
+                sigs.push("站上20日线".to_string());
+            }
+            // 勾选的技术条件必须全部满足（AND）
+            if sigs.len() == need {
+                results.push(ScreenResult {
+                    quote: q,
+                    signals: sigs,
+                });
+            }
+        }
+    }
+
+    results.sort_by(|a, b| b.quote.pct.partial_cmp(&a.quote.pct).unwrap());
+    results.truncate(f.limit.max(1) as usize);
+    if results.is_empty() {
+        return Err("没有股票满足所选条件，请放宽条件后重试".to_string());
+    }
+    Ok(results)
 }

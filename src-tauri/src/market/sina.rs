@@ -52,6 +52,13 @@ pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
             amount,
             time: now,
             source: "sina".to_string(),
+            turnover: 0.0,
+            pe: 0.0,
+            pb: 0.0,
+            amplitude: 0.0,
+            volume_ratio: 0.0,
+            circ_mv: 0.0,
+            total_mv: 0.0,
         });
     }
     Ok(out)
@@ -295,6 +302,13 @@ fn parse_rank(txt: &str) -> Result<Vec<Quote>, String> {
             amount,
             time: now,
             source: "sina".to_string(),
+            turnover: 0.0,
+            pe: 0.0,
+            pb: 0.0,
+            amplitude: 0.0,
+            volume_ratio: 0.0,
+            circ_mv: 0.0,
+            total_mv: 0.0,
         });
     }
     if out.is_empty() {

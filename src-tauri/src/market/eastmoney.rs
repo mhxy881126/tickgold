@@ -79,6 +79,13 @@ pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
             amount: nf(&q.amount),
             time: now,
             source: "eastmoney".to_string(),
+            turnover: 0.0,
+            pe: 0.0,
+            pb: 0.0,
+            amplitude: 0.0,
+            volume_ratio: 0.0,
+            circ_mv: 0.0,
+            total_mv: 0.0,
         })
         .collect();
     Ok(out)
@@ -171,6 +178,13 @@ pub async fn rank(sort: &str, pz: i64) -> Result<Vec<Quote>, String> {
             amount: nf(&q.amount),
             time: now,
             source: "eastmoney".to_string(),
+            turnover: 0.0,
+            pe: 0.0,
+            pb: 0.0,
+            amplitude: 0.0,
+            volume_ratio: 0.0,
+            circ_mv: 0.0,
+            total_mv: 0.0,
         })
         .collect();
     Ok(out)
@@ -221,6 +235,13 @@ pub async fn index_quotes() -> Result<Vec<Quote>, String> {
             amount: nf(&q.amount),
             time: now,
             source: "eastmoney".to_string(),
+            turnover: 0.0,
+            pe: 0.0,
+            pb: 0.0,
+            amplitude: 0.0,
+            volume_ratio: 0.0,
+            circ_mv: 0.0,
+            total_mv: 0.0,
         })
         .collect();
     Ok(out)
