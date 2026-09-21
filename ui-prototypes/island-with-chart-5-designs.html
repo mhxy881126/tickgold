@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>金色灵动岛+迷你分时图 - 5款设计</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a1a;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  color: #fff;
+  padding: 40px;
+}
+h1 { text-align: center; margin-bottom: 40px; font-size: 28px; }
+h2 { margin: 40px 0 20px; font-size: 20px; color: #888; }
+.demo {
+  background: #2a2a2a;
+  border-radius: 16px;
+  padding: 40px;
+  margin-bottom: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.demo-label { color: #666; font-size: 13px; }
+
+/* 通用 */
+.island {
+  background: linear-gradient(135deg, #1a1500 0%, #2a2000 100%);
+  border: 1px solid #ffd700;
+  border-radius: 999px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+.island .name { color: #ffd700; }
+.island .up { color: #ef5350; }
+.island .down { color: #26a69a; }
+.island .gold { color: #ffd700; }
+
+/* 款1：折叠态+右侧迷你分时线 */
+.island-1 {
+  min-width: 360px;
+}
+.island-1 .icon {
+  width: 22px;
+  height: 22px;
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #000;
+  font-weight: 700;
+}
+.island-1 .info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.island-1 .mini-chart {
+  width: 90px;
+  height: 28px;
+  margin-left: auto;
+}
+
+/* 款2：折叠态+右侧分时线+成交量 */
+.island-2 {
+  min-width: 400px;
+}
+.island-2 .icon {
+  width: 22px;
+  height: 22px;
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #000;
+  font-weight: 700;
+}
+.island-2 .info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.island-2 .mini-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: auto;
+}
+.island-2 .mini-line {
+  width: 100px;
+  height: 20px;
+}
+.island-2 .mini-vol {
+  width: 100px;
+  height: 8px;
+}
+
+/* 款3：展开态+顶部分时图 */
+.island-3 {
+  min-width: 380px;
+  flex-direction: column;
+  align-items: stretch;
+  border-radius: 28px;
+  padding: 14px 16px;
+}
+.island-3 .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.island-3 .header .title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #ffd700;
+}
+.island-3 .header .icon {
+  width: 20px;
+  height: 20px;
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #000;
+  font-weight: 700;
+}
+.island-3 .header .count {
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  color: #000;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.island-3 .chart-area {
+  height: 80px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+.island-3 .list { display: flex; flex-direction: column; gap: 6px; }
+.island-3 .item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+/* 款4：折叠态+分时线+昨收线 */
+.island-4 {
+  min-width: 380px;
+}
+.island-4 .icon {
+  width: 22px;
+  height: 22px;
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #000;
+  font-weight: 700;
+}
+.island-4 .info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.island-4 .mini-chart {
+  width: 100px;
+  height: 30px;
+  margin-left: auto;
+  position: relative;
+}
+
+/* 款5：展开态+分时图+股票列表 */
+.island-5 {
+  min-width: 400px;
+  flex-direction: column;
+  align-items: stretch;
+  border-radius: 28px;
+  padding: 14px 16px;
+}
+.island-5 .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.island-5 .header .title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #ffd700;
+}
+.island-5 .header .icon {
+  width: 20px;
+  height: 20px;
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #000;
+  font-weight: 700;
+}
+.island-5 .header .count {
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  color: #000;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.island-5 .chart-area {
+  height: 70px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+.island-5 .list { display: flex; flex-direction: column; gap: 6px; }
+.island-5 .item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+</style>
+</head>
+<body>
+
+<h1>金色灵动岛 + 迷你分时图（5款）</h1>
+
+<!-- 款1：折叠态+右侧迷你分时线 -->
+<h2>款 1 · 折叠态 + 右侧迷你分时线</h2>
+<div class="demo">
+  <div class="island island-1">
+    <span class="icon">⚡</span>
+    <div class="info">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <span class="name">宁德时代</span>
+        <span class="gold">297.10</span>
+      </div>
+      <span class="down" style="font-size:12px;">-1.61%</span>
+    </div>
+    <svg class="mini-chart" viewBox="0 0 90 28">
+      <polyline fill="none" stroke="#26a69a" stroke-width="1.5"
+        points="0,14 10,12 20,16 30,10 40,13 50,8 60,11 70,6 80,9 90,7" />
+    </svg>
+  </div>
+  <div class="demo-label">折叠态，右侧带迷你分时线，直观看趋势</div>
+</div>
+
+<!-- 款2：折叠态+右侧分时线+成交量 -->
+<h2>款 2 · 折叠态 + 分时线 + 成交量柱</h2>
+<div class="demo">
+  <div class="island island-2">
+    <span class="icon">⚡</span>
+    <div class="info">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <span class="name">宁德时代</span>
+        <span class="gold">297.10</span>
+      </div>
+      <span class="down" style="font-size:12px;">-1.61%</span>
+    </div>
+    <div class="mini-wrap">
+      <svg class="mini-line" viewBox="0 0 100 20">
+        <polyline fill="none" stroke="#26a69a" stroke-width="1.5"
+          points="0,10 10,8 20,12 30,6 40,9 50,4 60,7 70,3 80,6 90,4 100,5" />
+      </svg>
+      <svg class="mini-vol" viewBox="0 0 100 8">
+        <rect x="0" y="4" width="8" height="4" fill="#26a69a" opacity="0.6"/>
+        <rect x="12" y="2" width="8" height="6" fill="#ef5350" opacity="0.6"/>
+        <rect x="24" y="5" width="8" height="3" fill="#26a69a" opacity="0.6"/>
+        <rect x="36" y="3" width="8" height="5" fill="#ef5350" opacity="0.6"/>
+        <rect x="48" y="1" width="8" height="7" fill="#ef5350" opacity="0.6"/>
+        <rect x="60" y="4" width="8" height="4" fill="#26a69a" opacity="0.6"/>
+        <rect x="72" y="2" width="8" height="6" fill="#ef5350" opacity="0.6"/>
+        <rect x="84" y="3" width="8" height="5" fill="#26a69a" opacity="0.6"/>
+      </svg>
+    </div>
+  </div>
+  <div class="demo-label">折叠态，分时线+下方迷你成交量柱</div>
+</div>
+
+<!-- 款3：展开态+顶部分时图 -->
+<h2>款 3 · 展开态 + 顶部分时图</h2>
+<div class="demo">
+  <div class="island island-3">
+    <div class="header">
+      <span class="title">
+        <span class="icon">⚡</span>
+        智能异动提醒
+      </span>
+      <span class="count">3 只</span>
+    </div>
+    <div class="chart-area">
+      <svg width="100%" height="80" viewBox="0 0 340 80">
+        <line x1="0" y1="40" x2="340" y2="40" stroke="#666" stroke-width="0.5" stroke-dasharray="3,3"/>
+        <polyline fill="none" stroke="#26a69a" stroke-width="1.5"
+          points="0,50 20,45 40,55 60,40 80,48 100,35 120,42 140,30 160,38 180,25 200,32 220,20 240,28 260,15 280,22 300,12 320,18 340,10" />
+      </svg>
+    </div>
+    <div class="list">
+      <div class="item">
+        <span class="arrow up">↑</span>
+        <span class="name">贵州茅台</span>
+        <span class="up" style="margin-left:auto;">+9.99% 涨停</span>
+      </div>
+      <div class="item">
+        <span class="arrow down">↓</span>
+        <span class="name">宁德时代</span>
+        <span class="down" style="margin-left:auto;">-1.61% 跌破支撑</span>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">展开态，顶部带分时图，下方股票列表</div>
+</div>
+
+<!-- 款4：折叠态+分时线+昨收线 -->
+<h2>款 4 · 折叠态 + 分时线 + 昨收线</h2>
+<div class="demo">
+  <div class="island island-4">
+    <span class="icon">⚡</span>
+    <div class="info">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <span class="name">宁德时代</span>
+        <span class="gold">297.10</span>
+      </div>
+      <span class="down" style="font-size:12px;">-1.61% (昨收 301.95)</span>
+    </div>
+    <svg class="mini-chart" viewBox="0 0 100 30">
+      <line x1="0" y1="15" x2="100" y2="15" stroke="#666" stroke-width="0.5" stroke-dasharray="2,2"/>
+      <polyline fill="none" stroke="#26a69a" stroke-width="1.5"
+        points="0,12 10,10 20,14 30,8 40,11 50,6 60,9 70,4 80,7 90,5 100,6" />
+    </svg>
+  </div>
+  <div class="demo-label">分时线带昨收参考线，下方显示昨收价</div>
+</div>
+
+<!-- 款5：展开态+分时图+股票列表 -->
+<h2>款 5 · 展开态 + 分时图 + 完整股票列表</h2>
+<div class="demo">
+  <div class="island island-5">
+    <div class="header">
+      <span class="title">
+        <span class="icon">⚡</span>
+        宁德时代 分时
+      </span>
+      <span class="count">3 只</span>
+    </div>
+    <div class="chart-area">
+      <svg width="100%" height="70" viewBox="0 0 360 70">
+        <line x1="0" y1="35" x2="360" y2="35" stroke="#666" stroke-width="0.5" stroke-dasharray="3,3"/>
+        <polyline fill="none" stroke="#26a69a" stroke-width="1.5"
+          points="0,45 20,40 40,50 60,35 80,43 100,30 120,37 140,25 160,33 180,20 200,27 220,15 240,22 260,10 280,17 300,7 320,13 340,5 360,8" />
+      </svg>
+    </div>
+    <div class="list">
+      <div class="item">
+        <span class="arrow up">↑</span>
+        <span class="name">贵州茅台</span>
+        <span class="up" style="margin-left:auto;">+9.99%</span>
+      </div>
+      <div class="item">
+        <span class="arrow down">↓</span>
+        <span class="name">宁德时代</span>
+        <span class="down" style="margin-left:auto;">-1.61%</span>
+      </div>
+      <div class="item">
+        <span class="arrow up">↑</span>
+        <span class="name">中国平安</span>
+        <span class="up" style="margin-left:auto;">+2.35%</span>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">展开态，当前股票分时图+下方其他股票列表</div>
+</div>
+
+</body>
+</html>

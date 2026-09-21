@@ -145,9 +145,15 @@ async function commitEdit(g: { id: number }) {
     </div>
 
     <table class="list">
+      <colgroup>
+        <col style="width: 42%">
+        <col style="width: 22%">
+        <col style="width: 22%">
+        <col style="width: 14%">
+      </colgroup>
       <thead>
         <tr>
-          <th>名称/代码</th><th class="r">最新</th><th class="r">涨跌幅</th><th class="r">成交额</th><th></th>
+          <th>名称</th><th class="r">最新</th><th class="r">涨跌幅</th><th class="r">成交额</th>
         </tr>
       </thead>
       <tbody>
@@ -157,25 +163,23 @@ async function commitEdit(g: { id: number }) {
           :class="{ active: s.code === props.selected }"
           @click="emit('select', s.code)"
         >
-          <td>
-            <div class="nm">{{ qOf(s.code)?.name || s.name || "--" }}</div>
-            <div class="cd">{{ s.code }}</div>
+          <td class="stock-cell">
+            <span class="nm">{{ qOf(s.code)?.name || s.name || "--" }}</span>
+            <span class="cd">{{ s.code }}</span>
           </td>
           <td class="r" :class="cls(qOf(s.code)?.pct)">{{ fmt(qOf(s.code)?.price) }}</td>
           <td class="r" :class="cls(qOf(s.code)?.pct)">
-            <span v-if="qOf(s.code)">{{ fmt(qOf(s.code)?.pct) }}%</span>
+            <span v-if="qOf(s.code)">{{ qOf(s.code)!.pct > 0 ? "+" : "" }}{{ fmt(qOf(s.code)?.pct) }}%</span>
             <span v-else>--</span>
           </td>
           <td class="r dim">
-            <span v-if="qOf(s.code)">{{ (qOf(s.code)!.amount / 1e8).toFixed(2) }}亿</span>
+            <span v-if="qOf(s.code)">{{ (qOf(s.code)!.amount / 1e8).toFixed(1) }}</span>
             <span v-else>--</span>
-          </td>
-          <td class="ops">
             <button class="del" title="移出自选" @click.stop="wl.remove(s.code)">×</button>
           </td>
         </tr>
         <tr v-if="wl.currentStocks.length === 0">
-          <td colspan="5" class="empty">该分组暂无股票，上方搜索添加</td>
+          <td colspan="4" class="empty">该分组暂无股票，上方搜索添加</td>
         </tr>
       </tbody>
     </table>
@@ -218,25 +222,29 @@ async function commitEdit(g: { id: number }) {
 .chip.editing { padding: 1px 6px; }
 .chip-input { width: 84px; background: transparent; border: none; outline: none; color: #e6edf3; font-size: 12px; }
 
-table { width: 100%; border-collapse: collapse; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 thead th {
   text-align: left; color: var(--text-dim); font-weight: 500;
-  padding: 6px 8px; border-bottom: 1px solid var(--border);
+  padding: 5px 8px; border-bottom: 1px solid var(--border);
   position: sticky; top: 0; background: var(--bg-panel); z-index: 5;
+  font-size: 11px;
 }
 th.r, td.r { text-align: right; }
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: var(--bg-hover); }
 tbody tr.active { background: #1c2735; }
-td { padding: 7px 8px; border-bottom: 1px solid #1b2129; }
-.nm { font-weight: 600; }
-.cd { font-size: 11px; color: var(--text-dim); }
-.dim { color: var(--text-dim); }
-.ops { width: 28px; text-align: center; }
+td { padding: 5px 8px; border-bottom: 1px solid #1b2129; font-size: 12px; white-space: nowrap; overflow: hidden; }
+.stock-cell { display: flex; align-items: baseline; gap: 5px; overflow: hidden; }
+.nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
+.dim { color: var(--text-dim); position: relative; }
 .del {
   background: transparent; border: none; color: #8b98a5;
-  font-size: 15px; cursor: pointer; line-height: 1; padding: 0 4px;
+  font-size: 13px; cursor: pointer; line-height: 1; padding: 0 0 0 4px;
+  position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
+  opacity: 0;
 }
+tr:hover .del { opacity: 1; }
 .del:hover { color: #f23645; }
-.empty { text-align: center; color: var(--text-dim); padding: 30px; }
+.empty { text-align: center; color: var(--text-dim); padding: 30px; font-size: 12px; }
 </style>

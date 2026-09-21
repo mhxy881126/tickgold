@@ -8,7 +8,6 @@ import WatchList from "./components/WatchList.vue";
 import Indices from "./components/Indices.vue";
 import RankBoard from "./components/RankBoard.vue";
 import RightPanel from "./components/RightPanel.vue";
-import NewsBar from "./components/NewsBar.vue";
 import SearchBox from "./components/SearchBox.vue";
 import StockChart from "./components/StockChart.vue";
 import { useWatchlistStore } from "./stores/watchlist";
@@ -177,11 +176,6 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
       <RightPanel :code="selected" />
     </aside>
 
-    <!-- 底部新闻 -->
-    <footer class="newsbar">
-      <NewsBar :code="selected" />
-    </footer>
-
     <!-- 预警条 -->
     <footer v-if="alerts.firedLog.length" class="alertbar">
       <div class="alabel">预警</div>
@@ -195,7 +189,7 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
 <style scoped>
 .app {
   display: grid;
-  grid-template-rows: 38px 32px 1fr 90px;
+  grid-template-rows: 38px 32px 1fr;
   grid-template-columns: 46px auto 1fr 300px;
   height: 100vh;
 }
@@ -247,9 +241,6 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
 
 /* 右栏 */
 .rightpanel { min-height: 0; overflow: hidden; }
-
-/* 底部新闻 */
-.newsbar { grid-column: 2 / 5; border-top: 1px solid var(--border); min-height: 0; }
 
 /* 预警条 */
 .alertbar {

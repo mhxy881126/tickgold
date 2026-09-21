@@ -66,8 +66,15 @@ function addOne(q: Quote) {
       </button>
     </div>
     <table>
+      <colgroup>
+        <col style="width: 10%">
+        <col style="width: 38%">
+        <col style="width: 20%">
+        <col style="width: 18%">
+        <col style="width: 14%">
+      </colgroup>
       <thead>
-        <tr><th>#</th><th>名称/代码</th><th class="r">最新</th><th class="r">涨跌幅</th><th class="r">成交额</th><th></th></tr>
+        <tr><th>#</th><th>名称</th><th class="r">最新</th><th class="r">涨跌幅</th><th class="r">成交额</th></tr>
       </thead>
       <tbody>
         <tr
@@ -76,25 +83,24 @@ function addOne(q: Quote) {
           @click="emit('select', q.code)"
         >
           <td class="idx">{{ i + 1 }}</td>
-          <td>
-            <div class="nm">{{ q.name }}</div>
-            <div class="cd">{{ q.code }}</div>
+          <td class="stock-cell">
+            <span class="nm">{{ q.name }}</span>
+            <span class="cd">{{ q.code }}</span>
           </td>
           <td class="r" :class="cls(q.pct)">{{ fmt(q.price) }}</td>
-          <td class="r" :class="cls(q.pct)">{{ fmt(q.pct) }}%</td>
-          <td class="r dim">{{ amt(q.amount) }}</td>
-          <td class="ops">
+          <td class="r" :class="cls(q.pct)">{{ q.pct > 0 ? "+" : "" }}{{ fmt(q.pct) }}%</td>
+          <td class="r dim">
+            {{ (q.amount / 1e8).toFixed(1) }}
             <button
               v-if="!isWatched(q.code)"
               class="add"
               title="加入自选"
               @click.stop="addOne(q)"
             >+</button>
-            <span v-else class="inwl">已加</span>
           </td>
         </tr>
         <tr v-if="!loading && list.length === 0">
-          <td colspan="6" class="empty">
+          <td colspan="5" class="empty">
             <div v-if="errorMsg" class="err">{{ errorMsg }}</div>
             <div v-else>暂无数据</div>
           </td>
@@ -112,27 +118,30 @@ function addOne(q: Quote) {
   background: transparent; border: 1px solid var(--border); color: var(--text-dim); cursor: pointer;
 }
 .tab.active { color: #e6edf3; border-color: #2f6fed; background: #16233a; }
-table { width: 100%; border-collapse: collapse; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 thead th {
   text-align: left; color: var(--text-dim); font-weight: 500;
-  padding: 6px 8px; border-bottom: 1px solid var(--border);
+  padding: 5px 8px; border-bottom: 1px solid var(--border);
   position: sticky; top: 0; background: var(--bg-panel);
+  font-size: 11px;
 }
 th.r, td.r { text-align: right; }
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: var(--bg-hover); }
-td { padding: 6px 8px; border-bottom: 1px solid #1b2129; }
-.idx { color: var(--text-dim); width: 22px; }
-.nm { font-weight: 600; }
-.cd { font-size: 11px; color: var(--text-dim); }
-.dim { color: var(--text-dim); }
-.ops { width: 44px; text-align: center; }
+td { padding: 5px 8px; border-bottom: 1px solid #1b2129; font-size: 12px; white-space: nowrap; overflow: hidden; }
+.idx { color: var(--text-dim); width: 22px; font-size: 11px; }
+.stock-cell { display: flex; align-items: baseline; gap: 5px; overflow: hidden; }
+.nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
+.dim { color: var(--text-dim); position: relative; }
 .add {
-  background: transparent; border: 1px solid var(--border); color: var(--accent);
-  border-radius: 4px; font-size: 12px; cursor: pointer; padding: 1px 8px;
+  background: transparent; border: none; color: var(--accent);
+  font-size: 13px; cursor: pointer; padding: 0 0 0 4px;
+  position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
+  opacity: 0;
 }
-.add:hover { background: var(--bg-hover); }
-.inwl { font-size: 11px; color: var(--text-dim); }
-.empty { text-align: center; color: var(--text-dim); padding: 30px; }
-.err { color: #f23645; font-size: 12px; padding: 0 16px; }
+tr:hover .add { opacity: 1; }
+.add:hover { color: #fff; }
+.empty { text-align: center; color: var(--text-dim); padding: 30px; font-size: 12px; }
+.err { color: #f23645; font-size: 11px; padding: 0 16px; }
 </style>

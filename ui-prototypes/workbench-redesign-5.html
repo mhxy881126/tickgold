@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>盯盘交易终端 - 5款重新排版设计</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #111;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  color: #fff;
+  padding: 20px;
+}
+h1 { text-align: center; margin-bottom: 30px; font-size: 26px; }
+h2 { margin: 40px 0 16px; font-size: 18px; color: #888; }
+.demo-wrap {
+  background: #222;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+.demo-label { color: #666; font-size: 12px; text-align: center; margin-top: 12px; }
+
+.window {
+  width: 100%;
+  height: 520px;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 通用颜色 */
+.up { color: #ef5350; }
+.down { color: #26a69a; }
+.gold { color: #ffd700; }
+
+/* ========== 款1：经典三栏·大K线（去掉底部，K线占满） ========== */
+.win-1 { background: #0d1117; }
+.win-1 .topbar {
+  height: 40px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 16px;
+}
+.win-1 .logo { color: #ffd700; font-weight: 700; font-size: 14px; }
+.win-1 .search {
+  flex: 1; max-width: 260px;
+  background: #0d1117; border: 1px solid #30363d; border-radius: 4px;
+  padding: 4px 10px; color: #8b949e; font-size: 12px;
+}
+.win-1 .indices { display: flex; gap: 16px; margin-left: auto; font-size: 12px; }
+.win-1 .main { flex: 1; display: flex; }
+.win-1 .left {
+  width: 200px; background: #161b22; border-right: 1px solid #30363d; padding: 8px;
+}
+.win-1 .left .nav-item {
+  padding: 8px 12px; color: #8b949e; font-size: 12px; border-radius: 4px; margin-bottom: 2px;
+}
+.win-1 .left .nav-item.active { background: #1f6feb; color: #fff; }
+.win-1 .center { flex: 1; display: flex; flex-direction: column; }
+.win-1 .center .toolbar {
+  height: 34px; background: #161b22; border-bottom: 1px solid #30363d;
+  display: flex; align-items: center; padding: 0 12px; gap: 6px;
+}
+.win-1 .center .toolbar button {
+  background: transparent; border: none; color: #8b949e;
+  padding: 4px 10px; border-radius: 3px; font-size: 12px;
+}
+.win-1 .center .toolbar button.on { background: #1f6feb; color: #fff; }
+.win-1 .center .chart { flex: 1; position: relative; }
+.win-1 .center .chart .ph {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  color: #30363d; font-size: 14px;
+}
+.win-1 .right {
+  width: 190px; background: #161b22; border-left: 1px solid #30363d; padding: 10px;
+}
+.win-1 .right .sn { color: #ffd700; font-size: 13px; margin-bottom: 6px; }
+.win-1 .right .pr { color: #ef5350; font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.win-1 .right .ob { font-size: 10px; color: #8b949e; }
+.win-1 .right .ob .r { display: flex; justify-content: space-between; padding: 2px 0; }
+
+/* ========== 款2：多股同列（4只股票K线网格） ========== */
+.win-2 { background: #0d1117; }
+.win-2 .topbar {
+  height: 40px; background: #161b22; border-bottom: 1px solid #30363d;
+  display: flex; align-items: center; padding: 0 16px; gap: 16px;
+}
+.win-2 .logo { color: #ffd700; font-weight: 700; font-size: 14px; }
+.win-2 .search {
+  flex: 1; max-width: 260px;
+  background: #0d1117; border: 1px solid #30363d; border-radius: 4px;
+  padding: 4px 10px; color: #8b949e; font-size: 12px;
+}
+.win-2 .indices { display: flex; gap: 16px; margin-left: auto; font-size: 12px; }
+.win-2 .grid {
+  flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 1px; background: #30363d;
+}
+.win-2 .cell { background: #0d1117; padding: 8px; display: flex; flex-direction: column; }
+.win-2 .cell .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 12px; }
+.win-2 .cell .chart-area { flex: 1; position: relative; }
+.win-2 .cell .chart-area .ph {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  color: #30363d; font-size: 12px;
+}
+
+/* ========== 款3：顶部自选股横滚 + 大K线 + 右侧盘口 ========== */
+.win-3 { background: #0d1117; }
+.win-3 .topbar {
+  height: 40px; background: #161b22; border-bottom: 1px solid #30363d;
+  display: flex; align-items: center; padding: 0 16px; gap: 16px;
+}
+.win-3 .logo { color: #ffd700; font-weight: 700; font-size: 14px; }
+.win-3 .search {
+  flex: 1; max-width: 260px;
+  background: #0d1117; border: 1px solid #30363d; border-radius: 4px;
+  padding: 4px 10px; color: #8b949e; font-size: 12px;
+}
+.win-3 .indices { display: flex; gap: 16px; margin-left: auto; font-size: 12px; }
+.win-3 .stock-strip {
+  height: 36px; background: #161b22; border-bottom: 1px solid #30363d;
+  display: flex; align-items: center; padding: 0 12px; gap: 12px; overflow: hidden;
+}
+.win-3 .stock-strip .chip {
+  display: flex; align-items: center; gap: 6px;
+  background: #0d1117; border: 1px solid #30363d; border-radius: 16px;
+  padding: 4px 10px; font-size: 11px; white-space: nowrap;
+}
+.win-3 .stock-strip .chip.active { border-color: #1f6feb; background: #1f6feb; }
+.win-3 .main { flex: 1; display: flex; }
+.win-3 .center { flex: 1; display: flex; flex-direction: column; }
+.win-3 .center .toolbar {
+  height: 34px; background: #161b22; border-bottom: 1px solid #30363d;
+  display: flex; align-items: center; padding: 0 12px; gap: 6px;
+}
+.win-3 .center .toolbar button {
+  background: transparent; border: none; color: #8b949e;
+  padding: 4px 10px; border-radius: 3px; font-size: 12px;
+}
+.win-3 .center .toolbar button.on { background: #1f6feb; color: #fff; }
+.win-3 .center .chart { flex: 1; position: relative; }
+.win-3 .center .chart .ph {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  color: #30363d; font-size: 14px;
+}
+.win-3 .right {
+  width: 190px; background: #161b22; border-left: 1px solid #30363d; padding: 10px;
+}
+.win-3 .right .sn { color: #ffd700; font-size: 13px; margin-bottom: 6px; }
+.win-3 .right .pr { color: #ef5350; font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.win-3 .right .ob { font-size: 10px; color: #8b949e; }
+.win-3 .right .ob .r { display: flex; justify-content: space-between; padding: 2px 0; }
+
+/* ========== 款4：全屏K线 + 左侧浮动面板（沉浸式） ========== */
+.win-4 { background: #000; position: relative; }
+.win-4 .topbar {
+  height: 40px; background: rgba(22,27,34,0.9); border-bottom: 1px solid #30363d;
+  display: flex; align-items: center; padding: 0 16px; gap: 16px;
+}
+.win-4 .logo { color: #ffd700; font-weight: 700; font-size: 14px; }
+.win-4 .search {
+  flex: 1; max-width: 260px;
+  background: rgba(0,0,0,0.5); border: 1px solid #30363d; border-radius: 4px;
+  padding: 4px 10px; color: #8b949e; font-size: 12px;
+}
+.win-4 .indices { display: flex; gap: 16px; margin-left: auto; font-size: 12px; }
+.win-4 .chart-full { flex: 1; position: relative; }
+.win-4 .chart-full .ph {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  color: #30363d; font-size: 16px;
+}
+.win-4 .float-left {
+  position: absolute; top: 52px; left: 10px; width: 180px;
+  background: rgba(22,27,34,0.92); backdrop-filter: blur(10px);
+  border: 1px solid #30363d; border-radius: 8px; padding: 8px;
+}
+.win-4 .float-left .nav-item {
+  padding: 7px 10px; color: #8b949e; font-size: 12px; border-radius: 4px; margin-bottom: 2px;
+}
+.win-4 .float-left .nav-item.active { background: #1f6feb; color: #fff; }
+.win-4 .float-right {
+  position: absolute; top: 52px; right: 10px; width: 180px;
+  background: rgba(22,27,34,0.92); backdrop-filter: blur(10px);
+  border: 1px solid #30363d; border-radius: 8px; padding: 10px;
+}
+.win-4 .float-right .sn { color: #ffd700; font-size: 12px; margin-bottom: 4px; }
+.win-4 .float-right .pr { color: #ef5350; font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+.win-4 .float-right .ob { font-size: 10px; color: #8b949e; }
+.win-4 .float-right .ob .r { display: flex; justify-content: space-between; padding: 2px 0; }
+
+/* ========== 款5：榜单主导（左榜单+中K线+右盘口，榜单加宽） ========== */
+.win-5 { background: #0d1117; }
+.win-5 .topbar {
+  height: 40px; background: #161b22; border-bottom: 1px solid #30363d;
+  display: flex; align-items: center; padding: 0 16px; gap: 16px;
+}
+.win-5 .logo { color: #ffd700; font-weight: 700; font-size: 14px; }
+.win-5 .search {
+  flex: 1; max-width: 260px;
+  background: #0d1117; border: 1px solid #30363d; border-radius: 4px;
+  padding: 4px 10px; color: #8b949e; font-size: 12px;
+}
+.win-5 .indices { display: flex; gap: 16px; margin-left: auto; font-size: 12px; }
+.win-5 .main { flex: 1; display: flex; }
+.win-5 .left {
+  width: 280px; background: #161b22; border-right: 1px solid #30363d;
+  display: flex; flex-direction: column;
+}
+.win-5 .left .tabs {
+  display: flex; border-bottom: 1px solid #30363d;
+}
+.win-5 .left .tabs .tab {
+  flex: 1; padding: 8px; text-align: center; color: #8b949e; font-size: 12px; cursor: pointer;
+}
+.win-5 .left .tabs .tab.active { color: #fff; border-bottom: 2px solid #1f6feb; }
+.win-5 .left .list { flex: 1; overflow-y: auto; }
+.win-5 .left .list .row {
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: 12px;
+}
+.win-5 .left .list .row:hover { background: rgba(255,255,255,0.03); }
+.win-5 .left .list .row.active { background: rgba(31,111,235,0.15); }
+.win-5 .center { flex: 1; display: flex; flex-direction: column; }
+.win-5 .center .toolbar {
+  height: 34px; background: #161b22; border-bottom: 1px solid #30363d;
+  display: flex; align-items: center; padding: 0 12px; gap: 6px;
+}
+.win-5 .center .toolbar button {
+  background: transparent; border: none; color: #8b949e;
+  padding: 4px 10px; border-radius: 3px; font-size: 12px;
+}
+.win-5 .center .toolbar button.on { background: #1f6feb; color: #fff; }
+.win-5 .center .chart { flex: 1; position: relative; }
+.win-5 .center .chart .ph {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  color: #30363d; font-size: 14px;
+}
+.win-5 .right {
+  width: 180px; background: #161b22; border-left: 1px solid #30363d; padding: 10px;
+}
+.win-5 .right .sn { color: #ffd700; font-size: 13px; margin-bottom: 6px; }
+.win-5 .right .pr { color: #ef5350; font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.win-5 .right .ob { font-size: 10px; color: #8b949e; }
+.win-5 .right .ob .r { display: flex; justify-content: space-between; padding: 2px 0; }
+</style>
+</head>
+<body>
+
+<h1>盯盘交易终端 - 5款重新排版设计</h1>
+
+<!-- 款1：经典三栏·大K线 -->
+<h2>款 1 · 经典三栏 · 大K线（去掉底部，K线占满）</h2>
+<div class="demo-wrap">
+  <div class="window win-1">
+    <div class="topbar">
+      <span class="logo">金睛盯盘</span>
+      <span class="search">搜索代码/名称/拼音</span>
+      <div class="indices">
+        <span>上证 3949 <span class="up">+0.97%</span></span>
+        <span>深成 13730 <span class="up">+0.65%</span></span>
+      </div>
+    </div>
+    <div class="main">
+      <div class="left">
+        <div class="nav-item active">自选</div>
+        <div class="nav-item">榜单</div>
+        <div class="nav-item">板块</div>
+      </div>
+      <div class="center">
+        <div class="toolbar">
+          <button>分时</button><button class="on">日K</button><button>周K</button><button>月K</button>
+        </div>
+        <div class="chart"><div class="ph">K线图（更大区域）</div></div>
+      </div>
+      <div class="right">
+        <div class="sn">贵州茅台 600519</div>
+        <div class="pr">1252.57</div>
+        <div class="ob">
+          <div class="r"><span>卖5</span><span>1252.60</span></div>
+          <div class="r"><span>卖4</span><span>1252.50</span></div>
+          <div class="r"><span>卖3</span><span>1252.40</span></div>
+          <div class="r"><span>卖2</span><span>1252.30</span></div>
+          <div class="r"><span>卖1</span><span>1252.20</span></div>
+          <div class="r"><span>买1</span><span>1252.10</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">去掉底部资讯，K线图区域更大，经典三栏布局</div>
+</div>
+
+<!-- 款2：多股同列 -->
+<h2>款 2 · 多股同列（4只股票K线网格）</h2>
+<div class="demo-wrap">
+  <div class="window win-2">
+    <div class="topbar">
+      <span class="logo">金睛盯盘</span>
+      <span class="search">搜索代码/名称/拼音</span>
+      <div class="indices">
+        <span>上证 3949 <span class="up">+0.97%</span></span>
+        <span>深成 13730 <span class="up">+0.65%</span></span>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="cell">
+        <div class="head"><span>贵州茅台</span><span class="up">+0.85%</span></div>
+        <div class="chart-area"><div class="ph">K线</div></div>
+      </div>
+      <div class="cell">
+        <div class="head"><span>宁德时代</span><span class="down">-1.61%</span></div>
+        <div class="chart-area"><div class="ph">K线</div></div>
+      </div>
+      <div class="cell">
+        <div class="head"><span>中国平安</span><span class="up">+2.35%</span></div>
+        <div class="chart-area"><div class="ph">K线</div></div>
+      </div>
+      <div class="cell">
+        <div class="head"><span>招商银行</span><span class="up">+0.52%</span></div>
+        <div class="chart-area"><div class="ph">K线</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">2x2网格同时显示4只股票K线，适合多股监控</div>
+</div>
+
+<!-- 款3：顶部自选股横滚 -->
+<h2>款 3 · 顶部自选股横滚 + 大K线</h2>
+<div class="demo-wrap">
+  <div class="window win-3">
+    <div class="topbar">
+      <span class="logo">金睛盯盘</span>
+      <span class="search">搜索代码/名称/拼音</span>
+      <div class="indices">
+        <span>上证 3949 <span class="up">+0.97%</span></span>
+        <span>深成 13730 <span class="up">+0.65%</span></span>
+      </div>
+    </div>
+    <div class="stock-strip">
+      <div class="chip active"><span>茅台</span><span class="up">+0.85%</span></div>
+      <div class="chip"><span>宁德</span><span class="down">-1.61%</span></div>
+      <div class="chip"><span>平安</span><span class="up">+2.35%</span></div>
+      <div class="chip"><span>招行</span><span class="up">+0.52%</span></div>
+      <div class="chip"><span>万科</span><span class="up">+9.94%</span></div>
+      <div class="chip"><span>恒瑞</span><span class="up">+4.85%</span></div>
+    </div>
+    <div class="main">
+      <div class="center">
+        <div class="toolbar">
+          <button>分时</button><button class="on">日K</button><button>周K</button><button>月K</button>
+        </div>
+        <div class="chart"><div class="ph">K线图</div></div>
+      </div>
+      <div class="right">
+        <div class="sn">贵州茅台 600519</div>
+        <div class="pr">1252.57</div>
+        <div class="ob">
+          <div class="r"><span>卖5</span><span>1252.60</span></div>
+          <div class="r"><span>卖4</span><span>1252.50</span></div>
+          <div class="r"><span>卖3</span><span>1252.40</span></div>
+          <div class="r"><span>卖2</span><span>1252.30</span></div>
+          <div class="r"><span>卖1</span><span>1252.20</span></div>
+          <div class="r"><span>买1</span><span>1252.10</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">自选股移到顶部横滚条，点击切换，K线区域更大</div>
+</div>
+
+<!-- 款4：全屏K线+浮动面板 -->
+<h2>款 4 · 全屏K线 + 浮动面板（沉浸式）</h2>
+<div class="demo-wrap">
+  <div class="window win-4">
+    <div class="topbar">
+      <span class="logo">金睛盯盘</span>
+      <span class="search">搜索代码/名称/拼音</span>
+      <div class="indices">
+        <span>上证 3949 <span class="up">+0.97%</span></span>
+        <span>深成 13730 <span class="up">+0.65%</span></span>
+      </div>
+    </div>
+    <div class="chart-full"><div class="ph">全屏K线图</div></div>
+    <div class="float-left">
+      <div class="nav-item active">自选</div>
+      <div class="nav-item">榜单</div>
+      <div class="nav-item">板块</div>
+    </div>
+    <div class="float-right">
+      <div class="sn">贵州茅台</div>
+      <div class="pr">1252.57</div>
+      <div class="ob">
+        <div class="r"><span>卖5</span><span>1252.60</span></div>
+        <div class="r"><span>卖4</span><span>1252.50</span></div>
+        <div class="r"><span>卖3</span><span>1252.40</span></div>
+        <div class="r"><span>卖2</span><span>1252.30</span></div>
+        <div class="r"><span>卖1</span><span>1252.20</span></div>
+        <div class="r"><span>买1</span><span>1252.10</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">K线全屏，自选和盘口变成浮动面板，沉浸式看盘</div>
+</div>
+
+<!-- 款5：榜单主导 -->
+<h2>款 5 · 榜单主导（榜单加宽）</h2>
+<div class="demo-wrap">
+  <div class="window win-5">
+    <div class="topbar">
+      <span class="logo">金睛盯盘</span>
+      <span class="search">搜索代码/名称/拼音</span>
+      <div class="indices">
+        <span>上证 3949 <span class="up">+0.97%</span></span>
+        <span>深成 13730 <span class="up">+0.65%</span></span>
+      </div>
+    </div>
+    <div class="main">
+      <div class="left">
+        <div class="tabs">
+          <div class="tab active">涨幅</div>
+          <div class="tab">跌幅</div>
+          <div class="tab">成交额</div>
+        </div>
+        <div class="list">
+          <div class="row active"><span>万科A</span><span class="up" style="margin-left:auto;">+9.94%</span></div>
+          <div class="row"><span>恒瑞医药</span><span class="up" style="margin-left:auto;">+4.85%</span></div>
+          <div class="row"><span>中远海控</span><span class="up" style="margin-left:auto;">+3.79%</span></div>
+          <div class="row"><span>TCL中环</span><span class="up" style="margin-left:auto;">+2.85%</span></div>
+          <div class="row"><span>中兴通讯</span><span class="up" style="margin-left:auto;">+2.19%</span></div>
+          <div class="row"><span>通威股份</span><span class="up" style="margin-left:auto;">+2.11%</span></div>
+        </div>
+      </div>
+      <div class="center">
+        <div class="toolbar">
+          <button>分时</button><button class="on">日K</button><button>周K</button><button>月K</button>
+        </div>
+        <div class="chart"><div class="ph">K线图</div></div>
+      </div>
+      <div class="right">
+        <div class="sn">万科A 000002</div>
+        <div class="pr">3.65</div>
+        <div class="ob">
+          <div class="r"><span>卖5</span><span>3.66</span></div>
+          <div class="r"><span>卖4</span><span>3.65</span></div>
+          <div class="r"><span>卖3</span><span>3.64</span></div>
+          <div class="r"><span>卖2</span><span>3.63</span></div>
+          <div class="r"><span>卖1</span><span>3.62</span></div>
+          <div class="r"><span>买1</span><span>3.61</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="demo-label">榜单加宽到280px，适合快速浏览全市场异动</div>
+</div>
+
+</body>
+</html>
