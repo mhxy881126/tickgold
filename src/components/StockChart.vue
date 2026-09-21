@@ -1,49 +1,114 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
-// @ts-ignore
-import HQChart from "hqchart";
-import "hqchart/src/jscommon/umychart.resource/css/tools.css";
-import "hqchart/src/jscommon/umychart.resource/font/iconfont.css";
-import { fetchKLine } from "../api/market";
+import * as echarts from "echarts";
+import { fetchKLine, fetchMinute } from "../api/market";
 
 const props = defineProps<{ code: string }>();
 
 const chartRef = ref<HTMLDivElement | null>(null);
-let chart: any = null;
+let chart: echarts.ECharts | null = null;
 const period = ref<"minute" | "day" | "week" | "month">("day");
-
-function getHQSymbol(code: string): string {
-  if (code.startsWith("6") || code.startsWith("9")) return "sh" + code;
-  return "sz" + code;
-}
+const loading = ref(false);
 
 async function load() {
   if (!chart) return;
-  const sym = getHQSymbol(props.code);
-  chart.SetSymbol(sym);
+  loading.value = true;
   try {
-    const periodNum = period.value === "day" ? 101 : period.value === "week" ? 102 : 103;
-    const bars = await fetchKLine(props.code, periodNum, 300);
-    // 转成 HQChart 格式
-    const hisData = {
-      Date: bars.map((b) => {
+    let dates: string[] = [];
+    let ohlc: number[][] = [];
+    let volumes: number[] = [];
+
+    if (period.value === "minute") {
+      const bars = await fetchMinute(props.code);
+      dates = bars.map((b) => new Date(b.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }));
+      ohlc = bars.map((b) => [b.open, b.close, b.low, b.high]);
+      volumes = bars.map((b) => b.volume);
+    } else {
+      const periodNum = period.value === "day" ? 101 : period.value === "week" ? 102 : 103;
+      const bars = await fetchKLine(props.code, periodNum, 300);
+      dates = bars.map((b) => {
         const d = new Date(b.timestamp);
-        return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
-      }),
-      Open: bars.map((b) => b.open),
-      High: bars.map((b) => b.high),
-      Low: bars.map((b) => b.low),
-      Close: bars.map((b) => b.close),
-      Volume: bars.map((b) => b.volume),
-    };
-    // 直接填数据
-    if (chart.ChartPaint && chart.ChartPaint[0]) {
-      chart.ChartPaint[0].Data = hisData;
-      chart.ChartPaint[0].Symbol = sym;
-      chart.UpdateData();
+        return `${d.getMonth()+1}/${d.getDate()}`;
+      });
+      ohlc = bars.map((b) => [b.open, b.close, b.low, b.high]);
+      volumes = bars.map((b) => b.volume);
     }
+
+    // 计算 MA
+    const calcMA = (data: number[], n: number) => {
+      const result: (number | null)[] = [];
+      for (let i = 0; i < data.length; i++) {
+        if (i < n - 1) result.push(null);
+        else {
+          let sum = 0;
+          for (let j = i - n + 1; j <= i; j++) sum += data[j];
+          result.push(+(sum / n).toFixed(2));
+        }
+      }
+      return result;
+    };
+    const closes = ohlc.map((b) => b[1]);
+    const ma5 = calcMA(closes, 5);
+    const ma10 = calcMA(closes, 10);
+    const ma20 = calcMA(closes, 20);
+
+    chart.setOption({
+      backgroundColor: "#0d1117",
+      animation: false,
+      legend: {
+        data: ["MA5", "MA10", "MA20"],
+        top: 5,
+        textStyle: { color: "#8b949e", fontSize: 11 },
+      },
+      grid: [
+        { left: 50, right: 60, top: 30, height: "55%" },
+        { left: 50, right: 60, top: "65%", height: "15%" },
+        { left: 50, right: 60, top: "85%", height: "12%" },
+      ],
+      xAxis: [
+        { type: "category", data: dates, gridIndex: 0, axisLine: { lineStyle: { color: "#30363d" } }, axisLabel: { color: "#8b949e", fontSize: 10 } },
+        { type: "category", data: dates, gridIndex: 1, axisLine: { lineStyle: { color: "#30363d" } }, axisLabel: { show: false } },
+        { type: "category", data: dates, gridIndex: 2, axisLine: { lineStyle: { color: "#30363d" } }, axisLabel: { color: "#8b949e", fontSize: 10 } },
+      ],
+      yAxis: [
+        { scale: true, gridIndex: 0, axisLine: { lineStyle: { color: "#30363d" } }, splitLine: { lineStyle: { color: "#1c2333" } }, axisLabel: { color: "#8b949e", fontSize: 10 } },
+        { scale: true, gridIndex: 1, axisLine: { lineStyle: { color: "#30363d" } }, splitLine: { show: false }, axisLabel: { color: "#8b949e", fontSize: 10 } },
+        { scale: true, gridIndex: 2, axisLine: { lineStyle: { color: "#30363d" } }, splitLine: { show: false }, axisLabel: { color: "#8b949e", fontSize: 10 } },
+      ],
+      dataZoom: [
+        { type: "inside", xAxisIndex: [0, 1, 2], start: 60, end: 100 },
+      ],
+      series: [
+        {
+          name: "K线",
+          type: "candlestick",
+          data: ohlc,
+          itemStyle: {
+            color: "#ef5350",
+            color0: "#26a69a",
+            borderColor: "#ef5350",
+            borderColor0: "#26a69a",
+          },
+        },
+        { name: "MA5", type: "line", data: ma5, xAxisIndex: 0, yAxisIndex: 0, smooth: true, showSymbol: false, lineStyle: { color: "#ffd740", width: 1 } },
+        { name: "MA10", type: "line", data: ma10, xAxisIndex: 0, yAxisIndex: 0, smooth: true, showSymbol: false, lineStyle: { color: "#40c4ff", width: 1 } },
+        { name: "MA20", type: "line", data: ma20, xAxisIndex: 0, yAxisIndex: 0, smooth: true, showSymbol: false, lineStyle: { color: "#e040fb", width: 1 } },
+        {
+          name: "成交量",
+          type: "bar",
+          xAxisIndex: 1,
+          yAxisIndex: 1,
+          data: volumes.map((v, i) => ({
+            value: v,
+            itemStyle: { color: ohlc[i][1] >= ohlc[i][0] ? "#ef5350" : "#26a69a" },
+          })),
+        },
+      ],
+    });
   } catch (e) {
     console.error("chart load", e);
+  } finally {
+    loading.value = false;
   }
 }
 
@@ -54,24 +119,13 @@ function switchPeriod(p: "minute" | "day" | "week" | "month") {
 
 onMounted(() => {
   if (!chartRef.value) return;
-  chart = HQChart.Chart.JSChart.Init(chartRef.value);
-  chart.SetOption({
-    Type: "历史K线图",
-    Symbol: getHQSymbol(props.code),
-    Windows: [
-      { Index: "MA", Modify: false, Change: false },
-      { Index: "VOL", Modify: false, Change: false },
-      { Index: "MACD", Modify: false, Change: false },
-    ],
-    IsShowCorssCursorInfo: true,
-    Border: { Left: 1, Right: 1, Top: 25, Bottom: 25 },
-    KLine: { Right: 1, Period: 0, PageSize: 70, IsShowTooltip: true },
-  });
+  chart = echarts.init(chartRef.value);
   load();
+  window.addEventListener("resize", () => chart?.resize());
 });
 
 onBeforeUnmount(() => {
-  chart?.Destroy?.();
+  chart?.dispose();
   chart = null;
 });
 
@@ -85,6 +139,7 @@ watch(() => props.code, load);
       <button :class="{ on: period === 'day' }" @click="switchPeriod('day')">日K</button>
       <button :class="{ on: period === 'week' }" @click="switchPeriod('week')">周K</button>
       <button :class="{ on: period === 'month' }" @click="switchPeriod('month')">月K</button>
+      <span v-if="loading" class="loading">加载中...</span>
     </div>
     <div ref="chartRef" class="chart"></div>
   </div>
@@ -98,5 +153,6 @@ watch(() => props.code, load);
   border-radius: 3px; cursor: pointer; font-size: 12px;
 }
 .toolbar button.on { background: #1f6feb; color: #fff; }
+.loading { margin-left: auto; color: #8b949e; font-size: 11px; }
 .chart { flex: 1; }
 </style>

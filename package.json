@@ -1,7 +1,7 @@
 {
   "name": "stock-dock",
   "private": true,
-  "version": "0.5.4",
+  "version": "0.5.5",
   "type": "module",
   "description": "灵动岛版股票盯盘终端 - A股轻量跨平台看盘软件",
   "scripts": {
@@ -23,6 +23,7 @@
     "@tauri-apps/plugin-store": "^2.2.0",
     "@tauri-apps/plugin-updater": "^2.7.0",
     "babel-runtime": "^6.26.0",
+    "echarts": "^6.1.0",
     "hqchart": "^1.1.15390",
     "jquery": "^4.0.0",
     "klinecharts": "^9.8.10",
