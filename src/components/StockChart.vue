@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
-import "hqchart/lib/umychart.vue.js";
+// @ts-ignore
+import HQChart from "hqchart/lib/umychart.vue.js";
 
 const props = defineProps<{ code: string }>();
 
@@ -16,9 +17,16 @@ function getHQSymbol(code: string): string {
 function load() {
   if (!chart) return;
   const sym = getHQSymbol(props.code);
-  const p = period.value === "minute" ? "分时" : period.value === "day" ? "日线" : period.value === "week" ? "周线" : "月线";
-  chart.ChangeCurrentPeriod(p);
   chart.ChangeSymbol(sym);
+  if (period.value === "minute") {
+    chart.ChangePeriod("分时");
+  } else if (period.value === "day") {
+    chart.ChangePeriod("日线");
+  } else if (period.value === "week") {
+    chart.ChangePeriod("周线");
+  } else {
+    chart.ChangePeriod("月线");
+  }
 }
 
 function switchPeriod(p: "minute" | "day" | "week" | "month") {
@@ -28,13 +36,8 @@ function switchPeriod(p: "minute" | "day" | "week" | "month") {
 
 onMounted(() => {
   if (!chartRef.value) return;
-  const JSQChart = (window as any).JSQChart;
-  if (!JSQChart) {
-    console.error("HQChart not loaded");
-    return;
-  }
-  chart = new JSQChart({
-    id: chartRef.value,
+  chart = HQChart.jsChartInit(chartRef.value, {
+    type: "historykline",
     symbol: getHQSymbol(props.code),
     language: "cn",
   });
