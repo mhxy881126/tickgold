@@ -1,41 +1,32 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
-import { init, type Chart } from "klinecharts";
-import { fetchMinute, fetchKLine } from "../api/market";
+// @ts-ignore
+import { Chart } from "hqchart/lib/main.js";
 
 const props = defineProps<{ code: string }>();
 
 const chartRef = ref<HTMLDivElement | null>(null);
-let chart: Chart | null = null;
+let chart: any = null;
 const period = ref<"minute" | "day" | "week" | "month">("day");
-const loading = ref(false);
 
-async function load() {
+function getHQSymbol(code: string): string {
+  if (code.startsWith("6") || code.startsWith("9")) return "sh" + code;
+  return "sz" + code;
+}
+
+function load() {
   if (!chart) return;
-  loading.value = true;
-  try {
-    chart.applyNewData([]);
-    if (period.value === "minute") {
-      const bars = await fetchMinute(props.code);
-      const data = bars.map((b) => ({
-        timestamp: b.timestamp, open: b.open, close: b.close,
-        low: b.low, high: b.high, volume: b.volume,
-      }));
-      chart.applyNewData(data);
-    } else {
-      const periodNum = period.value === "day" ? 101 : period.value === "week" ? 102 : 103;
-      const bars = await fetchKLine(props.code, periodNum, 300);
-      const data = bars.map((b) => ({
-        timestamp: b.timestamp, open: b.open, close: b.close,
-        low: b.low, high: b.high, volume: b.volume,
-      }));
-      chart.applyNewData(data);
-    }
-  } catch (e) {
-    console.error("chart load", e);
-  } finally {
-    loading.value = false;
+  const sym = getHQSymbol(props.code);
+  if (period.value === "minute") {
+    chart.ChangePeriod("分时");
+  } else if (period.value === "day") {
+    chart.ChangePeriod("日线");
+  } else if (period.value === "week") {
+    chart.ChangePeriod("周线");
+  } else {
+    chart.ChangePeriod("月线");
   }
+  chart.ChangeSymbol(sym);
 }
 
 function switchPeriod(p: "minute" | "day" | "week" | "month") {
@@ -45,28 +36,20 @@ function switchPeriod(p: "minute" | "day" | "week" | "month") {
 
 onMounted(() => {
   if (!chartRef.value) return;
-  chart = init(chartRef.value, {
-    styles: {
-      grid: {
-        horizontal: { color: "#1c2333", size: 0.5 },
-        vertical: { color: "#1c2333", size: 0.5 },
-      },
-      candle: {
-        tooltip: {
-          text: { size: 11, color: "#ccc" },
-        },
-      },
-    } as any,
+  chart = Chart.jsChartInit(chartRef.value, {
+    type: "historykline",
+    symbol: getHQSymbol(props.code),
+    language: "cn",
+    Windows: [
+      { index: "MA" },
+      { index: "VOL" },
+      { index: "MACD" },
+    ],
   });
-  const c: any = chart;
-  c.createIndicator("MA", false, { id: "candle_pane" });
-  c.createIndicator("VOL", false, { id: "pane_vol", height: 80 });
-  c.createIndicator("MACD", false, { id: "pane_macd", height: 80 });
-  load();
 });
 
 onBeforeUnmount(() => {
-  (chart as any)?.close?.();
+  chart?.Destroy?.();
   chart = null;
 });
 
@@ -80,7 +63,6 @@ watch(() => props.code, load);
       <button :class="{ on: period === 'day' }" @click="switchPeriod('day')">日K</button>
       <button :class="{ on: period === 'week' }" @click="switchPeriod('week')">周K</button>
       <button :class="{ on: period === 'month' }" @click="switchPeriod('month')">月K</button>
-      <span v-if="loading" class="loading">加载中...</span>
     </div>
     <div ref="chartRef" class="chart"></div>
   </div>
@@ -94,7 +76,5 @@ watch(() => props.code, load);
   border-radius: 3px; cursor: pointer; font-size: 12px;
 }
 .toolbar button.on { background: #1f6feb; color: #fff; }
-.toolbar button:hover { background: #21262d; color: #ccc; }
-.loading { margin-left: auto; color: #8b949e; font-size: 11px; }
 .chart { flex: 1; }
 </style>
