@@ -14,7 +14,8 @@ export type CardId =
   | "watch"
   | "rank"
   | "alert"
-  | "f10";
+  | "f10"
+  | "trade";
 
 export interface CardMeta {
   title: string;
@@ -38,10 +39,11 @@ export const CARD_META: Record<CardId, CardMeta> = {
   rank: { title: "榜单", accent: "#e0556b", kind: "narrow" },
   alert: { title: "预警管理", accent: "#ffd700", kind: "narrow" },
   f10: { title: "F10 个股资料", accent: "#d4af37", kind: "chart" },
+  trade: { title: "模拟交易", accent: "#f0883e", kind: "chart" },
 };
 
 // 宽卡片（主干区域，可上下并列）与窄卡片（右侧）的排列顺序
-const WIDE_ORDER: CardId[] = ["radar", "breadth", "chart", "sectorheat", "sector", "screener", "f10"];
+const WIDE_ORDER: CardId[] = ["radar", "breadth", "chart", "sectorheat", "sector", "screener", "f10", "trade"];
 const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "order", "fundflow", "watch", "rank"];
 
 // 模式预设：一键切换一整套卡片

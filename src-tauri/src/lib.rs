@@ -240,6 +240,48 @@ pub fn run() {
                             );",
                             kind: MigrationKind::Up,
                         },
+                        Migration {
+                            version: 5,
+                            description: "create paper account",
+                            sql: "CREATE TABLE IF NOT EXISTS paper_account (
+                                id INTEGER PRIMARY KEY CHECK (id = 1),
+                                init_cash REAL NOT NULL,
+                                cash REAL NOT NULL,
+                                created_at INTEGER NOT NULL
+                            );",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 6,
+                            description: "create paper position",
+                            sql: "CREATE TABLE IF NOT EXISTS paper_position (
+                                code TEXT PRIMARY KEY,
+                                name TEXT NOT NULL DEFAULT '',
+                                vol INTEGER NOT NULL DEFAULT 0,
+                                avail_vol INTEGER NOT NULL DEFAULT 0,
+                                cost_amount REAL NOT NULL DEFAULT 0,
+                                updated_at INTEGER NOT NULL
+                            );",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 7,
+                            description: "create paper order",
+                            sql: "CREATE TABLE IF NOT EXISTS paper_order (
+                                id TEXT PRIMARY KEY,
+                                code TEXT NOT NULL,
+                                name TEXT NOT NULL DEFAULT '',
+                                side TEXT NOT NULL,
+                                price REAL NOT NULL,
+                                vol INTEGER NOT NULL,
+                                amount REAL NOT NULL,
+                                fee REAL NOT NULL DEFAULT 0,
+                                status TEXT NOT NULL,
+                                created_at INTEGER NOT NULL,
+                                trade_date TEXT NOT NULL
+                            );",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),
