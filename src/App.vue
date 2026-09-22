@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, provide } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
 import CardShell from "./components/CardShell.vue";
 import UpdateDialog from "./components/UpdateDialog.vue";
+import LayoutMenu from "./components/LayoutMenu.vue";
 import ShortTermSpider from "./components/ShortTermSpider.vue";
 import LimitRadar from "./components/LimitRadar.vue";
 import BreadthBoard from "./components/BreadthBoard.vue";
@@ -29,13 +30,42 @@ import { useQuotesStore } from "./stores/quotes";
 import { useAlertStore } from "./stores/alert";
 import { useWorkbench, CARD_META, MODES, type CardId } from "./composables/useWorkbench";
 import type { AlertEvent } from "./api/market";
+import { ensureDb } from "./db/database";
 
 const wl = useWatchlistStore();
 const quotes = useQuotesStore();
 const alerts = useAlertStore();
 const bench = useWorkbench();
+provide("workbench", bench);
 
 const selected = ref<string | null>(null);
+
+// ===== 分区列表（落点指示用）=====
+const mainList = computed(() =>
+  bench.openCards.value.filter((i) => bench.zoneOf(i) === "main")
+);
+const sideList = computed(() =>
+  bench.openCards.value.filter((i) => bench.zoneOf(i) === "side")
+);
+// 某张卡片当前的落点位置：before / after（用于显示插入线）
+function dropPos(id: CardId): "before" | "after" | null {
+  const h = bench.dropHint.value;
+  if (!h || bench.dragId.value === id) return null;
+  const list = h.zone === "main" ? mainList.value : sideList.value;
+  if (list[h.index] === id) return "before";
+  if (h.index === list.length && list[list.length - 1] === id) return "after";
+  return null;
+}
+// 在网格空白区拖动：按列位置归到主干 / 侧栏分区末尾
+function onGridDragOver(e: DragEvent) {
+  e.preventDefault();
+  const t = e.target as HTMLElement;
+  if (typeof t.closest === "function" && t.closest(".card-head")) return; // 标题栏已给精确落点
+  const grid = e.currentTarget as HTMLElement;
+  const r = grid.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width;
+  bench.hintZone(x < 7 / 12 ? "main" : "side");
+}
 
 // ===== 左导航：卡片开关 =====
 const CARD_NAV: { id: CardId; label: string; icon: string }[] = [
@@ -50,12 +80,12 @@ const CARD_NAV: { id: CardId; label: string; icon: string }[] = [
   { id: "sectorevent", label: "板动", icon: "M3 12h4l3-8 4 16 3-8h4" },
   { id: "screener", label: "选股", icon: "M4 5h3v14H4zm6.5 5h3v9h-3zM17 9h3v10h-3z" },
   { id: "order", label: "盘口", icon: "M5 3h14v18H5zm2 4h10v2H7zm0 4h10v2H7zm0 4h7v2H7z" },
-  { id: "fundflow", label: "资金", icon: "M12 3c-4 0-7 1.3-7 3v12c0 1.7 3 3 7 3s7-1.3 7-3V6c0-1.7-3-3-7-3zm0 2c3.3 0 5 .9 5 1s-1.7 1-5 1-5-.9-5-1 1.7-1 5-1zm-5 4.5c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V12c0 .1-1.7 1-5 1s-5-.9-5-1zm0 4c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V16c0 .1-1.7 1-5 1s-5-.9-5-1z" },
+  { id: "fundflow", label: "资金", icon: "M12 3c-4 0-7 1.3-7 3v12c0 1.7 3 3 7 3s7-1.3 7-3V6c0-1.7-3-3 7-3zm0 2c3.3 0 5 .9 5 1s-1.7 1-5 1-5-.9-5-1 1.7-1 5-1zm-5 4.5c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V12c0 .1-1.7 1-5 1s-5-.9-5-1zm0 4c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V16c0 .1-1.7 1-5 1s-5-.9-5-1z" },
   { id: "alert", label: "预警", icon: "M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C8.63 5.36 7 7.92 7 11v5l-2 2v1h14v-1l-2-2z" },
   { id: "f10", label: "F10", icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm0 2l4 4h-4V4zM8 13h8v1.5H8zm0 4h8v1.5H8zm0-8h5v1.5H8z" },
   { id: "trade", label: "交易", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1c1.7.3 3 1.4 3 3.1 0 1.9-1.5 2.8-3.4 2.8-1.2 0-2.1-.4-2.6-1l1.2-1c.3.4.8.7 1.5.7.8 0 1.3-.3 1.3-.8s-.4-.8-1.5-1c-1.6-.4-3.2-1-3.2-2.9 0-1.6 1.3-2.7 3-3V5h2zm-1 11h2v2h-2z" },
   { id: "journal", label: "日记", icon: "M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1zm3 5h8v1.5H8zm0 4h8v1.5H8zm0 4h5v1.5H8z" },
-  { id: "calendar", label: "日历", icon: "M7 2v2H5a2 2 0 00-2 2v13a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2h-2V2h-2v2H9V2H7zm-2 7h14v10H5V9zm2 2v3h3v-3H7zm5 0v3h3v-3h-3z" },
+  { id: "calendar", label: "日历", icon: "M7 2v2H5a2 2 0 00-2 2v13a2 2 0 002 2h14a2 2 0 002-2V6a2 0 002-2 0 00-2-2h-2V2h-2v2H9V2H7zm-2 7h14v10H5V9zm2 2v3h3v-3H7zm5 0v3h3v-3z" },
   { id: "ipo", label: "新股", icon: "M12 2l2.9 6.3 6.8.7-5 4.6 1.4 6.7L12 17l-6.1 3.3 1.4-6.7-5-4.6 6.8-.7z" },
 ];
 
@@ -93,11 +123,16 @@ const unlistenFns: (() => void)[] = [];
 onMounted(async () => {
   try {
     curVersion.value = await getVersion();
+    await ensureDb();
     await wl.load();
     await alerts.load();
-    if (wl.codes.length) {
+    // 优先恢复上次保存的工作台布局；否则首次进入用专业模式
+    const restored = await bench.restoreCurrent();
+    if (!restored && wl.codes.length) {
       selected.value = wl.codes[0];
       bench.setMode(MODES.pro);
+    } else if (wl.codes.length) {
+      selected.value = wl.codes[0];
     }
     // 有启用规则则启动后端预警引擎
     await alerts.syncEngine();
@@ -148,6 +183,8 @@ onBeforeUnmount(() => {
         <span class="sep">|</span>
         <span class="ver">v{{ curVersion }}</span>
         <span class="sep">|</span>
+        <LayoutMenu />
+        <span class="sep">|</span>
         <button class="upd" @click="showUpdate = true">检查更新</button>
       </div>
     </header>
@@ -185,7 +222,7 @@ onBeforeUnmount(() => {
     </nav>
 
     <!-- 工作台主区域 -->
-    <main class="workspace">
+    <main class="workspace" :class="{ dragging: bench.dragId.value !== null }">
       <!-- 默认欢迎页（无卡片时） -->
       <Transition name="welcome">
         <div v-if="bench.openCards.value.length === 0" class="welcome">
@@ -201,6 +238,16 @@ onBeforeUnmount(() => {
         </div>
       </Transition>
 
+      <!-- 分区落点高亮（拖拽时显示，不参与卡片动画） -->
+      <div
+        class="zone-hint zone-main"
+        :class="{ active: bench.dropHint.value?.zone === 'main' }"
+      ></div>
+      <div
+        class="zone-hint zone-side"
+        :class="{ active: bench.dropHint.value?.zone === 'side' }"
+      ></div>
+
       <!-- 卡片网格 -->
       <TransitionGroup
         tag="div"
@@ -208,17 +255,28 @@ onBeforeUnmount(() => {
         enter-active-class="card-enter"
         leave-active-class="card-leave"
         move-class="card-move"
+        @dragover="onGridDragOver"
+        @drop="bench.applyDrop()"
       >
         <div
           v-for="id in bench.openCards.value"
           :key="id"
           class="card-slot"
+          :class="{
+            'drop-before': dropPos(id) === 'before',
+            'drop-after': dropPos(id) === 'after',
+          }"
           :style="bench.layout.value[id]"
         >
           <CardShell
             :title="CARD_META[id].title"
             :accent="CARD_META[id].accent"
+            :dragging="bench.dragId.value === id"
             @close="bench.close(id)"
+            @dragstart="bench.dragStart(id)"
+            @dragend="bench.dragEnd()"
+            @dragover="(r: number) => bench.hintOver(id, r)"
+            @drop="bench.applyDrop()"
           >
             <WatchList
               v-if="id === 'watch'"
@@ -318,7 +376,63 @@ onBeforeUnmount(() => {
   gap: 12px;
   height: 100%;
 }
-.card-slot { min-width: 0; min-height: 0; }
+.card-slot {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 分区落点高亮 */
+.zone-hint {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  border: 1px dashed #3a4657;
+  border-radius: 10px;
+  background: rgba(80, 110, 160, 0.04);
+  transition: opacity 0.15s, background 0.15s, border-color 0.15s;
+  z-index: 6;
+}
+.workspace.dragging .zone-hint {
+  opacity: 1;
+}
+.zone-hint.active {
+  border-color: #4ea1ff;
+  border-style: solid;
+  background: rgba(78, 161, 255, 0.1);
+}
+.zone-main {
+  top: 12px;
+  bottom: 12px;
+  left: 12px;
+  width: calc((100% - 24px) * 7 / 12 - 6px);
+}
+.zone-side {
+  top: 12px;
+  bottom: 12px;
+  right: 12px;
+  width: calc((100% - 24px) * 5 / 12 - 6px);
+}
+
+/* 卡片插入线（落在锚点卡片的顶/底缘，位于 gap 中） */
+.card-slot.drop-before::before,
+.card-slot.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  height: 3px;
+  background: #4ea1ff;
+  border-radius: 2px;
+  z-index: 15;
+  box-shadow: 0 0 8px rgba(78, 161, 255, 0.8);
+}
+.card-slot.drop-before::before {
+  top: -7px;
+}
+.card-slot.drop-after::after {
+  bottom: -7px;
+}
 
 /* 卡片进出场 + FLIP */
 .card-enter { animation: cardIn 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) both; }

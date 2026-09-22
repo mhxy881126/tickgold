@@ -281,3 +281,33 @@ export async function fetchIpoList(): Promise<IpoItem[]> {
 export async function fetchRestrictedQueue(code: string): Promise<RestrictedItem[]> {
   return await invoke<RestrictedItem[]>("get_restricted_queue", { code });
 }
+
+// ===== 全市场限售解禁一览 =====
+export interface MarketRestricted {
+  code: string;
+  name: string;
+  date: string;
+  typeName: string;
+  shares: number;      // 实际解禁数量（万股）
+  ableShares: number;  // 解禁数量（万股）
+  marketCap: number;   // 实际解禁市值（万元）
+  freeRatio: number;   // 占解禁前流通市值比例（%）
+}
+export interface MarketRestrictedPage {
+  total: number;
+  pages: number;
+  data: MarketRestricted[];
+}
+export async function fetchMarketRestricted(
+  start: string,
+  end: string,
+  page: number,
+  size = 50
+): Promise<MarketRestrictedPage> {
+  return await invoke<MarketRestrictedPage>("get_market_restricted", {
+    start,
+    end,
+    page,
+    size,
+  });
+}

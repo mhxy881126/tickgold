@@ -1,4 +1,5 @@
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
+import { db } from "../db/database";
 
 export type CardId =
   | "radar"
@@ -19,6 +20,8 @@ export type CardId =
   | "journal"
   | "calendar"
   | "ipo";
+
+export type Zone = "main" | "side";
 
 export interface CardMeta {
   title: string;
@@ -48,9 +51,10 @@ export const CARD_META: Record<CardId, CardMeta> = {
   ipo: { title: "新股解禁", accent: "#ff8a3d", kind: "chart" },
 };
 
-// 宽卡片（主干区域，可上下并列）与窄卡片（右侧）的排列顺序
+// 宽卡片（主干区域）与窄卡片（右侧）的默认排列顺序，也决定卡片的默认分区
 const WIDE_ORDER: CardId[] = ["radar", "breadth", "chart", "sectorheat", "sector", "screener", "f10", "trade", "journal", "calendar", "ipo"];
 const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "order", "fundflow", "watch", "rank"];
+const ALL_IDS: CardId[] = [...WIDE_ORDER, ...NARROW_ORDER];
 
 // 模式预设：一键切换一整套卡片
 export const MODES: Record<string, CardId[]> = {
@@ -91,8 +95,36 @@ function cell(s: number, e: number, r: number, er: number) {
   } as Record<string, string>;
 }
 
+function defaultZone(id: CardId): Zone {
+  return WIDE_ORDER.includes(id) ? "main" : "side";
+}
+
+// 默认分区下的全局排序权重（用于"重置布局"）
+function rankDefault(id: CardId): number {
+  const wi = WIDE_ORDER.indexOf(id);
+  if (wi >= 0) return wi;
+  const ni = NARROW_ORDER.indexOf(id);
+  return 100 + (ni >= 0 ? ni : 999);
+}
+
+interface SnapshotCard {
+  id: CardId;
+  zone: Zone;
+}
+
+export interface NamedLayout {
+  id: number;
+  name: string;
+  cards: string;
+  updated_at: number;
+}
+
+const CURRENT_KEY = "workbench_current";
+
 export function useWorkbench() {
   const openCards = ref<CardId[]>([]);
+  // 用户对卡片分区的自定义覆盖（未设置则用默认分区）
+  const zoneOverride = ref<Partial<Record<CardId, Zone>>>({});
 
   function open(id: CardId) {
     if (!openCards.value.includes(id)) openCards.value.push(id);
@@ -106,17 +138,25 @@ export function useWorkbench() {
   function isOpen(id: CardId) {
     return openCards.value.includes(id);
   }
-  // 模式：整组替换
+  // 模式：整组替换，并恢复默认分区
   function setMode(cards: CardId[]) {
+    zoneOverride.value = {};
     openCards.value = [...cards];
   }
 
+  function zoneOf(id: CardId): Zone {
+    return zoneOverride.value[id] ?? defaultZone(id);
+  }
+
+  // 按分区分组（保持 openCards 内的相对顺序）
+  const mainCards = computed(() => openCards.value.filter((id) => zoneOf(id) === "main"));
+  const sideCards = computed(() => openCards.value.filter((id) => zoneOf(id) === "side"));
+
   // 布局：返回每个卡片的定位
   const layout = computed<Record<string, Record<string, string>>>(() => {
-    const open = openCards.value;
-    const wides = WIDE_ORDER.filter((id) => open.includes(id));
+    const wides = mainCards.value;
     const w = wides.length;
-    const narrows = NARROW_ORDER.filter((id) => open.includes(id));
+    const narrows = sideCards.value;
     const n = narrows.length;
     const style: Record<string, Record<string, string>> = {};
 
@@ -213,5 +253,177 @@ export function useWorkbench() {
     return style;
   });
 
-  return { openCards, open, close, toggle, isOpen, setMode, layout };
+  // ===== 拖拽换位 / 跨区移动 =====
+  const dragId = ref<CardId | null>(null);
+  // 落点指示：目标分区 + 在该分区内的插入下标
+  const dropHint = ref<{ zone: Zone; index: number } | null>(null);
+
+  function dragStart(id: CardId) {
+    dragId.value = id;
+  }
+  // 悬停在某张卡片上：ratio = 鼠标沿卡片主轴(纵向)的相对位置 0..1
+  function hintOver(target: CardId, ratio: number) {
+    const z = zoneOf(target);
+    const list = z === "main" ? mainCards.value : sideCards.value;
+    const ti = list.indexOf(target);
+    const index = ratio > 0.5 ? ti + 1 : ti;
+    dropHint.value = { zone: z, index };
+  }
+  // 悬停在某个分区的空白区：放到该区末尾
+  function hintZone(z: Zone) {
+    const list = z === "main" ? mainCards.value : sideCards.value;
+    dropHint.value = { zone: z, index: list.length };
+  }
+  function clearHint() {
+    dropHint.value = null;
+  }
+  function dragEnd() {
+    dragId.value = null;
+    dropHint.value = null;
+  }
+
+  // 在分区有序列表中把 src 放到锚点之后（after=null 表示该区开头）
+  function insertIntoZone(ids: CardId[], src: CardId, z: Zone, after: CardId | null): CardId[] {
+    const zIds = ids.filter((i) => zoneOf(i) === z);
+    let nz: CardId[];
+    if (!after) {
+      nz = [src, ...zIds];
+    } else {
+      nz = [...zIds];
+      const k = nz.indexOf(after);
+      nz.splice(k >= 0 ? k + 1 : nz.length, 0, src);
+    }
+    const other = ids.filter((i) => zoneOf(i) !== z);
+    // 规整为：主干区在前、侧栏区在后
+    return z === "main" ? [...nz, ...other] : [...other, ...nz];
+  }
+
+  function applyDrop() {
+    const src = dragId.value;
+    const hint = dropHint.value;
+    if (!src || !hint) {
+      dragEnd();
+      return;
+    }
+    const ids = openCards.value.filter((c) => c !== src);
+    const zoneList = ids.filter((id) => zoneOf(id) === hint.zone);
+    const clamped = Math.min(hint.index, zoneList.length);
+    const after: CardId | null = clamped > 0 ? zoneList[clamped - 1] : null;
+    if (zoneOf(src) !== hint.zone) zoneOverride.value[src] = hint.zone;
+    openCards.value = insertIntoZone(ids, src, hint.zone, after);
+    dragEnd();
+  }
+
+  // ===== 序列化 / 恢复 =====
+  function serialize(): string {
+    const cards: SnapshotCard[] = openCards.value.map((id) => ({ id, zone: zoneOf(id) }));
+    return JSON.stringify(cards);
+  }
+  function applySnapshot(json: string) {
+    try {
+      const arr = JSON.parse(json) as SnapshotCard[];
+      if (!Array.isArray(arr)) return;
+      const ov: Partial<Record<CardId, Zone>> = {};
+      const ids: CardId[] = [];
+      for (const c of arr) {
+        if (!ALL_IDS.includes(c.id)) continue;
+        ids.push(c.id);
+        if (c.zone && c.zone !== defaultZone(c.id)) ov[c.id] = c.zone;
+      }
+      zoneOverride.value = ov;
+      openCards.value = ids;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // 当前布局：debounce 自动写入 meta
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  function persistCurrent() {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try {
+        db()
+          .execute("INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)", [CURRENT_KEY, serialize()])
+          .catch(() => {});
+      } catch {
+        /* db 未就绪，忽略 */
+      }
+    }, 400);
+  }
+  // 启动恢复：返回是否恢复出了卡片
+  async function restoreCurrent(): Promise<boolean> {
+    try {
+      const rows = await db().select<{ value: string }[]>(
+        "SELECT value FROM meta WHERE key=?",
+        [CURRENT_KEY]
+      );
+      if (rows[0]?.value) {
+        applySnapshot(rows[0].value);
+        return openCards.value.length > 0;
+      }
+    } catch {
+      /* ignore */
+    }
+    return false;
+  }
+
+  // 命名布局 CRUD
+  async function saveNamedLayout(name: string) {
+    const now = Date.now();
+    const trimmed = name.trim() || "未命名布局";
+    await db().execute(
+      "INSERT INTO layout(name,cards,created_at,updated_at) VALUES(?,?,?,?)",
+      [trimmed, serialize(), now, now]
+    );
+  }
+  async function listNamedLayouts(): Promise<NamedLayout[]> {
+    return await db().select<NamedLayout[]>(
+      "SELECT id,name,cards,updated_at FROM layout ORDER BY updated_at DESC"
+    );
+  }
+  async function loadNamedLayout(id: number) {
+    const rows = await db().select<{ cards: string }[]>(
+      "SELECT cards FROM layout WHERE id=?",
+      [id]
+    );
+    if (rows[0]?.cards) applySnapshot(rows[0].cards);
+  }
+  async function deleteNamedLayout(id: number) {
+    await db().execute("DELETE FROM layout WHERE id=?", [id]);
+  }
+  // 重置：恢复默认分区 + 默认顺序
+  function resetLayout() {
+    zoneOverride.value = {};
+    openCards.value = [...openCards.value].sort((a, b) => rankDefault(a) - rankDefault(b));
+  }
+
+  watch([openCards, zoneOverride], persistCurrent, { deep: true });
+
+  return {
+    openCards,
+    open,
+    close,
+    toggle,
+    isOpen,
+    setMode,
+    layout,
+    zoneOf,
+    // 拖拽
+    dragId,
+    dropHint,
+    dragStart,
+    hintOver,
+    hintZone,
+    clearHint,
+    applyDrop,
+    dragEnd,
+    // 持久化 / 布局
+    restoreCurrent,
+    saveNamedLayout,
+    listNamedLayouts,
+    loadNamedLayout,
+    deleteNamedLayout,
+    resetLayout,
+  };
 }

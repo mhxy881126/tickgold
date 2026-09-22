@@ -100,6 +100,16 @@ async fn get_restricted_queue(code: String) -> Result<Vec<market::cninfo::Restri
 }
 
 #[tauri::command]
+async fn get_market_restricted(
+    start: String,
+    end: String,
+    page: i64,
+    size: i64,
+) -> Result<market::eastmoney::MarketRestrictedPage, String> {
+    market::eastmoney::market_restricted(&start, &end, page, size).await
+}
+
+#[tauri::command]
 async fn start_spider(
     app: tauri::AppHandle,
     watch: Vec<String>,
@@ -325,6 +335,18 @@ pub fn run() {
                             );",
                             kind: MigrationKind::Up,
                         },
+                        Migration {
+                            version: 10,
+                            description: "create saved workbench layouts",
+                            sql: "CREATE TABLE IF NOT EXISTS layout (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                name TEXT NOT NULL,
+                                cards TEXT NOT NULL,
+                                created_at INTEGER NOT NULL,
+                                updated_at INTEGER NOT NULL
+                            );",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),
@@ -416,6 +438,7 @@ pub fn run() {
             get_f10_chips,
             get_ipo_list,
             get_restricted_queue,
+            get_market_restricted,
             start_spider,
             stop_spider,
             start_radar,

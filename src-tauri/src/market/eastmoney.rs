@@ -246,3 +246,104 @@ pub async fn index_quotes() -> Result<Vec<Quote>, String> {
         .collect();
     Ok(out)
 }
+
+// ===== 全市场限售解禁一览（东财数据中心 RPT_LIFT_STAGE）=====
+#[derive(serde::Serialize)]
+pub struct MarketRestricted {
+    pub code: String,
+    pub name: String,
+    pub date: String,
+    pub type_name: String,
+    pub shares: f64,       // 实际解禁数量（万股）
+    pub able_shares: f64,  // 解禁数量（万股）
+    pub market_cap: f64,   // 实际解禁市值（万元）
+    pub free_ratio: f64,   // 占解禁前流通市值比例（%）
+}
+
+#[derive(serde::Serialize)]
+pub struct MarketRestrictedPage {
+    pub total: i64,
+    pub pages: i64,
+    pub data: Vec<MarketRestricted>,
+}
+
+#[derive(Deserialize)]
+struct LiftResp {
+    result: Option<LiftResult>,
+}
+#[derive(Deserialize)]
+struct LiftResult {
+    count: Option<i64>,
+    pages: Option<i64>,
+    data: Option<Vec<LiftItem>>,
+}
+#[derive(Deserialize)]
+struct LiftItem {
+    #[serde(rename = "SECURITY_CODE")]
+    code: String,
+    #[serde(rename = "SECURITY_NAME_ABBR")]
+    name: String,
+    #[serde(rename = "FREE_DATE")]
+    date: Option<String>,
+    #[serde(rename = "FREE_SHARES_TYPE")]
+    type_name: Option<String>,
+    #[serde(rename = "CURRENT_FREE_SHARES")]
+    shares: Option<f64>,
+    #[serde(rename = "ABLE_FREE_SHARES")]
+    able_shares: Option<f64>,
+    #[serde(rename = "LIFT_MARKET_CAP")]
+    market_cap: Option<f64>,
+    #[serde(rename = "FREE_RATIO")]
+    free_ratio: Option<f64>,
+}
+
+/// 全市场限售解禁明细（按日期范围分页）。start/end 格式 "YYYY-MM-DD"。
+pub async fn market_restricted(
+    start: &str,
+    end: &str,
+    page: i64,
+    size: i64,
+) -> Result<MarketRestrictedPage, String> {
+    // > 需百分号编码为 %3E；单引号与括号在 query 中合法
+    let filter = format!("(FREE_DATE%3E='{}')(FREE_DATE%3E='{}')", start, end);
+    let columns = "SECURITY_CODE,SECURITY_NAME_ABBR,FREE_DATE,CURRENT_FREE_SHARES,ABLE_FREE_SHARES,LIFT_MARKET_CAP,FREE_RATIO,NEW,B20_ADJCHRATE,A20_ADJCHRATE,FREE_SHARES_TYPE,TOTAL_RATIO,NON_FREE_SHARES,BATCH_HOLDER_NUM";
+    let url = format!(
+        "https://datacenter-web.eastmoney.com/api/data/v1/get?sortColumns=FREE_DATE,CURRENT_FREE_SHARES&sortTypes=1,1&pageSize={}&pageNumber={}&reportName=RPT_LIFT_STAGE&columns={}&source=WEB&client=WEB&filter={}",
+        size, page, columns, filter
+    );
+    let resp = http()
+        .get(&url)
+        .header("Referer", "https://data.eastmoney.com/dxf/detail.html")
+        .header("Accept", "application/json, text/plain, */*")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let json: LiftResp = resp.json().await.map_err(|e| e.to_string())?;
+    let total = json.result.as_ref().and_then(|r| r.count).unwrap_or(0);
+    let pages = json.result.as_ref().and_then(|r| r.pages).unwrap_or(0);
+    let data = json
+        .result
+        .and_then(|r| r.data)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|it| {
+            let raw_date = it.date.unwrap_or_default();
+            let date = if raw_date.len() >= 10 {
+                raw_date[..10].to_string()
+            } else {
+                raw_date
+            };
+            MarketRestricted {
+                code: it.code,
+                name: it.name,
+                date,
+                type_name: it.type_name.unwrap_or_default(),
+                shares: it.shares.unwrap_or(0.0),
+                able_shares: it.able_shares.unwrap_or(0.0),
+                market_cap: it.market_cap.unwrap_or(0.0),
+                free_ratio: it.free_ratio.unwrap_or(0.0),
+            }
+        })
+        .collect();
+    Ok(MarketRestrictedPage { total, pages, data })
+}

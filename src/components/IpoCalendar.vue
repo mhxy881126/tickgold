@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
 import {
-  fetchIpoList, fetchRestrictedQueue,
-  type IpoItem, type RestrictedItem,
+  fetchIpoList, fetchRestrictedQueue, fetchMarketRestricted,
+  type IpoItem, type RestrictedItem, type MarketRestricted,
 } from "../api/market";
 
 const props = defineProps<{ code: string | null }>();
@@ -18,9 +18,14 @@ function daysBetween(date: string): number {
   const b = new Date(todayStr() + "T00:00").getTime();
   return Math.round((a - b) / 86400000);
 }
+function addMonths(m: number): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() + m);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 // ===== Tab =====
-const tab = ref<"ipo" | "lift">("ipo");
+const tab = ref<"ipo" | "lift" | "market">("ipo");
 
 // ===== 新股发行 =====
 const ipoList = ref<IpoItem[]>([]);
@@ -69,7 +74,7 @@ function num(v: number | null, d = 2): string {
   return v.toLocaleString("zh-CN", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
-// ===== 限售解禁 =====
+// ===== 个股限售解禁 =====
 const liftList = ref<RestrictedItem[]>([]);
 const liftLoading = ref(false);
 const liftError = ref("");
@@ -93,7 +98,70 @@ async function loadLift(code: string | null) {
     liftLoading.value = false;
   }
 }
-watch(() => props.code, (c) => loadLift(c));
+watch(() => props.code, (c) => { if (tab.value === "lift") loadLift(c); });
+
+// ===== 全市场解禁一览（无限滚动分页）=====
+const mktList = ref<MarketRestricted[]>([]);
+const mktLoading = ref(false);
+const mktError = ref("");
+const mktPage = ref(0);
+const mktPages = ref(0);
+const mktTotal = ref(0);
+const mktRange = ref(3); // 月
+const mktLoaded = ref(false);
+const mktHasMore = computed(() => mktPage.value < mktPages.value);
+
+async function loadMarket(reset = true) {
+  if (mktLoading.value) return;
+  if (reset) {
+    mktList.value = []; mktPage.value = 0; mktPages.value = 0; mktTotal.value = 0;
+  }
+  mktLoading.value = true; mktError.value = "";
+  try {
+    const nextPage = mktPage.value + 1;
+    const r = await fetchMarketRestricted(todayStr(), addMonths(mktRange.value), nextPage, 50);
+    mktPages.value = r.pages;
+    mktTotal.value = r.total;
+    mktList.value = mktList.value.concat(r.data);
+    mktPage.value = nextPage;
+    mktLoaded.value = true;
+  } catch (e) {
+    mktError.value = "全市场解禁加载失败：" + String(e);
+  } finally {
+    mktLoading.value = false;
+  }
+}
+function onMktScroll(e: Event) {
+  const el = e.target as HTMLElement;
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40 && mktHasMore.value) {
+    loadMarket(false);
+  }
+}
+watch(mktRange, () => { if (tab.value === "market") loadMarket(true); });
+
+function typeClass(t: string): string {
+  if (t.includes("首发")) return "t-first";
+  if (t.includes("股权")) return "t-equity";
+  if (t.includes("增发")) return "t-add";
+  return "t-other";
+}
+function wan(v: number): string {
+  return v.toLocaleString("zh-CN", { maximumFractionDigits: 0 });
+}
+function yiFromWan(v: number): string {
+  return (v / 10000).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function reload() {
+  if (tab.value === "ipo") loadIpo();
+  else if (tab.value === "lift") loadLift(props.code);
+  else loadMarket(true);
+}
+function switchTab(t: typeof tab.value) {
+  tab.value = t;
+  if (t === "market" && !mktLoaded.value) loadMarket(true);
+  if (t === "lift") loadLift(props.code);
+}
 
 onMounted(() => {
   loadIpo();
@@ -105,12 +173,13 @@ onMounted(() => {
   <div class="ic">
     <!-- Tab -->
     <div class="tabs">
-      <button :class="{ on: tab === 'ipo' }" @click="tab = 'ipo'">新股发行</button>
-      <button :class="{ on: tab === 'lift' }" @click="tab = 'lift'">
-        限售解禁<span v-if="props.code" class="tab-code">{{ props.code }}</span>
+      <button :class="{ on: tab === 'ipo' }" @click="switchTab('ipo')">新股发行</button>
+      <button :class="{ on: tab === 'lift' }" @click="switchTab('lift')">
+        个股解禁<span v-if="props.code" class="tab-code">{{ props.code }}</span>
       </button>
+      <button :class="{ on: tab === 'market' }" @click="switchTab('market')">全市场解禁</button>
       <div class="spacer"></div>
-      <button class="reload" @click="tab === 'ipo' ? loadIpo() : loadLift(props.code)">刷新</button>
+      <button class="reload" @click="reload">刷新</button>
     </div>
 
     <!-- 新股发行 -->
@@ -158,8 +227,8 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 限售解禁 -->
-    <div v-else class="pane">
+    <!-- 个股限售解禁 -->
+    <div v-else-if="tab === 'lift'" class="pane">
       <div v-if="!props.code" class="hint">从自选或榜单选择一只股票，查看其限售解禁安排</div>
       <template v-else>
         <div class="stat-bar">
@@ -200,6 +269,54 @@ onMounted(() => {
         </div>
       </template>
     </div>
+
+    <!-- 全市场解禁一览 -->
+    <div v-else class="pane">
+      <div class="stat-bar">
+        <span class="stat">区间内共 <b class="c-wait">{{ mktTotal }}</b> 笔解禁</span>
+        <span class="stat">已加载 <b>{{ mktList.length }}</b></span>
+        <div class="spacer"></div>
+        <div class="filters">
+          <button :class="{ on: mktRange === 1 }" @click="mktRange = 1">近1月</button>
+          <button :class="{ on: mktRange === 3 }" @click="mktRange = 3">近3月</button>
+          <button :class="{ on: mktRange === 6 }" @click="mktRange = 6">近6月</button>
+          <button :class="{ on: mktRange === 12 }" @click="mktRange = 12">近12月</button>
+        </div>
+      </div>
+
+      <div v-if="mktLoading && !mktList.length" class="hint">加载中…</div>
+      <div v-else-if="mktError && !mktList.length" class="hint err">{{ mktError }}</div>
+      <div v-else class="table-wrap" @scroll="onMktScroll">
+        <table class="t">
+          <thead>
+            <tr>
+              <th class="c-date">解禁日期</th>
+              <th class="c-code">代码</th><th class="c-name">简称</th>
+              <th>限售类型</th>
+              <th class="r">实际解禁(万股)</th>
+              <th class="r">解禁市值(亿元)</th>
+              <th class="r">占流通(%)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(it, i) in mktList" :key="it.code + '-' + i" @click="emit('select', it.code)">
+              <td class="c-date">{{ it.date }}</td>
+              <td class="c-code">{{ it.code }}</td>
+              <td class="c-name">{{ it.name }}</td>
+              <td><span class="ttag" :class="typeClass(it.typeName)">{{ it.typeName || '--' }}</span></td>
+              <td class="r">{{ wan(it.shares) }}</td>
+              <td class="r">{{ yiFromWan(it.marketCap) }}</td>
+              <td class="r">{{ num(it.freeRatio, 2) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="load-foot">
+          <span v-if="mktLoading">正在加载更多…</span>
+          <span v-else-if="mktHasMore">向下滚动加载更多</span>
+          <span v-else>已加载全部 {{ mktList.length }} / {{ mktTotal }} 笔</span>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -232,17 +349,29 @@ onMounted(() => {
 .t tbody td { padding: 5px 9px; border-bottom: 1px solid #1a2230; }
 .t tbody tr { cursor: pointer; }
 .t tbody tr:hover { background: #15202f; }
+.c-date { color: #d7dee7; }
 .c-code { color: var(--text-dim); }
 .c-name { font-weight: 600; }
 .r { text-align: right; }
+
 .stag { font-size: 10px; padding: 1px 8px; border-radius: 9px; }
 .stag.apply { color: #f23645; background: #f2364518; }
 .stag.wait { color: #ff8a3d; background: #ff8a3d18; }
 .stag.done { color: var(--text-dim); background: #2a3242; }
+
+/* 限售类型标签 */
+.ttag { font-size: 10px; padding: 1px 7px; border-radius: 4px; white-space: nowrap; }
+.ttag.t-first { color: #f2643d; background: rgba(242, 100, 61, 0.12); }
+.ttag.t-equity { color: #4ea1ff; background: rgba(78, 161, 255, 0.12); }
+.ttag.t-add { color: #b07ce8; background: rgba(176, 124, 232, 0.12); }
+.ttag.t-other { color: #9aa4b0; background: rgba(154, 164, 176, 0.12); }
+
 .dcount { color: #ff8a3d; font-size: 10.5px; }
 .dcount.today { color: #f23645; font-weight: 600; }
 .past { color: var(--text-dim); font-size: 10.5px; }
 tr.future { background: #ff8a3d0a; }
+
+.load-foot { text-align: center; font-size: 10.5px; color: var(--text-dim); padding: 8px 0; }
 .hint { flex: 1; display: flex; align-items: center; justify-content: center;
   color: var(--text-dim); font-size: 12px; }
 .hint.err { color: #f23645; }
