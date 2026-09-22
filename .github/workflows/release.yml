@@ -141,7 +141,33 @@ jobs:
           ARM_DMG="rel/$(basename "$ARM_RAW_DMG")"
           X64_DMG="rel/$(basename "$X64_RAW_DMG")"
 
-          # ---- 创建唯一（草稿）Release 并上传全部资产 ----
+          GH_BASE="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+
+          # ---- 签名 ----
+          win_sig=$(cat "$WIN_SIG")
+          arm_sig=$(cat "$ARM_SIG")
+          x64_sig=$(cat "$X64_SIG")
+          PUBDATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # ---- 生成三份扁平清单：直连 / ghproxy / gh-proxy ----
+          # 客户端「用哪个镜像拉到清单，就用同一镜像下载安装包」，实现下载源容灾。
+          gen_manifest() {
+            local P="$1"
+            jq -n \
+              --arg v "$VERSION" --arg d "$PUBDATE" \
+              --arg wu "$P$GH_BASE/$(basename "$WIN_EXE")" --arg ws "$win_sig" \
+              --arg mau "$P$GH_BASE/$(basename "$ARM_TGZ")" --arg mas "$arm_sig" \
+              --arg mxu "$P$GH_BASE/$(basename "$X64_TGZ")" --arg mxs "$x64_sig" \
+              '{ version:$v, notes:"", pub_date:$d,
+                 platforms:{ "windows-x86_64":{signature:$ws,url:$wu},
+                             "darwin-aarch64":{signature:$mas,url:$mau},
+                             "darwin-x86_64":{signature:$mxs,url:$mxu} } }'
+          }
+          gen_manifest ""                     > rel/latest.json
+          gen_manifest "https://ghproxy.net/" > rel/latest.ghproxy.json
+          gen_manifest "https://gh-proxy.com/" > rel/latest.gh-proxy.json
+
+          # ---- 创建唯一草稿 Release ----
           EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
             --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -n1)
           if [ -n "$EXISTING" ]; then
@@ -160,36 +186,15 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/releases/assets/$AID" -X DELETE >/dev/null 2>&1 || true
           done
 
-          gh release upload "$TAG" \
-            "$WIN_EXE" "$WIN_SIG" \
-            "$ARM_TGZ" "$ARM_SIG" "$X64_TGZ" "$X64_SIG" \
-            "$ARM_DMG" "$X64_DMG" \
-            --repo "$GITHUB_REPOSITORY" --clobber
+          # 上传全部资产（安装包 + 三份清单）
+          gh release upload "$TAG" rel/* --repo "$GITHUB_REPOSITORY" --clobber
 
-          # ---- 生成扁平 latest.json ----
-          win_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$WIN_EXE")"
-          arm_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$ARM_TGZ")"
-          x64_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$X64_TGZ")"
-          win_sig=$(cat "$WIN_SIG")
-          arm_sig=$(cat "$ARM_SIG")
-          x64_sig=$(cat "$X64_SIG")
-          PUBDATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          # ---- 自动发布说明 ----
+          BODY=$(printf '## TickGold %s\n\n跨平台 A 股盯盘终端，本 Release 由 CI 自动构建并发布。\n\n### 安装包\n- Windows：%s\n- macOS（Apple 芯片）：%s\n- macOS（Intel）：%s\n\n### 更新机制\n应用内检查更新与下载已内置多镜像容灾（ghproxy / gh-proxy / 官方直连），国内网络可正常升级；安装包均带 minisign 签名校验。\n' \
+            "$TAG" "$(basename "$WIN_EXE")" "$(basename "$ARM_DMG")" "$(basename "$X64_DMG")")
 
-          jq -n \
-            --arg v "$VERSION" --arg d "$PUBDATE" \
-            --arg wu "$win_url" --arg ws "$win_sig" \
-            --arg mau "$arm_url" --arg mas "$arm_sig" \
-            --arg mxu "$x64_url" --arg mxs "$x64_sig" \
-            '{
-              version: $v,
-              notes: "",
-              pub_date: $d,
-              platforms: {
-                "windows-x86_64": { signature: $ws, url: $wu },
-                "darwin-aarch64": { signature: $mas, url: $mau },
-                "darwin-x86_64": { signature: $mxs, url: $mxu }
-              }
-            }' > latest.json
-          cat latest.json
-          gh release upload "$TAG" latest.json --repo "$GITHUB_REPOSITORY" --clobber
-          echo "::notice::Release $TAG assets and latest.json uploaded (still draft)."
+          # ---- 资产就位后解除草稿、正式发布 ----
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$RID" \
+            -F draft=false -F prerelease=false -f name="TickGold $TAG" -f body="$BODY" \
+            --jq '.html_url'
+          echo "::notice::Published $TAG with all assets and mirrored manifests."

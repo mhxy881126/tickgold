@@ -1,7 +1,7 @@
 {
   "name": "tickgold",
   "private": true,
-  "version": "0.20.0",
+  "version": "0.20.1",
   "type": "module",
   "description": "TickGold - 专业交易者跨平台 A 股盯盘终端 (Tauri 2 + Vue 3)",
   "scripts": {

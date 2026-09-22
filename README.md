@@ -103,7 +103,7 @@
 - 老板键 `Alt + ` ` 一键隐藏 / 恢复全部窗口
 - 系统托盘常驻；SQLite 本地持久化（自选分组、行情、预警）
 - 多数据源容灾（腾讯 / 新浪 / 东财），单源超时 / 异常自动切换 + 熔断
-- 内置自动更新：更新对话框显示版本对比 / 更新说明 / 下载进度（百分比、MB、速度）；检查通道镜像优先、多源并行竞速（秒级返回），下载包经签名校验，失败可重试或一键手动下载
+- 内置自动更新：更新对话框显示版本对比 / 更新说明 / 下载进度（百分比、MB、速度）；**检查与下载均多镜像容灾**（ghproxy / gh-proxy / 官方直连，用哪个镜像拉到清单就用同一镜像下载安装包），秒级检查、下载包经 minisign 签名校验，失败可重试或一键手动下载
 
 ---
 
@@ -170,11 +170,11 @@ git tag vX.Y.Z
 git push origin main --tags
 ```
 
-CI 会：
+CI 会全自动完成：
 
 1. 在 `windows-latest`（NSIS）与 `macos-latest`（aarch64 原生 + x86_64 交叉编译）并行打包、minisign 签名；
-2. `publish` 汇总 job 自动生成 Tauri updater 需要的 `latest.json`（扁平 `platforms.<目标>.{url,signature}`）；
-3. 产物汇总到同一个草稿 Release，确认后发布即生效，客户端可在线升级。
+2. `publish` 汇总 job 生成三份 Tauri updater 清单：`latest.json`（官方直连）、`latest.ghproxy.json`、`latest.gh-proxy.json`（镜像下载 URL，扁平 `platforms.<目标>.{url,signature}`）；
+3. 全部产物汇总到同一个 Release，资产就位后**自动解除草稿并发布**，客户端即可在线升级，全程无需手动操作。
 
 > 发版前需在仓库 Settings → Secrets and variables → Actions 配置：
 > `TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。
