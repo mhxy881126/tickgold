@@ -282,6 +282,22 @@ pub fn run() {
                             );",
                             kind: MigrationKind::Up,
                         },
+                        Migration {
+                            version: 8,
+                            description: "create trading journal",
+                            sql: "CREATE TABLE IF NOT EXISTS journal (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                date TEXT NOT NULL,
+                                title TEXT NOT NULL DEFAULT '',
+                                content TEXT NOT NULL DEFAULT '',
+                                mood TEXT,
+                                tags TEXT NOT NULL DEFAULT '',
+                                code TEXT,
+                                created_at INTEGER NOT NULL,
+                                updated_at INTEGER NOT NULL
+                            );",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),
