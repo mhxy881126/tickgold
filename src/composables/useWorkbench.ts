@@ -2,6 +2,7 @@ import { ref, computed } from "vue";
 
 export type CardId =
   | "radar"
+  | "breadth"
   | "chart"
   | "sectorheat"
   | "sector"
@@ -22,6 +23,7 @@ export interface CardMeta {
 // 卡片元信息
 export const CARD_META: Record<CardId, CardMeta> = {
   radar: { title: "涨停雷达", accent: "#e0455a", kind: "chart" },
+  breadth: { title: "市场宽度", accent: "#4ea1ff", kind: "chart" },
   chart: { title: "K线图", accent: "#2f6fed", kind: "chart" },
   sectorheat: { title: "板块热力图", accent: "#d4af37", kind: "chart" },
   sector: { title: "板块行情", accent: "#35c4a8", kind: "chart" },
@@ -35,7 +37,7 @@ export const CARD_META: Record<CardId, CardMeta> = {
 };
 
 // 宽卡片（主干区域，可上下并列）与窄卡片（右侧）的排列顺序
-const WIDE_ORDER: CardId[] = ["radar", "chart", "sectorheat", "sector", "screener"];
+const WIDE_ORDER: CardId[] = ["radar", "breadth", "chart", "sectorheat", "sector", "screener"];
 const NARROW_ORDER: CardId[] = ["spider", "sectorevent", "order", "fundflow", "watch", "rank"];
 
 // 模式预设：一键切换一整套卡片
@@ -45,6 +47,7 @@ export const MODES: Record<string, CardId[]> = {
   scanner: ["screener", "rank", "watch"],
   full: [
     "radar",
+    "breadth",
     "chart",
     "sectorheat",
     "sector",

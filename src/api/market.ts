@@ -145,6 +145,7 @@ export interface RadarData {
   maxBoards: number;
   sentiment: number;
   mood: string;
+  hist: number[];
   ladder: LadderGroup[];
   limitUpList: LimitStock[];
   brokenList: RadarStock[];

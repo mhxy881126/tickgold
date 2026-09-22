@@ -54,6 +54,7 @@ pub struct RadarData {
     pub max_boards: u32,
     pub sentiment: f64,
     pub mood: String,
+    pub hist: Vec<usize>,
     pub ladder: Vec<LadderGroup>,
     pub limit_up_list: Vec<LimitStock>,
     pub broken_list: Vec<StockBrief>,
@@ -92,6 +93,31 @@ fn limit_rate(code: &str, name: &str) -> f64 {
         0.30
     } else {
         0.10
+    }
+}
+
+/// 涨跌幅分布桶（红 5 + 绿 5，共 10 桶）
+fn hist_bucket(pct: f64) -> usize {
+    if pct >= 7.0 {
+        0
+    } else if pct >= 5.0 {
+        1
+    } else if pct >= 3.0 {
+        2
+    } else if pct >= 1.0 {
+        3
+    } else if pct >= 0.0 {
+        4
+    } else if pct >= -1.0 {
+        5
+    } else if pct >= -3.0 {
+        6
+    } else if pct >= -5.0 {
+        7
+    } else if pct >= -7.0 {
+        8
+    } else {
+        9
     }
 }
 
@@ -206,6 +232,7 @@ async fn scan(
     let mut sealed: Vec<&Quote> = Vec::new();
     let mut broken: Vec<StockBrief> = Vec::new();
     let mut limit_down: Vec<StockBrief> = Vec::new();
+    let mut hist = vec![0usize; 10];
 
     for q in snap.values() {
         if q.price <= 0.0 || q.prev_close <= 0.0 {
@@ -218,6 +245,7 @@ async fn scan(
         } else {
             flat += 1;
         }
+        hist[hist_bucket(q.pct)] += 1;
         let (lu, ld) = limit_prices(&q.code, &q.name, q.prev_close);
         let eps = 0.01;
         if q.high >= lu - eps {
@@ -327,6 +355,7 @@ async fn scan(
         max_boards,
         sentiment,
         mood: mood.to_string(),
+        hist,
         ladder,
         limit_up_list: lu_stocks,
         broken_list: broken,
