@@ -106,25 +106,40 @@ jobs:
           echo "== collected files =="
           find dist -type f | sort
 
-          # ---- 规整 macOS updater 包名（加架构后缀）----
-          # 注意：.sig 内 file: 行仍记录原始名，Tauri updater 校验不依赖该文件名。
-          if ls dist/mac-arm/*.app.tar.gz >/dev/null 2>&1; then
-            mv dist/mac-arm/TickGold.app.tar.gz        "dist/mac-arm/TickGold_aarch64.app.tar.gz"
-            mv dist/mac-arm/TickGold.app.tar.gz.sig    "dist/mac-arm/TickGold_aarch64.app.tar.gz.sig"
-          fi
-          if ls dist/mac-x64/*.app.tar.gz >/dev/null 2>&1; then
-            mv dist/mac-x64/TickGold.app.tar.gz        "dist/mac-x64/TickGold_x64.app.tar.gz"
-            mv dist/mac-x64/TickGold.app.tar.gz.sig    "dist/mac-x64/TickGold_x64.app.tar.gz.sig"
-          fi
+          # ---- 汇集到 staging 目录 rel/ 并规整最终文件名 ----
+          # artifact 保留了 bundle/macos、bundle/dmg 等子目录，统一用 find 定位，不假设层级。
+          mkdir -p rel
 
-          WIN_EXE=$(find dist/win -name '*x64-setup.exe' | head -n1)
-          WIN_SIG=$(find dist/win -name '*x64-setup.exe.sig' | head -n1)
-          ARM_TGZ="dist/mac-arm/TickGold_aarch64.app.tar.gz"
-          ARM_SIG="dist/mac-arm/TickGold_aarch64.app.tar.gz.sig"
-          X64_TGZ="dist/mac-x64/TickGold_x64.app.tar.gz"
-          X64_SIG="dist/mac-x64/TickGold_x64.app.tar.gz.sig"
-          ARM_DMG=$(find dist/mac-arm -name '*.dmg' | head -n1)
-          X64_DMG=$(find dist/mac-x64 -name '*.dmg' | head -n1)
+          WIN_RAW=$(find dist/win -name '*x64-setup.exe' ! -name '*.sig' | head -n1)
+          WIN_RAW_SIG=$(find dist/win -name '*x64-setup.exe.sig' | head -n1)
+          cp "$WIN_RAW" "rel/$(basename "$WIN_RAW")"
+          cp "$WIN_RAW_SIG" "rel/$(basename "$WIN_RAW_SIG")"
+
+          ARM_RAW=$(find dist/mac-arm -path '*/macos/*' -name '*.app.tar.gz' ! -name '*.sig' | head -n1)
+          ARM_RAW_SIG=$(find dist/mac-arm -name '*.app.tar.gz.sig' | head -n1)
+          ARM_RAW_DMG=$(find dist/mac-arm -name '*.dmg' | head -n1)
+          cp "$ARM_RAW" "rel/TickGold_aarch64.app.tar.gz"
+          cp "$ARM_RAW_SIG" "rel/TickGold_aarch64.app.tar.gz.sig"
+          cp "$ARM_RAW_DMG" "rel/$(basename "$ARM_RAW_DMG")"
+
+          X64_RAW=$(find dist/mac-x64 -path '*/macos/*' -name '*.app.tar.gz' ! -name '*.sig' | head -n1)
+          X64_RAW_SIG=$(find dist/mac-x64 -name '*.app.tar.gz.sig' | head -n1)
+          X64_RAW_DMG=$(find dist/mac-x64 -name '*.dmg' | head -n1)
+          cp "$X64_RAW" "rel/TickGold_x64.app.tar.gz"
+          cp "$X64_RAW_SIG" "rel/TickGold_x64.app.tar.gz.sig"
+          cp "$X64_RAW_DMG" "rel/$(basename "$X64_RAW_DMG")"
+
+          echo "== staged =="
+          find rel -type f | sort
+
+          WIN_EXE="rel/$(basename "$WIN_RAW")"
+          WIN_SIG="rel/$(basename "$WIN_RAW_SIG")"
+          ARM_TGZ="rel/TickGold_aarch64.app.tar.gz"
+          ARM_SIG="rel/TickGold_aarch64.app.tar.gz.sig"
+          X64_TGZ="rel/TickGold_x64.app.tar.gz"
+          X64_SIG="rel/TickGold_x64.app.tar.gz.sig"
+          ARM_DMG="rel/$(basename "$ARM_RAW_DMG")"
+          X64_DMG="rel/$(basename "$X64_RAW_DMG")"
 
           # ---- 创建唯一（草稿）Release 并上传全部资产 ----
           EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
