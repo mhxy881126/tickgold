@@ -90,6 +90,16 @@ async fn get_f10_chips(code: String) -> Result<market::f10::ChipDistribution, St
 }
 
 #[tauri::command]
+async fn get_ipo_list() -> Result<Vec<market::cninfo::IpoItem>, String> {
+    market::cninfo::get_ipo_list().await
+}
+
+#[tauri::command]
+async fn get_restricted_queue(code: String) -> Result<Vec<market::cninfo::RestrictedItem>, String> {
+    market::cninfo::get_restricted_queue(code).await
+}
+
+#[tauri::command]
 async fn start_spider(
     app: tauri::AppHandle,
     watch: Vec<String>,
@@ -404,6 +414,8 @@ pub fn run() {
             get_f10_profile,
             get_f10_finance,
             get_f10_chips,
+            get_ipo_list,
+            get_restricted_queue,
             start_spider,
             stop_spider,
             start_radar,

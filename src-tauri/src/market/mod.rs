@@ -7,6 +7,7 @@ pub mod spider;
 pub mod limitup;
 pub mod alert;
 pub mod f10;
+pub mod cninfo;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};

@@ -251,3 +251,33 @@ export async function fetchF10Finance(code: string): Promise<FinanceReport> {
 export async function fetchF10Chips(code: string): Promise<ChipDistribution> {
   return await invoke<ChipDistribution>("get_f10_chips", { code });
 }
+
+// ===== 新股 / 解禁日历 =====
+export interface IpoItem {
+  code: string;
+  name: string;
+  applyDate: string;  // 申购日
+  listDate: string;   // 上市日
+  payDate: string;    // 中签缴款日
+  issuePrice: number | null;
+  pe: number | null;
+  lotRate: number | null;  // 中签率（小数）
+  applyLimit: number | null; // 申购上限（万股）
+  totalQty: number | null;
+  onlineQty: number | null;
+}
+export interface RestrictedItem {
+  code: string;
+  name: string;
+  liftDate: string;
+  liftQty: number | null;   // 万股
+  liftValue: number | null; // 亿元
+  batch: number | null;
+  noticeDate: string;
+}
+export async function fetchIpoList(): Promise<IpoItem[]> {
+  return await invoke<IpoItem[]>("get_ipo_list");
+}
+export async function fetchRestrictedQueue(code: string): Promise<RestrictedItem[]> {
+  return await invoke<RestrictedItem[]>("get_restricted_queue", { code });
+}
