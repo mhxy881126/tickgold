@@ -71,26 +71,68 @@ function onGridDragOver(e: DragEvent) {
   bench.hintZone(x < 7 / 12 ? "main" : "side");
 }
 
-// ===== 左导航：卡片开关 =====
-const CARD_NAV: { id: CardId; label: string; icon: string }[] = [
-  { id: "watch", label: "自选", icon: "M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" },
-  { id: "rank", label: "榜单", icon: "M3 5h18v2H3zm0 4h18v2H3zm0 4h12v2H3zm0 4h12v2H3z" },
-  { id: "radar", label: "雷达", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm0 4a6 6 0 100 12 6 6 0 000-12zm0 3a3 3 0 100 6 3 3 0 000-6z" },
-  { id: "breadth", label: "宽度", icon: "M3 12h4l3-8 4 16 3-8h4" },
-  { id: "chart", label: "K线", icon: "M6 3h2v4H6zm0 14h2v4H6zM5 8h4v8H5zm11-9h2v3h-2zm0 12h2v5h-2zm-1-7h4v7h-4z" },
-  { id: "spider", label: "精灵", icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8z" },
-  { id: "sector", label: "板块", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z" },
-  { id: "sectorheat", label: "热力", icon: "M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z" },
-  { id: "sectorevent", label: "板动", icon: "M3 12h4l3-8 4 16 3-8h4" },
-  { id: "screener", label: "选股", icon: "M4 5h3v14H4zm6.5 5h3v9h-3zM17 9h3v10h-3z" },
-  { id: "order", label: "盘口", icon: "M5 3h14v18H5zm2 4h10v2H7zm0 4h10v2H7zm0 4h7v2H7z" },
-  { id: "fundflow", label: "资金", icon: "M12 3c-4 0-7 1.3-7 3v12c0 1.7 3 3 7 3s7-1.3 7-3V6c0-1.7-3-3 7-3zm0 2c3.3 0 5 .9 5 1s-1.7 1-5 1-5-.9-5-1 1.7-1 5-1zm-5 4.5c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V12c0 .1-1.7 1-5 1s-5-.9-5-1zm0 4c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V16c0 .1-1.7 1-5 1s-5-.9-5-1z" },
-  { id: "alert", label: "预警", icon: "M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C8.63 5.36 7 7.92 7 11v5l-2 2v1h14v-1l-2-2z" },
-  { id: "f10", label: "F10", icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm0 2l4 4h-4V4zM8 13h8v1.5H8zm0 4h8v1.5H8zm0-8h5v1.5H8z" },
-  { id: "trade", label: "交易", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1c1.7.3 3 1.4 3 3.1 0 1.9-1.5 2.8-3.4 2.8-1.2 0-2.1-.4-2.6-1l1.2-1c.3.4.8.7 1.5.7.8 0 1.3-.3 1.3-.8s-.4-.8-1.5-1c-1.6-.4-3.2-1-3.2-2.9 0-1.6 1.3-2.7 3-3V5h2zm-1 11h2v2h-2z" },
-  { id: "journal", label: "日记", icon: "M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1zm3 5h8v1.5H8zm0 4h8v1.5H8zm0 4h5v1.5H8z" },
-  { id: "calendar", label: "日历", icon: "M7 2v2H5a2 2 0 00-2 2v13a2 2 0 002 2h14a2 2 0 002-2V6a2 0 002-2 0 00-2-2h-2V2h-2v2H9V2H7zm-2 7h14v10H5V9zm2 2v3h3v-3H7zm5 0v3h3v-3z" },
-  { id: "ipo", label: "新股", icon: "M12 2l2.9 6.3 6.8.7-5 4.6 1.4 6.7L12 17l-6.1 3.3 1.4-6.7-5-4.6 6.8-.7z" },
+// ===== 顶部 Dock：按功能域分组 =====
+interface DockItem {
+  id: CardId;
+  label: string;
+  icon: string;
+}
+interface DockGroup {
+  name: string;
+  items: DockItem[];
+}
+const DOCK_GROUPS: DockGroup[] = [
+  {
+    name: "总览",
+    items: [
+      { id: "watch", label: "自选", icon: "M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" },
+      { id: "rank", label: "榜单", icon: "M3 5h18v2H3zm0 4h18v2H3zm0 4h12v2H3zm0 4h12v2H3z" },
+      { id: "breadth", label: "宽度", icon: "M3 12h4l3-8 4 16 3-8h4" },
+      { id: "dist", label: "涨跌分布", icon: "M3 21h2v-7H3zm4 0h2V9H7zm4 0h2V5h-2zm4 0h2v-9h-2zm4 0h2V11h-2z" },
+    ],
+  },
+  {
+    name: "盯盘",
+    items: [
+      { id: "radar", label: "雷达", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm0 4a6 6 0 100 12 6 6 0 000-12zm0 3a3 3 0 100 6 3 3 0 000-6z" },
+      { id: "spider", label: "精灵", icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8z" },
+      { id: "alert", label: "预警", icon: "M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C8.63 5.36 7 7.92 7 11v5l-2 2v1h14v-1l-2-2z" },
+    ],
+  },
+  {
+    name: "板块",
+    items: [
+      { id: "sector", label: "板块", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z" },
+      { id: "sectorheat", label: "热力图", icon: "M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z" },
+      { id: "sectorevent", label: "板块异动", icon: "M3 12h4l3-8 4 16 3-8h4" },
+      { id: "theme", label: "题材轮动", icon: "M12 5l7 3.5-7 3.5L5 8.5 12 5zM5 12l7 3.5L19 12M5 15.5l7 3.5 7-3.5" },
+    ],
+  },
+  {
+    name: "行情",
+    items: [
+      { id: "chart", label: "K线", icon: "M6 3h2v4H6zm0 14h2v4H6zM5 8h4v8H5zm11-9h2v3h-2zm0 12h2v5h-2zm-1-7h4v7h-4z" },
+      { id: "order", label: "盘口", icon: "M5 3h14v18H5zm2 4h10v2H7zm0 4h10v2H7zm0 4h7v2H7z" },
+      { id: "fundflow", label: "资金", icon: "M12 3c-4 0-7 1.3-7 3v12c0 1.7 3 3 7 3s7-1.3 7-3V6c0-1.7-3-3-7-3zm0 2c3.3 0 5 .9 5 1s-1.7 1-5 1-5-.9-5-1 1.7-1 5-1zm-5 4.5c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V12c0 .1-1.7 1-5 1s-5-.9-5-1zm0 4c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V16c0 .1-1.7 1-5 1s-5-.9-5-1z" },
+      { id: "news", label: "快讯", icon: "M5 3h14a2 2 0 012 2v11a2 2 0 01-2 2H8l-4 3V5a2 2 0 011-2z" },
+    ],
+  },
+  {
+    name: "选股交易",
+    items: [
+      { id: "screener", label: "选股", icon: "M4 5h3v14H4zm6.5 5h3v9h-3zM17 9h3v10h-3z" },
+      { id: "f10", label: "F10", icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm0 2l4 4h-4V4zM8 13h8v1.5H8zm0 4h8v1.5H8zm0-8h5v1.5H8z" },
+      { id: "trade", label: "模拟交易", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1c1.7.3 3 1.4 3 3.1 0 1.9-1.5 2.8-3.4 2.8-1.2 0-2.1-.4-2.6-1l1.2-1c.3.4.8.7 1.5.7.8 0 1.3-.3 1.3-.8s-.4-.8-1.5-1c-1.6-.4-3.2-1-3.2-2.9 0-1.6 1.3-2.7 3-3V5h2zm-1 11h2v2h-2z" },
+    ],
+  },
+  {
+    name: "工具",
+    items: [
+      { id: "journal", label: "日记", icon: "M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1zm3 5h8v1.5H8zm0 4h8v1.5H8zm0 4h5v1.5H8z" },
+      { id: "calendar", label: "财经日历", icon: "M7 2v2H5a2 2 0 00-2 2v13a2 2 0 002 2h14a2 2 0 002-2V6a2 0 002-2 0 00-2-2h-2V2h-2v2H9V2H7zm-2 7h14v10H5V9zm2 2v3h3v-3H7zm5 0v3h3v-3z" },
+      { id: "ipo", label: "新股解禁", icon: "M12 2l2.9 6.3 6.8.7-5 4.6 1.4 6.7L12 17l-6.1 3.3 1.4-6.7-5-4.6 6.8-.7z" },
+    ],
+  },
 ];
 
 // ===== 模式预设 =====
@@ -105,6 +147,30 @@ function isMode(cards: CardId[]) {
   const a = [...bench.openCards.value].sort().join(",");
   const b = [...cards].sort().join(",");
   return a === b && a !== "";
+}
+
+// ===== Dock 联动放大（macOS Dock 感：鼠标越近、放大越多并上浮）=====
+const dockRef = ref<HTMLElement | null>(null);
+function onDockMove(e: MouseEvent) {
+  const el = dockRef.value;
+  if (!el) return;
+  const items = el.querySelectorAll<HTMLElement>(".dock-item");
+  items.forEach((it) => {
+    const r = it.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const d = Math.abs(e.clientX - cx);
+    const t = Math.max(0, 1 - d / 115);
+    it.style.transform = `scale(${1 + t * 0.42}) translateY(${(-t * 6).toFixed(1)}px)`;
+    it.style.zIndex = t > 0.05 ? "10" : "";
+  });
+}
+function onDockLeave() {
+  const el = dockRef.value;
+  if (!el) return;
+  el.querySelectorAll<HTMLElement>(".dock-item").forEach((it) => {
+    it.style.transform = "";
+    it.style.zIndex = "";
+  });
 }
 
 // ===== 联动：选中股票 → 打开 K线卡片 =====
@@ -196,32 +262,40 @@ onBeforeUnmount(() => {
     <!-- 指数条 -->
     <Indices class="idx-row" />
 
-    <!-- 左窄导航 -->
-    <nav class="leftnav">
-      <div
-        v-for="item in CARD_NAV"
-        :key="item.id"
-        class="nav-item"
-        :class="{ on: bench.isOpen(item.id) }"
-        :title="item.label"
-        @click="bench.toggle(item.id)"
-      >
-        <svg viewBox="0 0 24 24" class="nav-ic"><path fill="currentColor" :d="item.icon" /></svg>
-        <span class="nav-lb">{{ item.label }}</span>
+    <!-- 顶部功能 Dock（按域分组，hover 联动放大） -->
+    <nav
+      class="topdock"
+      ref="dockRef"
+      @mousemove="onDockMove"
+      @mouseleave="onDockLeave"
+    >
+      <div v-for="g in DOCK_GROUPS" :key="g.name" class="dock-grp">
+        <span class="grp-name">{{ g.name }}</span>
+        <button
+          v-for="it in g.items"
+          :key="it.id"
+          type="button"
+          class="dock-item"
+          :class="{ on: bench.isOpen(it.id) }"
+          @click="bench.toggle(it.id)"
+        >
+          <svg viewBox="0 0 24 24" class="dock-ic"><path fill="currentColor" :d="it.icon" /></svg>
+          <span class="dock-lb">{{ it.label }}</span>
+        </button>
       </div>
-
-      <div class="nav-sep"></div>
-
-      <div
-        v-for="(m, i) in MODE_NAV"
-        :key="'m' + i"
-        class="nav-item"
-        :class="{ on: isMode(m.cards) }"
-        :title="m.label + '布局'"
-        @click="bench.setMode(m.cards)"
-      >
-        <svg viewBox="0 0 24 24" class="nav-ic"><path fill="currentColor" :d="m.icon" /></svg>
-        <span class="nav-lb">{{ m.label }}</span>
+      <div class="dock-grp mode-grp">
+        <span class="grp-name">布局</span>
+        <button
+          v-for="(m, i) in MODE_NAV"
+          :key="'m' + i"
+          type="button"
+          class="dock-item"
+          :class="{ on: isMode(m.cards) }"
+          @click="bench.setMode(m.cards)"
+        >
+          <svg viewBox="0 0 24 24" class="dock-ic"><path fill="currentColor" :d="m.icon" /></svg>
+          <span class="dock-lb">{{ m.label }}</span>
+        </button>
       </div>
     </nav>
 
@@ -332,14 +406,14 @@ onBeforeUnmount(() => {
 <style scoped>
 .app {
   display: grid;
-  grid-template-rows: 38px 32px 1fr;
-  grid-template-columns: 46px 1fr;
+  grid-template-rows: 38px 32px 44px 1fr;
+  grid-template-columns: 1fr;
   height: 100vh;
 }
 
 /* 顶栏 */
 .topbar {
-  grid-column: 1 / 3;
+  grid-column: 1;
   display: flex; align-items: center; gap: 14px;
   padding: 0 12px; background: var(--bg-panel); border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
@@ -352,26 +426,57 @@ onBeforeUnmount(() => {
 .ver { opacity: 0.8; }
 
 /* 指数条 */
-.idx-row { grid-column: 1 / 3; }
+.idx-row { grid-column: 1; }
 
-/* 左导航 */
-.leftnav {
+/* 顶部功能 Dock */
+.topdock {
+  grid-column: 1;
+  display: flex;
+  align-items: stretch;
   background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  padding: 0 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topdock::-webkit-scrollbar { display: none; }
+.dock-grp {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 9px;
   border-right: 1px solid var(--border);
-  display: flex; flex-direction: column; align-items: center;
-  padding: 8px 0; gap: 3px;
-  overflow-y: auto;
 }
-.nav-item {
-  width: 40px; padding: 6px 0; border-radius: 7px; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; color: var(--text-dim);
-  transition: all 0.15s;
+.dock-grp:last-child { border-right: 0; }
+.mode-grp { margin-left: auto; border-right: 0; }
+.grp-name {
+  font-size: 10px;
+  color: var(--text-dim);
+  opacity: 0.65;
+  margin-right: 5px;
+  white-space: nowrap;
 }
-.nav-ic { width: 17px; height: 17px; }
-.nav-lb { font-size: 10px; margin-top: 3px; }
-.nav-item:hover { color: var(--text); background: var(--bg-hover); }
-.nav-item.on { color: var(--accent); background: #16233a; }
-.nav-sep { width: 24px; height: 1px; background: var(--border); margin: 5px 0; }
+.dock-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transform-origin: bottom center;
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.15s, color 0.15s;
+}
+.dock-ic { width: 15px; height: 15px; flex: none; }
+.dock-item:hover { color: var(--text); background: var(--bg-hover); }
+.dock-item:hover .dock-ic { color: #4ea1ff; }
+.dock-item.on { color: #e8c96a; background: rgba(212, 175, 55, 0.12); }
+.dock-item.on .dock-ic { color: #e8c96a; }
 
 /* 工作台 */
 .workspace {

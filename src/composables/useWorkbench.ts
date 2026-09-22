@@ -145,6 +145,72 @@ function cell(s: number, e: number, r: number, er: number, totalRows: number = R
   } as Record<string, string>;
 }
 
+// x 的整数约数（用于在固定网格线上均匀分列）
+function divisors(x: number): number[] {
+  const out: number[] = [];
+  for (let i = 1; i <= x; i++) if (x % i === 0) out.push(i);
+  return out;
+}
+
+// 通用装箱：把 cards 均匀铺满一个 Lw 列 × 6 行的逻辑网格（列起点 colStart）。
+// 任意卡片数都保证每卡有整数网格线坐标、不重叠；末行不满则拉伸铺满，无孤卡、无右侧空洞。
+function packZone(
+  cards: CardId[],
+  colStart: number,
+  Lw: number,
+  out: Record<string, Record<string, string>>
+) {
+  const n = cards.length;
+  if (!n) return;
+  let best: { k: number; m: number; cost: number } | null = null;
+  for (const k of divisors(Lw)) {
+    const m = Math.ceil(n / k);
+    if (6 % m !== 0) continue; // 行高必须落在整数网格线
+    const cw = Lw / k;
+    const ch = 6 / m;
+    const ratio = cw / ch;
+    const fill = n / (k * m);
+    const cost = Math.abs(ratio - 1.4) + (1 - fill) * 0.6;
+    if (!best || cost < best.cost) best = { k, m, cost };
+  }
+  if (!best) {
+    out[cards[0]] = cell(1 + colStart, 1 + colStart + Lw, 1, 7); // 极端兜底
+    return;
+  }
+  const { k, m } = best;
+  const colW = Lw / k;
+  const rowH = 6 / m;
+  let i = 0;
+  for (let row = 0; row < m; row++) {
+    const remain = n - i;
+    const inRow = Math.min(k, remain);
+    const grs = 1 + row * rowH;
+    const gre = 1 + (row + 1) * rowH;
+    if (remain < k) {
+      // 末行不满：把 Lw 列分给 inRow 张（宽 base / base+1），铺满整行、无右侧空洞
+      const base = Math.floor(Lw / inRow);
+      const extra = Lw % inRow;
+      let cx = 1 + colStart;
+      for (let c = 0; c < inRow; c++) {
+        const w = base + (c < extra ? 1 : 0);
+        out[cards[i]] = cell(cx, cx + w, grs, gre);
+        cx += w;
+        i++;
+      }
+    } else {
+      for (let c = 0; c < k; c++) {
+        out[cards[i]] = cell(
+          1 + colStart + c * colW,
+          1 + colStart + (c + 1) * colW,
+          grs,
+          gre
+        );
+        i++;
+      }
+    }
+  }
+}
+
 function defaultZone(id: CardId): Zone {
   return WIDE_ORDER.includes(id) ? "main" : "side";
 }
@@ -180,9 +246,11 @@ export function useWorkbench() {
   const timeMode = ref<string | null>(null);
 
   function open(id: CardId) {
+    if (timeMode.value) timeMode.value = null; // 手动加卡 → 退出固定 Bento，回到自由网格
     if (!openCards.value.includes(id)) openCards.value.push(id);
   }
   function close(id: CardId) {
+    if (timeMode.value) timeMode.value = null; // Bento 被改动 → 回到自由网格
     openCards.value = openCards.value.filter((c) => c !== id);
   }
   function toggle(id: CardId) {
@@ -231,101 +299,17 @@ export function useWorkbench() {
         return st;
       }
     }
-    const wides = mainCards.value;
-    const w = wides.length;
-    const narrows = sideCards.value;
-    const n = narrows.length;
     const style: Record<string, Record<string, string>> = {};
-
-    if (w > 0) {
-      // 宽卡片占主干 col1-7（6 行细分）
-      if (w === 1) {
-        style[wides[0]] = cell(1, 7, 1, 7); // 全高
-      } else if (w === 2) {
-        style[wides[0]] = cell(1, 7, 1, 4); // 上半
-        style[wides[1]] = cell(1, 7, 4, 7); // 下半
-      } else if (w === 3) {
-        style[wides[0]] = cell(1, 7, 1, 3); // 上
-        style[wides[1]] = cell(1, 7, 3, 5); // 中
-        style[wides[2]] = cell(1, 7, 5, 7); // 下
-      } else if (w === 4) {
-        // 2 列 × 2 行
-        style[wides[0]] = cell(1, 4, 1, 4);
-        style[wides[1]] = cell(4, 7, 1, 4);
-        style[wides[2]] = cell(1, 4, 4, 7);
-        style[wides[3]] = cell(4, 7, 4, 7);
-      } else {
-        // w >= 5：2 列 × 3 行（最多 6 个宽卡）
-        const wcells: [number, number, number, number][] = [
-          [1, 4, 1, 3],
-          [4, 7, 1, 3],
-          [1, 4, 3, 5],
-          [4, 7, 3, 5],
-          [1, 4, 5, 7],
-          [4, 7, 5, 7],
-        ];
-        wides.slice(0, 6).forEach((id, i) => {
-          const c = wcells[i];
-          style[id] = cell(c[0], c[1], c[2], c[3]);
-        });
-      }
-      // 窄卡片在右侧 col7-13
-      if (n === 1) {
-        style[narrows[0]] = cell(7, 13, 1, 7);
-      } else if (n === 2) {
-        style[narrows[0]] = cell(7, 10, 1, 7);
-        style[narrows[1]] = cell(10, 13, 1, 7);
-      } else if (n === 3) {
-        style[narrows[0]] = cell(7, 13, 1, 4);
-        style[narrows[1]] = cell(7, 10, 4, 7);
-        style[narrows[2]] = cell(10, 13, 4, 7);
-      } else if (n === 4) {
-        style[narrows[0]] = cell(7, 10, 1, 4);
-        style[narrows[1]] = cell(10, 13, 1, 4);
-        style[narrows[2]] = cell(7, 10, 4, 7);
-        style[narrows[3]] = cell(10, 13, 4, 7);
-      } else if (n === 5) {
-        // 上排 3、下排 2
-        style[narrows[0]] = cell(7, 9, 1, 4);
-        style[narrows[1]] = cell(9, 11, 1, 4);
-        style[narrows[2]] = cell(11, 13, 1, 4);
-        style[narrows[3]] = cell(7, 10, 4, 7);
-        style[narrows[4]] = cell(10, 13, 4, 7);
-      } else {
-        // n >= 6：上排 3、下排 3
-        style[narrows[0]] = cell(7, 9, 1, 4);
-        style[narrows[1]] = cell(9, 11, 1, 4);
-        style[narrows[2]] = cell(11, 13, 1, 4);
-        style[narrows[3]] = cell(7, 9, 4, 7);
-        style[narrows[4]] = cell(9, 11, 4, 7);
-        style[narrows[5]] = cell(11, 13, 4, 7);
-      }
+    const wn = mainCards.value.length;
+    const sn = sideCards.value.length;
+    if (wn && sn) {
+      // 两区都有：主干左 6 列、侧栏右 6 列
+      packZone(mainCards.value, 0, 6, style);
+      packZone(sideCards.value, 6, 6, style);
+    } else if (wn) {
+      packZone(mainCards.value, 0, 12, style); // 仅主干，占满整宽
     } else {
-      // 无宽卡片：窄卡片横向均分、全高
-      const spans: Record<number, [number, number][]> = {
-        1: [[1, 13]],
-        2: [[1, 7], [7, 13]],
-        3: [[1, 5], [5, 9], [9, 13]],
-        4: [[1, 4], [4, 7], [7, 10], [10, 13]],
-      };
-      if (n <= 4) {
-        (spans[n] || []).forEach(([s, e], i) => {
-          style[narrows[i]] = cell(s, e, 1, 7);
-        });
-      } else {
-        // n===5：上排 3、下排 2；n>=6：上排 3、下排 3
-        ([[1, 5], [5, 9], [9, 13]] as [number, number][]).forEach(([s, e], i) => {
-          style[narrows[i]] = cell(s, e, 1, 4);
-        });
-        if (n === 5) {
-          style[narrows[3]] = cell(1, 7, 4, 7);
-          style[narrows[4]] = cell(7, 13, 4, 7);
-        } else {
-          style[narrows[3]] = cell(1, 5, 4, 7);
-          style[narrows[4]] = cell(5, 9, 4, 7);
-          style[narrows[5]] = cell(9, 13, 4, 7);
-        }
-      }
+      packZone(sideCards.value, 0, 12, style); // 仅侧栏，占满整宽
     }
     return style;
   });
