@@ -12,7 +12,8 @@ export type CardId =
   | "order"
   | "fundflow"
   | "watch"
-  | "rank";
+  | "rank"
+  | "alert";
 
 export interface CardMeta {
   title: string;
@@ -34,15 +35,16 @@ export const CARD_META: Record<CardId, CardMeta> = {
   fundflow: { title: "资金流向", accent: "#f0883e", kind: "narrow" },
   watch: { title: "自选股", accent: "#26d07c", kind: "narrow" },
   rank: { title: "榜单", accent: "#e0556b", kind: "narrow" },
+  alert: { title: "预警管理", accent: "#ffd700", kind: "narrow" },
 };
 
 // 宽卡片（主干区域，可上下并列）与窄卡片（右侧）的排列顺序
 const WIDE_ORDER: CardId[] = ["radar", "breadth", "chart", "sectorheat", "sector", "screener"];
-const NARROW_ORDER: CardId[] = ["spider", "sectorevent", "order", "fundflow", "watch", "rank"];
+const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "order", "fundflow", "watch", "rank"];
 
 // 模式预设：一键切换一整套卡片
 export const MODES: Record<string, CardId[]> = {
-  pro: ["radar", "chart", "spider", "order", "watch"],
+  pro: ["radar", "chart", "spider", "order", "watch", "alert"],
   sector: ["sectorheat", "sector", "sectorevent"],
   scanner: ["screener", "rank", "watch"],
   full: [
@@ -58,6 +60,7 @@ export const MODES: Record<string, CardId[]> = {
     "fundflow",
     "watch",
     "rank",
+    "alert",
   ],
   chart: ["chart"],
 };

@@ -1,6 +1,6 @@
 // 行情 API：通过 Tauri command 调 Rust 端（Rust 负责请求东财/新浪公开接口，避免浏览器 CORS 与限频）
 import { invoke } from "@tauri-apps/api/core";
-import type { Quote, KBar, StockItem, FundFlow, Sector, ScreenFilter, ScreenResult } from "./types";
+import type { Quote, KBar, StockItem, FundFlow, Sector, ScreenFilter, ScreenResult, AlertRule } from "./types";
 
 /** 批量拉实时行情 */
 export async function fetchQuotes(codes: string[]): Promise<Quote[]> {
@@ -164,4 +164,26 @@ export async function startRadar(): Promise<string> {
 /** 停止涨停雷达 */
 export async function stopRadar(): Promise<string> {
   return await invoke<string>("stop_radar");
+}
+
+// ===== 价格 / 涨跌幅预警 =====
+export interface AlertEvent {
+  time: number;
+  id: string;
+  code: string;
+  name: string;
+  kind: string; // price_up / price_down / pct_up / pct_down
+  label: string;
+  message: string;
+  price: number;
+  pct: number;
+  target: number;
+  tone: string; // up / down
+}
+/** 启动（或更新）预警引擎，传入启用规则快照 */
+export async function startAlertEngine(rules: AlertRule[]): Promise<string> {
+  return await invoke<string>("start_alert_engine", { rules });
+}
+export async function stopAlertEngine(): Promise<string> {
+  return await invoke<string>("stop_alert_engine");
 }

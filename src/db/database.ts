@@ -44,13 +44,11 @@ async function init(): Promise<Database> {
 }
 
 async function seedGroups(d: Database) {
-  const r = await d.select<{ c: number }[]>("SELECT COUNT(*) AS c FROM groups");
-  if ((r[0]?.c ?? 0) === 0) {
-    await d.execute(
-      "INSERT INTO groups(name, sort_order, created_at) VALUES('我的自选', 0, ?)",
-      [Date.now()]
-    );
-  }
+  // 幂等：NOT EXISTS 防止多窗口并发初始化插入重复默认分组
+  await d.execute(
+    "INSERT INTO groups(name, sort_order, created_at) SELECT '我的自选', 0, ? WHERE NOT EXISTS (SELECT 1 FROM groups)",
+    [Date.now()]
+  );
 }
 
 async function seedStocks(d: Database) {
@@ -67,7 +65,7 @@ async function seedStocks(d: Database) {
   for (let i = 0; i < codes.length; i++) {
     const code = codes[i];
     await d.execute(
-      "INSERT INTO stocks(code, name, group_id, sort_order, created_at) VALUES(?, ?, 1, ?, ?)",
+      "INSERT OR IGNORE INTO stocks(code, name, group_id, sort_order, created_at) VALUES(?, ?, 1, ?, ?)",
       [code, DEFAULT_NAMES[code] ?? "", i, Date.now()]
     );
   }
@@ -85,7 +83,7 @@ async function seedAlerts(d: Database) {
   }
   for (const rule of rules) {
     await d.execute(
-      `INSERT INTO alerts(id, code, name, up_price, down_price, up_pct, down_pct, cooldown_sec, enabled, last_fired_at)
+      `INSERT OR IGNORE INTO alerts(id, code, name, up_price, down_price, up_pct, down_pct, cooldown_sec, enabled, last_fired_at)
        VALUES(?,?,?,?,?,?,?,?,?,?)`,
       [
         rule.id,

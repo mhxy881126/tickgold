@@ -120,6 +120,33 @@ fn stop_radar(ctl: tauri::State<'_, Arc<market::limitup::LimitRadar>>) -> Result
     Ok("stopped".to_string())
 }
 
+#[tauri::command]
+async fn start_alert_engine(
+    app: tauri::AppHandle,
+    rules: Vec<market::alert::AlertRule>,
+    engine: tauri::State<'_, Arc<market::alert::AlertEngine>>,
+) -> Result<String, String> {
+    // 每次规则变更都会重新调用：已运行则只更新规则快照
+    *engine.rules.lock().unwrap() = rules;
+    if engine.running.load(Ordering::Acquire) {
+        return Ok("updated".to_string());
+    }
+    engine.running.store(true, Ordering::Release);
+    let e: Arc<market::alert::AlertEngine> = engine.inner().clone();
+    tauri::async_runtime::spawn(async move {
+        market::alert::run_loop(app, e).await;
+    });
+    Ok("started".to_string())
+}
+
+#[tauri::command]
+fn stop_alert_engine(
+    engine: tauri::State<'_, Arc<market::alert::AlertEngine>>,
+) -> Result<String, String> {
+    engine.running.store(false, Ordering::Release);
+    Ok("stopped".to_string())
+}
+
 /// 老板键：切换所有窗口显隐
 fn boss_toggle(app: &tauri::AppHandle) {
     let state = app.state::<BossHidden>();
@@ -205,6 +232,7 @@ pub fn run() {
         .manage(BossHidden(Mutex::new(false)))
         .manage(Arc::new(market::spider::SpiderCtl::new()))
         .manage(Arc::new(market::limitup::LimitRadar::new()))
+        .manage(Arc::new(market::alert::AlertEngine::new()))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcuts(["Alt+`"])
@@ -286,7 +314,9 @@ pub fn run() {
             start_spider,
             stop_spider,
             start_radar,
-            stop_radar
+            stop_radar,
+            start_alert_engine,
+            stop_alert_engine
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

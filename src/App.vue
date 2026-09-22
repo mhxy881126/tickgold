@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount } from "vue";
+import { ref, onMounted, onBeforeUnmount } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
 import CardShell from "./components/CardShell.vue";
@@ -12,6 +12,7 @@ import Indices from "./components/Indices.vue";
 import RankBoard from "./components/RankBoard.vue";
 import RightPanel from "./components/RightPanel.vue";
 import FundFlow from "./components/FundFlow.vue";
+import AlertCenter from "./components/AlertCenter.vue";
 import SectorBoard from "./components/SectorBoard.vue";
 import SectorHeatmap from "./components/SectorHeatmap.vue";
 import SectorEvents from "./components/SectorEvents.vue";
@@ -22,6 +23,7 @@ import { useWatchlistStore } from "./stores/watchlist";
 import { useQuotesStore } from "./stores/quotes";
 import { useAlertStore } from "./stores/alert";
 import { useWorkbench, CARD_META, MODES, type CardId } from "./composables/useWorkbench";
+import type { AlertEvent } from "./api/market";
 
 const wl = useWatchlistStore();
 const quotes = useQuotesStore();
@@ -44,6 +46,7 @@ const CARD_NAV: { id: CardId; label: string; icon: string }[] = [
   { id: "screener", label: "选股", icon: "M4 5h3v14H4zm6.5 5h3v9h-3zM17 9h3v10h-3z" },
   { id: "order", label: "盘口", icon: "M5 3h14v18H5zm2 4h10v2H7zm0 4h10v2H7zm0 4h7v2H7z" },
   { id: "fundflow", label: "资金", icon: "M12 3c-4 0-7 1.3-7 3v12c0 1.7 3 3 7 3s7-1.3 7-3V6c0-1.7-3-3-7-3zm0 2c3.3 0 5 .9 5 1s-1.7 1-5 1-5-.9-5-1 1.7-1 5-1zm-5 4.5c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V12c0 .1-1.7 1-5 1s-5-.9-5-1zm0 4c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V16c0 .1-1.7 1-5 1s-5-.9-5-1z" },
+  { id: "alert", label: "预警", icon: "M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C8.63 5.36 7 7.92 7 11v5l-2 2v1h14v-1l-2-2z" },
 ];
 
 // ===== 模式预设 =====
@@ -75,8 +78,7 @@ function onSearchSelect(code: string, name: string) {
 const curVersion = ref("");
 const showUpdate = ref(false);
 
-let unlisten: (() => void) | null = null;
-watch(() => quotes.map, (m) => alerts.evaluate(m), { deep: true });
+const unlistenFns: (() => void)[] = [];
 
 onMounted(async () => {
   try {
@@ -87,17 +89,37 @@ onMounted(async () => {
       selected.value = wl.codes[0];
       bench.setMode(MODES.pro);
     }
+    // 有启用规则则启动后端预警引擎
+    await alerts.syncEngine();
     quotes.start(2000);
-    unlisten = await listen<string>("island:select", (e) => {
-      selected.value = e.payload;
-      if (!wl.codes.includes(e.payload)) wl.add(e.payload);
-      bench.open("chart");
-    });
+    unlistenFns.push(
+      await listen<string>("island:select", (e) => {
+        selected.value = e.payload;
+        if (!wl.codes.includes(e.payload)) wl.add(e.payload);
+        bench.open("chart");
+      })
+    );
+    // 预警触发：系统通知 + 记录触发时间
+    unlistenFns.push(
+      await listen<AlertEvent>("alert:triggered", (e) => {
+        const ev = e.payload;
+        alerts.markFired(ev.id, ev.time);
+        try {
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification(`预警 · ${ev.label}`, { body: ev.message });
+          }
+        } catch {
+          /* ignore */
+        }
+      })
+    );
   } catch (e) {
     console.error("[app] init failed", e);
   }
 });
-onBeforeUnmount(() => { if (unlisten) unlisten(); });
+onBeforeUnmount(() => {
+  unlistenFns.forEach((f) => f());
+});
 </script>
 
 <template>
@@ -209,6 +231,7 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
             <SectorEvents v-else-if="id === 'sectorevent'" @select="onSelect" />
             <Screener v-else-if="id === 'screener'" @select="onSelect" />
             <FundFlow v-else-if="id === 'fundflow'" :code="selected" />
+            <AlertCenter v-else-if="id === 'alert'" />
             <RightPanel v-else :code="selected" />
           </CardShell>
         </div>

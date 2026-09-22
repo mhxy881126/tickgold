@@ -5,6 +5,7 @@ pub mod sina;
 pub mod tencent;
 pub mod spider;
 pub mod limitup;
+pub mod alert;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
