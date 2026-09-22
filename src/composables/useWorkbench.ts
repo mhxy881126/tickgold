@@ -3,9 +3,11 @@ import { ref, computed } from "vue";
 export type CardId =
   | "radar"
   | "chart"
+  | "sectorheat"
   | "sector"
   | "screener"
   | "spider"
+  | "sectorevent"
   | "order"
   | "fundflow"
   | "watch"
@@ -21,9 +23,11 @@ export interface CardMeta {
 export const CARD_META: Record<CardId, CardMeta> = {
   radar: { title: "涨停雷达", accent: "#e0455a", kind: "chart" },
   chart: { title: "K线图", accent: "#2f6fed", kind: "chart" },
+  sectorheat: { title: "板块热力图", accent: "#d4af37", kind: "chart" },
   sector: { title: "板块行情", accent: "#35c4a8", kind: "chart" },
   screener: { title: "条件选股", accent: "#d4af37", kind: "chart" },
   spider: { title: "短线精灵", accent: "#e0556b", kind: "narrow" },
+  sectorevent: { title: "板块异动", accent: "#e0556b", kind: "narrow" },
   order: { title: "五档盘口", accent: "#d9a23b", kind: "narrow" },
   fundflow: { title: "资金流向", accent: "#f0883e", kind: "narrow" },
   watch: { title: "自选股", accent: "#26d07c", kind: "narrow" },
@@ -31,14 +35,27 @@ export const CARD_META: Record<CardId, CardMeta> = {
 };
 
 // 宽卡片（主干区域，可上下并列）与窄卡片（右侧）的排列顺序
-const WIDE_ORDER: CardId[] = ["radar", "chart", "sector", "screener"];
-const NARROW_ORDER: CardId[] = ["spider", "order", "fundflow", "watch", "rank"];
+const WIDE_ORDER: CardId[] = ["radar", "chart", "sectorheat", "sector", "screener"];
+const NARROW_ORDER: CardId[] = ["spider", "sectorevent", "order", "fundflow", "watch", "rank"];
 
 // 模式预设：一键切换一整套卡片
 export const MODES: Record<string, CardId[]> = {
   pro: ["radar", "chart", "spider", "order", "watch"],
+  sector: ["sectorheat", "sector", "sectorevent"],
   scanner: ["screener", "rank", "watch"],
-  full: ["radar", "chart", "sector", "screener", "spider", "order", "fundflow", "watch", "rank"],
+  full: [
+    "radar",
+    "chart",
+    "sectorheat",
+    "sector",
+    "screener",
+    "spider",
+    "sectorevent",
+    "order",
+    "fundflow",
+    "watch",
+    "rank",
+  ],
   chart: ["chart"],
 };
 
@@ -105,10 +122,19 @@ export function useWorkbench() {
         style[wides[2]] = cell(1, 4, 4, 7);
         style[wides[3]] = cell(4, 7, 4, 7);
       } else {
-        // w >= 5（罕见兜底）：前 3 个三行
-        style[wides[0]] = cell(1, 7, 1, 3);
-        style[wides[1]] = cell(1, 7, 3, 5);
-        style[wides[2]] = cell(1, 7, 5, 7);
+        // w >= 5：2 列 × 3 行（最多 6 个宽卡）
+        const wcells: [number, number, number, number][] = [
+          [1, 4, 1, 3],
+          [4, 7, 1, 3],
+          [1, 4, 3, 5],
+          [4, 7, 3, 5],
+          [1, 4, 5, 7],
+          [4, 7, 5, 7],
+        ];
+        wides.slice(0, 6).forEach((id, i) => {
+          const c = wcells[i];
+          style[id] = cell(c[0], c[1], c[2], c[3]);
+        });
       }
       // 窄卡片在右侧 col7-13
       if (n === 1) {

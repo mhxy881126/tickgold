@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M7 20l5-6 4 4 9-10' fill='none' stroke='%23d4af37' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>TickGold 功能总体规划全景</title>
+<style>
+  :root {
+    --bg:#0d1117; --card:#161b22; --card2:#1a2029; --line:#282f38;
+    --txt:#e6e9ee; --mut:#8b949e; --gold:#d4af37;
+    --done:#26d07c; --part:#e3b341; --todo:#4ea1ff; --warn:#e0455a;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body {
+    background: radial-gradient(1200px 500px at 50% -200px, #18222f 0%, var(--bg) 60%);
+    color:var(--txt); font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    line-height:1.5; padding:0 22px 50px;
+  }
+  .page-head { max-width:1180px; margin:0 auto; padding:38px 0 22px; border-bottom:1px solid var(--line); }
+  .page-head h1 { font-size:28px; font-weight:800; letter-spacing:.5px; }
+  .page-head h1 .g { color:var(--gold); }
+  .page-head p { color:var(--mut); font-size:13px; margin-top:8px; }
+  .legend { display:flex; flex-wrap:wrap; gap:16px; margin-top:16px; }
+  .legend span { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--mut); }
+  .dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
+  .dot.done{background:var(--done);} .dot.part{background:var(--part);}
+  .dot.todo{background:var(--todo);} .dot.warn{background:var(--warn);}
+
+  section { max-width:1180px; margin:34px auto 0; }
+  h2 { font-size:17px; font-weight:700; margin-bottom:16px; display:flex; align-items:center; gap:9px; }
+  h2::before { content:""; width:4px; height:16px; border-radius:2px; background:var(--gold); }
+  h2 small { color:var(--mut); font-weight:400; font-size:12px; }
+
+  /* 功能域 */
+  .domain-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(310px,1fr)); gap:14px; }
+  .domain {
+    background:linear-gradient(180deg,var(--card2),var(--card)); border:1px solid var(--line);
+    border-radius:12px; padding:15px 15px 13px; transition:border-color .2s, transform .2s;
+  }
+  .domain:hover { border-color:#3a4655; transform:translateY(-2px); }
+  .d-head { display:flex; align-items:center; gap:11px; margin-bottom:12px; }
+  .d-ico { width:36px; height:36px; border-radius:9px; background:#10161e; border:1px solid var(--line);
+           display:flex; align-items:center; justify-content:center; flex:0 0 36px; }
+  .d-ico svg { width:20px; height:20px; stroke:var(--gold); fill:none; stroke-width:1.8; }
+  .d-name { font-size:15px; font-weight:700; }
+  .d-sub { font-size:11px; color:var(--mut); }
+  .d-cover { margin-left:auto; font-size:10px; color:var(--mut); background:#10161e; border:1px solid var(--line);
+             border-radius:20px; padding:3px 9px; white-space:nowrap; }
+  .c-row { display:flex; align-items:center; gap:8px; font-size:12px; padding:5px 2px; color:#c9d1d9; }
+  .c-row .nm { flex:1; }
+  .stag { font-size:10px; padding:1px 7px; border-radius:10px; font-weight:600; }
+  .stag.done { color:var(--done); background:rgba(38,208,124,.12); }
+  .stag.part { color:var(--part); background:rgba(227,179,65,.12); }
+  .stag.todo { color:var(--todo); background:rgba(78,161,255,.12); }
+
+  /* 22 项 */
+  .items-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:9px; }
+  .item { display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--line);
+          border-radius:9px; padding:9px 12px; }
+  .num { width:24px; height:24px; border-radius:6px; background:#10161e; border:1px solid var(--line);
+         display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:var(--gold); flex:0 0 24px; }
+  .item .nm { flex:1; font-size:12px; }
+  .item .dom { font-size:10px; color:var(--mut); }
+
+  /* 路线 */
+  .phase { margin-bottom:16px; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .ph-head { display:flex; align-items:center; gap:10px; padding:11px 15px; font-weight:700; font-size:13px; }
+  .ph-badge { font-size:11px; font-weight:800; padding:2px 10px; border-radius:6px; color:#0d1117; }
+  .ph-note { color:var(--mut); font-weight:400; font-size:11px; margin-left:auto; }
+  .p0 .ph-head{background:rgba(224,69,90,.12);} .p0 .ph-badge{background:var(--warn);}
+  .p1 .ph-head{background:rgba(240,162,58,.12);} .p1 .ph-badge{background:#f0a23a;}
+  .p2 .ph-head{background:rgba(78,161,255,.12);} .p2 .ph-badge{background:var(--todo);}
+  .p3 .ph-head{background:rgba(139,148,158,.12);} .p3 .ph-badge{background:#9aa4af;}
+  .ver-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:10px; padding:13px 15px 15px; }
+  .ver { background:#11161e; border:1px solid var(--line); border-radius:9px; padding:11px 13px; }
+  .ver .v { font-size:16px; font-weight:800; color:var(--gold); font-variant-numeric:tabular-nums; }
+  .ver .t { font-size:13px; font-weight:600; margin:3px 0 4px; }
+  .ver .d { font-size:11px; color:var(--mut); }
+
+  footer { max-width:1180px; margin:34px auto 0; padding:16px 18px; border:1px dashed var(--line);
+           border-radius:10px; color:var(--mut); font-size:11px; line-height:1.8; }
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <h1><span class="g">TickGold</span> · 功能总体规划全景</h1>
+  <p>v0.10.0 基线　|　22 项期望功能 → 7 大功能域　|　Tauri 2.0 + Rust + Vue3 + ECharts，跨 Windows / macOS</p>
+  <div class="legend">
+    <span><i class="dot done"></i>已完成</span>
+    <span><i class="dot part"></i>部分具备 / 可增强</span>
+    <span><i class="dot todo"></i>待做</span>
+    <span><i class="dot warn"></i>谨慎（不做确定性预测）</span>
+  </div>
+</header>
+
+<section>
+  <h2>功能域全景 <small>相关功能合并为多 Tab 卡片，工作台同屏建议 4–6 张</small></h2>
+  <div class="domain-grid" id="domainGrid"></div>
+</section>
+
+<section>
+  <h2>22 项功能状态总表</h2>
+  <div class="items-grid" id="itemsGrid"></div>
+</section>
+
+<section>
+  <h2>版本路线 <small>先做数据现成 + 盯盘高频，资讯最后；每版可独立发布</small></h2>
+  <div id="roadmapWrap"></div>
+</section>
+
+<footer>
+  边界：不做真实委托下单（需券商资质，仅可做模拟交易）；不做确定性走势预测 / 目标价承诺，仅提供基于历史数据的技术信号与概率参考；免费接口维持五档，不提供 Level-2 十档 / 逐笔。
+  行情数据仅供学习与个人盯盘参考，不保证实时性与准确性，<b style="color:#c9d1d9">不构成投资建议</b>。
+</footer>
+
+<script>
+// ===== 状态文案 / 颜色 =====
+var S = {
+  done: { txt:"已完成", cls:"done" },
+  part: { txt:"部分", cls:"part" },
+  todo: { txt:"待做", cls:"todo" }
+};
+
+// ===== 7 大功能域 =====
+var domains = [
+  { name:"大盘总览", sub:"市场宽度", ico:"M4 20V10m6 10V4m6 16v-7m6 7V8",
+    cards:[["大盘指数条","done"],["全市场榜单","done"],["涨跌分布","todo"]], cover:[6,11,13] },
+  { name:"情绪与涨停", sub:"短线打板", ico:"M13 2 3 14h7l-1 8 10-12h-7l1-8z",
+    cards:[["涨停雷达","done"],["情绪温度","done"],["短线精灵","done"],["集合竞价","todo"],["热点复盘","todo"]], cover:[1,9,14,16,17] },
+  { name:"板块题材", sub:"行业 / 概念", ico:"M3 12h4l3-8 4 16 3-8h4",
+    cards:[["板块行情","done"],["板块异动","todo"],["板块资金热力图","todo"],["题材轮动","todo"]], cover:[3,5,12,18] },
+  { name:"资金面", sub:"主力 / 散户", ico:"M12 1v22M6 7h9a3 3 0 010 6H8a3 3 0 000 6h10",
+    cards:[["个股资金流向","done"],["大盘主力资金","todo"]], cover:[8,19] },
+  { name:"选股与个股深度", sub:"F10 / 龙虎榜", ico:"M11 4a7 7 0 100 14 7 7 0 000-14zM20 20l-3.5-3.5",
+    cards:[["条件选股","done"],["F10 个股资料","todo"],["龙虎榜","todo"],["新股次新股","todo"]], cover:[2,7,20] },
+  { name:"资讯消息", sub:"头条 / 电报", ico:"M4 5h16v11H4zM8 20h8M12 16v4",
+    cards:[["资讯中心","todo"],["明日主线参考","todo"]], cover:[4,15,22] },
+  { name:"预警与工具", sub:"灵动岛", ico:"M12 3a6 6 0 00-6 6c0 5-2 6-2 6h16s-2-1-2-6a6 6 0 00-6-6zM10 20a2 2 0 004 0",
+    cards:[["灵动岛","done"],["预警管理","todo"]], cover:[10] }
+];
+
+// ===== 22 项 =====
+var items = [
+  [1,"涨停连板梯队","part","域2"],[2,"条件选股 / F10","part","域5"],[3,"板块异动看板","part","域3"],
+  [4,"消息面","todo","域6"],[5,"题材轮动","todo","域3"],[6,"指数/沪深/板块/科创板","part","域1"],
+  [7,"龙虎榜","todo","域5"],[8,"资金流向","done","域4"],[9,"集合竞价","todo","域2"],
+  [10,"预警 / 灵动岛","part","域7"],[11,"A股市场","done","域1"],[12,"板块资金热力图","part","域3"],
+  [13,"涨跌分布 / 统计","part","域1"],[14,"市场情绪","part","域2"],[15,"话题 / 明天炒什么","todo","域6"],
+  [16,"行情异动","done","域2"],[17,"热点复盘","todo","域2"],[18,"板块统计 / 热门板块","done","域3"],
+  [19,"主力资金","part","域4"],[20,"新股次新股","todo","域5"],[21,"走势预测","warn","—"],
+  [22,"热门头条","todo","域6"]
+];
+
+// ===== 路线 =====
+var roadmap = [
+  { cls:"p0", tag:"P0", note:"盯盘高频 · 数据现成", vers:[
+    ["v0.11.0","板块体系升级","板块异动 + 资金热力图 treemap"],
+    ["v0.12.0","市场宽度","涨跌分布 + 情绪 / 炸板率分时"],
+    ["v0.13.0","预警管理","预警 CRUD + 灵动岛 / 通知联动"] ] },
+  { cls:"p1", tag:"P1", note:"交易时段专景 · 资金 · 深度", vers:[
+    ["v0.14.0","集合竞价 + 热点复盘","早盘竞价看板 + 收盘自动复盘"],
+    ["v0.15.0","主力资金全景","两市主力净流入分时 / 行业排名"],
+    ["v0.16.0","F10 个股资料","概况 / 股东 / 财务 / 筹码"] ] },
+  { cls:"p2", tag:"P2", note:"进阶 · 需实测接口", vers:[
+    ["v0.17.0","题材轮动","阶段强弱 + 轮动矩阵"],
+    ["v0.18.0","龙虎榜","席位 / 营业部 / 个股"],
+    ["v0.19.0","新股次新股","新股日历 + 次新行情"] ] },
+  { cls:"p3", tag:"P3", note:"资讯 · 重 + 合规", vers:[
+    ["v0.20.0","资讯中心","财经头条 / 7×24 电报"],
+    ["v0.21.0","明日主线参考","题材 + 资讯 + 涨停综合（非投资建议）"] ] }
+];
+
+// ===== 渲染功能域 =====
+var dg = document.getElementById("domainGrid");
+domains.forEach(function(d){
+  var rows = d.cards.map(function(c){
+    var s = S[c[1]];
+    return '<div class="c-row"><i class="dot '+s.cls+'"></i><span class="nm">'+c[0]+
+           '</span><span class="stag '+s.cls+'">'+s.txt+'</span></div>';
+  }).join("");
+  dg.insertAdjacentHTML("beforeend",
+    '<div class="domain"><div class="d-head">'+
+      '<div class="d-ico"><svg viewBox="0 0 24 24"><path d="'+d.ico+'"/></svg></div>'+
+      '<div><div class="d-name">'+d.name+'</div><div class="d-sub">'+d.sub+'</div></div>'+
+      '<div class="d-cover">#'+d.cover.join(" #")+'</div>'+
+    '</div>'+rows+'</div>');
+});
+
+// ===== 渲染 22 项 =====
+var ig = document.getElementById("itemsGrid");
+items.forEach(function(it){
+  var label, dotCls;
+  if (it[2] === "done") { label="已完成"; dotCls="done"; }
+  else if (it[2] === "part") { label="部分"; dotCls="part"; }
+  else if (it[2] === "warn") { label="谨慎"; dotCls="warn"; }
+  else { label="待做"; dotCls="todo"; }
+  ig.insertAdjacentHTML("beforeend",
+    '<div class="item"><div class="num">'+it[0]+'</div>'+
+    '<span class="nm">'+it[1]+'</span>'+
+    '<i class="dot '+dotCls+'"></i><span class="dom">'+it[3]+'</span></div>');
+});
+
+// ===== 渲染路线 =====
+var rw = document.getElementById("roadmapWrap");
+roadmap.forEach(function(p){
+  var vers = p.vers.map(function(v){
+    return '<div class="ver"><div class="v">'+v[0]+'</div><div class="t">'+v[1]+
+           '</div><div class="d">'+v[2]+'</div></div>';
+  }).join("");
+  rw.insertAdjacentHTML("beforeend",
+    '<div class="phase '+p.cls+'"><div class="ph-head"><span class="ph-badge">'+p.tag+
+    '</span>'+p.note+'<span class="ph-note"></span></div>'+
+    '<div class="ver-grid">'+vers+'</div></div>');
+});
+</script>
+</body>
+</html>

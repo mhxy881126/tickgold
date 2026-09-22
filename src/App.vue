@@ -12,6 +12,8 @@ import RankBoard from "./components/RankBoard.vue";
 import RightPanel from "./components/RightPanel.vue";
 import FundFlow from "./components/FundFlow.vue";
 import SectorBoard from "./components/SectorBoard.vue";
+import SectorHeatmap from "./components/SectorHeatmap.vue";
+import SectorEvents from "./components/SectorEvents.vue";
 import Screener from "./components/Screener.vue";
 import SearchBox from "./components/SearchBox.vue";
 import StockChart from "./components/StockChart.vue";
@@ -35,6 +37,8 @@ const CARD_NAV: { id: CardId; label: string; icon: string }[] = [
   { id: "chart", label: "K线", icon: "M6 3h2v4H6zm0 14h2v4H6zM5 8h4v8H5zm11-9h2v3h-2zm0 12h2v5h-2zm-1-7h4v7h-4z" },
   { id: "spider", label: "精灵", icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8z" },
   { id: "sector", label: "板块", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z" },
+  { id: "sectorheat", label: "热力", icon: "M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z" },
+  { id: "sectorevent", label: "板动", icon: "M3 12h4l3-8 4 16 3-8h4" },
   { id: "screener", label: "选股", icon: "M4 5h3v14H4zm6.5 5h3v9h-3zM17 9h3v10h-3z" },
   { id: "order", label: "盘口", icon: "M5 3h14v18H5zm2 4h10v2H7zm0 4h10v2H7zm0 4h7v2H7z" },
   { id: "fundflow", label: "资金", icon: "M12 3c-4 0-7 1.3-7 3v12c0 1.7 3 3 7 3s7-1.3 7-3V6c0-1.7-3-3-7-3zm0 2c3.3 0 5 .9 5 1s-1.7 1-5 1-5-.9-5-1 1.7-1 5-1zm-5 4.5c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V12c0 .1-1.7 1-5 1s-5-.9-5-1zm0 4c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V16c0 .1-1.7 1-5 1s-5-.9-5-1z" },
@@ -43,6 +47,7 @@ const CARD_NAV: { id: CardId; label: string; icon: string }[] = [
 // ===== 模式预设 =====
 const MODE_NAV: { cards: CardId[]; label: string; icon: string }[] = [
   { cards: MODES.pro, label: "专业", icon: "M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z" },
+  { cards: MODES.sector, label: "板块", icon: "M3 12h4l3-8 4 16 3-8h4" },
   { cards: MODES.scanner, label: "选股", icon: "M3 4h18l-7 8v6l-4 2v-8z" },
   { cards: MODES.full, label: "全屏", icon: "M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z" },
 ];
@@ -97,7 +102,7 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
   <div class="app">
     <!-- 顶栏 -->
     <header class="topbar">
-      <div class="brand">金睛盯盘</div>
+      <div class="brand">TickGold</div>
       <SearchBox @select="onSearchSelect" />
       <div class="status">
         <span :class="quotes.polling ? 'dot on' : 'dot'"></span>
@@ -150,11 +155,12 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
       <!-- 默认欢迎页（无卡片时） -->
       <Transition name="welcome">
         <div v-if="bench.openCards.value.length === 0" class="welcome">
-          <div class="w-logo">金睛</div>
-          <h1 class="w-title">金睛盯盘工作台</h1>
+          <div class="w-logo">TG</div>
+          <h1 class="w-title">TickGold 盯盘工作台</h1>
           <p class="w-sub">从左侧打开功能卡片，或选择一个布局模式快速开始</p>
           <div class="w-btns">
             <button class="w-btn primary" @click="bench.setMode(MODES.pro)">专业盯盘</button>
+            <button class="w-btn" @click="bench.setMode(MODES.sector)">板块模式</button>
             <button class="w-btn" @click="bench.setMode(MODES.scanner)">选股模式</button>
             <button class="w-btn" @click="bench.setMode(MODES.full)">全屏布局</button>
           </div>
@@ -196,6 +202,8 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
             <LimitRadar v-else-if="id === 'radar'" @select="onSelect" />
             <ShortTermSpider v-else-if="id === 'spider'" @select="onSelect" />
             <SectorBoard v-else-if="id === 'sector'" @select="onSelect" />
+            <SectorHeatmap v-else-if="id === 'sectorheat'" @select="onSelect" />
+            <SectorEvents v-else-if="id === 'sectorevent'" @select="onSelect" />
             <Screener v-else-if="id === 'screener'" @select="onSelect" />
             <FundFlow v-else-if="id === 'fundflow'" :code="selected" />
             <RightPanel v-else :code="selected" />
@@ -313,9 +321,9 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
 .w-logo {
   width: 64px; height: 64px; border-radius: 18px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 24px; font-weight: 700; color: #fff;
-  background: linear-gradient(135deg, #2f6fed, #1d4fb8);
-  box-shadow: 0 8px 28px rgba(47, 111, 237, 0.4);
+  font-size: 24px; font-weight: 700; color: #1a1a1a;
+  background: linear-gradient(135deg, #e8c66a, #c8992e);
+  box-shadow: 0 8px 28px rgba(212, 175, 55, 0.4);
   margin-bottom: 20px;
 }
 .w-title { font-size: 22px; font-weight: 700; margin: 0 0 8px; }
