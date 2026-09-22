@@ -1,5 +1,7 @@
 # TickGold
 
+<img src="branding/tickgold-logo-2048.png" alt="TickGold logo" width="96" />
+
 > 为「交易者盯盘」而生的跨平台 A 股桌面终端。比传统交易软件更轻、更快、更专注盘中。
 > **Tauri 2.0（Rust）+ Vue 3 + TypeScript + Pinia + ECharts**，一套代码同时发布 Windows 与 macOS（Apple Silicon / Intel）。
 
@@ -131,7 +133,7 @@ git push origin main --tags
 CI 会：
 
 1. 在 `windows-latest`（NSIS）与 `macos-latest`（aarch64 原生 + x86_64 交叉编译）并行打包、minisign 签名；
-2. `publish` 汇总 job 自动生成 Tauri updater 需要的 `latest.json`（`platforms.<系统>.<安装包类型>` 嵌套）；
+2. `publish` 汇总 job 自动生成 Tauri updater 需要的 `latest.json`（扁平 `platforms.<目标>.{url,signature}`）；
 3. 产物汇总到同一个草稿 Release，确认后发布即生效，客户端可在线升级。
 
 > 发版前需在仓库 Settings → Secrets and variables → Actions 配置：
