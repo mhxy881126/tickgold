@@ -19,7 +19,10 @@ export type CardId =
   | "trade"
   | "journal"
   | "calendar"
-  | "ipo";
+  | "ipo"
+  | "dist"
+  | "theme"
+  | "news";
 
 export type Zone = "main" | "side";
 
@@ -49,11 +52,14 @@ export const CARD_META: Record<CardId, CardMeta> = {
   journal: { title: "盯盘日记", accent: "#d4af37", kind: "chart" },
   calendar: { title: "财经日历", accent: "#4ea1ff", kind: "chart" },
   ipo: { title: "新股解禁", accent: "#ff8a3d", kind: "chart" },
+  dist: { title: "涨跌分布", accent: "#4ea1ff", kind: "narrow" },
+  theme: { title: "题材轮动", accent: "#d4af37", kind: "chart" },
+  news: { title: "盘中快讯", accent: "#b07cff", kind: "narrow" },
 };
 
 // 宽卡片（主干区域）与窄卡片（右侧）的默认排列顺序，也决定卡片的默认分区
-const WIDE_ORDER: CardId[] = ["radar", "breadth", "chart", "sectorheat", "sector", "screener", "f10", "trade", "journal", "calendar", "ipo"];
-const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "order", "fundflow", "watch", "rank"];
+const WIDE_ORDER: CardId[] = ["radar", "breadth", "chart", "sectorheat", "sector", "screener", "theme", "dist", "f10", "trade", "journal", "calendar", "ipo"];
+const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "order", "fundflow", "news", "watch", "rank"];
 const ALL_IDS: CardId[] = [...WIDE_ORDER, ...NARROW_ORDER];
 
 // 模式预设：一键切换一整套卡片
@@ -79,19 +85,63 @@ export const MODES: Record<string, CardId[]> = {
   chart: ["chart"],
 };
 
+// ===== 时段驾驶舱 Bento 布局 =====
+export interface BentoPos { col: number; colEnd: number; row: number; rowEnd: number }
+export interface TimePreset {
+  id: string;
+  label: string;
+  from: string;
+  to: string;
+  cards: CardId[];
+  bento: Partial<Record<CardId, BentoPos>>;
+}
+// 款5 Bento：12 列 × 3 大行（热力图大卡 + 情绪/雷达/资金/异动 + 题材/分布/快讯）
+const BENTO: Partial<Record<CardId, BentoPos>> = {
+  sectorheat: { col: 1, colEnd: 7, row: 1, rowEnd: 3 },
+  breadth: { col: 7, colEnd: 10, row: 1, rowEnd: 2 },
+  radar: { col: 10, colEnd: 13, row: 1, rowEnd: 2 },
+  fundflow: { col: 7, colEnd: 10, row: 2, rowEnd: 3 },
+  spider: { col: 10, colEnd: 13, row: 2, rowEnd: 3 },
+  theme: { col: 1, colEnd: 5, row: 3, rowEnd: 4 },
+  dist: { col: 5, colEnd: 8, row: 3, rowEnd: 4 },
+  news: { col: 8, colEnd: 13, row: 3, rowEnd: 4 },
+};
+const TIME_CARDS: CardId[] = ["sectorheat", "breadth", "radar", "fundflow", "spider", "theme", "dist", "news"];
+export const TIME_PRESETS: TimePreset[] = [
+  { id: "auction", label: "集合竞价", from: "09:15", to: "09:30", cards: TIME_CARDS, bento: BENTO },
+  { id: "morning", label: "早盘 9:30", from: "09:30", to: "11:30", cards: TIME_CARDS, bento: BENTO },
+  { id: "midday", label: "午盘", from: "11:30", to: "14:30", cards: TIME_CARDS, bento: BENTO },
+  { id: "tail", label: "尾盘 14:30", from: "14:30", to: "15:00", cards: TIME_CARDS, bento: BENTO },
+  { id: "review", label: "盘后复盘", from: "15:00", to: "09:15", cards: TIME_CARDS, bento: BENTO },
+];
+
+/// 根据时间判断当前 A 股时段
+export function currentTimeSlot(d: Date = new Date()): string {
+  const hm = d.getHours() * 60 + d.getMinutes();
+  const m = (s: string) => {
+    const [a, b] = s.split(":").map(Number);
+    return a * 60 + b;
+  };
+  if (hm >= m("09:15") && hm < m("09:30")) return "auction";
+  if (hm >= m("09:30") && hm < m("11:30")) return "morning";
+  if (hm >= m("11:30") && hm < m("14:30")) return "midday";
+  if (hm >= m("14:30") && hm < m("15:00")) return "tail";
+  return "review";
+}
+
 const GAP = 12;
 const COLS = 12;
 const ROWS = 6;
 
 // 由网格线编号生成定位样式 + leave 脱标用的 CSS 变量
-function cell(s: number, e: number, r: number, er: number) {
+function cell(s: number, e: number, r: number, er: number, totalRows: number = ROWS) {
   return {
     gridColumn: `${s} / ${e}`,
     gridRow: `${r} / ${er}`,
     "--x": `calc(${s - 1} * (100% + ${GAP}px) / ${COLS})`,
     "--w": `calc(${e - s} * (100% + ${GAP}px) / ${COLS} - ${GAP}px)`,
-    "--y": `calc(${r - 1} * (100% + ${GAP}px) / ${ROWS})`,
-    "--h": `calc(${er - r} * (100% + ${GAP}px) / ${ROWS} - ${GAP}px)`,
+    "--y": `calc(${r - 1} * (100% + ${GAP}px) / ${totalRows})`,
+    "--h": `calc(${er - r} * (100% + ${GAP}px) / ${totalRows} - ${GAP}px)`,
   } as Record<string, string>;
 }
 
@@ -120,11 +170,14 @@ export interface NamedLayout {
 }
 
 const CURRENT_KEY = "workbench_current";
+const TIME_KEY = "workbench_time_mode";
 
 export function useWorkbench() {
   const openCards = ref<CardId[]>([]);
   // 用户对卡片分区的自定义覆盖（未设置则用默认分区）
   const zoneOverride = ref<Partial<Record<CardId, Zone>>>({});
+  // 时段驾驶舱模式（非 null = 使用 TIME_PRESETS 的显式 Bento 布局）
+  const timeMode = ref<string | null>(null);
 
   function open(id: CardId) {
     if (!openCards.value.includes(id)) openCards.value.push(id);
@@ -141,7 +194,19 @@ export function useWorkbench() {
   // 模式：整组替换，并恢复默认分区
   function setMode(cards: CardId[]) {
     zoneOverride.value = {};
+    timeMode.value = null;
     openCards.value = [...cards];
+  }
+  // 进入时段驾驶舱：套用该时段的卡片集合 + Bento 显式布局
+  function enterTimeMode(id: string) {
+    const p = TIME_PRESETS.find((x) => x.id === id);
+    if (!p) return;
+    zoneOverride.value = {};
+    timeMode.value = id;
+    openCards.value = [...p.cards];
+  }
+  function exitTimeMode() {
+    timeMode.value = null;
   }
 
   function zoneOf(id: CardId): Zone {
@@ -154,6 +219,18 @@ export function useWorkbench() {
 
   // 布局：返回每个卡片的定位
   const layout = computed<Record<string, Record<string, string>>>(() => {
+    // 时段驾驶舱：使用预设的显式 Bento 坐标（3 大行）
+    if (timeMode.value) {
+      const p = TIME_PRESETS.find((x) => x.id === timeMode.value);
+      if (p) {
+        const st: Record<string, Record<string, string>> = {};
+        openCards.value.forEach((id) => {
+          const b = p.bento[id];
+          if (b) st[id] = cell(b.col, b.colEnd, b.row, b.rowEnd, 3);
+        });
+        return st;
+      }
+    }
     const wides = mainCards.value;
     const w = wides.length;
     const narrows = sideCards.value;
@@ -346,6 +423,9 @@ export function useWorkbench() {
         db()
           .execute("INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)", [CURRENT_KEY, serialize()])
           .catch(() => {});
+        db()
+          .execute("INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)", [TIME_KEY, timeMode.value ?? ""])
+          .catch(() => {});
       } catch {
         /* db 未就绪，忽略 */
       }
@@ -354,12 +434,18 @@ export function useWorkbench() {
   // 启动恢复：返回是否恢复出了卡片
   async function restoreCurrent(): Promise<boolean> {
     try {
-      const rows = await db().select<{ value: string }[]>(
-        "SELECT value FROM meta WHERE key=?",
-        [CURRENT_KEY]
+      const rows = await db().select<{ key: string; value: string }[]>(
+        "SELECT key,value FROM meta WHERE key IN (?,?)",
+        [CURRENT_KEY, TIME_KEY]
       );
-      if (rows[0]?.value) {
-        applySnapshot(rows[0].value);
+      let cardsJson = "", tm = "";
+      rows.forEach((r) => {
+        if (r.key === CURRENT_KEY) cardsJson = r.value;
+        if (r.key === TIME_KEY) tm = r.value;
+      });
+      if (cardsJson) {
+        applySnapshot(cardsJson);
+        if (tm && TIME_PRESETS.some((p) => p.id === tm)) timeMode.value = tm;
         return openCards.value.length > 0;
       }
     } catch {
@@ -398,7 +484,7 @@ export function useWorkbench() {
     openCards.value = [...openCards.value].sort((a, b) => rankDefault(a) - rankDefault(b));
   }
 
-  watch([openCards, zoneOverride], persistCurrent, { deep: true });
+  watch([openCards, zoneOverride, timeMode], persistCurrent, { deep: true });
 
   return {
     openCards,
@@ -409,6 +495,10 @@ export function useWorkbench() {
     setMode,
     layout,
     zoneOf,
+    // 时段驾驶舱
+    timeMode,
+    enterTimeMode,
+    exitTimeMode,
     // 拖拽
     dragId,
     dropHint,

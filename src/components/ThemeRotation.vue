@@ -1,0 +1,159 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from "vue";
+import { fetchSectors } from "../api/market";
+import type { Sector } from "../api/types";
+
+const emit = defineEmits<{ select: [code: string] }>();
+
+const sectors = ref<Sector[]>([]);
+const mode = ref<"up" | "down" | "all">("up");
+const source = ref<"concept" | "industry">("concept");
+
+interface Tag extends Sector {
+  fs: number;
+  hot: boolean;
+  inflow: boolean;
+}
+const list = computed<Tag[]>(() => {
+  let a = [...sectors.value];
+  if (mode.value === "up") a = a.filter((x: Sector) => x.changePct > 0);
+  if (mode.value === "down") a = a.filter((x: Sector) => x.changePct < 0);
+  a.sort((x, y) => Math.abs(y.changePct) - Math.abs(x.changePct));
+  a = a.slice(0, 34);
+  const max = Math.max(...a.map((x) => Math.abs(x.changePct)), 1);
+  return a.map((s) => {
+    const r = Math.abs(s.changePct) / max;
+    return { ...s, fs: 11 + r * 6, hot: r > 0.62, inflow: s.netAmount > 0 };
+  });
+});
+
+const upCount = computed(() => sectors.value.filter((x) => x.changePct > 0).length);
+const downCount = computed(() => sectors.value.filter((x) => x.changePct < 0).length);
+
+function fmt(p: number) {
+  return (p >= 0 ? "+" : "") + p.toFixed(2);
+}
+
+onMounted(async () => {
+  let s = await fetchSectors("concept");
+  if (!s.length) {
+    s = await fetchSectors("industry");
+    source.value = "industry";
+  }
+  sectors.value = s;
+});
+</script>
+
+<template>
+  <div class="theme">
+    <div class="th-tabs">
+      <div class="tt">
+        <button :class="{ on: mode === 'up' }" @click="mode = 'up'">领涨 {{ upCount }}</button>
+        <button :class="{ on: mode === 'down' }" @click="mode = 'down'">领跌 {{ downCount }}</button>
+        <button :class="{ on: mode === 'all' }" @click="mode = 'all'">全部</button>
+      </div>
+      <span class="th-src">{{ source === "concept" ? "概念题材" : "行业板块" }}</span>
+    </div>
+    <div class="th-cloud">
+      <button
+        v-for="s in list"
+        :key="s.code"
+        class="tag"
+        :class="{ hot: s.hot, inflow: s.inflow }"
+        :style="{ fontSize: s.fs + 'px' }"
+        @click="emit('select', s.leadCode)"
+      >
+        <span class="tn">{{ s.name }}</span>
+        <span class="tp" :class="s.changePct >= 0 ? 'up' : 'down'">{{ fmt(s.changePct) }}</span>
+      </button>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.theme {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 7px 10px 8px;
+  overflow: hidden;
+}
+.th-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 7px;
+  flex: none;
+}
+.tt {
+  display: flex;
+  gap: 4px;
+}
+.tt button {
+  font-size: 10px;
+  color: #8b949e;
+  background: #141920;
+  border: 1px solid #232b34;
+  border-radius: 5px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.tt button.on {
+  color: #fff;
+  background: #2a3543;
+  border-color: #3a4a5e;
+}
+.th-src {
+  font-size: 9px;
+  color: #5d6878;
+}
+.th-cloud {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 5px;
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 2px;
+}
+.tag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 14px;
+  border: 1px solid #232b34;
+  background: #141920;
+  cursor: pointer;
+  line-height: 1.3;
+  transition: transform 0.12s, border-color 0.15s;
+}
+.tag:hover {
+  transform: translateY(-1px);
+  border-color: #3a4a5e;
+}
+.tn {
+  color: #c9d1d9;
+}
+.tp {
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.tp.up {
+  color: #ef5350;
+}
+.tp.down {
+  color: #26a69a;
+}
+.tag.hot {
+  border-color: rgba(212, 175, 55, 0.55);
+}
+.tag.hot .tn {
+  color: #e8c96a;
+}
+.tag.inflow {
+  box-shadow: inset 2px 0 0 rgba(212, 175, 55, 0.7);
+}
+</style>

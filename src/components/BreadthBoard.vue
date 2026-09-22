@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import * as echarts from "echarts";
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref, computed } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { startRadar, type RadarData } from "../api/market";
 
@@ -11,6 +11,17 @@ let barChart: echarts.ECharts | null = null;
 
 const data = ref<RadarData | null>(null);
 const scanning = ref(false);
+withDefaults(defineProps<{ compact?: boolean }>(), { compact: false });
+// 封板率 = 涨停 / (涨停 + 炸板)
+const sealRate = computed(() => {
+  const d = data.value;
+  if (!d) return 0;
+  const denom = d.limitUp + d.broken;
+  return denom > 0 ? (d.limitUp / denom) * 100 : 0;
+});
+const ringStyle = computed(() => ({
+  background: `conic-gradient(#d4af37 0 ${sealRate.value}%, #232b36 ${sealRate.value}% 100%)`,
+}));
 interface Pt { t: string; up: number; down: number; lu: number; ld: number }
 const points = ref<Pt[]>([]);
 
@@ -121,7 +132,27 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="breadth">
+  <!-- 紧凑情绪卡（时段驾驶舱 Bento） -->
+  <div v-if="compact" class="compact">
+    <div class="c-ring" :style="ringStyle">
+      <div class="c-inner">
+        <b>{{ sealRate.toFixed(0) }}<i>%</i></b>
+        <span>封板率</span>
+      </div>
+    </div>
+    <div class="c-nums">
+      <div class="cn up"><b>{{ data ? data.upCount : "--" }}</b><span>上涨</span></div>
+      <div class="cn down"><b>{{ data ? data.downCount : "--" }}</b><span>下跌</span></div>
+      <div class="cn up"><b>{{ data ? data.limitUp : "--" }}</b><span>涨停</span></div>
+      <div class="cn down"><b>{{ data ? data.limitDown : "--" }}</b><span>跌停</span></div>
+    </div>
+    <div class="c-foot">
+      <span>连板高度 <b class="gold">{{ data ? data.maxBoards + "板" : "--" }}</b></span>
+      <span>炸板率 <b>{{ data ? data.brokenRate.toFixed(0) + "%" : "--" }}</b></span>
+    </div>
+  </div>
+
+  <div v-else class="breadth">
     <!-- 顶部统计 -->
     <div class="stats">
       <div class="st up"><span class="lb">上涨</span><span class="vl">{{ data ? data.upCount : "--" }}</span></div>
@@ -171,4 +202,30 @@ onBeforeUnmount(() => {
 @media (max-width: 1100px) {
   .charts { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
 }
+
+/* 紧凑情绪卡 */
+.compact { height: 100%; display: flex; flex-direction: column; gap: 8px; padding: 10px; overflow: hidden; }
+.c-ring { width: 58px; height: 58px; border-radius: 50%; margin: 0 auto; display: grid; place-items: center; flex: none; }
+.c-inner {
+  width: 44px; height: 44px; border-radius: 50%; background: #10151d;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.c-inner b { font-size: 15px; font-weight: 800; color: #e8c96a; line-height: 1; }
+.c-inner b i { font-size: 9px; font-style: normal; }
+.c-inner span { font-size: 8.5px; color: #7d8792; margin-top: 2px; }
+.c-nums { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.cn {
+  display: flex; align-items: center; justify-content: space-between;
+  background: #141920; border: 1px solid #232b34; border-radius: 6px; padding: 4px 9px;
+}
+.cn b { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.cn span { font-size: 9.5px; color: #7d8792; }
+.cn.up b { color: #ef5350; }
+.cn.down b { color: #26a69a; }
+.c-foot {
+  display: flex; justify-content: space-between; font-size: 10px; color: #7d8792;
+  margin-top: auto; padding-top: 2px;
+}
+.c-foot b { font-variant-numeric: tabular-nums; }
+.c-foot b.gold { color: #e8c96a; }
 </style>

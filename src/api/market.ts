@@ -74,6 +74,19 @@ export async function fetchSectors(kind: "industry" | "concept"): Promise<Sector
   return await invoke<Sector[]>("get_sectors", { kind });
 }
 
+// ===== 盘中快讯（新浪财经 7x24） =====
+export interface NewsItem {
+  id: number;
+  time: string; // "2026-09-23 09:45:12"
+  text: string;
+  tags: string[];
+  url: string;
+}
+/** 盘中快讯分页（page 从 1 开始，按时间倒序） */
+export async function fetchNewsFlash(page: number, size = 30): Promise<NewsItem[]> {
+  return await invoke<NewsItem[]>("get_news_flash", { page, size });
+}
+
 /** 条件选股：技术面 + 基本面组合筛选（失败抛出供上层展示） */
 export async function fetchScreener(filter: ScreenFilter): Promise<ScreenResult[]> {
   return await invoke<ScreenResult[]>("get_screener", { filter });

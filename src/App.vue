@@ -25,10 +25,14 @@ import EcoCalendar from "./components/EcoCalendar.vue";
 import IpoCalendar from "./components/IpoCalendar.vue";
 import SearchBox from "./components/SearchBox.vue";
 import StockChart from "./components/StockChart.vue";
+import TimeTabs from "./components/TimeTabs.vue";
+import DistBoard from "./components/DistBoard.vue";
+import ThemeRotation from "./components/ThemeRotation.vue";
+import NewsFlash from "./components/NewsFlash.vue";
 import { useWatchlistStore } from "./stores/watchlist";
 import { useQuotesStore } from "./stores/quotes";
 import { useAlertStore } from "./stores/alert";
-import { useWorkbench, CARD_META, MODES, type CardId } from "./composables/useWorkbench";
+import { useWorkbench, CARD_META, MODES, currentTimeSlot, type CardId } from "./composables/useWorkbench";
 import type { AlertEvent } from "./api/market";
 import { ensureDb } from "./db/database";
 
@@ -126,12 +130,12 @@ onMounted(async () => {
     await ensureDb();
     await wl.load();
     await alerts.load();
-    // 优先恢复上次保存的工作台布局；否则首次进入用专业模式
+    // 优先恢复上次保存的工作台布局；否则首次进入时段驾驶舱
     const restored = await bench.restoreCurrent();
-    if (!restored && wl.codes.length) {
-      selected.value = wl.codes[0];
-      bench.setMode(MODES.pro);
-    } else if (wl.codes.length) {
+    if (!restored) {
+      bench.enterTimeMode(currentTimeSlot());
+    }
+    if (wl.codes.length) {
       selected.value = wl.codes[0];
     }
     // 有启用规则则启动后端预警引擎
@@ -223,6 +227,10 @@ onBeforeUnmount(() => {
 
     <!-- 工作台主区域 -->
     <main class="workspace" :class="{ dragging: bench.dragId.value !== null }">
+      <!-- 时段切换栏 -->
+      <TimeTabs :active="bench.timeMode.value" @select="bench.enterTimeMode($event)" />
+
+      <div class="ws-body">
       <!-- 默认欢迎页（无卡片时） -->
       <Transition name="welcome">
         <div v-if="bench.openCards.value.length === 0" class="welcome">
@@ -252,6 +260,7 @@ onBeforeUnmount(() => {
       <TransitionGroup
         tag="div"
         class="card-grid"
+        :class="{ 'time-mode': bench.timeMode.value !== null }"
         enter-active-class="card-enter"
         leave-active-class="card-leave"
         move-class="card-move"
@@ -292,12 +301,15 @@ onBeforeUnmount(() => {
               <div v-else class="card-empty">从自选或榜单选择一只股票</div>
             </div>
             <LimitRadar v-else-if="id === 'radar'" @select="onSelect" />
-            <BreadthBoard v-else-if="id === 'breadth'" />
+            <BreadthBoard v-else-if="id === 'breadth'" :compact="bench.timeMode.value !== null" />
             <ShortTermSpider v-else-if="id === 'spider'" @select="onSelect" />
             <SectorBoard v-else-if="id === 'sector'" @select="onSelect" />
             <SectorHeatmap v-else-if="id === 'sectorheat'" @select="onSelect" />
             <SectorEvents v-else-if="id === 'sectorevent'" @select="onSelect" />
             <Screener v-else-if="id === 'screener'" @select="onSelect" />
+            <ThemeRotation v-else-if="id === 'theme'" @select="onSelect" />
+            <DistBoard v-else-if="id === 'dist'" />
+            <NewsFlash v-else-if="id === 'news'" />
             <FundFlow v-else-if="id === 'fundflow'" :code="selected" />
             <AlertCenter v-else-if="id === 'alert'" />
             <F10Card v-else-if="id === 'f10'" :code="selected" />
@@ -309,6 +321,7 @@ onBeforeUnmount(() => {
           </CardShell>
         </div>
       </TransitionGroup>
+      </div>
     </main>
 
     <!-- 软件更新对话框 -->
@@ -365,8 +378,16 @@ onBeforeUnmount(() => {
   position: relative;
   min-width: 0;
   min-height: 0;
-  padding: 12px;
+  padding: 10px 12px 12px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.ws-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin-top: 10px;
 }
 .card-grid {
   position: relative;
@@ -375,6 +396,10 @@ onBeforeUnmount(() => {
   grid-template-rows: repeat(6, 1fr);
   gap: 12px;
   height: 100%;
+}
+/* 时段驾驶舱：3 大行 Bento */
+.card-grid.time-mode {
+  grid-template-rows: repeat(3, 1fr);
 }
 .card-slot {
   position: relative;
@@ -402,16 +427,16 @@ onBeforeUnmount(() => {
   background: rgba(78, 161, 255, 0.1);
 }
 .zone-main {
-  top: 12px;
-  bottom: 12px;
-  left: 12px;
-  width: calc((100% - 24px) * 7 / 12 - 6px);
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: calc(100% * 7 / 12 - 6px);
 }
 .zone-side {
-  top: 12px;
-  bottom: 12px;
-  right: 12px;
-  width: calc((100% - 24px) * 5 / 12 - 6px);
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: calc(100% * 5 / 12 - 6px);
 }
 
 /* 卡片插入线（落在锚点卡片的顶/底缘，位于 gap 中） */
