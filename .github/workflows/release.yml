@@ -154,9 +154,9 @@ jobs:
               notes: "",
               pub_date: $d,
               platforms: {
-                "windows-x86_64": { nsis: { signature: $ws, url: $wu } },
-                "darwin-aarch64": { app: { signature: $mas, url: $mau } },
-                "darwin-x86_64": { app: { signature: $mxs, url: $mxu } }
+                "windows-x86_64": { signature: $ws, url: $wu },
+                "darwin-aarch64": { signature: $mas, url: $mau },
+                "darwin-x86_64": { signature: $mxs, url: $mxu }
               }
             }' > latest.json
 

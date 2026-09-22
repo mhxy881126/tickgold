@@ -427,30 +427,44 @@ pub struct LatestInfo {
 
 pub async fn check_latest() -> Result<LatestInfo, String> {
     let tail = "/mhxy881126/tickgold/releases/latest/download/latest.json";
+    // 镜像优先、多源并行竞速：谁先成功用谁，避免串行等待
     let urls = [
-        format!("https://github.com{tail}"),
         format!("https://ghproxy.net/https://github.com{tail}"),
         format!("https://gh-proxy.com/https://github.com{tail}"),
+        format!("https://github.com{tail}"),
     ];
-    let mut last = String::from("无法获取版本信息（网络不可达）");
+    let mut set = tokio::task::JoinSet::new();
     for u in urls {
-        let send = tokio::time::timeout(Duration::from_secs(8), http().get(&u).send()).await;
-        let Ok(Ok(resp)) = send else {
-            last = "检查更新: 网络超时".to_string();
-            continue;
-        };
-        let text = tokio::time::timeout(Duration::from_secs(8), resp.text()).await;
-        let Ok(Ok(txt)) = text else { continue };
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
-            if let Some(ver) = v.get("version").and_then(|x| x.as_str()) {
-                return Ok(LatestInfo {
-                    version: ver.to_string(),
-                    notes: v.get("notes").and_then(|x| x.as_str()).unwrap_or("").to_string(),
-                    pub_date: v.get("pub_date").and_then(|x| x.as_str()).unwrap_or("").to_string(),
-                });
-            }
+        set.spawn(async move {
+            let send = tokio::time::timeout(Duration::from_secs(6), http().get(&u).send()).await;
+            let Ok(Ok(resp)) = send else {
+                return Err::<LatestInfo, String>("网络超时".to_string());
+            };
+            let text = tokio::time::timeout(Duration::from_secs(6), resp.text()).await;
+            let Ok(Ok(txt)) = text else {
+                return Err("读取超时".to_string());
+            };
+            let v = match serde_json::from_str::<serde_json::Value>(&txt) {
+                Ok(v) => v,
+                Err(_) => return Err("解析失败".to_string()),
+            };
+            let Some(ver) = v.get("version").and_then(|x| x.as_str()) else {
+                return Err("无版本字段".to_string());
+            };
+            Ok(LatestInfo {
+                version: ver.to_string(),
+                notes: v.get("notes").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                pub_date: v.get("pub_date").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+            })
+        });
+    }
+    let mut last = String::from("无法获取版本信息（网络不可达）");
+    while let Some(res) = set.join_next().await {
+        match res {
+            Ok(Ok(info)) => return Ok(info),
+            Ok(Err(e)) => last = format!("检查更新: {e}"),
+            Err(e) => last = format!("检查更新: {e}"),
         }
-        last = "检查更新: 版本信息解析失败".to_string();
     }
     Err(last)
 }

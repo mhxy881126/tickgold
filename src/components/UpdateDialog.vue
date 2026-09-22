@@ -9,14 +9,14 @@ import { fetchLatest } from "../api/market";
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ "update:open": [v: boolean] }>();
 
-type Phase = "checking" | "available" | "uptodate" | "downloading" | "installing" | "error";
+type Phase = "checking" | "available" | "uptodate" | "preparing" | "downloading" | "installing" | "error";
 const phase = ref<Phase>("checking");
 const curVersion = ref("");
 const latestVersion = ref("");
 const notes = ref("");
 const pubDate = ref("");
 const errorMsg = ref("");
-const fallback = ref(false); // Tauri 检查失败、由后端兜底拿到版本
+const fallback = ref(false); // Tauri 检查尚未就绪、先由后端镜像拿到版本
 
 const pct = ref(0);
 const gotMB = ref(0);
@@ -24,6 +24,7 @@ const totalMB = ref(0);
 const speed = ref(0);
 
 let pendingUpdate: Update | null = null;
+let tauriReady: Promise<Update | null> = Promise.resolve(null);
 
 function cmpVer(a: string, b: string): number {
   const pa = a.split(".").map((x) => parseInt(x) || 0);
@@ -34,9 +35,12 @@ function cmpVer(a: string, b: string): number {
   }
   return 0;
 }
+function newer(v: string): boolean {
+  return cmpVer(v, curVersion.value) > 0;
+}
 
 function close() {
-  if (phase.value === "downloading" || phase.value === "installing") return;
+  if (phase.value === "preparing" || phase.value === "downloading" || phase.value === "installing") return;
   emit("update:open", false);
 }
 
@@ -44,61 +48,96 @@ async function runCheck() {
   phase.value = "checking";
   errorMsg.value = "";
   notes.value = "";
+  pubDate.value = "";
   fallback.value = false;
+  pendingUpdate = null;
   if (!curVersion.value) {
     try { curVersion.value = await getVersion(); } catch { /* ignore */ }
   }
 
-  // 1) Tauri updater 官方检查
-  try {
-    const update = await check();
-    if (update) {
-      pendingUpdate = update;
-      latestVersion.value = update.version;
-      notes.value = update.body || "";
-      if (cmpVer(update.version, curVersion.value) > 0) {
-        phase.value = "available";
-        return;
-      }
-    }
-    phase.value = "uptodate";
+  // 两路并行：Tauri 官方检查（拿到即可下载安装） + 后端多镜像竞速（通常更快，先展示）
+  tauriReady = check()
+    .then((u) => u)
+    .catch((e) => {
+      console.warn("[updater] tauri check failed:", e);
+      return null;
+    });
+  const tauriP = tauriReady.then((u) =>
+    u ? ({ k: "t" as const, u }) : ({ k: "none" as const }),
+  );
+  const latestP = fetchLatest()
+    .then((i) => ({ k: "l" as const, i }))
+    .catch(() => ({ k: "none" as const }));
+
+  let tDone = false;
+  let lDone = false;
+  const tp = tauriP.then((r) => { tDone = true; return r; });
+  const lp = latestP.then((r) => { lDone = true; return r; });
+
+  let r = await Promise.race([tp, lp]);
+  if (r.k === "none") r = await (tDone ? lp : tp);
+
+  if (r.k === "t") {
+    pendingUpdate = r.u;
+    latestVersion.value = r.u.version;
+    notes.value = r.u.body || "";
+    phase.value = newer(r.u.version) ? "available" : "uptodate";
     return;
-  } catch (e: any) {
-    console.warn("[updater] check failed, fallback:", e);
   }
 
-  // 2) 兜底：Rust 多镜像拉版本
-  try {
-    const info = await fetchLatest();
-    latestVersion.value = info.version;
-    notes.value = info.notes;
-    pubDate.value = info.pubDate;
-    if (cmpVer(info.version, curVersion.value) > 0) {
-      fallback.value = true;
-      phase.value = "available";
+  if (r.k === "l") {
+    latestVersion.value = r.i.version;
+    notes.value = r.i.notes;
+    pubDate.value = r.i.pubDate;
+    if (!newer(r.i.version)) {
+      phase.value = "uptodate";
       return;
     }
-    phase.value = "uptodate";
-  } catch (e: any) {
-    errorMsg.value = String(e?.message || e || "无法连接到更新服务器");
-    phase.value = "error";
+    fallback.value = true;
+    phase.value = "available";
+    // 后台等 Tauri 检查补全可下载对象，补全后自动转为可直接更新
+    tauriReady.then((u) => {
+      if (u && !pendingUpdate) {
+        pendingUpdate = u;
+        fallback.value = false;
+        latestVersion.value = u.version;
+        if (u.body) notes.value = u.body;
+      }
+    });
+    return;
   }
+
+  errorMsg.value = "无法连接到更新服务器，请稍后重试或手动下载";
+  phase.value = "error";
+}
+
+async function ensureUpdate(): Promise<Update | null> {
+  if (pendingUpdate) return pendingUpdate;
+  // 等待后台 Tauri 检查（最多 15s）
+  const u1 = await Promise.race([
+    tauriReady,
+    new Promise<null>((res) => setTimeout(() => res(null), 15000)),
+  ]);
+  if (u1) { pendingUpdate = u1; return u1; }
+  // 再主动检查一次（endpoints 已镜像优先）
+  try {
+    const u2 = await check();
+    if (u2) { pendingUpdate = u2; return u2; }
+  } catch (e) {
+    console.warn("[updater] recheck failed:", e);
+  }
+  return null;
 }
 
 async function doUpdate() {
-  // fallback 模式下没有可用的 Update 对象，先重新 check 一次
-  if (!pendingUpdate) {
-    try {
-      const u = await check();
-      if (!u) throw new Error("未获取到更新包");
-      pendingUpdate = u;
-      latestVersion.value = u.version;
-    } catch (e: any) {
-      errorMsg.value = "自动下载不可用：" + String(e?.message || e) + "，请使用「手动下载」";
-      phase.value = "error";
-      return;
-    }
+  phase.value = "preparing";
+  const u = await ensureUpdate();
+  if (!u) {
+    errorMsg.value = "自动下载暂不可用，请使用「手动下载」";
+    phase.value = "error";
+    return;
   }
+  latestVersion.value = u.version;
 
   phase.value = "downloading";
   pct.value = 0; gotMB.value = 0; totalMB.value = 0; speed.value = 0;
@@ -106,7 +145,7 @@ async function doUpdate() {
   let lastGot = 0;
 
   try {
-    await pendingUpdate.download((e: any) => {
+    await u.download((e: any) => {
       if (e.event === "Started") {
         totalMB.value = (e.data.contentLength || 0) / 1048576;
       } else if (e.event === "Progress") {
@@ -123,7 +162,7 @@ async function doUpdate() {
       }
     });
     phase.value = "installing";
-    await pendingUpdate.install();
+    await u.install();
     await relaunch();
   } catch (e: any) {
     errorMsg.value = "下载/安装失败：" + String(e?.message || e);
@@ -148,13 +187,13 @@ watch(
     <div class="dlg">
       <div class="dlg-head">
         <span class="dlg-title">软件更新</span>
-        <button class="x" @click="close" :disabled="phase === 'downloading' || phase === 'installing'">&times;</button>
+        <button class="x" @click="close" :disabled="phase === 'preparing' || phase === 'downloading' || phase === 'installing'">&times;</button>
       </div>
 
       <div class="dlg-body">
         <!-- 检查中 -->
-        <div v-if="phase === 'checking'" class="center">
-          <span class="spin"></span> 正在检查最新版本…
+        <div v-if="phase === 'checking' || phase === 'preparing'" class="center">
+          <span class="spin"></span> {{ phase === 'preparing' ? '正在准备下载…' : '正在检查最新版本…' }}
         </div>
 
         <!-- 已是最新 -->
@@ -218,7 +257,7 @@ watch(
           <button class="btn primary" @click="runCheck">重试</button>
         </template>
         <template v-else>
-          <button class="btn ghost" @click="close" :disabled="phase==='downloading'||phase==='installing'">关闭</button>
+          <button class="btn ghost" @click="close" :disabled="phase==='preparing'||phase==='downloading'||phase==='installing'">关闭</button>
         </template>
       </div>
     </div>
