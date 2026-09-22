@@ -1,13 +1,9 @@
 name: release
 
-# 推送 v* 标签时触发：自动在 Windows 与 macOS 两台 runner 上打包、签名、上传到 Release。
-# 用法：
-#   1. 在仓库 Settings → Secrets and variables → Actions 配置三个 secret：
-#      - TAURI_SIGNING_PRIVATE_KEY       （私钥文件 stockdock.key 的完整内容）
-#      - TAURI_SIGNING_PRIVATE_KEY_PASSWORD（私钥密码）
-#      - GITHUB_TOKEN 已由 Actions 自动注入，无需手动加
-#   2. 打标签并推送：git tag v0.1.2 && git push origin v0.1.2
-#   3. 两个 job 跑完后，到 Releases 页把草稿 Release 发布；客户端即可"检查更新"。
+# 推送 v* 标签触发。
+# 设计：build 只负责「编译 + 签名 + 产出 bundle」并上传为 artifact，不直接操作 GitHub Release；
+#       所有平台构建完成后，由唯一的 publish job 串行「创建唯一 Release → 上传全部资产 → 生成 latest.json」，
+#       彻底避免并行 tauri-action 共享 Release 造成的多草稿 / Release 丢失问题。
 
 on:
   push:
@@ -15,62 +11,50 @@ on:
       - "v*"
 
 jobs:
-  prepare:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    outputs:
-      release_id: ${{ steps.rel.outputs.release_id }}
-    steps:
-      - name: Ensure unique draft release
-        id: rel
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          # 重跑场景：复用已存在的同名草稿 release
-          RID=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -n1)
-          if [ -z "$RID" ]; then
-            RID=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
-              -f tag_name="$TAG" -f name="TickGold $TAG" \
-              -F draft=true -F prerelease=false --jq ".id")
-          fi
-          echo "release_id=$RID" >> "$GITHUB_OUTPUT"
-
   build:
-    needs: prepare
     permissions:
-      contents: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: windows-latest
-            arch: x64
-            target: nsis
+          - label: win
+            platform: windows-latest
             rust_target: ""
-          - platform: macos-latest # Apple Silicon 原生
-            arch: aarch64
-            target: dmg,app
+            build_args: "--bundles nsis"
+            artifact: |
+              src-tauri/target/release/bundle/nsis/*.exe
+              src-tauri/target/release/bundle/nsis/*.exe.sig
+          - label: mac-arm
+            platform: macos-latest
             rust_target: ""
-          - platform: macos-latest # Intel：在 arm runner 上交叉编译，避免排队 macos-13
-            arch: x64
-            target: dmg,app
+            build_args: "--bundles app,dmg"
+            artifact: |
+              src-tauri/target/release/bundle/macos/*.app.tar.gz
+              src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
+              src-tauri/target/release/bundle/dmg/*.dmg
+          - label: mac-x64
+            platform: macos-latest
             rust_target: "x86_64-apple-darwin"
+            build_args: "--bundles app,dmg --target x86_64-apple-darwin"
+            artifact: |
+              src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
+              src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+              src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -83,102 +67,104 @@ jobs:
       - name: Install JS deps
         run: pnpm install --frozen-lockfile
 
-      - name: Add Rust cross target (macOS x64)
+      - name: Add cross target
         if: matrix.rust_target != ''
         run: rustup target add ${{ matrix.rust_target }}
 
-      # —— macOS 才需要：Apple 开发者证书做 codesign（否则 Gatekeeper 拦截）——
-      # 若你有 Developer ID 证书，把 base64 串配成 secret APPLE_CERTIFICATE、密码 APPLE_CERT_PASSWORD，
-      # 并打开下面这段。暂无证书可先注释，用户首次打开时右键→"打开"绕过。
-      #
-      # - name: Import Apple certificate (macOS)
-      #   if: matrix.platform == 'macos-latest'
-      #   env:
-      #     APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      #     APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
-      #   run: |
-      #     KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-      #     echo "$APPLE_CERTIFICATE" | base64 --decode -o $RUNNER_TEMP/cert.p12
-      #     security create-keychain -p ci "$KEYCHAIN_PATH"
-      #     security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-      #     security unlock-keychain -p ci "$KEYCHAIN_PATH"
-      #     security import $RUNNER_TEMP/cert.p12 -P "$APPLE_CERT_PASSWORD" -A -keychain "$KEYCHAIN_PATH"
-      #     security set-key-partition-list -S apple-tool:,apple: -s -k ci "$KEYCHAIN_PATH"
-      #     security default-keychain -s "$KEYCHAIN_PATH"
-
-      - name: Build & Publish Release
-        uses: tauri-apps/tauri-action@v0
+      - name: Build & sign
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAURI_BUNDLER_TARGETS: ${{ matrix.target }}
-          # 公证（可选，需 Apple 账号）：
-          # APPLE_ID: ${{ secrets.APPLE_ID }}
-          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          releaseId: ${{ needs.prepare.outputs.release_id }}
-          tagName: ${{ github.ref_name }}
-          releaseName: "TickGold ${{ github.ref_name }}"
-          releaseBody: |
-            ## 更新内容
-            - 通过顶栏"检查更新"即可自动升级。
-          releaseDraft: true
-          prerelease: false
-          args: --bundles ${{ matrix.target }} ${{ matrix.rust_target && format('--target {0}', matrix.rust_target) || '' }}
+        run: pnpm exec tauri build ${{ matrix.build_args }}
 
-  # 汇总 job：等两个平台都构建完成后，读取各自 .sig，生成 Tauri updater 需要的
-  # latest.json 并上传到 Release。解决并行 matrix 下 tauri-action 漏传 latest.json 的问题。
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.label }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
   publish:
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Generate latest.json
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create release & upload assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
-          echo "Generating latest.json for $TAG (version $VERSION)"
 
-          # 兼容并行构建可能产生的多个草稿：聚合所有匹配 tag 的 release 资产
-          REL_IDS=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name==\"$TAG\") | .id")
-          ASSETS="[]"
-          for RID in $REL_IDS; do
-            PART=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RID/assets")
-            ASSETS=$(jq -n --argjson x "$ASSETS" --argjson y "$PART" '$x + $y')
+          echo "== collected files =="
+          find dist -type f | sort
+
+          # ---- 规整 macOS updater 包名（加架构后缀）----
+          # 注意：.sig 内 file: 行仍记录原始名，Tauri updater 校验不依赖该文件名。
+          if ls dist/mac-arm/*.app.tar.gz >/dev/null 2>&1; then
+            mv dist/mac-arm/TickGold.app.tar.gz        "dist/mac-arm/TickGold_aarch64.app.tar.gz"
+            mv dist/mac-arm/TickGold.app.tar.gz.sig    "dist/mac-arm/TickGold_aarch64.app.tar.gz.sig"
+          fi
+          if ls dist/mac-x64/*.app.tar.gz >/dev/null 2>&1; then
+            mv dist/mac-x64/TickGold.app.tar.gz        "dist/mac-x64/TickGold_x64.app.tar.gz"
+            mv dist/mac-x64/TickGold.app.tar.gz.sig    "dist/mac-x64/TickGold_x64.app.tar.gz.sig"
+          fi
+
+          WIN_EXE=$(find dist/win -name '*x64-setup.exe' | head -n1)
+          WIN_SIG=$(find dist/win -name '*x64-setup.exe.sig' | head -n1)
+          ARM_TGZ="dist/mac-arm/TickGold_aarch64.app.tar.gz"
+          ARM_SIG="dist/mac-arm/TickGold_aarch64.app.tar.gz.sig"
+          X64_TGZ="dist/mac-x64/TickGold_x64.app.tar.gz"
+          X64_SIG="dist/mac-x64/TickGold_x64.app.tar.gz.sig"
+          ARM_DMG=$(find dist/mac-arm -name '*.dmg' | head -n1)
+          X64_DMG=$(find dist/mac-x64 -name '*.dmg' | head -n1)
+
+          # ---- 创建唯一（草稿）Release 并上传全部资产 ----
+          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -n1)
+          if [ -n "$EXISTING" ]; then
+            RID="$EXISTING"
+            echo "reuse release $RID"
+          else
+            RID=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$TAG" -f name="TickGold $TAG" \
+              -F draft=true -F prerelease=false --jq ".id")
+            echo "created release $RID"
+          fi
+
+          # 清空可能残留的同名旧资产，保证幂等
+          for AID in $(gh api "repos/$GITHUB_REPOSITORY/releases/$RID/assets" \
+              --jq ".[] | .id"); do
+            gh api "repos/$GITHUB_REPOSITORY/releases/assets/$AID" -X DELETE >/dev/null 2>&1 || true
           done
 
-          # 用正式下载路径（草稿阶段的 browser_download_url 是 untagged 临时地址，发布后会 404）
-          win_name=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("x64-setup.exe")) | .name')
-          win_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$win_name"
-          win_sig_id=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("x64-setup.exe.sig")) | .id')
-          mac_arm_name=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("aarch64.app.tar.gz")) | .name')
-          mac_arm_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$mac_arm_name"
-          mac_arm_sig_id=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("aarch64.app.tar.gz.sig")) | .id')
-          mac_x64_name=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("x64.app.tar.gz")) | .name')
-          mac_x64_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$mac_x64_name"
-          mac_x64_sig_id=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("x64.app.tar.gz.sig")) | .id')
+          gh release upload "$TAG" \
+            "$WIN_EXE" "$WIN_SIG" \
+            "$ARM_TGZ" "$ARM_SIG" "$X64_TGZ" "$X64_SIG" \
+            "$ARM_DMG" "$X64_DMG" \
+            --repo "$GITHUB_REPOSITORY" --clobber
 
-          echo "win=$win_url"
-          echo "mac_arm=$mac_arm_url"
-          echo "mac_x64=$mac_x64_url"
-
-          win_sig=$(gh api "repos/$GITHUB_REPOSITORY/releases/assets/$win_sig_id" -H "Accept: application/octet-stream")
-          mac_arm_sig=$(gh api "repos/$GITHUB_REPOSITORY/releases/assets/$mac_arm_sig_id" -H "Accept: application/octet-stream")
-          mac_x64_sig=$(gh api "repos/$GITHUB_REPOSITORY/releases/assets/$mac_x64_sig_id" -H "Accept: application/octet-stream")
-
+          # ---- 生成扁平 latest.json ----
+          win_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$WIN_EXE")"
+          arm_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$ARM_TGZ")"
+          x64_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$X64_TGZ")"
+          win_sig=$(cat "$WIN_SIG")
+          arm_sig=$(cat "$ARM_SIG")
+          x64_sig=$(cat "$X64_SIG")
           PUBDATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
           jq -n \
-            --arg v "$VERSION" \
-            --arg d "$PUBDATE" \
+            --arg v "$VERSION" --arg d "$PUBDATE" \
             --arg wu "$win_url" --arg ws "$win_sig" \
-            --arg mau "$mac_arm_url" --arg mas "$mac_arm_sig" \
-            --arg mxu "$mac_x64_url" --arg mxs "$mac_x64_sig" \
+            --arg mau "$arm_url" --arg mas "$arm_sig" \
+            --arg mxu "$x64_url" --arg mxs "$x64_sig" \
             '{
               version: $v,
               notes: "",
@@ -189,12 +175,6 @@ jobs:
                 "darwin-x86_64": { signature: $mxs, url: $mxu }
               }
             }' > latest.json
-
           cat latest.json
-
-          old_id=$(echo "$ASSETS" | jq -r '.[] | select(.name=="latest.json") | .id')
-          if [ -n "$old_id" ] && [ "$old_id" != "null" ]; then
-            gh api "repos/$GITHUB_REPOSITORY/releases/assets/$old_id" -X DELETE
-          fi
-          gh release upload "$TAG" latest.json --repo "$GITHUB_REPOSITORY"
-          echo "latest.json uploaded."
+          gh release upload "$TAG" latest.json --repo "$GITHUB_REPOSITORY" --clobber
+          echo "::notice::Release $TAG assets and latest.json uploaded (still draft)."
