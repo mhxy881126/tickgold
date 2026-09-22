@@ -14,6 +14,20 @@ const trading = ref(true);
 const tab = ref<"ladder" | "up" | "broken" | "down">("ladder");
 let un: UnlistenFn[] = [];
 
+// 首板（1 板）数量多，默认只显示前 30
+const firstBoardExpanded = ref(false);
+const FIRST_SHOW = 30;
+function shownItems(g: { boards: number; items: { code: string; name: string; price: number }[] }) {
+  if (g.boards !== 1 || firstBoardExpanded.value) return g.items;
+  return g.items.slice(0, FIRST_SHOW);
+}
+function boardClass(b: number) {
+  if (b >= 5) return "lv5";
+  if (b >= 3) return "lv3";
+  if (b === 2) return "lv2";
+  return "lv1";
+}
+
 function hhmmss(ts: number): string {
   const d = new Date(ts);
   const p = (n: number) => String(n).padStart(2, "0");
@@ -101,21 +115,47 @@ onUnmounted(async () => {
     </div>
 
     <div class="body">
-      <!-- 连板梯队 -->
+      <!-- 连板梯队（含首板） -->
       <div v-if="tab === 'ladder'" class="ladder">
-        <div v-if="!data || data.ladder.length === 0" class="empty">
-          {{ data ? '当前无连板股（全部为首板或无涨停）' : '正在全市场扫描…' }}
-        </div>
-        <div v-for="g in data?.ladder ?? []" :key="g.boards" class="lad-row">
-          <div class="lad-tag" :class="{ top: g.boards === data?.maxBoards }">
-            <div class="lad-n">{{ g.boards }}</div><div class="lad-t">板</div>
+        <div v-if="!data" class="empty">正在全市场扫描…</div>
+        <div v-else-if="data.ladder.length === 0" class="empty">当前无涨停股</div>
+        <template v-else>
+        <div
+          v-for="g in data.ladder"
+          :key="g.boards"
+          class="lad-group"
+          :class="[boardClass(g.boards), { top: g.boards === data.maxBoards }]"
+        >
+          <div class="lad-head">
+            <div class="lad-badge">
+              <span class="bn">{{ g.boards }}</span><span class="bt">板</span>
+            </div>
+            <div class="lad-meta">
+              <span class="lc">{{ g.count }} 家</span>
+              <span v-if="g.boards === data.maxBoards" class="crown">最高标</span>
+              <span v-if="g.boards === 1" class="first-tag">首板</span>
+            </div>
           </div>
           <div class="lad-items">
-            <button v-for="s in g.items" :key="s.code" class="chip" @click="emit('select', s.code)">
-              {{ s.name }}
+            <button
+              v-for="s in shownItems(g)"
+              :key="s.code"
+              class="stock-chip"
+              @click="emit('select', s.code)"
+            >
+              <span class="sn">{{ s.name }}</span>
+              <span class="sp">{{ s.price.toFixed(2) }}</span>
+            </button>
+            <button
+              v-if="g.boards === 1 && g.items.length > FIRST_SHOW"
+              class="more-btn"
+              @click="firstBoardExpanded = !firstBoardExpanded"
+            >
+              {{ firstBoardExpanded ? "收起" : `展开其余 ${g.items.length - FIRST_SHOW} 只` }}
             </button>
           </div>
         </div>
+        </template>
       </div>
 
       <!-- 涨停列表 -->
@@ -189,22 +229,51 @@ onUnmounted(async () => {
 .body { flex: 1; overflow-y: auto; }
 .empty { color: #6b7280; font-size: 11px; text-align: center; padding: 30px 10px; }
 
-/* 梯队 */
-.ladder { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
-.lad-row { display: flex; gap: 10px; align-items: flex-start; }
-.lad-tag {
-  flex: 0 0 42px; height: 42px; border-radius: 8px; background: #1a212b;
-  display: flex; align-items: baseline; justify-content: center; gap: 1px; padding-top: 7px;
+/* 梯队（含首板） */
+.ladder { display: flex; flex-direction: column; gap: 9px; padding-top: 4px; }
+.lad-group { border: 1px solid #20262f; border-radius: 9px; padding: 9px 10px; background: #12161d; }
+.lad-group.top {
+  border-color: rgba(212,175,55,.55);
+  box-shadow: 0 0 0 1px rgba(212,175,55,.2), 0 6px 20px rgba(212,175,55,.08);
 }
-.lad-tag.top { background: linear-gradient(160deg,#5a4620,#3a2f16); }
-.lad-n { font-size: 19px; font-weight: 800; color: #e8c66a; }
-.lad-t { font-size: 10px; color: #b89a4e; }
-.lad-items { flex: 1; display: flex; flex-wrap: wrap; gap: 5px; }
-.chip {
+.lad-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.lad-badge {
+  width: 46px; height: 34px; border-radius: 8px; padding-top: 5px;
+  display: flex; align-items: baseline; justify-content: center; gap: 2px; background: #1c2330;
+}
+.lad-group.lv5 .lad-badge { background: linear-gradient(160deg,#6b531c,#3d2e12); }
+.lad-group.lv3 .lad-badge { background: linear-gradient(160deg,#5e2a2a,#381a1c); }
+.lad-group.lv2 .lad-badge { background: #2a2418; }
+.lad-group.lv1 .lad-badge { background: #1a212c; }
+.bn { font-size: 19px; font-weight: 800; }
+.bt { font-size: 10px; }
+.lad-group.lv5 .bn, .lad-group.lv5 .bt { color: #ffd76a; }
+.lad-group.lv3 .bn { color: #ff7a5c; }
+.lad-group.lv3 .bt { color: #d96a52; }
+.lad-group.lv2 .bn { color: #f0a23a; }
+.lad-group.lv2 .bt { color: #c98a3a; }
+.lad-group.lv1 .bn { color: #8b98a5; }
+.lad-group.lv1 .bt { color: #6b7886; }
+.lad-meta { display: flex; align-items: center; gap: 8px; }
+.lc { font-size: 11px; color: var(--text-dim); }
+.crown {
+  font-size: 10px; font-weight: 700; color: #1a1a1a;
+  background: linear-gradient(160deg,#ffd76a,#d4af37); border-radius: 4px; padding: 2px 7px;
+}
+.first-tag { font-size: 10px; color: #9fb4cc; background: rgba(78,161,255,.14); border-radius: 4px; padding: 2px 7px; }
+.lad-items { display: flex; flex-wrap: wrap; gap: 6px; }
+.stock-chip {
+  display: inline-flex; align-items: baseline; gap: 5px; cursor: pointer;
   background: #161c25; border: 1px solid #242d38; color: #c9d1d9; font-size: 11px;
-  padding: 4px 9px; border-radius: 13px; cursor: pointer;
+  padding: 4px 9px; border-radius: 7px;
 }
-.chip:hover { border-color: #c03a4a; color: #ff8a98; }
+.stock-chip:hover { border-color: #c03a4a; }
+.stock-chip .sp { font-size: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.more-btn {
+  background: transparent; border: 1px dashed #333c48; color: var(--text-dim);
+  font-size: 10px; padding: 4px 10px; border-radius: 7px; cursor: pointer;
+}
+.more-btn:hover { color: #e8c66a; border-color: #d4af37; }
 
 /* 列表 */
 .list { display: flex; flex-direction: column; }

@@ -30,16 +30,44 @@ function hhmmss(d: Date): string {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+interface Cell {
+  name: string;
+  value: number;
+  itemStyle: { color: string };
+  _lead: string;
+  _leadName: string;
+  _leadPct: number;
+  _pct: number;
+  _net: number;
+  _in: number;
+  _out: number;
+  _big?: boolean;
+}
+
 function render() {
   if (!chart) return;
-  const data = sectors.map((s) => ({
+  const data: Cell[] = sectors.map((s) => ({
     name: s.name,
     value: sizeBy.value === "turnover" ? s.inAmount + s.outAmount : Math.abs(s.netAmount),
     itemStyle: { color: heatColor(s.changePct) },
     _lead: s.leadCode,
+    _leadName: s.leadName,
+    _leadPct: s.leadPct,
     _pct: s.changePct,
     _net: s.netAmount,
+    _in: s.inAmount,
+    _out: s.outAmount,
   }));
+
+  // 成交规模 top 18% 标记为大方块，标签多显示一行净流入
+  const bySize = [...data].sort((a, b) => b.value - a.value);
+  const bigN = Math.max(6, Math.floor(bySize.length * 0.18));
+  const bigSet = new Set(bySize.slice(0, bigN).map((d) => d.name));
+  data.forEach((d) => {
+    d._big = bigSet.has(d.name);
+  });
+
+  const yi = (n: number) => (n / 1e8).toFixed(2);
 
   chart.setOption(
     {
@@ -48,29 +76,55 @@ function render() {
         borderColor: "#2a313b",
         textStyle: { color: "#e6e9ee", fontSize: 11 },
         formatter: (p: any) => {
-          const d = p.data;
+          const d = p.data as Cell;
           const net = d._net / 1e8;
-          return `<b>${d.name}</b><br/>涨幅 ${d._pct.toFixed(2)}%<br/>净流入 ${
-            net >= 0 ? "+" : ""
-          }${net.toFixed(2)} 亿`;
+          const turn = (d._in + d._out) / 1e8;
+          const lead = d._lead.length >= 8 ? d._lead.slice(2) : "";
+          const pc = d._pct >= 0 ? "#ff6a7d" : "#4fd6a8";
+          return (
+            `<b>${d.name}</b><br/>涨幅 <b style="color:${pc}">${d._pct >= 0 ? "+" : ""}${d._pct.toFixed(2)}%</b>` +
+            `<br/>净流入 ${net >= 0 ? "+" : ""}${net.toFixed(2)} 亿` +
+            `<br/>成交规模 ${turn.toFixed(1)} 亿` +
+            `<br/>流入 ${yi(d._in)} 亿 / 流出 ${yi(d._out)} 亿` +
+            (lead
+              ? `<br/>领涨 ${d._leadName} <span style="color:${d._leadPct >= 0 ? "#ff6a7d" : "#4fd6a8"}">${
+                  d._leadPct >= 0 ? "+" : ""
+                }${d._leadPct.toFixed(2)}%</span>`
+              : "")
+          );
         },
       },
       series: [
         {
           type: "treemap",
-          roam: false,
+          roam: true,
           nodeClick: false,
-          breadcrumb: { show: false },
+          breadcrumb: {
+            show: true,
+            bottom: 6,
+            itemStyle: { color: "#222a35", borderColor: "#333c48", borderWidth: 1 },
+            emphasisItemStyle: { color: "#3a4553" },
+            textStyle: { color: "#c9d1d9", fontSize: 10 },
+          },
           animationDuration: 400,
+          squareRatio: 0.62,
           label: {
             show: true,
+            visibleMin: 150,
             formatter: (p: any) => {
-              const cp = p.data._pct;
-              return `{n|${p.data.name}}\n{v|${cp >= 0 ? "+" : ""}${cp.toFixed(2)}%}`;
+              const d = p.data as Cell;
+              const cp = d._pct;
+              const head = `{n|${d.name}}\n{v|${cp >= 0 ? "+" : ""}${cp.toFixed(2)}%}`;
+              if (d._big) {
+                const net = d._net / 1e8;
+                return head + `\n{m|净${net >= 0 ? "+" : ""}${net.toFixed(1)}亿}`;
+              }
+              return head;
             },
             rich: {
               n: { color: "#fff", fontSize: 11, lineHeight: 15, fontWeight: "600" },
-              v: { color: "rgba(255,255,255,.85)", fontSize: 10, lineHeight: 13 },
+              v: { color: "rgba(255,255,255,.88)", fontSize: 10, lineHeight: 13 },
+              m: { color: "rgba(255,255,255,.62)", fontSize: 9, lineHeight: 12 },
             },
           },
           itemStyle: { borderColor: "#0d1117", borderWidth: 2, gapWidth: 2 },
@@ -79,7 +133,7 @@ function render() {
         },
       ],
     },
-    true,
+    true
   );
 }
 
@@ -144,6 +198,7 @@ onBeforeUnmount(() => {
     </div>
     <div class="canvas-wrap">
       <div ref="elRef" class="canvas"></div>
+      <div class="hint">滚轮缩放 · 拖拽平移 · 点击板块查看领涨股</div>
       <div v-if="errMsg" class="err-mask">{{ errMsg }}</div>
     </div>
   </div>
@@ -163,6 +218,11 @@ onBeforeUnmount(() => {
 
 .canvas-wrap { flex: 1; position: relative; min-height: 0; }
 .canvas { position: absolute; inset: 0; }
+.hint {
+  position: absolute; left: 8px; top: 6px; z-index: 5; pointer-events: none;
+  font-size: 10px; color: rgba(255,255,255,.4);
+  background: rgba(13,17,23,.45); border-radius: 4px; padding: 2px 7px;
+}
 .err-mask {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   color: #e0556b; font-size: 12px;

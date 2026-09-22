@@ -293,10 +293,10 @@ async fn scan(
         .collect();
     lu_stocks.sort_by(|a, b| b.boards.cmp(&a.boards).then(b.pct.partial_cmp(&a.pct).unwrap()));
 
-    // 连板梯队（>=2 板），板高降序
+    // 连板梯队（含 1 板首板），板高降序
     let mut groups: BTreeMap<u32, Vec<LimitStock>> = BTreeMap::new();
     for s in &lu_stocks {
-        if s.boards >= 2 {
+        if s.boards >= 1 {
             groups.entry(s.boards).or_default().push(s.clone());
         }
     }

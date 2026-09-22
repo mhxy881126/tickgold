@@ -138,7 +138,7 @@ pub async fn sectors(kind: &str) -> Result<Vec<Sector>, String> {
     // industry=申万行业(fenlei0), concept=概念(fenlei1)
     let fl = if kind == "concept" { "1" } else { "0" };
     let url = format!(
-        "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/MoneyFlow.ssl_bkzj_bk?page=1&num=200&sort=avg_changeratio&asc=0&bankuai=ssl_hy&fenlei={fl}"
+        "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/MoneyFlow.ssl_bkzj_bk?page=1&num=400&sort=avg_changeratio&asc=0&bankuai=ssl_hy&fenlei={fl}"
     );
     let arr: Vec<Value> = http()
         .get(&url)

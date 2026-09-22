@@ -217,6 +217,13 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            // 显式为主窗口设置图标，确保 Windows 任务栏 / 标题栏正确显示（部分环境默认未应用）
+            if let Some(icon) = app.default_window_icon().cloned() {
+                if let Some(main) = app.get_webview_window("main") {
+                    let _ = main.set_icon(icon);
+                }
+            }
+
             // ===== 灵动岛悬浮窗 =====
             let island = WebviewWindowBuilder::new(app, "island", WebviewUrl::App("index.html".into()))
                 .title("TickGold Island")

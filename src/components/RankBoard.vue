@@ -92,14 +92,15 @@ function addOne(q: Quote) {
     <div class="scroll" @scroll="onScroll">
       <table>
         <colgroup>
-          <col style="width: 10%">
-          <col style="width: 36%">
-          <col style="width: 19%">
-          <col style="width: 18%">
+          <col style="width: 8%">
+          <col style="width: 33%">
           <col style="width: 17%">
+          <col style="width: 16%">
+          <col style="width: 15%">
+          <col style="width: 11%">
         </colgroup>
         <thead>
-          <tr><th>#</th><th>名称</th><th class="r">最新</th><th class="r">涨跌幅</th><th class="r">成交额</th></tr>
+          <tr><th>#</th><th>名称</th><th class="r">最新</th><th class="r">涨跌幅</th><th class="r">成交额</th><th class="c">自选</th></tr>
         </thead>
         <tbody>
           <tr
@@ -114,28 +115,29 @@ function addOne(q: Quote) {
             </td>
             <td class="r" :class="cls(q.pct)">{{ fmt(q.price) }}</td>
             <td class="r" :class="cls(q.pct)">{{ q.pct > 0 ? "+" : "" }}{{ fmt(q.pct) }}%</td>
-            <td class="r dim">
-              {{ amtSmart(q.amount) }}
+            <td class="r dim">{{ amtSmart(q.amount) }}</td>
+            <td class="c act">
               <button
                 v-if="!isWatched(q.code)"
-                class="add"
+                class="add-btn"
                 title="加入自选"
                 @click.stop="addOne(q)"
               >+</button>
+              <span v-else class="added" title="已在自选">✓</span>
             </td>
           </tr>
 
           <tr v-if="loading">
-            <td colspan="5" class="status"><span class="spin"></span>正在加载更多…</td>
+            <td colspan="6" class="status"><span class="spin"></span>正在加载更多…</td>
           </tr>
           <tr v-else-if="!hasMore && list.length > 0">
-            <td colspan="5" class="status dim">已加载全部 {{ list.length }} 只股票</td>
+            <td colspan="6" class="status dim">已加载全部 {{ list.length }} 只股票</td>
           </tr>
           <tr v-if="errorMsg && list.length === 0">
-            <td colspan="5" class="empty err">{{ errorMsg }}</td>
+            <td colspan="6" class="empty err">{{ errorMsg }}</td>
           </tr>
           <tr v-if="!loading && list.length === 0 && !errorMsg">
-            <td colspan="5" class="empty">暂无数据</td>
+            <td colspan="6" class="empty">暂无数据</td>
           </tr>
         </tbody>
       </table>
@@ -169,14 +171,16 @@ td { padding: 5px 8px; border-bottom: 1px solid #1b2129; font-size: 12px; white-
 .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
 .dim { color: var(--text-dim); position: relative; }
-.add {
-  background: transparent; border: none; color: var(--accent);
-  font-size: 13px; cursor: pointer; padding: 0 0 0 4px;
-  position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
-  opacity: 0;
+th.c, td.c { text-align: center; }
+.act { padding-left: 4px; padding-right: 4px; }
+.add-btn {
+  width: 20px; height: 20px; border-radius: 5px; cursor: pointer;
+  border: 1px solid rgba(212,175,55,.55); background: rgba(212,175,55,.12);
+  color: #e8c66a; font-size: 14px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
 }
-tr:hover .add { opacity: 1; }
-.add:hover { color: #fff; }
+.add-btn:hover { background: #d4af37; border-color: #d4af37; color: #1a1a1a; }
+.added { color: #3ba776; font-size: 12px; font-weight: 700; }
 
 .status { text-align: center; color: var(--text-dim); padding: 12px; font-size: 11px; }
 .status .spin {

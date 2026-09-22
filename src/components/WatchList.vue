@@ -76,6 +76,20 @@ async function commitEdit(g: { id: number }) {
   editingId.value = null;
   if (name) await wl.renameGroup(g.id, name);
 }
+
+// 移动到其他分组
+const menuCode = ref<string | null>(null);
+function toggleMenu(code: string) {
+  menuCode.value = menuCode.value === code ? null : code;
+}
+function otherGroups(code: string) {
+  const cur = wl.stocks.find((x) => x.code === code)?.groupId;
+  return wl.groups.filter((g) => g.id !== cur);
+}
+async function moveTo(code: string, gid: number) {
+  await wl.moveToGroup(code, gid);
+  menuCode.value = null;
+}
 </script>
 
 <template>
@@ -146,14 +160,15 @@ async function commitEdit(g: { id: number }) {
 
     <table class="list">
       <colgroup>
-        <col style="width: 42%">
-        <col style="width: 22%">
-        <col style="width: 22%">
-        <col style="width: 14%">
+        <col style="width: 38%">
+        <col style="width: 20%">
+        <col style="width: 20%">
+        <col style="width: 13%">
+        <col style="width: 9%">
       </colgroup>
       <thead>
         <tr>
-          <th>名称</th><th class="r">最新</th><th class="r">涨跌幅</th><th class="r">成交额</th>
+          <th>名称</th><th class="r">最新</th><th class="r">涨跌幅</th><th class="r">成交额</th><th class="c">操作</th>
         </tr>
       </thead>
       <tbody>
@@ -175,14 +190,30 @@ async function commitEdit(g: { id: number }) {
           <td class="r dim">
             <span v-if="qOf(s.code)">{{ (qOf(s.code)!.amount / 1e8).toFixed(1) }}</span>
             <span v-else>--</span>
-            <button class="del" title="移出自选" @click.stop="wl.remove(s.code)">×</button>
+          </td>
+          <td class="c ops">
+            <button class="op move" title="移动到其他分组" @click.stop="toggleMenu(s.code)">⇄</button>
+            <button class="op del" title="移出自选" @click.stop="wl.remove(s.code)">×</button>
+            <div v-if="menuCode === s.code" class="move-menu" @click.stop>
+              <div class="mm-title">移动到分组</div>
+              <button
+                v-for="g in otherGroups(s.code)"
+                :key="g.id"
+                class="mm-item"
+                @click.stop="moveTo(s.code, g.id)"
+              >
+                <span>{{ g.name }}</span><span class="mm-c">{{ wl.stocksOf(g.id).length }}</span>
+              </button>
+              <div v-if="otherGroups(s.code).length === 0" class="mm-empty">没有其他分组，请先新建</div>
+            </div>
           </td>
         </tr>
         <tr v-if="wl.currentStocks.length === 0">
-          <td colspan="4" class="empty">该分组暂无股票，上方搜索添加</td>
+          <td colspan="5" class="empty">该分组暂无股票，上方搜索添加</td>
         </tr>
       </tbody>
     </table>
+    <div v-if="menuCode" class="menu-mask" @click="menuCode = null"></div>
   </div>
 </template>
 
@@ -237,14 +268,31 @@ td { padding: 5px 8px; border-bottom: 1px solid #1b2129; font-size: 12px; white-
 .stock-cell { display: flex; align-items: baseline; gap: 5px; overflow: hidden; }
 .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
-.dim { color: var(--text-dim); position: relative; }
-.del {
-  background: transparent; border: none; color: #8b98a5;
-  font-size: 13px; cursor: pointer; line-height: 1; padding: 0 0 0 4px;
-  position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
-  opacity: 0;
+.dim { color: var(--text-dim); }
+th.c, td.c { text-align: center; }
+.ops { position: relative; white-space: nowrap; }
+.op {
+  width: 18px; height: 18px; border-radius: 4px; border: 1px solid transparent;
+  background: transparent; color: var(--text-dim); font-size: 11px; line-height: 1;
+  cursor: pointer; padding: 0; display: inline-flex; align-items: center; justify-content: center;
 }
-tr:hover .del { opacity: 1; }
-.del:hover { color: #f23645; }
+tbody tr:hover .op { border-color: var(--border); }
+.op.move:hover { color: #e8c66a; border-color: #d4af37; }
+.op.del:hover { color: #f23645; border-color: #f23645; }
+.move-menu {
+  position: absolute; right: 2px; top: calc(100% + 3px); z-index: 40; min-width: 138px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 4px; box-shadow: 0 10px 28px rgba(0,0,0,.55); text-align: left;
+}
+.mm-title { font-size: 10px; color: var(--text-dim); padding: 4px 7px 5px; }
+.mm-item {
+  display: flex; width: 100%; justify-content: space-between; gap: 10px;
+  background: transparent; border: none; color: #d6dae0; font-size: 11px;
+  padding: 5px 7px; border-radius: 5px; cursor: pointer;
+}
+.mm-item:hover { background: var(--bg-hover); color: #e8c66a; }
+.mm-c { color: var(--text-dim); font-size: 10px; }
+.mm-empty { font-size: 10px; color: var(--text-dim); padding: 7px; }
+.menu-mask { position: fixed; inset: 0; z-index: 35; background: transparent; }
 .empty { text-align: center; color: var(--text-dim); padding: 30px; font-size: 12px; }
 </style>
