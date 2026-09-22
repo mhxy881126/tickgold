@@ -78,3 +78,40 @@ export async function fetchSectors(kind: "industry" | "concept"): Promise<Sector
 export async function fetchScreener(filter: ScreenFilter): Promise<ScreenResult[]> {
   return await invoke<ScreenResult[]>("get_screener", { filter });
 }
+
+// ===== 短线精灵 / 异动实时流 =====
+export interface SpiderEvent {
+  time: number;
+  code: string;
+  name: string;
+  price: number;
+  pct: number;
+  kind: string;
+  label: string;
+  desc: string;
+  tone: string; // up / down / neutral
+}
+export interface SpiderStatus {
+  trading: boolean;
+  poolSize: number;
+  time: number;
+}
+
+/** 启动异动监控（watch = 自选股，会并入活跃股池） */
+export async function startSpider(watch: string[]): Promise<string> {
+  return await invoke<string>("start_spider", { watch });
+}
+/** 停止异动监控 */
+export async function stopSpider(): Promise<string> {
+  return await invoke<string>("stop_spider");
+}
+
+/** 检查最新版本（Tauri updater 检查失败时的兜底，Rust 多镜像拉取） */
+export interface LatestInfo {
+  version: string;
+  notes: string;
+  pubDate: string;
+}
+export async function fetchLatest(): Promise<LatestInfo> {
+  return await invoke<LatestInfo>("check_latest");
+}

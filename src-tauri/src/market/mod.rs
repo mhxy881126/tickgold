@@ -3,6 +3,7 @@
 pub mod eastmoney;
 pub mod sina;
 pub mod tencent;
+pub mod spider;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -412,6 +413,45 @@ pub async fn get_rank_page(sort: String, page: i64, num: i64) -> Result<Vec<Quot
     )
     .await
     .map_err(|_| "榜单: 超时".to_string())?
+}
+
+/// 最新版本信息（更新检查兜底，走与行情同款的 HTTP 客户端 + 多镜像）
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LatestInfo {
+    pub version: String,
+    pub notes: String,
+    pub pub_date: String,
+}
+
+pub async fn check_latest() -> Result<LatestInfo, String> {
+    let tail = "/mhxy881126/tickgold/releases/latest/download/latest.json";
+    let urls = [
+        format!("https://github.com{tail}"),
+        format!("https://ghproxy.net/https://github.com{tail}"),
+        format!("https://gh-proxy.com/https://github.com{tail}"),
+    ];
+    let mut last = String::from("无法获取版本信息（网络不可达）");
+    for u in urls {
+        let send = tokio::time::timeout(Duration::from_secs(8), http().get(&u).send()).await;
+        let Ok(Ok(resp)) = send else {
+            last = "检查更新: 网络超时".to_string();
+            continue;
+        };
+        let text = tokio::time::timeout(Duration::from_secs(8), resp.text()).await;
+        let Ok(Ok(txt)) = text else { continue };
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+            if let Some(ver) = v.get("version").and_then(|x| x.as_str()) {
+                return Ok(LatestInfo {
+                    version: ver.to_string(),
+                    notes: v.get("notes").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                    pub_date: v.get("pub_date").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                });
+            }
+        }
+        last = "检查更新: 版本信息解析失败".to_string();
+    }
+    Err(last)
 }
 
 /// 大盘指数行情：东财为主，失败静默返回空（指数非核心，不弹错）

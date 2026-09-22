@@ -4,6 +4,7 @@ export type CardId =
   | "chart"
   | "sector"
   | "screener"
+  | "spider"
   | "order"
   | "fundflow"
   | "watch"
@@ -20,6 +21,7 @@ export const CARD_META: Record<CardId, CardMeta> = {
   chart: { title: "K线图", accent: "#2f6fed", kind: "chart" },
   sector: { title: "板块行情", accent: "#35c4a8", kind: "chart" },
   screener: { title: "条件选股", accent: "#d4af37", kind: "chart" },
+  spider: { title: "短线精灵", accent: "#e0556b", kind: "narrow" },
   order: { title: "五档盘口", accent: "#d9a23b", kind: "narrow" },
   fundflow: { title: "资金流向", accent: "#f0883e", kind: "narrow" },
   watch: { title: "自选股", accent: "#26d07c", kind: "narrow" },
@@ -28,13 +30,13 @@ export const CARD_META: Record<CardId, CardMeta> = {
 
 // 宽卡片（主干区域，可上下并列）与窄卡片（右侧）的排列顺序
 const WIDE_ORDER: CardId[] = ["chart", "sector", "screener"];
-const NARROW_ORDER: CardId[] = ["order", "fundflow", "watch", "rank"];
+const NARROW_ORDER: CardId[] = ["spider", "order", "fundflow", "watch", "rank"];
 
 // 模式预设：一键切换一整套卡片
 export const MODES: Record<string, CardId[]> = {
-  pro: ["chart", "order", "fundflow", "watch"],
+  pro: ["chart", "spider", "order", "watch"],
   scanner: ["screener", "rank", "watch"],
-  full: ["chart", "sector", "order", "fundflow", "watch", "rank"],
+  full: ["chart", "sector", "screener", "spider", "order", "fundflow", "watch", "rank"],
   chart: ["chart"],
 };
 
@@ -105,11 +107,26 @@ export function useWorkbench() {
         style[narrows[0]] = cell(7, 13, 1, 4);
         style[narrows[1]] = cell(7, 10, 4, 7);
         style[narrows[2]] = cell(10, 13, 4, 7);
-      } else if (n >= 4) {
+      } else if (n === 4) {
         style[narrows[0]] = cell(7, 10, 1, 4);
         style[narrows[1]] = cell(10, 13, 1, 4);
         style[narrows[2]] = cell(7, 10, 4, 7);
         style[narrows[3]] = cell(10, 13, 4, 7);
+      } else if (n === 5) {
+        // 上排 3、下排 2
+        style[narrows[0]] = cell(7, 9, 1, 4);
+        style[narrows[1]] = cell(9, 11, 1, 4);
+        style[narrows[2]] = cell(11, 13, 1, 4);
+        style[narrows[3]] = cell(7, 10, 4, 7);
+        style[narrows[4]] = cell(10, 13, 4, 7);
+      } else {
+        // n >= 6：上排 3、下排 3
+        style[narrows[0]] = cell(7, 9, 1, 4);
+        style[narrows[1]] = cell(9, 11, 1, 4);
+        style[narrows[2]] = cell(11, 13, 1, 4);
+        style[narrows[3]] = cell(7, 9, 4, 7);
+        style[narrows[4]] = cell(9, 11, 4, 7);
+        style[narrows[5]] = cell(11, 13, 4, 7);
       }
     } else {
       // 无宽卡片：窄卡片横向均分、全高
@@ -119,9 +136,24 @@ export function useWorkbench() {
         3: [[1, 5], [5, 9], [9, 13]],
         4: [[1, 4], [4, 7], [7, 10], [10, 13]],
       };
-      (spans[n] || []).forEach(([s, e], i) => {
-        style[narrows[i]] = cell(s, e, 1, 7);
-      });
+      if (n <= 4) {
+        (spans[n] || []).forEach(([s, e], i) => {
+          style[narrows[i]] = cell(s, e, 1, 7);
+        });
+      } else {
+        // n===5：上排 3、下排 2；n>=6：上排 3、下排 3
+        ([[1, 5], [5, 9], [9, 13]] as [number, number][]).forEach(([s, e], i) => {
+          style[narrows[i]] = cell(s, e, 1, 4);
+        });
+        if (n === 5) {
+          style[narrows[3]] = cell(1, 7, 4, 7);
+          style[narrows[4]] = cell(7, 13, 4, 7);
+        } else {
+          style[narrows[3]] = cell(1, 5, 4, 7);
+          style[narrows[4]] = cell(5, 9, 4, 7);
+          style[narrows[5]] = cell(9, 13, 4, 7);
+        }
+      }
     }
     return style;
   });

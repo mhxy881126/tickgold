@@ -1,6 +1,8 @@
 mod market;
 
+use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::Ordering;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -67,6 +69,35 @@ async fn get_rank_page(
     market::get_rank_page(sort, page, num).await
 }
 
+#[tauri::command]
+async fn check_latest() -> Result<market::LatestInfo, String> {
+    market::check_latest().await
+}
+
+#[tauri::command]
+async fn start_spider(
+    app: tauri::AppHandle,
+    watch: Vec<String>,
+    ctl: tauri::State<'_, Arc<market::spider::SpiderCtl>>,
+) -> Result<String, String> {
+    *ctl.watch.lock().unwrap() = watch;
+    if ctl.running.load(Ordering::Acquire) {
+        return Ok("already running".to_string());
+    }
+    ctl.running.store(true, Ordering::Release);
+    let c: Arc<market::spider::SpiderCtl> = ctl.inner().clone();
+    tauri::async_runtime::spawn(async move {
+        market::spider::run_loop(app, c).await;
+    });
+    Ok("started".to_string())
+}
+
+#[tauri::command]
+fn stop_spider(ctl: tauri::State<'_, Arc<market::spider::SpiderCtl>>) -> Result<String, String> {
+    ctl.running.store(false, Ordering::Release);
+    Ok("stopped".to_string())
+}
+
 /// 老板键：切换所有窗口显隐
 fn boss_toggle(app: &tauri::AppHandle) {
     let state = app.state::<BossHidden>();
@@ -89,6 +120,7 @@ fn boss_toggle(app: &tauri::AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
@@ -149,6 +181,7 @@ pub fn run() {
                 .build(),
         )
         .manage(BossHidden(Mutex::new(false)))
+        .manage(Arc::new(market::spider::SpiderCtl::new()))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcuts(["Alt+`"])
@@ -218,7 +251,10 @@ pub fn run() {
             get_screener,
             search_stocks,
             get_index_quotes,
-            get_rank_page
+            get_rank_page,
+            check_latest,
+            start_spider,
+            stop_spider
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

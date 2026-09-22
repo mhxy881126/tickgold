@@ -2,9 +2,9 @@
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
-import { check as checkForUpdate } from "@tauri-apps/plugin-updater";
-import { exit } from "@tauri-apps/plugin-process";
 import CardShell from "./components/CardShell.vue";
+import UpdateDialog from "./components/UpdateDialog.vue";
+import ShortTermSpider from "./components/ShortTermSpider.vue";
 import WatchList from "./components/WatchList.vue";
 import Indices from "./components/Indices.vue";
 import RankBoard from "./components/RankBoard.vue";
@@ -31,6 +31,7 @@ const CARD_NAV: { id: CardId; label: string; icon: string }[] = [
   { id: "watch", label: "自选", icon: "M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" },
   { id: "rank", label: "榜单", icon: "M3 5h18v2H3zm0 4h18v2H3zm0 4h12v2H3zm0 4h12v2H3z" },
   { id: "chart", label: "K线", icon: "M6 3h2v4H6zm0 14h2v4H6zM5 8h4v8H5zm11-9h2v3h-2zm0 12h2v5h-2zm-1-7h4v7h-4z" },
+  { id: "spider", label: "精灵", icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8z" },
   { id: "sector", label: "板块", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z" },
   { id: "screener", label: "选股", icon: "M4 5h3v14H4zm6.5 5h3v9h-3zM17 9h3v10h-3z" },
   { id: "order", label: "盘口", icon: "M5 3h14v18H5zm2 4h10v2H7zm0 4h10v2H7zm0 4h7v2H7z" },
@@ -61,57 +62,9 @@ function onSearchSelect(code: string, name: string) {
   bench.open("chart");
 }
 
-// ===== 自动更新 =====
+// ===== 自动更新（功能在 UpdateDialog 对话框内）=====
 const curVersion = ref("");
-type UpdState = "idle" | "checking" | "downloading" | "installing" | "uptodate" | "error";
-const updState = ref<UpdState>("idle");
-const newVer = ref("");
-const pct = ref(0);
-
-function resetUpd() {
-  updState.value = "idle";
-  newVer.value = "";
-  pct.value = 0;
-}
-async function checkUpdate() {
-  if (updState.value === "checking" || updState.value === "downloading") return;
-  updState.value = "checking";
-  try {
-    const update = await checkForUpdate();
-    if (!update) {
-      updState.value = "uptodate";
-      setTimeout(resetUpd, 2500);
-      return;
-    }
-    newVer.value = update.version;
-    updState.value = "downloading";
-    let got = 0;
-    let total = 0;
-    await update.download((e: any) => {
-      switch (e.event) {
-        case "Started": total = e.data.contentLength || 0; break;
-        case "Progress": got += e.data.chunkLength; pct.value = total ? Math.round((got / total) * 100) : 0; break;
-        case "Finished": pct.value = 100; break;
-      }
-    });
-    updState.value = "installing";
-    await update.install();
-    await exit(0);
-  } catch (err) {
-    console.error("[updater]", err);
-    updState.value = "error";
-    setTimeout(resetUpd, 3000);
-  }
-}
-function updLabel(): string {
-  switch (updState.value) {
-    case "checking": return "检查中…";
-    case "installing": return "即将退出并安装…";
-    case "uptodate": return "已是最新";
-    case "error": return "更新失败";
-    default: return "检查更新";
-  }
-}
+const showUpdate = ref(false);
 
 let unlisten: (() => void) | null = null;
 watch(() => quotes.map, (m) => alerts.evaluate(m), { deep: true });
@@ -154,13 +107,7 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
         <span class="sep">|</span>
         <span class="ver">v{{ curVersion }}</span>
         <span class="sep">|</span>
-        <div v-if="updState === 'downloading'" class="upd-progress">
-          <span class="upd-text">下载 v{{ newVer }} {{ pct }}%</span>
-          <div class="bar"><div class="fill" :style="{ width: pct + '%' }"></div></div>
-        </div>
-        <button v-else class="upd" :class="{ busy: updState !== 'idle', bad: updState === 'error' }" @click="checkUpdate">
-          {{ updLabel() }}
-        </button>
+        <button class="upd" @click="showUpdate = true">检查更新</button>
       </div>
     </header>
 
@@ -244,6 +191,7 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
               <StockChart v-if="selected" :key="selected" :code="selected" />
               <div v-else class="card-empty">从自选或榜单选择一只股票</div>
             </div>
+            <ShortTermSpider v-else-if="id === 'spider'" @select="onSelect" />
             <SectorBoard v-else-if="id === 'sector'" @select="onSelect" />
             <Screener v-else-if="id === 'screener'" @select="onSelect" />
             <FundFlow v-else-if="id === 'fundflow'" :code="selected" />
@@ -252,6 +200,9 @@ onBeforeUnmount(() => { if (unlisten) unlisten(); });
         </div>
       </TransitionGroup>
     </main>
+
+    <!-- 软件更新对话框 -->
+    <UpdateDialog v-model:open="showUpdate" />
   </div>
 </template>
 
