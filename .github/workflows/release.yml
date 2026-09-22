@@ -15,7 +15,31 @@ on:
       - "v*"
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.rel.outputs.release_id }}
+    steps:
+      - name: Ensure unique draft release
+        id: rel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          # 重跑场景：复用已存在的同名草稿 release
+          RID=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -n1)
+          if [ -z "$RID" ]; then
+            RID=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$TAG" -f name="TickGold $TAG" \
+              -F draft=true -F prerelease=false --jq ".id")
+          fi
+          echo "release_id=$RID" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: prepare
     permissions:
       contents: write
     strategy:
@@ -94,6 +118,7 @@ jobs:
           # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
+          releaseId: ${{ needs.prepare.outputs.release_id }}
           tagName: ${{ github.ref_name }}
           releaseName: "TickGold ${{ github.ref_name }}"
           releaseBody: |
@@ -120,8 +145,13 @@ jobs:
           VERSION="${TAG#v}"
           echo "Generating latest.json for $TAG (version $VERSION)"
 
-          REL_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name==\"$TAG\") | .id")
-          ASSETS=$(gh api "repos/$GITHUB_REPOSITORY/releases/$REL_ID/assets")
+          # 兼容并行构建可能产生的多个草稿：聚合所有匹配 tag 的 release 资产
+          REL_IDS=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name==\"$TAG\") | .id")
+          ASSETS="[]"
+          for RID in $REL_IDS; do
+            PART=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RID/assets")
+            ASSETS=$(jq -n --argjson x "$ASSETS" --argjson y "$PART" '$x + $y')
+          done
 
           # 用正式下载路径（草稿阶段的 browser_download_url 是 untagged 临时地址，发布后会 404）
           win_name=$(echo "$ASSETS" | jq -r '.[] | select(.name | endswith("x64-setup.exe")) | .name')
