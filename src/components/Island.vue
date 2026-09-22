@@ -108,7 +108,14 @@ onBeforeUnmount(() => {
 </template>
 
 <style>
-html, body { background: transparent !important; }
+html,
+body,
+#app {
+  background: transparent !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
 </style>
 
 <style scoped>
@@ -201,7 +208,7 @@ html, body { background: transparent !important; }
   padding: 2px 8px;
   border-radius: 10px;
 }
-.open-list { flex: 1; overflow-y: auto; }
+.open-list { flex: 1; overflow-y: auto; padding-bottom: 8px; }
 .row {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 16px; cursor: pointer;

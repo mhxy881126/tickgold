@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "灵动盯盘",
-  "version": "0.7.0",
+  "productName": "TickGold",
+  "version": "0.8.0",
   "identifier": "com.stockdock.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "灵动盯盘",
+        "title": "TickGold",
         "width": 1280,
         "height": 800,
         "minWidth": 960,

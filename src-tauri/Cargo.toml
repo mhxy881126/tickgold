@@ -1,8 +1,8 @@
 [package]
-name = "stock-dock"
-version = "0.1.0"
-description = "灵动岛版股票盯盘终端"
-authors = ["stock-dock"]
+name = "tickgold"
+version = "0.8.0"
+description = "TickGold - 专业交易者跨平台 A 股盯盘终端"
+authors = ["tickgold"]
 edition = "2021"
 
 [lib]

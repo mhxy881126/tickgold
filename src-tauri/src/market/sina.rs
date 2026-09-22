@@ -234,85 +234,61 @@ fn parse_date(s: &str, period: i64) -> i64 {    use std::time::{Duration, UNIX_E
         .unwrap_or(0)
 }
 
-/// 榜单：gainers=涨幅榜 losers=跌幅榜 amount=成交额榜（沪深 A 股，新浪公开接口）
-pub async fn rank(sort: &str, pz: i64) -> Result<Vec<Quote>, String> {
+/// 榜单分页（全市场沪深京 A 股，标准 JSON）：
+/// sort: gainers=涨幅榜, losers=跌幅榜, amount=成交额榜；page 从 1 开始。
+pub async fn rank_page(sort: &str, page: i64, num: i64) -> Result<Vec<Quote>, String> {
     let (sort_key, asc) = match sort {
         "losers" => ("changepercent", 1),
         "amount" => ("amount", 0),
         _ => ("changepercent", 0),
     };
     let url = format!(
-        "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page=1&num={pz}&sort={sort_key}&asc={asc}&node=hs_a&symbol=&_s_r_a=init"
+        "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page={page}&num={num}&sort={sort_key}&asc={asc}&node=hs_a&symbol=&_s_r_a=page"
     );
-    let resp = http()
+    let arr: Vec<Value> = http()
         .get(&url)
         .header("Referer", "https://finance.sina.com.cn/")
         .send()
         .await
-        .map_err(|e| e.to_string())?;
-    let txt = resp.text().await.map_err(|e| e.to_string())?;
-    parse_rank(&txt)
-}
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| format!("榜单解析失败: {e}"))?;
 
-/// 从单条 JS 字面量对象里取字段值（key 无引号）
-fn gv<'a>(s: &'a str, key: &str) -> &'a str {
-    let pat = format!("{key}:");
-    let Some(i) = s.find(&pat) else { return "" };
-    let rest = s[i + pat.len()..].trim_start();
-    if rest.starts_with('"') {
-        let end = rest[1..].find('"').unwrap_or(0);
-        &rest[1..1 + end]
-    } else {
-        let end = rest.find(|c| c == ',' || c == '}').unwrap_or(rest.len());
-        &rest[..end]
-    }
-}
-
-fn parse_rank(txt: &str) -> Result<Vec<Quote>, String> {
-    let body = txt.trim().trim_start_matches('[').trim_end_matches(']');
     let now = now_millis();
-    let mut out = Vec::new();
-    for item in body.split("},{") {
-        let item = item.trim().trim_start_matches('{').trim_end_matches('}');
-        let code = gv(item, "code").to_string();
-        if code.len() != 6 {
-            continue;
-        }
-        let name = gv(item, "name").to_string();
-        let price: f64 = gv(item, "trade").parse().unwrap_or(0.0);
-        let change: f64 = gv(item, "pricechange").parse().unwrap_or(0.0);
-        let pct: f64 = gv(item, "changepercent").parse().unwrap_or(0.0);
-        let open: f64 = gv(item, "open").parse().unwrap_or(0.0);
-        let high: f64 = gv(item, "high").parse().unwrap_or(0.0);
-        let low: f64 = gv(item, "low").parse().unwrap_or(0.0);
-        let prev_close: f64 = gv(item, "settlement").parse().unwrap_or(0.0);
-        let volume_shares: f64 = gv(item, "volume").parse().unwrap_or(0.0);
-        let amount: f64 = gv(item, "amount").parse().unwrap_or(0.0);
-        out.push(Quote {
-            code,
-            name,
-            price,
-            change,
-            pct,
-            open,
-            high,
-            low,
-            prev_close,
-            volume: volume_shares / 100.0,
-            amount,
-            time: now,
-            source: "sina".to_string(),
-            turnover: 0.0,
-            pe: 0.0,
-            pb: 0.0,
-            amplitude: 0.0,
-            volume_ratio: 0.0,
-            circ_mv: 0.0,
-            total_mv: 0.0,
-        });
-    }
-    if out.is_empty() {
-        return Err("新浪榜单返回空".to_string());
-    }
+    // 新浪数值字段均为字符串
+    let f = |v: &Value, k: &str| {
+        v[k].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0)
+    };
+    let out: Vec<Quote> = arr
+        .iter()
+        .map(|v| {
+            let price = f(v, "trade");
+            let prev_close = f(v, "settlement");
+            Quote {
+                code: v["code"].as_str().unwrap_or("").to_string(),
+                name: v["name"].as_str().unwrap_or("").to_string(),
+                price,
+                change: f(v, "pricechange"),
+                pct: f(v, "changepercent"),
+                open: f(v, "open"),
+                high: f(v, "high"),
+                low: f(v, "low"),
+                prev_close,
+                volume: f(v, "volume") / 100.0, // 股 -> 手
+                amount: f(v, "amount"),
+                time: now,
+                source: "sina".to_string(),
+                turnover: f(v, "turnoverratio"),
+                pe: f(v, "per"),
+                pb: f(v, "pb"),
+                amplitude: 0.0,
+                volume_ratio: 0.0,
+                circ_mv: f(v, "nmc") / 10000.0, // 万元 -> 亿元
+                total_mv: f(v, "mktcap") / 10000.0,
+            }
+        })
+        .collect();
     Ok(out)
 }
+

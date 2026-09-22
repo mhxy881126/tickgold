@@ -404,28 +404,14 @@ const HOT_CODES: &[&str] = &[
     "300750","300014","002594","600884","601012","600438","601877","002129","600732","002056",
 ];
 
-/// 榜单：用热门股池 + 腾讯批量行情本地排序（不依赖专用榜单接口）
-pub async fn get_rank(sort: String, pz: i64) -> Result<Vec<Quote>, String> {
-    let codes: Vec<String> = HOT_CODES.iter().map(|s| s.to_string()).collect();
-    let quotes = tokio::time::timeout(
-        Duration::from_secs(QUOTE_TIMEOUT),
-        tencent::quotes(&codes),
+/// 榜单（全市场沪深京 A 股，分页）：sort = gainers/losers/amount，page 从 1 开始
+pub async fn get_rank_page(sort: String, page: i64, num: i64) -> Result<Vec<Quote>, String> {
+    tokio::time::timeout(
+        Duration::from_secs(KLINE_TIMEOUT),
+        sina::rank_page(&sort, page, num),
     )
     .await
-    .map_err(|_| "榜单: 超时".to_string())??;
-
-    if quotes.is_empty() {
-        return Err("榜单: 行情为空".to_string());
-    }
-
-    let mut v = quotes;
-    match sort.as_str() {
-        "losers" => v.sort_by(|a, b| a.pct.partial_cmp(&b.pct).unwrap()),
-        "amount" => v.sort_by(|a, b| b.amount.partial_cmp(&a.amount).unwrap()),
-        _ => v.sort_by(|a, b| b.pct.partial_cmp(&a.pct).unwrap()),
-    }
-    v.truncate(pz as usize);
-    Ok(v)
+    .map_err(|_| "榜单: 超时".to_string())?
 }
 
 /// 大盘指数行情：东财为主，失败静默返回空（指数非核心，不弹错）

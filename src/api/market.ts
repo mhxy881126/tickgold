@@ -56,8 +56,12 @@ export async function fetchMinute(code: string): Promise<KBar[]> {
 }
 
 /** 榜单：gainers=涨幅榜 losers=跌幅榜 amount=成交额榜（失败抛出错误供上层展示） */
-export async function fetchRank(sort: "gainers" | "losers" | "amount", pz = 30): Promise<Quote[]> {
-  return await invoke<Quote[]>("get_rank", { sort, pz });
+export async function fetchRankPage(
+  sort: "gainers" | "losers" | "amount",
+  page: number,
+  num = 50,
+): Promise<Quote[]> {
+  return await invoke<Quote[]>("get_rank_page", { sort, page, num });
 }
 
 /** 个股资金流向（主力 / 散户 + 四档分布） */

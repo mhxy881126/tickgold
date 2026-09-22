@@ -95,7 +95,7 @@ jobs:
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "灵动盯盘 ${{ github.ref_name }}"
+          releaseName: "TickGold ${{ github.ref_name }}"
           releaseBody: |
             ## 更新内容
             - 通过顶栏"检查更新"即可自动升级。

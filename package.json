@@ -1,9 +1,9 @@
 {
-  "name": "stock-dock",
+  "name": "tickgold",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.8.0",
   "type": "module",
-  "description": "灵动岛版股票盯盘终端 - A股轻量跨平台看盘软件",
+  "description": "TickGold - 专业交易者跨平台 A 股盯盘终端 (Tauri 2 + Vue 3)",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",

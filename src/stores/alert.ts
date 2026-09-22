@@ -124,11 +124,11 @@ export const useAlertStore = defineStore("alert", () => {
         const p = await requestPermission();
         granted = p === "granted";
       }
-      if (granted) await sendNotification({ title: "灵动盯盘预警", body });
+      if (granted) await sendNotification({ title: "TickGold 预警", body });
     } catch {
       try {
         if ("Notification" in window && Notification.permission === "granted") {
-          new Notification("灵动盯盘预警", { body });
+          new Notification("TickGold 预警", { body });
         }
       } catch (e) {
         console.warn(e);

@@ -59,8 +59,12 @@ async fn get_index_quotes() -> Result<Vec<market::Quote>, String> {
 }
 
 #[tauri::command]
-async fn get_rank(sort: String, pz: i64) -> Result<Vec<market::Quote>, String> {
-    market::get_rank(sort, pz).await
+async fn get_rank_page(
+    sort: String,
+    page: i64,
+    num: i64,
+) -> Result<Vec<market::Quote>, String> {
+    market::get_rank_page(sort, page, num).await
 }
 
 /// 老板键：切换所有窗口显隐
@@ -159,7 +163,7 @@ pub fn run() {
         .setup(|app| {
             // ===== 灵动岛悬浮窗 =====
             let island = WebviewWindowBuilder::new(app, "island", WebviewUrl::App("index.html".into()))
-                .title("灵动岛")
+                .title("TickGold Island")
                 .decorations(false)
                 .always_on_top(true)
                 .skip_taskbar(true)
@@ -183,7 +187,7 @@ pub fn run() {
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &show_island, &quit])?;
             TrayIconBuilder::with_id("main-tray")
-                .tooltip("灵动盯盘 (Alt+` 老板键)")
+                .tooltip("TickGold - 金睛盯盘 (Alt+` 老板键)")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "show" => {
@@ -214,7 +218,7 @@ pub fn run() {
             get_screener,
             search_stocks,
             get_index_quotes,
-            get_rank
+            get_rank_page
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");
