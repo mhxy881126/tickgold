@@ -75,6 +75,21 @@ async fn check_latest() -> Result<market::LatestInfo, String> {
 }
 
 #[tauri::command]
+async fn get_f10_profile(code: String) -> Result<market::f10::CompanyProfile, String> {
+    market::f10::get_profile(code).await
+}
+
+#[tauri::command]
+async fn get_f10_finance(code: String) -> Result<market::f10::FinanceReport, String> {
+    market::f10::get_finance(code).await
+}
+
+#[tauri::command]
+async fn get_f10_chips(code: String) -> Result<market::f10::ChipDistribution, String> {
+    market::f10::get_chips(code).await
+}
+
+#[tauri::command]
 async fn start_spider(
     app: tauri::AppHandle,
     watch: Vec<String>,
@@ -311,6 +326,9 @@ pub fn run() {
             get_index_quotes,
             get_rank_page,
             check_latest,
+            get_f10_profile,
+            get_f10_finance,
+            get_f10_chips,
             start_spider,
             stop_spider,
             start_radar,

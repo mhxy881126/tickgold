@@ -17,6 +17,7 @@ import SectorBoard from "./components/SectorBoard.vue";
 import SectorHeatmap from "./components/SectorHeatmap.vue";
 import SectorEvents from "./components/SectorEvents.vue";
 import Screener from "./components/Screener.vue";
+import F10Card from "./components/F10Card.vue";
 import SearchBox from "./components/SearchBox.vue";
 import StockChart from "./components/StockChart.vue";
 import { useWatchlistStore } from "./stores/watchlist";
@@ -47,6 +48,7 @@ const CARD_NAV: { id: CardId; label: string; icon: string }[] = [
   { id: "order", label: "盘口", icon: "M5 3h14v18H5zm2 4h10v2H7zm0 4h10v2H7zm0 4h7v2H7z" },
   { id: "fundflow", label: "资金", icon: "M12 3c-4 0-7 1.3-7 3v12c0 1.7 3 3 7 3s7-1.3 7-3V6c0-1.7-3-3-7-3zm0 2c3.3 0 5 .9 5 1s-1.7 1-5 1-5-.9-5-1 1.7-1 5-1zm-5 4.5c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V12c0 .1-1.7 1-5 1s-5-.9-5-1zm0 4c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V16c0 .1-1.7 1-5 1s-5-.9-5-1z" },
   { id: "alert", label: "预警", icon: "M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C8.63 5.36 7 7.92 7 11v5l-2 2v1h14v-1l-2-2z" },
+  { id: "f10", label: "F10", icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm0 2l4 4h-4V4zM8 13h8v1.5H8zm0 4h8v1.5H8zm0-8h5v1.5H8z" },
 ];
 
 // ===== 模式预设 =====
@@ -232,6 +234,7 @@ onBeforeUnmount(() => {
             <Screener v-else-if="id === 'screener'" @select="onSelect" />
             <FundFlow v-else-if="id === 'fundflow'" :code="selected" />
             <AlertCenter v-else-if="id === 'alert'" />
+            <F10Card v-else-if="id === 'f10'" :code="selected" />
             <RightPanel v-else :code="selected" />
           </CardShell>
         </div>

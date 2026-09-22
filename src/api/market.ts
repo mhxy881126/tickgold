@@ -187,3 +187,67 @@ export async function startAlertEngine(rules: AlertRule[]): Promise<string> {
 export async function stopAlertEngine(): Promise<string> {
   return await invoke<string>("stop_alert_engine");
 }
+
+// ===== F10 个股资料 =====
+export interface Kv {
+  key: string;
+  value: string;
+}
+export interface CompanyProfile {
+  code: string;
+  name: string;
+  enName: string;
+  market: string;
+  listDate: string;
+  issuePrice: string;
+  underwriter: string;
+  establishDate: string;
+  regCapital: string;
+  orgType: string;
+  secretary: string;
+  phone: string;
+  fax: string;
+  email: string;
+  website: string;
+  postcode: string;
+  regAddress: string;
+  officeAddress: string;
+  intro: string;
+  mainBusiness: string;
+  fields: Kv[];
+}
+export interface FinanceRow {
+  name: string;
+  values: (number | null)[];
+}
+export interface FinanceGroup {
+  name: string;
+  rows: FinanceRow[];
+}
+export interface FinanceReport {
+  periods: string[];
+  groups: FinanceGroup[];
+}
+export interface ChipDistribution {
+  currentPrice: number;
+  avgCost: number;
+  profitRatio: number;
+  low90: number;
+  high90: number;
+  concentration90: number;
+  low70: number;
+  high70: number;
+  concentration70: number;
+  prices: number[];
+  chips: number[];
+}
+
+export async function fetchF10Profile(code: string): Promise<CompanyProfile> {
+  return await invoke<CompanyProfile>("get_f10_profile", { code });
+}
+export async function fetchF10Finance(code: string): Promise<FinanceReport> {
+  return await invoke<FinanceReport>("get_f10_finance", { code });
+}
+export async function fetchF10Chips(code: string): Promise<ChipDistribution> {
+  return await invoke<ChipDistribution>("get_f10_chips", { code });
+}
