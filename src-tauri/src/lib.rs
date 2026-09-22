@@ -298,6 +298,23 @@ pub fn run() {
                             );",
                             kind: MigrationKind::Up,
                         },
+                        Migration {
+                            version: 9,
+                            description: "create finance calendar events",
+                            sql: "CREATE TABLE IF NOT EXISTS cal_event (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                date TEXT NOT NULL,
+                                time TEXT,
+                                title TEXT NOT NULL,
+                                type TEXT NOT NULL DEFAULT 'other',
+                                note TEXT NOT NULL DEFAULT '',
+                                code TEXT,
+                                remind INTEGER NOT NULL DEFAULT 0,
+                                done INTEGER NOT NULL DEFAULT 0,
+                                created_at INTEGER NOT NULL
+                            );",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),

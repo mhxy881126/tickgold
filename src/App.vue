@@ -20,6 +20,7 @@ import Screener from "./components/Screener.vue";
 import F10Card from "./components/F10Card.vue";
 import PaperTrade from "./components/PaperTrade.vue";
 import Journal from "./components/Journal.vue";
+import EcoCalendar from "./components/EcoCalendar.vue";
 import SearchBox from "./components/SearchBox.vue";
 import StockChart from "./components/StockChart.vue";
 import { useWatchlistStore } from "./stores/watchlist";
@@ -53,6 +54,7 @@ const CARD_NAV: { id: CardId; label: string; icon: string }[] = [
   { id: "f10", label: "F10", icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm0 2l4 4h-4V4zM8 13h8v1.5H8zm0 4h8v1.5H8zm0-8h5v1.5H8z" },
   { id: "trade", label: "交易", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1c1.7.3 3 1.4 3 3.1 0 1.9-1.5 2.8-3.4 2.8-1.2 0-2.1-.4-2.6-1l1.2-1c.3.4.8.7 1.5.7.8 0 1.3-.3 1.3-.8s-.4-.8-1.5-1c-1.6-.4-3.2-1-3.2-2.9 0-1.6 1.3-2.7 3-3V5h2zm-1 11h2v2h-2z" },
   { id: "journal", label: "日记", icon: "M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1zm3 5h8v1.5H8zm0 4h8v1.5H8zm0 4h5v1.5H8z" },
+  { id: "calendar", label: "日历", icon: "M7 2v2H5a2 2 0 00-2 2v13a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2h-2V2h-2v2H9V2H7zm-2 7h14v10H5V9zm2 2v3h3v-3H7zm5 0v3h3v-3h-3z" },
 ];
 
 // ===== 模式预设 =====
@@ -241,6 +243,7 @@ onBeforeUnmount(() => {
             <F10Card v-else-if="id === 'f10'" :code="selected" />
             <PaperTrade v-else-if="id === 'trade'" :code="selected" />
             <Journal v-else-if="id === 'journal'" :code="selected" />
+            <EcoCalendar v-else-if="id === 'calendar'" :code="selected" />
             <RightPanel v-else :code="selected" />
           </CardShell>
         </div>
