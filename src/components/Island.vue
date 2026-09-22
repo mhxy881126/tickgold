@@ -23,6 +23,7 @@ const alertMode = ref(true); // 折叠态有预警时优先展示预警
 let pollTimer: number | null = null;
 let rotateTimer: number | null = null;
 let unlistenAlert: (() => void) | null = null;
+let unlistenWatch: (() => void) | null = null;
 
 const current = computed(() => quotes.value[idx.value] ?? null);
 const latestAlert = computed(() => alertEvents.value[0] ?? null);
@@ -35,7 +36,7 @@ function cls(pct: number) {
 
 async function refresh() {
   try {
-    if (!wl.loaded) await wl.load();
+    await wl.load(); // 每次从 SQLite 读取最新自选（主窗口可能已增删）
     if (wl.codes.length === 0) {
       quotes.value = [];
       phase.value = "ready";
@@ -105,11 +106,17 @@ onMounted(async () => {
     alertMode.value = true;
     if (!expanded.value) toggleExpand();
   });
+
+  // 自选股增删：立即重新加载并刷新（灵动岛实时同步）
+  unlistenWatch = await listen("watch:changed", () => {
+    refresh();
+  });
 });
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer);
   if (rotateTimer) clearInterval(rotateTimer);
   if (unlistenAlert) unlistenAlert();
+  if (unlistenWatch) unlistenWatch();
 });
 </script>
 

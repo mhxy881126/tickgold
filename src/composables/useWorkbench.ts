@@ -133,6 +133,77 @@ const GAP = 12;
 const COLS = 12;
 const ROWS = 6;
 
+// ===== 自由布局（卡片可随意拖拽摆放）=====
+export interface FreeRect { x: number; y: number; w: number; h: number }
+const ROW_UNIT = 88; // 自由布局每个逻辑行的像素高度
+// 各卡在自由画布上的默认尺寸（w=12 列网格中的列数，h=逻辑行数）
+const FREE_SIZE: Partial<Record<CardId, { w: number; h: number }>> = {
+  chart: { w: 8, h: 5 },
+  sectorheat: { w: 8, h: 5 },
+  sector: { w: 6, h: 4 },
+  screener: { w: 6, h: 4 },
+  f10: { w: 6, h: 4 },
+  trade: { w: 6, h: 4 },
+  theme: { w: 6, h: 4 },
+  calendar: { w: 6, h: 4 },
+  ipo: { w: 6, h: 4 },
+  journal: { w: 6, h: 4 },
+  radar: { w: 4, h: 3 },
+  breadth: { w: 4, h: 3 },
+};
+function freeSizeOf(id: CardId): { w: number; h: number } {
+  return FREE_SIZE[id] ?? { w: 4, h: 3 };
+}
+// 自由布局初始装箱：按 12 列 shelf 换行，行高取该行最高卡，输出整数坐标
+export function packFree(cards: CardId[]): Record<string, FreeRect> {
+  const out: Record<string, FreeRect> = {};
+  const rows: { id: CardId; w: number; h: number }[][] = [];
+  let cur: { id: CardId; w: number; h: number }[] = [];
+  let cw = 0;
+  for (const id of cards) {
+    const s = freeSizeOf(id);
+    if (cur.length && cw + s.w > COLS) { rows.push(cur); cur = []; cw = 0; }
+    cur.push({ id, w: s.w, h: s.h });
+    cw += s.w;
+  }
+  if (cur.length) rows.push(cur);
+  let y = 0;
+  for (const row of rows) {
+    const rh = Math.max(...row.map((r) => r.h));
+    let x = 0;
+    for (const r of row) { out[r.id] = { x, y, w: r.w, h: rh }; x += r.w; }
+    y += rh;
+  }
+  return out;
+}
+// 两个自由矩形是否相交（边界相接不算重叠）
+export function rectsOverlap(a: FreeRect, b: FreeRect): boolean {
+  const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return ox > 0 && oy > 0;
+}
+// 碰撞推开：重复扫描，凡相交则把更靠下的卡下移，直到无重叠（只向下，收敛）
+export function settleFreeRects(rects: Record<string, FreeRect>) {
+  let guard = 0;
+  let any = true;
+  while (any && guard < 400) {
+    any = false;
+    guard++;
+    const ids = Object.keys(rects);
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = rects[ids[i]];
+        const b = rects[ids[j]];
+        if (rectsOverlap(a, b)) {
+          if (a.y <= b.y) b.y = a.y + a.h;
+          else a.y = b.y + b.h;
+          any = true;
+        }
+      }
+    }
+  }
+}
+
 // 由网格线编号生成定位样式 + leave 脱标用的 CSS 变量
 function cell(s: number, e: number, r: number, er: number, totalRows: number = ROWS) {
   return {
@@ -226,6 +297,7 @@ function rankDefault(id: CardId): number {
 interface SnapshotCard {
   id: CardId;
   zone: Zone;
+  rect?: FreeRect;
 }
 
 export interface NamedLayout {
@@ -244,14 +316,23 @@ export function useWorkbench() {
   const zoneOverride = ref<Partial<Record<CardId, Zone>>>({});
   // 时段驾驶舱模式（非 null = 使用 TIME_PRESETS 的显式 Bento 布局）
   const timeMode = ref<string | null>(null);
+  // 自由布局：true=卡片按 freeRects 绝对定位，可随意拖拽
+  const freeMode = ref(false);
+  const freeRects = ref<Record<string, FreeRect>>({});
+  const freeDrag = ref<(FreeRect & { id: CardId }) | null>(null);
+  const freeCanvasRef = ref<HTMLElement | null>(null);
 
   function open(id: CardId) {
     if (timeMode.value) timeMode.value = null; // 手动加卡 → 退出固定 Bento，回到自由网格
-    if (!openCards.value.includes(id)) openCards.value.push(id);
+    if (!openCards.value.includes(id)) {
+      openCards.value.push(id);
+      if (freeMode.value) placeNewFree(id);
+    }
   }
   function close(id: CardId) {
     if (timeMode.value) timeMode.value = null; // Bento 被改动 → 回到自由网格
     openCards.value = openCards.value.filter((c) => c !== id);
+    if (freeMode.value) delete freeRects.value[id];
   }
   function toggle(id: CardId) {
     openCards.value.includes(id) ? close(id) : open(id);
@@ -263,6 +344,8 @@ export function useWorkbench() {
   function setMode(cards: CardId[]) {
     zoneOverride.value = {};
     timeMode.value = null;
+    freeMode.value = false;
+    freeRects.value = {};
     openCards.value = [...cards];
   }
   // 进入时段驾驶舱：套用该时段的卡片集合 + Bento 显式布局
@@ -271,6 +354,8 @@ export function useWorkbench() {
     if (!p) return;
     zoneOverride.value = {};
     timeMode.value = id;
+    freeMode.value = false;
+    freeRects.value = {};
     openCards.value = [...p.cards];
   }
   function exitTimeMode() {
@@ -375,9 +460,87 @@ export function useWorkbench() {
     dragEnd();
   }
 
+  // ===== 自由布局：开关 / 拖拽 =====
+  function enableFree() {
+    if (timeMode.value) timeMode.value = null;
+    if (!freeMode.value) freeRects.value = packFree(openCards.value);
+    freeMode.value = true;
+  }
+  function disableFree() {
+    freeMode.value = false;
+    freeRects.value = {};
+    freeDrag.value = null;
+  }
+  // 自由模式下新卡：放在画布最下方，再碰撞整理
+  function placeNewFree(id: CardId) {
+    const s = freeSizeOf(id);
+    let maxY = 0;
+    Object.values(freeRects.value).forEach((r) => { maxY = Math.max(maxY, r.y + r.h); });
+    freeRects.value[id] = { x: 0, y: maxY, w: s.w, h: s.h };
+    settleFreeRects(freeRects.value);
+  }
+  function clampNum(v: number, lo: number, hi: number) {
+    return Math.max(lo, Math.min(hi, v));
+  }
+  function startFreeDrag(e: PointerEvent, id: CardId) {
+    const rect = freeRects.value[id];
+    const canvas = freeCanvasRef.value;
+    if (!rect || !canvas) return;
+    e.preventDefault();
+    const base = { ...rect };
+    freeDrag.value = { id, ...base };
+    const cr = canvas.getBoundingClientRect();
+    const cellW = (cr.width - (COLS + 1) * GAP) / COLS;
+    const move = (ev: PointerEvent) => {
+      const mx = ev.clientX - cr.left;
+      const my = ev.clientY - cr.top;
+      const col = Math.round((mx - GAP) / (cellW + GAP));
+      const row = Math.round((my - GAP) / (ROW_UNIT + GAP));
+      const nx = clampNum(col - Math.round(base.w / 2), 0, COLS - base.w);
+      const ny = clampNum(row - Math.round(base.h / 2), 0, 60);
+      freeDrag.value = { id, x: nx, y: ny, w: base.w, h: base.h };
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      const g = freeDrag.value;
+      if (g) {
+        freeRects.value[id] = { x: g.x, y: g.y, w: g.w, h: g.h };
+        settleFreeRects(freeRects.value);
+      }
+      freeDrag.value = null;
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+  // 自由卡定位样式（宽用百分比、高用固定像素）
+  function freeCellStyle(id: CardId): Record<string, string> {
+    const g = freeDrag.value && freeDrag.value.id === id ? freeDrag.value : freeRects.value[id];
+    if (!g) return { display: "none" };
+    return {
+      position: "absolute",
+      left: `calc(${g.x} * (100% + ${GAP}px) / ${COLS})`,
+      width: `calc(${g.w} * (100% + ${GAP}px) / ${COLS} - ${GAP}px)`,
+      top: `${GAP + g.y * (ROW_UNIT + GAP)}px`,
+      height: `${g.h * (ROW_UNIT + GAP) - GAP}px`,
+      zIndex: freeDrag.value && freeDrag.value.id === id ? "20" : "1",
+    };
+  }
+  const freeHeight = computed(() => {
+    let maxY = 0;
+    const all: Record<string, FreeRect> = { ...freeRects.value };
+    if (freeDrag.value) all[freeDrag.value.id] = freeDrag.value;
+    Object.values(all).forEach((r) => { maxY = Math.max(maxY, r.y + r.h); });
+    return GAP + maxY * (ROW_UNIT + GAP) + GAP;
+  });
+
   // ===== 序列化 / 恢复 =====
   function serialize(): string {
-    const cards: SnapshotCard[] = openCards.value.map((id) => ({ id, zone: zoneOf(id) }));
+    const cards: SnapshotCard[] = openCards.value.map((id) => {
+      const c: SnapshotCard = { id, zone: zoneOf(id) };
+      if (freeMode.value && freeRects.value[id]) c.rect = freeRects.value[id];
+      return c;
+    });
     return JSON.stringify(cards);
   }
   function applySnapshot(json: string) {
@@ -385,13 +548,25 @@ export function useWorkbench() {
       const arr = JSON.parse(json) as SnapshotCard[];
       if (!Array.isArray(arr)) return;
       const ov: Partial<Record<CardId, Zone>> = {};
+      const rects: Record<string, FreeRect> = {};
       const ids: CardId[] = [];
+      let hasRect = false;
       for (const c of arr) {
         if (!ALL_IDS.includes(c.id)) continue;
         ids.push(c.id);
         if (c.zone && c.zone !== defaultZone(c.id)) ov[c.id] = c.zone;
+        if (c.rect) { rects[c.id] = c.rect; hasRect = true; }
       }
-      zoneOverride.value = ov;
+      if (hasRect) {
+        freeMode.value = true;
+        freeRects.value = rects;
+        ids.forEach((id) => { if (!rects[id]) placeNewFree(id); });
+        settleFreeRects(freeRects.value);
+      } else {
+        freeMode.value = false;
+        freeRects.value = {};
+        zoneOverride.value = ov;
+      }
       openCards.value = ids;
     } catch {
       /* ignore */
@@ -465,10 +640,14 @@ export function useWorkbench() {
   // 重置：恢复默认分区 + 默认顺序
   function resetLayout() {
     zoneOverride.value = {};
+    freeMode.value = false;
+    freeRects.value = {};
     openCards.value = [...openCards.value].sort((a, b) => rankDefault(a) - rankDefault(b));
   }
 
-  watch([openCards, zoneOverride, timeMode], persistCurrent, { deep: true });
+  watch([openCards, zoneOverride, timeMode, freeMode, freeRects], persistCurrent, {
+    deep: true,
+  });
 
   return {
     openCards,
@@ -492,6 +671,16 @@ export function useWorkbench() {
     clearHint,
     applyDrop,
     dragEnd,
+    // 自由布局
+    freeMode,
+    freeRects,
+    freeDrag,
+    freeCanvasRef,
+    enableFree,
+    disableFree,
+    startFreeDrag,
+    freeCellStyle,
+    freeHeight,
     // 持久化 / 布局
     restoreCurrent,
     saveNamedLayout,

@@ -1,12 +1,22 @@
 <script setup lang="ts">
-const props = defineProps<{ title: string; accent?: string; dragging?: boolean }>();
+const props = defineProps<{
+  title: string;
+  accent?: string;
+  dragging?: boolean;
+  freeDrag?: boolean;
+}>();
 const emit = defineEmits<{
   close: [];
   dragstart: [];
   dragend: [];
   dragover: [ratio: number];
   drop: [];
+  grab: [e: PointerEvent];
 }>();
+
+function onGrab(e: PointerEvent) {
+  if (props.freeDrag) emit("grab", e);
+}
 
 function onDragStart(e: DragEvent) {
   // 从关闭按钮发起的拖拽不处理
@@ -40,11 +50,12 @@ function onDrop(e: DragEvent) {
   >
     <header
       class="card-head"
-      draggable="true"
+      :draggable="!freeDrag"
       @dragstart="onDragStart"
       @dragend="emit('dragend')"
       @dragover="onDragOver"
       @drop="onDrop"
+      @pointerdown="onGrab"
     >
       <span class="card-bar"></span>
       <svg viewBox="0 0 24 24" class="card-grip" title="按住拖动可调整位置">

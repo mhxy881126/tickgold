@@ -1,6 +1,16 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { ensureDb, db } from "../db/database";
+import { emit } from "@tauri-apps/api/event";
+
+/** 自选变更后通知所有窗口（灵动岛等）实时刷新 */
+function watchChanged() {
+  try {
+    emit("watch:changed");
+  } catch {
+    /* 非 Tauri 环境忽略 */
+  }
+}
 import type { Group, WatchStock } from "../api/types";
 
 const GROUP_PREF_KEY = "sd_current_group";
@@ -83,11 +93,13 @@ export const useWatchlistStore = defineStore("watchlist", () => {
       [c, name, gid, order, Date.now()]
     );
     stocks.value.push({ code: c, name, groupId: gid, sortOrder: order });
+    watchChanged();
   }
 
   async function remove(code: string) {
     await db().execute("DELETE FROM stocks WHERE code=?", [code]);
     stocks.value = stocks.value.filter((s) => s.code !== code);
+    watchChanged();
   }
 
   /** 行情返回后补全名称 */
@@ -110,6 +122,7 @@ export const useWatchlistStore = defineStore("watchlist", () => {
       s.groupId = groupId;
       s.sortOrder = order;
     }
+    watchChanged();
   }
 
   /** 当前分组内拖拽重排 */
@@ -128,6 +141,7 @@ export const useWatchlistStore = defineStore("watchlist", () => {
     for (let i = 0; i < list.length; i++) {
       await db().execute("UPDATE stocks SET sort_order=? WHERE code=?", [i, list[i].code]);
     }
+    watchChanged();
   }
 
   /** 新建分组，返回 id 并切换过去 */
@@ -142,6 +156,7 @@ export const useWatchlistStore = defineStore("watchlist", () => {
     const id = (r.lastInsertId as number) ?? groups.value[groups.value.length - 1].id + 1;
     groups.value.push({ id, name: n, sortOrder: order });
     selectGroup(id);
+    watchChanged();
     return id;
   }
 
@@ -151,6 +166,7 @@ export const useWatchlistStore = defineStore("watchlist", () => {
     await db().execute("UPDATE groups SET name=? WHERE id=?", [n, id]);
     const g = groups.value.find((x) => x.id === id);
     if (g) g.name = n;
+    watchChanged();
   }
 
   /** 删除分组：其下股票移回默认分组(id=1)；默认分组不可删 */
@@ -170,6 +186,7 @@ export const useWatchlistStore = defineStore("watchlist", () => {
     await db().execute("DELETE FROM groups WHERE id=?", [id]);
     groups.value = groups.value.filter((g) => g.id !== id);
     if (currentGroupId.value === id) selectGroup(1);
+    watchChanged();
   }
 
   return {

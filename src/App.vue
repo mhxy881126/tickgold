@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, provide } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, provide, watch } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
 import CardShell from "./components/CardShell.vue";
+import CardContent from "./components/CardContent.vue";
 import UpdateDialog from "./components/UpdateDialog.vue";
 import LayoutMenu from "./components/LayoutMenu.vue";
 import ShortTermSpider from "./components/ShortTermSpider.vue";
@@ -43,6 +44,12 @@ const bench = useWorkbench();
 provide("workbench", bench);
 
 const selected = ref<string | null>(null);
+
+// 自由布局画布 DOM（同步给布局引擎，用于指针拖拽换算）
+const freeCanvasEl = ref<HTMLElement | null>(null);
+watch(freeCanvasEl, (el) => {
+  bench.freeCanvasRef.value = el;
+});
 
 // ===== 分区列表（落点指示用）=====
 const mainList = computed(() =>
@@ -173,6 +180,29 @@ function onDockLeave() {
   });
 }
 
+// ===== Dock 超宽横向滚动（滚轮转换 + 左右箭头）=====
+const dockCanL = ref(false);
+const dockCanR = ref(false);
+function updateDockArrows() {
+  const el = dockRef.value;
+  if (!el) return;
+  dockCanL.value = el.scrollLeft > 4;
+  dockCanR.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+}
+function onDockWheel(e: WheelEvent) {
+  const el = dockRef.value;
+  if (!el || el.scrollWidth <= el.clientWidth) return;
+  if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+    e.preventDefault();
+    el.scrollLeft += e.deltaY;
+  }
+}
+function dockBy(dir: number) {
+  const el = dockRef.value;
+  if (!el) return;
+  el.scrollBy({ left: dir * Math.round(el.clientWidth * 0.65), behavior: "smooth" });
+}
+
 // ===== 联动：选中股票 → 打开 K线卡片 =====
 function onSelect(code: string) {
   selected.value = code;
@@ -207,6 +237,13 @@ onMounted(async () => {
     // 有启用规则则启动后端预警引擎
     await alerts.syncEngine();
     quotes.start(2000);
+    // Dock：滚轮横向滚动（非 passive 才能 preventDefault）+ 箭头状态
+    if (dockRef.value) {
+      dockRef.value.addEventListener("wheel", onDockWheel, { passive: false });
+      dockRef.value.addEventListener("scroll", updateDockArrows);
+      window.addEventListener("resize", updateDockArrows);
+      setTimeout(updateDockArrows, 400);
+    }
     unlistenFns.push(
       await listen<string>("island:select", (e) => {
         selected.value = e.payload;
@@ -262,7 +299,8 @@ onBeforeUnmount(() => {
     <!-- 指数条 -->
     <Indices class="idx-row" />
 
-    <!-- 顶部功能 Dock（按域分组，hover 联动放大） -->
+    <!-- 顶部功能 Dock（按域分组，hover 联动放大；超宽可横向滚动） -->
+    <div class="dock-wrap">
     <nav
       class="topdock"
       ref="dockRef"
@@ -298,19 +336,26 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </nav>
+    <button class="dock-arrow l" v-show="dockCanL" type="button" tabindex="-1" @click="dockBy(-1)">
+      <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z" /></svg>
+    </button>
+    <button class="dock-arrow r" v-show="dockCanR" type="button" tabindex="-1" @click="dockBy(1)">
+      <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M8.6 16.6 10 18l6-6-6-6-1.4 1.4L13.2 12z" /></svg>
+    </button>
+    </div>
 
     <!-- 工作台主区域 -->
     <main class="workspace" :class="{ dragging: bench.dragId.value !== null }">
       <!-- 时段切换栏 -->
       <TimeTabs :active="bench.timeMode.value" @select="bench.enterTimeMode($event)" />
 
-      <div class="ws-body">
+      <div class="ws-body" :class="{ free: bench.freeMode.value }">
       <!-- 默认欢迎页（无卡片时） -->
       <Transition name="welcome">
         <div v-if="bench.openCards.value.length === 0" class="welcome">
           <div class="w-logo">TG</div>
           <h1 class="w-title">TickGold 盯盘工作台</h1>
-          <p class="w-sub">从左侧打开功能卡片，或选择一个布局模式快速开始</p>
+          <p class="w-sub">从顶部 Dock 打开功能卡片，或选择一个布局模式快速开始</p>
           <div class="w-btns">
             <button class="w-btn primary" @click="bench.setMode(MODES.pro)">专业盯盘</button>
             <button class="w-btn" @click="bench.setMode(MODES.sector)">板块模式</button>
@@ -320,6 +365,47 @@ onBeforeUnmount(() => {
         </div>
       </Transition>
 
+      <!-- ===== 自由布局：卡片绝对定位、可随意拖拽 ===== -->
+      <template v-if="bench.freeMode.value">
+        <div class="free-toolbar">
+          <span class="ft-hint">自由布局：按住卡片标题栏拖动，自动避让不重叠；布局已自动保存</span>
+          <button class="ft-btn" @click="bench.disableFree()">恢复自动布局</button>
+        </div>
+        <TransitionGroup
+          tag="div"
+          class="free-canvas"
+          ref="freeCanvasEl"
+          enter-active-class="card-enter"
+          leave-active-class="free-leave"
+          :style="{ height: bench.freeHeight.value + 'px' }"
+        >
+          <div
+            v-for="id in bench.openCards.value"
+            :key="id"
+            class="free-cell"
+            :class="{ dragging: bench.freeDrag.value?.id === id }"
+            :style="bench.freeCellStyle(id)"
+          >
+            <CardShell
+              :title="CARD_META[id].title"
+              :accent="CARD_META[id].accent"
+              free-drag
+              @close="bench.close(id)"
+              @grab="(e: PointerEvent) => bench.startFreeDrag(e, id)"
+            >
+              <CardContent
+                :id="id"
+                :selected="selected"
+                :compact="bench.timeMode.value !== null"
+                @select="onSelect"
+              />
+            </CardShell>
+          </div>
+        </TransitionGroup>
+      </template>
+
+      <!-- ===== 自动布局：分区 + 装箱网格（默认） ===== -->
+      <template v-else>
       <!-- 分区落点高亮（拖拽时显示，不参与卡片动画） -->
       <div
         class="zone-hint zone-main"
@@ -361,40 +447,16 @@ onBeforeUnmount(() => {
             @dragover="(r: number) => bench.hintOver(id, r)"
             @drop="bench.applyDrop()"
           >
-            <WatchList
-              v-if="id === 'watch'"
+            <CardContent
+              :id="id"
               :selected="selected"
+              :compact="bench.timeMode.value !== null"
               @select="onSelect"
             />
-            <RankBoard
-              v-else-if="id === 'rank'"
-              @select="onSelect"
-            />
-            <div v-else-if="id === 'chart'" class="chart-card">
-              <StockChart v-if="selected" :key="selected" :code="selected" />
-              <div v-else class="card-empty">从自选或榜单选择一只股票</div>
-            </div>
-            <LimitRadar v-else-if="id === 'radar'" @select="onSelect" />
-            <BreadthBoard v-else-if="id === 'breadth'" :compact="bench.timeMode.value !== null" />
-            <ShortTermSpider v-else-if="id === 'spider'" @select="onSelect" />
-            <SectorBoard v-else-if="id === 'sector'" @select="onSelect" />
-            <SectorHeatmap v-else-if="id === 'sectorheat'" @select="onSelect" />
-            <SectorEvents v-else-if="id === 'sectorevent'" @select="onSelect" />
-            <Screener v-else-if="id === 'screener'" @select="onSelect" />
-            <ThemeRotation v-else-if="id === 'theme'" @select="onSelect" />
-            <DistBoard v-else-if="id === 'dist'" />
-            <NewsFlash v-else-if="id === 'news'" />
-            <FundFlow v-else-if="id === 'fundflow'" :code="selected" />
-            <AlertCenter v-else-if="id === 'alert'" />
-            <F10Card v-else-if="id === 'f10'" :code="selected" />
-            <PaperTrade v-else-if="id === 'trade'" :code="selected" />
-            <Journal v-else-if="id === 'journal'" :code="selected" />
-            <EcoCalendar v-else-if="id === 'calendar'" :code="selected" />
-            <IpoCalendar v-else-if="id === 'ipo'" :code="selected" @select="onSelect" />
-            <RightPanel v-else :code="selected" />
           </CardShell>
         </div>
       </TransitionGroup>
+      </template>
       </div>
     </main>
 
@@ -440,6 +502,19 @@ onBeforeUnmount(() => {
   scrollbar-width: none;
 }
 .topdock::-webkit-scrollbar { display: none; }
+
+.dock-wrap { position: relative; grid-column: 1; display: flex; min-width: 0; }
+.dock-wrap .topdock { flex: 1; min-width: 0; }
+.dock-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 20px; height: 28px; border: 1px solid var(--border);
+  border-radius: 7px; background: rgba(14, 20, 29, 0.92);
+  color: var(--text); cursor: pointer; z-index: 12;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.dock-arrow:hover { background: #1c2735; border-color: #4ea1ff; color: #4ea1ff; }
+.dock-arrow.l { left: 2px; }
+.dock-arrow.r { right: 2px; }
 .dock-grp {
   display: flex;
   align-items: center;
@@ -511,6 +586,28 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
 }
+
+/* ===== 自由布局 ===== */
+.ws-body.free { overflow-y: auto; }
+.free-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.ft-hint { font-size: 11px; color: var(--text-dim); }
+.ft-btn {
+  margin-left: auto; height: 24px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: transparent; color: var(--text); font-size: 11px; cursor: pointer;
+}
+.ft-btn:hover { border-color: #d4af37; color: #e8c96a; }
+.free-canvas { position: relative; width: 100%; }
+.free-cell {
+  transition: left 0.32s cubic-bezier(0.2, 0.8, 0.2, 1),
+    top 0.32s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.32s, height 0.32s;
+}
+.free-cell.dragging { transition: none; }
+.free-cell.dragging .card-shell {
+  border-color: #d4af37;
+  box-shadow: 0 0 0 1px #d4af37, 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+.free-leave { animation: cardOut 0.25s cubic-bezier(0.4, 0, 0.6, 1) both; z-index: 5; }
 
 /* 分区落点高亮 */
 .zone-hint {

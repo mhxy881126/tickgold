@@ -77,10 +77,24 @@ async function commitEdit(g: { id: number }) {
   if (name) await wl.renameGroup(g.id, name);
 }
 
-// 移动到其他分组
+// 移动到其他分组（fixed 弹层，避免被卡片 overflow 裁切）
 const menuCode = ref<string | null>(null);
-function toggleMenu(code: string) {
-  menuCode.value = menuCode.value === code ? null : code;
+const menuPos = ref<{ top?: number; bottom?: number; left: number } | null>(null);
+function toggleMenu(e: MouseEvent, code: string) {
+  if (menuCode.value === code) {
+    closeMoveMenu();
+    return;
+  }
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const h = Math.min(otherGroups(code).length * 30 + 38, 280);
+  const left = Math.max(8, r.right - 156);
+  if (window.innerHeight - r.bottom > h + 8) menuPos.value = { top: r.bottom + 4, left };
+  else menuPos.value = { bottom: window.innerHeight - r.top + 4, left };
+  menuCode.value = code;
+}
+function closeMoveMenu() {
+  menuCode.value = null;
+  menuPos.value = null;
 }
 function otherGroups(code: string) {
   const cur = wl.stocks.find((x) => x.code === code)?.groupId;
@@ -88,7 +102,7 @@ function otherGroups(code: string) {
 }
 async function moveTo(code: string, gid: number) {
   await wl.moveToGroup(code, gid);
-  menuCode.value = null;
+  closeMoveMenu();
 }
 </script>
 
@@ -192,20 +206,9 @@ async function moveTo(code: string, gid: number) {
             <span v-else>--</span>
           </td>
           <td class="c ops">
-            <button class="op move" title="移动到其他分组" @click.stop="toggleMenu(s.code)">⇄</button>
+            <button class="op move" title="移动到其他分组" @click.stop="toggleMenu($event, s.code)">⇄</button>
             <button class="op del" title="移出自选" @click.stop="wl.remove(s.code)">×</button>
-            <div v-if="menuCode === s.code" class="move-menu" @click.stop>
-              <div class="mm-title">移动到分组</div>
-              <button
-                v-for="g in otherGroups(s.code)"
-                :key="g.id"
-                class="mm-item"
-                @click.stop="moveTo(s.code, g.id)"
-              >
-                <span>{{ g.name }}</span><span class="mm-c">{{ wl.stocksOf(g.id).length }}</span>
-              </button>
-              <div v-if="otherGroups(s.code).length === 0" class="mm-empty">没有其他分组，请先新建</div>
-            </div>
+            <!-- 移动菜单已改为底部 Teleport 弹层 -->
           </td>
         </tr>
         <tr v-if="wl.currentStocks.length === 0">
@@ -213,7 +216,22 @@ async function moveTo(code: string, gid: number) {
         </tr>
       </tbody>
     </table>
-    <div v-if="menuCode" class="menu-mask" @click="menuCode = null"></div>
+    <div v-if="menuCode" class="menu-mask" @click="closeMoveMenu"></div>
+
+    <Teleport to="body">
+      <div v-if="menuCode && menuPos" class="move-pop" :style="menuPos" @click.stop>
+        <div class="mm-title">移动到分组</div>
+        <button
+          v-for="g in otherGroups(menuCode)"
+          :key="g.id"
+          class="mp-item"
+          @click.stop="moveTo(menuCode, g.id)"
+        >
+          <span>{{ g.name }}</span><span class="mm-c">{{ wl.stocksOf(g.id).length }}</span>
+        </button>
+        <div v-if="otherGroups(menuCode).length === 0" class="mm-empty">没有其他分组，请先新建</div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -279,10 +297,10 @@ th.c, td.c { text-align: center; }
 tbody tr:hover .op { border-color: var(--border); }
 .op.move:hover { color: #e8c66a; border-color: #d4af37; }
 .op.del:hover { color: #f23645; border-color: #f23645; }
-.move-menu {
-  position: absolute; right: 2px; top: calc(100% + 3px); z-index: 40; min-width: 138px;
-  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
-  padding: 4px; box-shadow: 0 10px 28px rgba(0,0,0,.55); text-align: left;
+.move-pop {
+  position: fixed; z-index: 999; width: 156px; text-align: left;
+  background: #111722; border: 1px solid #2a3543; border-radius: 9px;
+  padding: 4px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.6);
 }
 .mm-title { font-size: 10px; color: var(--text-dim); padding: 4px 7px 5px; }
 .mm-item {

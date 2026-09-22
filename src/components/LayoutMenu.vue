@@ -32,6 +32,13 @@ async function del(id: number) {
 function reset() {
   bench.resetLayout();
 }
+function enterFree() {
+  bench.enableFree();
+  open.value = false;
+}
+function exitFree() {
+  bench.disableFree();
+}
 function fmt(ts: number) {
   return new Date(ts).toLocaleDateString();
 }
@@ -74,6 +81,8 @@ function fmt(ts: number) {
           </div>
         </div>
 
+        <button class="lm-mode free" @click="enterFree">自由拖拽布局（随意摆放）</button>
+        <button class="lm-mode auto" @click="exitFree">恢复自动布局</button>
         <button class="lm-reset" @click="reset">恢复默认分区与顺序</button>
       </div>
     </template>
@@ -205,6 +214,14 @@ function fmt(ts: number) {
   color: #f23645;
   background: rgba(242, 54, 69, 0.12);
 }
+.lm-mode {
+  width: 100%; height: 28px; border-radius: 6px; margin-bottom: 6px;
+  border: 1px solid #2a333f; background: transparent; color: #aab4c0;
+  font-size: 12px; cursor: pointer;
+}
+.lm-mode.free { color: #e8c96a; border-color: #5a4d22; }
+.lm-mode.free:hover { background: rgba(212, 175, 55, 0.1); }
+.lm-mode.auto:hover { border-color: #4a5565; color: #e6edf3; }
 .lm-reset {
   width: 100%;
   height: 28px;
