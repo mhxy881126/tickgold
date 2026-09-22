@@ -4,6 +4,7 @@ pub mod eastmoney;
 pub mod sina;
 pub mod tencent;
 pub mod spider;
+pub mod limitup;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};

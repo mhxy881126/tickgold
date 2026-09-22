@@ -1,6 +1,7 @@
 import { ref, computed } from "vue";
 
 export type CardId =
+  | "radar"
   | "chart"
   | "sector"
   | "screener"
@@ -18,6 +19,7 @@ export interface CardMeta {
 
 // 卡片元信息
 export const CARD_META: Record<CardId, CardMeta> = {
+  radar: { title: "涨停雷达", accent: "#e0455a", kind: "chart" },
   chart: { title: "K线图", accent: "#2f6fed", kind: "chart" },
   sector: { title: "板块行情", accent: "#35c4a8", kind: "chart" },
   screener: { title: "条件选股", accent: "#d4af37", kind: "chart" },
@@ -29,14 +31,14 @@ export const CARD_META: Record<CardId, CardMeta> = {
 };
 
 // 宽卡片（主干区域，可上下并列）与窄卡片（右侧）的排列顺序
-const WIDE_ORDER: CardId[] = ["chart", "sector", "screener"];
+const WIDE_ORDER: CardId[] = ["radar", "chart", "sector", "screener"];
 const NARROW_ORDER: CardId[] = ["spider", "order", "fundflow", "watch", "rank"];
 
 // 模式预设：一键切换一整套卡片
 export const MODES: Record<string, CardId[]> = {
-  pro: ["chart", "spider", "order", "watch"],
+  pro: ["radar", "chart", "spider", "order", "watch"],
   scanner: ["screener", "rank", "watch"],
-  full: ["chart", "sector", "screener", "spider", "order", "fundflow", "watch", "rank"],
+  full: ["radar", "chart", "sector", "screener", "spider", "order", "fundflow", "watch", "rank"],
   chart: ["chart"],
 };
 
@@ -92,10 +94,21 @@ export function useWorkbench() {
       } else if (w === 2) {
         style[wides[0]] = cell(1, 7, 1, 4); // 上半
         style[wides[1]] = cell(1, 7, 4, 7); // 下半
-      } else {
+      } else if (w === 3) {
         style[wides[0]] = cell(1, 7, 1, 3); // 上
         style[wides[1]] = cell(1, 7, 3, 5); // 中
         style[wides[2]] = cell(1, 7, 5, 7); // 下
+      } else if (w === 4) {
+        // 2 列 × 2 行
+        style[wides[0]] = cell(1, 4, 1, 4);
+        style[wides[1]] = cell(4, 7, 1, 4);
+        style[wides[2]] = cell(1, 4, 4, 7);
+        style[wides[3]] = cell(4, 7, 4, 7);
+      } else {
+        // w >= 5（罕见兜底）：前 3 个三行
+        style[wides[0]] = cell(1, 7, 1, 3);
+        style[wides[1]] = cell(1, 7, 3, 5);
+        style[wides[2]] = cell(1, 7, 5, 7);
       }
       // 窄卡片在右侧 col7-13
       if (n === 1) {

@@ -115,3 +115,52 @@ export interface LatestInfo {
 export async function fetchLatest(): Promise<LatestInfo> {
   return await invoke<LatestInfo>("check_latest");
 }
+
+// ===== 涨停雷达 =====
+export interface RadarStock {
+  code: string;
+  name: string;
+  price: number;
+  pct: number;
+}
+export interface LimitStock extends RadarStock {
+  boards: number;
+}
+export interface LadderGroup {
+  boards: number;
+  count: number;
+  items: LimitStock[];
+}
+export interface RadarData {
+  trading: boolean;
+  updated: number;
+  total: number;
+  upCount: number;
+  downCount: number;
+  flatCount: number;
+  limitUp: number;
+  limitDown: number;
+  broken: number;
+  brokenRate: number;
+  maxBoards: number;
+  sentiment: number;
+  mood: string;
+  ladder: LadderGroup[];
+  limitUpList: LimitStock[];
+  brokenList: RadarStock[];
+  limitDownList: RadarStock[];
+}
+export interface RadarStatus {
+  scanning: boolean;
+  trading: boolean;
+  time: number;
+}
+
+/** 启动涨停雷达（全市场扫描） */
+export async function startRadar(): Promise<string> {
+  return await invoke<string>("start_radar");
+}
+/** 停止涨停雷达 */
+export async function stopRadar(): Promise<string> {
+  return await invoke<string>("stop_radar");
+}

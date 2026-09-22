@@ -45,7 +45,7 @@ impl SpiderCtl {
 }
 
 // ===== 北京时间 / 交易时段 =====
-fn beijing() -> (u64, u32, u32) {
+pub(crate) fn beijing() -> (u64, u32, u32) {
     use std::time::{SystemTime, UNIX_EPOCH};
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -60,7 +60,7 @@ fn beijing() -> (u64, u32, u32) {
     (wd, h, m)
 }
 
-fn is_trading_time() -> bool {
+pub(crate) fn is_trading_time() -> bool {
     let (wd, h, m) = beijing();
     if !(1..=5).contains(&wd) {
         return false;
@@ -70,7 +70,7 @@ fn is_trading_time() -> bool {
 }
 
 // ===== 涨跌停价估算 =====
-fn limit_prices(code: &str, name: &str, prev_close: f64) -> (f64, f64) {
+pub(crate) fn limit_prices(code: &str, name: &str, prev_close: f64) -> (f64, f64) {
     let rate = if name.contains("ST") {
         0.05
     } else if code.starts_with("688") || code.starts_with("300") || code.starts_with("301") {
