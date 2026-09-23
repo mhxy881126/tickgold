@@ -1,6 +1,6 @@
 [package]
 name = "tickgold"
-version = "0.23.0"
+version = "0.24.0"
 description = "TickGold - 专业交易者跨平台 A 股盯盘终端"
 authors = ["tickgold"]
 edition = "2021"

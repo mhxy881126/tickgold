@@ -87,21 +87,21 @@ function onDrop(e: DragEvent) {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: linear-gradient(180deg, #141a23 0%, #10151d 100%);
-  border: 1px solid #232b36;
+  background: linear-gradient(180deg, var(--bg-card) 0%, var(--bg-card2) 100%);
+  border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   transition: border-color 0.2s, opacity 0.2s, box-shadow 0.2s;
 }
 .card-shell:hover {
-  border-color: #324052;
+  border-color: var(--border-light);
 }
 /* 正在被拖拽的源卡片 */
 .card-shell.dragging {
   opacity: 0.45;
-  border-color: var(--accent-var, #2f6fed);
-  box-shadow: 0 0 0 1px var(--accent-var, #2f6fed);
+  border-color: var(--accent-var, var(--accent));
+  box-shadow: 0 0 0 1px var(--accent-var, var(--accent));
 }
 
 .card-head {
@@ -110,7 +110,7 @@ function onDrop(e: DragEvent) {
   gap: 7px;
   height: 36px;
   padding: 0 8px 0 10px;
-  border-bottom: 1px solid #20272f;
+  border-bottom: 1px solid var(--border-light);
   flex-shrink: 0;
   cursor: grab;
 }
@@ -121,19 +121,19 @@ function onDrop(e: DragEvent) {
   width: 3px;
   height: 13px;
   border-radius: 2px;
-  background: var(--accent-var, #2f6fed);
+  background: var(--accent-var, var(--accent));
   flex-shrink: 0;
 }
 .card-grip {
   width: 12px;
   height: 12px;
-  color: #5a6470;
+  color: var(--text-dim);
   flex-shrink: 0;
 }
 .card-title {
   font-size: 12px;
   font-weight: 600;
-  color: #c9d1d9;
+  color: var(--text);
   letter-spacing: 0.3px;
   flex: 1;
   white-space: nowrap;
@@ -150,13 +150,13 @@ function onDrop(e: DragEvent) {
   border-radius: 5px;
   border: none;
   background: transparent;
-  color: #7d8792;
+  color: var(--text-dim);
   cursor: pointer;
   flex-shrink: 0;
   transition: all 0.15s;
 }
 .card-close:hover {
-  background: #f23645;
+  background: var(--up);
   color: #fff;
 }
 

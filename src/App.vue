@@ -5,6 +5,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import CardShell from "./components/CardShell.vue";
 import CardContent from "./components/CardContent.vue";
 import UpdateDialog from "./components/UpdateDialog.vue";
+import SettingsDialog from "./components/SettingsDialog.vue";
 import LayoutMenu from "./components/LayoutMenu.vue";
 import ShortTermSpider from "./components/ShortTermSpider.vue";
 import LimitRadar from "./components/LimitRadar.vue";
@@ -34,6 +35,7 @@ import { useWatchlistStore } from "./stores/watchlist";
 import { useQuotesStore } from "./stores/quotes";
 import { useAlertStore } from "./stores/alert";
 import { useWorkbench, CARD_META, MODES, currentTimeSlot, type CardId } from "./composables/useWorkbench";
+import { useTheme } from "./composables/useTheme";
 import type { AlertEvent } from "./api/market";
 import { ensureDb } from "./db/database";
 
@@ -41,6 +43,7 @@ const wl = useWatchlistStore();
 const quotes = useQuotesStore();
 const alerts = useAlertStore();
 const bench = useWorkbench();
+const theme = useTheme();
 provide("workbench", bench);
 
 const selected = ref<string | null>(null);
@@ -217,6 +220,7 @@ function onSearchSelect(code: string, name: string) {
 // ===== 自动更新（功能在 UpdateDialog 对话框内）=====
 const curVersion = ref("");
 const showUpdate = ref(false);
+const showSettings = ref(false);
 
 const unlistenFns: (() => void)[] = [];
 
@@ -224,6 +228,7 @@ onMounted(async () => {
   try {
     curVersion.value = await getVersion();
     await ensureDb();
+    await theme.load();
     await wl.load();
     await alerts.load();
     // 优先恢复上次保存的工作台布局；否则首次进入时段驾驶舱
@@ -291,6 +296,8 @@ onBeforeUnmount(() => {
         <span class="ver">v{{ curVersion }}</span>
         <span class="sep">|</span>
         <LayoutMenu />
+        <span class="sep">|</span>
+        <button class="upd" @click="showSettings = true">设置</button>
         <span class="sep">|</span>
         <button class="upd" @click="showUpdate = true">检查更新</button>
       </div>
@@ -462,6 +469,8 @@ onBeforeUnmount(() => {
 
     <!-- 软件更新对话框 -->
     <UpdateDialog v-model:open="showUpdate" />
+    <!-- 设置对话框 -->
+    <SettingsDialog v-model:open="showSettings" />
   </div>
 </template>
 
@@ -550,8 +559,8 @@ onBeforeUnmount(() => {
 .dock-ic { width: 15px; height: 15px; flex: none; }
 .dock-item:hover { color: var(--text); background: var(--bg-hover); }
 .dock-item:hover .dock-ic { color: #4ea1ff; }
-.dock-item.on { color: #e8c96a; background: rgba(212, 175, 55, 0.12); }
-.dock-item.on .dock-ic { color: #e8c96a; }
+.dock-item.on { color: var(--accent-2); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.dock-item.on .dock-ic { color: var(--accent-2); }
 
 /* 工作台 */
 .workspace {
