@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TickGold · 短线盯盘工作台 5 套 UI</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0d11'/%3E%3Cpath d='M13 46 L26 33 L36 39 L51 17' stroke='%23e8c66a' stroke-width='5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --up: #f23645;        /* A股 红涨 */
+    --down: #08db94;      /* 绿跌 */
+    --flat: #8a93a5;
+    --mono: "SF Mono","Roboto Mono","Cascadia Code",Consolas,"Courier New",monospace;
+    --sans: -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  html,body { height: 100%; }
+  body {
+    font-family: var(--sans);
+    background: #07090d;
+    color: #d7dde8;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* 数字等宽 */
+  .num, td.num, .kpi b, .idx-price, .quote, .stat b { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: .2px; }
+
+  /* ===== 原型导航（不属于 app）===== */
+  .proto-nav {
+    position: fixed; top: 0; left: 0; right: 0; height: 40px; z-index: 9999;
+    display: flex; align-items: center; gap: 8px; padding: 0 14px;
+    background: linear-gradient(180deg,#10141c,#0b0e14);
+    border-bottom: 1px solid #232a38;
+    box-shadow: 0 2px 14px rgba(0,0,0,.5);
+  }
+  .proto-nav .logo { font-weight: 800; color: #e8c66a; font-size: 13px; letter-spacing: .5px; white-space: nowrap; }
+  .proto-nav .tagline { font-size: 11px; color: #6b7589; white-space: nowrap; }
+  .proto-tabs { display: flex; gap: 6px; margin-left: 10px; }
+  .proto-tab {
+    border: 1px solid #262e3d; background: #141925; color: #9aa4b6;
+    font-size: 11.5px; font-weight: 600; padding: 5px 12px; border-radius: 8px;
+    cursor: pointer; white-space: nowrap; transition: all .16s; font-family: var(--sans);
+  }
+  .proto-tab:hover { border-color: #3d4860; color: #fff; transform: translateY(-1px); }
+  .proto-tab.active { background: linear-gradient(180deg,#e8c66a,#c9a23e); color: #1a1405; border-color: #e8c66a; }
+  .proto-nav .badge { margin-left: auto; font-size: 10.5px; color: #5d677c; white-space: nowrap; }
+
+  .stage { position: absolute; top: 40px; left: 0; right: 0; bottom: 0; }
+  .layout { position: absolute; inset: 0; display: none; flex-direction: column; animation: fadeIn .35s ease; }
+  .layout.show { display: flex; }
+  @keyframes fadeIn { from { opacity: 0; transform: scale(.992); } to { opacity: 1; transform: scale(1); } }
+
+  /* ===== 共享小组件 ===== */
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    display: flex; flex-direction: column; overflow: hidden; position: relative;
+    box-shadow: 0 6px 20px rgba(0,0,0,.28);
+  }
+  .card-h {
+    display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 11px; flex-shrink: 0;
+    border-bottom: 1px solid var(--line2); font-size: 12px; font-weight: 700; color: var(--txt);
+  }
+  .card-h .bar { width: 3px; height: 13px; border-radius: 2px; background: var(--acc); }
+  .card-h .more { margin-left: auto; color: var(--dim); font-size: 11px; cursor: pointer; font-weight: 500; }
+  .card-b { flex: 1; min-height: 0; padding: 10px 11px; }
+  .up { color: var(--up); }
+  .down { color: var(--down); }
+  .flat { color: var(--flat); }
+  .chart-box { width: 100%; height: 100%; }
+  .scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #2a3344 transparent; }
+  .scroll::-webkit-scrollbar { width: 6px; }
+  .scroll::-webkit-scrollbar-thumb { background: #2a3344; border-radius: 3px; }
+
+  /* 异动条目共享 */
+  .feed { display: flex; flex-direction: column; gap: 2px; }
+  .feed-i { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 11.5px; line-height: 1.35; }
+  .feed-i:hover { background: var(--hover); }
+  .feed-i .t { color: var(--dim); font-family: var(--mono); font-size: 10px; flex-shrink: 0; width: 42px; }
+  .feed-i .ty { flex-shrink: 0; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 5px; }
+  .feed-i .nm { font-weight: 600; color: var(--txt); cursor: pointer; }
+  .feed-i .nm:hover { color: var(--acc2); }
+  .feed-i .ds { color: var(--dim); margin-left: auto; font-family: var(--mono); font-size: 10.5px; flex-shrink: 0; }
+  .ty-up { background: rgba(242,54,69,.16); color: #ff6b78; }
+  .ty-dn { background: rgba(8,219,148,.14); color: #2fe6ac; }
+  .ty-lim { background: rgba(242,54,69,.22); color: #ff8a93; }
+  .ty-big { background: rgba(232,198,106,.16); color: #e8c66a; }
+
+  /* 连板 chip 共享 */
+  .ladder { display: flex; flex-direction: column; gap: 7px; }
+  .ld-row { display: flex; align-items: center; gap: 8px; }
+  .ld-tag { flex-shrink: 0; width: 40px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 7px; font-size: 11px; font-weight: 800; color: #fff; }
+  .ld-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .ld-chip { font-size: 10.5px; padding: 3px 8px; border-radius: 7px; background: var(--hover); color: var(--txt); cursor: pointer; border: 1px solid transparent; }
+  .ld-chip:hover { border-color: var(--acc); color: var(--acc2); }
+  .ld-chip b { font-family: var(--mono); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<!-- 原型导航 -->
+<div class="proto-nav">
+  <span class="logo">TickGold</span>
+  <span class="tagline">短线选手盯盘工作台 · 5 套布局</span>
+  <div class="proto-tabs">
+    <button class="proto-tab active" data-n="1">1 · 情绪驾驶舱</button>
+    <button class="proto-tab" data-n="2">2 · 三栏专业扫盘台</button>
+    <button class="proto-tab" data-n="3">3 · Bento 聚焦网格</button>
+    <button class="proto-tab" data-n="4">4 · 异动电报墙</button>
+    <button class="proto-tab" data-n="5">5 · 雷达扫盘</button>
+  </div>
+  <span class="badge">全部为示例数据 · 仅展示布局与交互</span>
+</div>
+
+<div class="stage">
+  <section class="layout show" id="layout-1">
+   <div class="l1">
+    <header class="l1-top">
+      <div class="l1-brand">TickGold</div>
+      <nav class="l1-menu">
+        <a class="mi on">情绪</a><a class="mi">涨停</a><a class="mi">板块</a><a class="mi">资金</a><a class="mi">异动</a><a class="mi">快讯</a><a class="mi">复盘</a>
+      </nav>
+      <div class="l1-ctl">
+        <span class="clock">09:42:18</span>
+        <span class="wbtn" title="最小化">—</span><span class="wbtn" title="最大化">□</span><span class="wbtn x" title="关闭">×</span>
+      </div>
+    </header>
+    <div class="l1-idx" id="l1-idx"></div>
+    <div class="l1-main">
+      <div class="card">
+        <div class="card-h"><span class="bar"></span>市场情绪<div class="more">盘中</div></div>
+        <div class="card-b"><div class="chart-box" id="c1-gauge"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span class="bar"></span>涨跌全景<div class="more">沪深京</div></div>
+        <div class="card-b stat-grid">
+          <div class="sg"><b class="up">3,214</b><span>上涨</span></div>
+          <div class="sg"><b class="down">1,856</b><span>下跌</span></div>
+          <div class="sg"><b class="flat">172</b><span>平盘</span></div>
+          <div class="sg"><b class="up">68</b><span>涨停</span></div>
+          <div class="sg"><b class="down">4</b><span>跌停</span></div>
+          <div class="sg"><b class="flat">12</b><span>炸板</span></div>
+          <div class="pw"><div class="pwr" style="width:63.4%"></div><div class="pwg" style="width:36.6%"></div></div>
+          <div class="pw-l"><span class="up">赚钱效应 63%</span><span class="dim">封板率 85%</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span class="bar"></span>主力资金<div class="more">今日净流入</div></div>
+        <div class="card-b"><div class="chart-box" id="c1-fund"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span class="bar"></span>连板梯队<div class="more">最高 5 板</div></div>
+        <div class="card-b scroll"><div class="ladder" id="c1-ladder"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span class="bar"></span>板块热力图<div class="more">面积=成交额 · 色=涨跌</div></div>
+        <div class="card-b"><div class="chart-box" id="c1-heat"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span class="bar"></span>异动实时流<div class="more">短线精灵</div></div>
+        <div class="card-b scroll feed" id="c1-feed"></div>
+      </div>
+    </div>
+   </div>
+   <style>
+    .l1{ --card:#12161f; --line:#202838; --line2:#19202c; --txt:#e7ecf5; --dim:#8892a6; --hover:#19202c; --acc:#ff7a45; --acc2:#ffa17a;
+      position:absolute; inset:0; display:flex; flex-direction:column; overflow:hidden;
+      background:radial-gradient(1100px 480px at 72% -12%,rgba(255,90,40,.12),transparent 60%),#0a0d13; }
+    .l1-top{ height:38px; flex-shrink:0; display:flex; align-items:center; gap:14px; padding:0 8px 0 12px; background:rgba(15,19,27,.82); border-bottom:1px solid var(--line); }
+    .l1-brand{ font-weight:800; color:var(--acc); font-size:14px; letter-spacing:.5px; }
+    .l1-menu{ display:flex; gap:2px; }
+    .l1-menu .mi{ position:relative; font-size:12px; font-weight:600; color:var(--dim); padding:6px 12px; border-radius:8px; cursor:pointer; transition:.16s; }
+    .l1-menu .mi:hover{ color:#fff; background:var(--hover); }
+    .l1-menu .mi.on{ color:var(--acc2); }
+    .l1-menu .mi.on::after{ content:''; position:absolute; left:12px; right:12px; bottom:1px; height:2px; border-radius:2px; background:linear-gradient(90deg,var(--acc),transparent); }
+    .l1-ctl{ margin-left:auto; display:flex; align-items:center; gap:2px; }
+    .l1-ctl .clock{ font-family:var(--mono); font-size:11px; color:var(--dim); margin-right:8px; }
+    .l1-ctl .wbtn{ width:34px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:6px; color:var(--dim); cursor:pointer; font-size:13px; }
+    .l1-ctl .wbtn:hover{ background:var(--hover); color:#fff; }
+    .l1-ctl .wbtn.x:hover{ background:#e23b45; color:#fff; }
+    .l1-idx{ height:34px; flex-shrink:0; display:flex; align-items:center; gap:8px; padding:0 12px; border-bottom:1px solid var(--line); background:rgba(12,15,21,.55); overflow:hidden; }
+    .idx-pill{ display:flex; align-items:baseline; gap:7px; padding:4px 11px; border-radius:8px; background:var(--card); border:1px solid var(--line); white-space:nowrap; }
+    .idx-pill .nm{ font-size:10.5px; color:var(--dim); } .idx-pill .vp{ font-family:var(--mono); font-weight:700; font-size:11.5px; }
+    .l1-main{ flex:1; min-height:0; padding:10px; display:grid; gap:10px; grid-template-columns:1.02fr 1.4fr 1fr; grid-template-rows:.8fr 1.55fr; }
+    .stat-grid{ display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:1fr 1fr auto auto; gap:4px 6px; }
+    .sg{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; }
+    .sg b{ font-size:19px; line-height:1.1; } .sg span{ font-size:10px; color:var(--dim); }
+    .pw{ grid-column:1/-1; height:7px; border-radius:4px; background:rgba(8,219,148,.18); display:flex; overflow:hidden; margin-top:4px; }
+    .pwr{ background:linear-gradient(90deg,#c9273a,#f23645); height:100%; } .pwg{ background:linear-gradient(90deg,#08a872,#08db94); height:100%; }
+    .pw-l{ grid-column:1/-1; display:flex; justify-content:space-between; font-size:10px; margin-top:3px; } .pw-l .dim{ color:var(--dim); }
+   </style>
+  </section>
+  <section class="layout" id="layout-2">
+   <div class="l2">
+    <header class="l2-top">
+      <div class="l2-brand">TickGold</div>
+      <nav class="l2-menu">
+        <a class="mi">情绪</a><a class="mi on">扫盘</a><a class="mi">涨停</a><a class="mi">板块</a><a class="mi">资金</a><a class="mi">异动</a><a class="mi">选股</a><a class="mi">复盘</a>
+      </nav>
+      <div class="l2-ctl"><span class="wbtn">—</span><span class="wbtn">□</span><span class="wbtn x">×</span></div>
+    </header>
+    <div class="l2-ticker">
+      <span class="tk"><em>上涨</em><b class="up">3,214</b></span>
+      <span class="tk"><em>下跌</em><b class="down">1,856</b></span>
+      <span class="tk"><em>涨停</em><b class="up">68</b></span>
+      <span class="tk"><em>跌停</em><b class="down">4</b></span>
+      <span class="tk"><em>炸板</em><b class="flat">12</b></span>
+      <span class="tk"><em>封板率</em><b class="up">85%</b></span>
+      <span class="tk"><em>主力净流入</em><b class="up">+126.4亿</b></span>
+      <span class="tk"><em>两市成交</em><b>8,642亿</b></span>
+      <span class="tk clock"><em>时间</em><b>09:42:18</b></span>
+    </div>
+    <div class="l2-body">
+      <!-- 左栏 -->
+      <div class="col l">
+        <div class="card radar">
+          <div class="card-h"><span class="bar"></span>涨停雷达</div>
+          <div class="card-b">
+            <div class="rd-stat">
+              <div><b class="up">68</b><span>涨停</span></div>
+              <div><b class="down">4</b><span>跌停</span></div>
+              <div><b class="flat">12</b><span>炸板</span></div>
+              <div><b class="up">85%</b><span>封板率</span></div>
+            </div>
+            <div class="seal-bar"><div style="width:85%"></div></div>
+          </div>
+        </div>
+        <div class="card ladder-card">
+          <div class="card-h"><span class="bar"></span>连板梯队<div class="more">最高5板</div></div>
+          <div class="card-b scroll"><div class="ladder" id="c2-ladder"></div></div>
+        </div>
+      </div>
+      <!-- 中栏 -->
+      <div class="col m">
+        <div class="card chart-card2">
+          <div class="chart-tabs">
+            <button class="ct on" data-c="minute">分时</button>
+            <button class="ct" data-c="kline">日K</button>
+            <button class="ct" data-c="heat">板块热力图</button>
+            <span class="sn">贵州茅台 <i>600519</i> <b class="up">1251.24 +0.62%</b></span>
+          </div>
+          <div class="chart-wrap">
+            <div class="cpane show" id="c2-minute"></div>
+            <div class="cpane" id="c2-kline"></div>
+            <div class="cpane" id="c2-heat"></div>
+          </div>
+        </div>
+      </div>
+      <!-- 右栏 -->
+      <div class="col r">
+        <div class="card order-card">
+          <div class="card-h"><span class="bar"></span>五档盘口</div>
+          <div class="card-b" id="c2-order"></div>
+        </div>
+        <div class="card feed-card2">
+          <div class="mini-tabs">
+            <button class="mt on" data-f="feed">异动流</button>
+            <button class="mt" data-f="news">快讯</button>
+          </div>
+          <div class="mini-body scroll feed show" id="c2-feed"></div>
+          <div class="mini-body scroll" id="c2-news"></div>
+        </div>
+      </div>
+    </div>
+   </div>
+   <style>
+    .l2{ --card:#11151f; --line:#1e2635; --line2:#18202e; --txt:#e4eaf4; --dim:#8590a4; --hover:#18202e; --acc:#4ea1ff; --acc2:#86bbff;
+      position:absolute; inset:0; display:flex; flex-direction:column; overflow:hidden;
+      background:radial-gradient(900px 400px at 15% -10%,rgba(78,161,255,.10),transparent 60%),#0a0d13; }
+    .l2-top{ height:36px; flex-shrink:0; display:flex; align-items:center; gap:12px; padding:0 8px 0 12px; background:rgba(14,18,26,.85); border-bottom:1px solid var(--line); }
+    .l2-brand{ font-weight:800; color:var(--acc); font-size:13.5px; }
+    .l2-menu{ display:flex; gap:1px; }
+    .l2-menu .mi{ font-size:12px; font-weight:600; color:var(--dim); padding:5px 11px; border-radius:7px; cursor:pointer; transition:.15s; }
+    .l2-menu .mi:hover{ color:#fff; background:var(--hover); }
+    .l2-menu .mi.on{ color:var(--acc2); background:rgba(78,161,255,.14); }
+    .l2-ctl{ margin-left:auto; display:flex; }
+    .l2-ctl .wbtn{ width:34px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:6px; color:var(--dim); cursor:pointer; font-size:13px; }
+    .l2-ctl .wbtn:hover{ background:var(--hover); color:#fff; } .l2-ctl .wbtn.x:hover{ background:#e23b45; color:#fff; }
+    .l2-ticker{ height:32px; flex-shrink:0; display:flex; align-items:center; gap:0; padding:0 10px; border-bottom:1px solid var(--line); background:rgba(11,14,20,.7); overflow:hidden; }
+    .tk{ display:flex; align-items:baseline; gap:6px; padding:0 14px; border-right:1px solid var(--line); white-space:nowrap; }
+    .tk em{ font-style:normal; font-size:10px; color:var(--dim); } .tk b{ font-size:12px; font-family:var(--mono); }
+    .tk.clock{ margin-left:auto; border-right:0; } .tk.clock b{ color:var(--acc2); }
+    .l2-body{ flex:1; min-height:0; padding:9px; display:grid; gap:9px; grid-template-columns:21.5% 1fr 25%; }
+    .col{ display:flex; flex-direction:column; gap:9px; min-height:0; min-width:0; }
+    .col.l, .col.r{ display:flex; } .col.m{ min-width:0; }
+    .rd-stat{ display:grid; grid-template-columns:repeat(4,1fr); gap:4px; }
+    .rd-stat div{ display:flex; flex-direction:column; align-items:center; gap:1px; }
+    .rd-stat b{ font-size:17px; font-family:var(--mono); } .rd-stat span{ font-size:9.5px; color:var(--dim); }
+    .seal-bar{ height:6px; border-radius:3px; background:rgba(255,255,255,.08); margin-top:9px; overflow:hidden; }
+    .seal-bar div{ height:100%; background:linear-gradient(90deg,#c9273a,#f23645); border-radius:3px; }
+    .ladder-card{ flex:1; min-height:0; }
+    .chart-card2{ flex:1; min-height:0; }
+    .chart-tabs{ display:flex; align-items:center; gap:4px; padding:6px 8px 0; border-bottom:1px solid var(--line2); }
+    .ct{ font-size:11px; font-weight:600; color:var(--dim); background:none; border:none; padding:5px 12px; border-radius:7px 7px 0 0; cursor:pointer; }
+    .ct.on{ color:var(--acc2); background:rgba(78,161,255,.1); box-shadow:inset 0 -2px 0 var(--acc); }
+    .sn{ margin-left:auto; font-size:11px; color:var(--dim); } .sn i{ font-style:normal; } .sn b{ font-family:var(--mono); margin-left:6px; }
+    .chart-wrap{ position:relative; flex:1; min-height:0; }
+    .cpane{ position:absolute; inset:0; display:none; } .cpane.show{ display:block; }
+    .order-card{ flex-shrink:0; }
+    #c2-order{ padding:8px 10px; }
+    .ob-row{ display:flex; align-items:center; gap:8px; height:19px; font-size:11px; position:relative; }
+    .ob-row .lb{ width:30px; color:var(--dim); font-size:10px; z-index:1; }
+    .ob-row .pr{ width:78px; font-family:var(--mono); z-index:1; font-weight:600; }
+    .ob-row .vl{ margin-left:auto; font-family:var(--mono); font-size:10.5px; z-index:1; color:var(--txt); }
+    .ob-row .volbar{ position:absolute; right:0; top:3px; bottom:3px; opacity:.13; border-radius:3px; }
+    .ob-sell .pr{ color:#ff6b78; } .ob-sell .volbar{ background:#f23645; }
+    .ob-buy .pr{ color:#2fe6ac; } .ob-buy .volbar{ background:#08db94; }
+    .ob-mid{ display:flex; justify-content:space-between; height:22px; align-items:center; border-top:1px solid var(--line2); border-bottom:1px solid var(--line2); margin:3px 0; font-size:10.5px; }
+    .ob-mid .cur{ font-family:var(--mono); font-weight:800; color:#ff6b78; } .ob-mid .chg{ font-family:var(--mono); color:#ff6b78; }
+    .feed-card2{ flex:1; min-height:0; padding-bottom:0; }
+    .mini-tabs{ display:flex; gap:4px; padding:6px 8px 0; }
+    .mt{ font-size:10.5px; font-weight:600; color:var(--dim); background:none; border:none; padding:4px 10px; border-radius:6px; cursor:pointer; }
+    .mt.on{ color:var(--acc2); background:rgba(78,161,255,.12); }
+    .mini-body{ display:none; flex:1; min-height:0; padding:6px; } .mini-body.show{ display:flex; flex-direction:column; }
+   </style>
+  </section>
+  <section class="layout" id="layout-3">
+   <div class="l3">
+    <header class="l3-top">
+      <div class="l3-brand">TickGold</div>
+      <nav class="l3-dock">
+        <a class="dk" title="情绪">情绪</a><a class="dk" title="涨停">涨停</a><a class="dk" title="板块">板块</a><a class="dk on" title="聚焦">聚焦</a><a class="dk" title="资金">资金</a><a class="dk" title="异动">异动</a><a class="dk" title="快讯">快讯</a>
+      </nav>
+      <div class="l3-ctl"><span class="wbtn">—</span><span class="wbtn">□</span><span class="wbtn x">×</span></div>
+    </header>
+    <div class="l3-grid">
+      <div class="bcard b-gauge">
+        <span class="xclose">×</span>
+        <div class="card-h"><span class="bar"></span>情绪环</div>
+        <div class="card-b"><div class="chart-box" id="c3-gauge"></div></div>
+      </div>
+      <div class="bcard b-lim">
+        <span class="xclose">×</span>
+        <div class="card-h"><span class="bar"></span>涨停统计</div>
+        <div class="card-b lim-stat">
+          <div><b class="up">68</b><span>涨停</span></div>
+          <div><b class="down">4</b><span>跌停</span></div>
+          <div><b class="flat">12</b><span>炸板</span></div>
+          <div><b class="up">85%</b><span>封板率</span></div>
+        </div>
+      </div>
+      <div class="bcard b-fund">
+        <span class="xclose">×</span>
+        <div class="card-h"><span class="bar"></span>主力资金</div>
+        <div class="card-b fund-mini">
+          <div class="big up">+126.4<span>亿</span></div>
+          <div class="row"><span>超大单</span><b class="up">+68亿</b></div>
+          <div class="row"><span>大单</span><b class="up">+42亿</b></div>
+          <div class="row"><span>中小单</span><b class="down">-50亿</b></div>
+        </div>
+      </div>
+      <div class="bcard b-feed">
+        <span class="xclose">×</span>
+        <div class="card-h"><span class="bar"></span>异动流<div class="more">短线精灵</div></div>
+        <div class="card-b scroll feed" id="c3-feed"></div>
+      </div>
+      <div class="bcard b-heat">
+        <span class="xclose">×</span>
+        <div class="card-h"><span class="bar"></span>板块热力图</div>
+        <div class="card-b"><div class="chart-box" id="c3-heat"></div></div>
+      </div>
+      <div class="bcard b-dist">
+        <span class="xclose">×</span>
+        <div class="card-h"><span class="bar"></span>涨跌分布<div class="more">按涨幅区间</div></div>
+        <div class="card-b"><div class="chart-box" id="c3-dist"></div></div>
+      </div>
+    </div>
+    <div class="b3-mask"></div>
+   </div>
+   <style>
+    .l3{ --card:#15181f; --line:#262b38; --line2:#1e2330; --txt:#e8edf6; --dim:#8b94a6; --hover:#1c212c; --acc:#e8c66a; --acc2:#f0d68a;
+      position:absolute; inset:0; display:flex; flex-direction:column; overflow:hidden;
+      background:radial-gradient(1000px 500px at 50% -12%,rgba(232,198,106,.10),transparent 60%),#0b0d11; }
+    .l3-top{ height:42px; flex-shrink:0; display:flex; align-items:center; gap:14px; padding:0 10px; background:rgba(16,18,24,.8); border-bottom:1px solid var(--line); }
+    .l3-brand{ font-weight:800; color:var(--acc); font-size:14px; }
+    .l3-dock{ display:flex; gap:4px; margin:0 auto; padding:4px; border-radius:14px; background:rgba(255,255,255,.03); border:1px solid var(--line); }
+    .l3-dock .dk{ font-size:11.5px; font-weight:600; color:var(--dim); padding:6px 14px; border-radius:10px; cursor:pointer; transition:all .18s cubic-bezier(.2,.8,.2,1); }
+    .l3-dock .dk:hover{ color:#fff; background:var(--hover); transform:scale(1.12) translateY(-2px); }
+    .l3-dock .dk.on{ color:#1a1405; background:linear-gradient(180deg,#f0d68a,#d8b656); }
+    .l3-ctl{ display:flex; }
+    .l3-ctl .wbtn{ width:32px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:6px; color:var(--dim); cursor:pointer; font-size:13px; }
+    .l3-ctl .wbtn:hover{ background:var(--hover); color:#fff; } .l3-ctl .wbtn.x:hover{ background:#e23b45; color:#fff; }
+    .l3-grid{ flex:1; min-height:0; padding:11px; display:grid; gap:11px; grid-template-columns:repeat(4,1fr); grid-template-rows:repeat(3,1fr); }
+    .bcard{ position:relative; display:flex; flex-direction:column; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:0 6px 20px rgba(0,0,0,.28);
+      transition:transform .28s cubic-bezier(.2,.8,.2,1),box-shadow .28s,border-color .28s; cursor:pointer; }
+    .bcard:hover{ transform:translateY(-3px); border-color:var(--acc); box-shadow:0 14px 32px rgba(0,0,0,.55); }
+    .b-gauge{ grid-column:1; grid-row:1 / span 2; }
+    .b-lim{ grid-column:2; grid-row:1; }
+    .b-fund{ grid-column:3; grid-row:1; }
+    .b-feed{ grid-column:4; grid-row:1 / span 3; }
+    .b-heat{ grid-column:2 / span 2; grid-row:2; }
+    .b-dist{ grid-column:1 / span 3; grid-row:3; }
+    .xclose{ display:none; position:absolute; top:7px; right:9px; z-index:5; width:22px; height:22px; align-items:center; justify-content:center; border-radius:7px; background:rgba(0,0,0,.5); color:#fff; cursor:pointer; font-size:13px; }
+    .bcard.focus{ position:fixed; z-index:60; inset:26px; cursor:default; animation:pop .3s cubic-bezier(.2,.8,.2,1); }
+    .bcard.focus .xclose{ display:flex; }
+    .bcard.focus:hover{ transform:none; }
+    @keyframes pop{ from{ transform:scale(.82); opacity:.3; } to{ transform:scale(1); opacity:1; } }
+    .b3-mask{ display:none; position:fixed; inset:0; z-index:55; background:rgba(0,0,0,.62); backdrop-filter:blur(3px); }
+    .b3-mask.show{ display:block; animation:fadeIn .25s; }
+    .lim-stat{ display:grid; grid-template-columns:repeat(2,1fr); gap:6px; }
+    .lim-stat div{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; }
+    .lim-stat b{ font-size:18px; font-family:var(--mono); } .lim-stat span{ font-size:9.5px; color:var(--dim); }
+    .fund-mini{ display:flex; flex-direction:column; }
+    .fund-mini .big{ font-size:26px; font-family:var(--mono); font-weight:800; } .fund-mini .big span{ font-size:12px; font-weight:600; margin-left:3px; }
+    .fund-mini .row{ display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin-top:auto; padding-top:3px; }
+    .fund-mini .row b{ font-size:11px; font-family:var(--mono); }
+   </style>
+  </section>
+  <section class="layout" id="layout-4">
+   <div class="l4">
+    <header class="l4-top">
+      <div class="l4-brand">TickGold</div>
+      <nav class="l4-menu">
+        <a class="mi">情绪</a><a class="mi">涨停</a><a class="mi">板块</a><a class="mi">资金</a><a class="mi on">异动</a><a class="mi">快讯</a>
+      </nav>
+      <div class="l4-live"><span class="dot"></span>LIVE 异动监控</div>
+      <div class="l4-ctl"><span class="wbtn">—</span><span class="wbtn">□</span><span class="wbtn x">×</span></div>
+    </header>
+    <div class="l4-marq"><div class="marq-track" id="c4-marq"></div></div>
+    <div class="l4-main">
+      <aside class="l4-side">
+        <div class="side-box gauge-box"><div id="c4-gauge"></div></div>
+        <div class="side-box nums-box">
+          <div class="nr"><b class="nu">68</b><span>涨停</span></div>
+          <div class="nr"><b class="ng">4</b><span>跌停</span></div>
+          <div class="nr"><b class="ny">12</b><span>炸板</span></div>
+          <div class="nr"><b class="nu">85%</b><span>封板率</span></div>
+          <div class="mini-line"><span class="nu">上涨 3,214</span><span class="ng">下跌 1,856</span></div>
+        </div>
+      </aside>
+      <div class="l4-wall" id="c4-wall"></div>
+    </div>
+    <div class="l4-news"><span class="news-tag">快讯</span><div class="news-track" id="c4-newsbar"></div></div>
+   </div>
+   <style>
+    .l4{ --card:#0d1016; --line:#1d2430; --line2:#161c26; --txt:#e6ecf5; --dim:#7e889c; --hover:#141a24; --acc:#1dffa0; --acc2:#7dffce;
+      position:absolute; inset:0; display:flex; flex-direction:column; overflow:hidden; background:#05070a;
+      font-family:var(--mono); }
+    .l4-top{ height:36px; flex-shrink:0; display:flex; align-items:center; gap:12px; padding:0 8px 0 12px; background:#0a0d12; border-bottom:1px solid var(--line); }
+    .l4-brand{ font-weight:800; color:#1dffa0; font-size:13.5px; letter-spacing:1px; }
+    .l4-menu{ display:flex; gap:1px; }
+    .l4-menu .mi{ font-size:11.5px; color:var(--dim); padding:5px 11px; border-radius:6px; cursor:pointer; transition:.15s; }
+    .l4-menu .mi:hover{ color:#fff; background:var(--hover); }
+    .l4-menu .mi.on{ color:#1dffa0; background:rgba(29,255,160,.1); }
+    .l4-live{ margin-left:auto; display:flex; align-items:center; gap:6px; font-size:10.5px; color:#ff5d6b; letter-spacing:1px; }
+    .l4-live .dot{ width:7px; height:7px; border-radius:50%; background:#ff4d5e; box-shadow:0 0 8px #ff4d5e; animation:blink 1.2s infinite; }
+    @keyframes blink{ 50%{ opacity:.3; } }
+    .l4-ctl{ display:flex; }
+    .l4-ctl .wbtn{ width:32px; height:25px; display:flex; align-items:center; justify-content:center; border-radius:6px; color:var(--dim); cursor:pointer; font-size:13px; }
+    .l4-ctl .wbtn:hover{ background:var(--hover); color:#fff; } .l4-ctl .wbtn.x:hover{ background:#e23b45; color:#fff; }
+    .l4-marq{ height:30px; flex-shrink:0; overflow:hidden; border-bottom:1px solid var(--line); background:#080b10; display:flex; align-items:center; }
+    .marq-track{ display:flex; align-items:center; gap:0; white-space:nowrap; animation:marq 34s linear infinite; }
+    @keyframes marq{ from{transform:translateX(0);} to{transform:translateX(-50%);} }
+    .mpill{ display:inline-flex; gap:7px; padding:0 18px; font-size:11px; border-right:1px solid var(--line); }
+    .mpill .mn{ color:var(--dim); }
+    .l4-main{ flex:1; min-height:0; display:grid; grid-template-columns:150px 1fr; }
+    .l4-side{ border-right:1px solid var(--line); padding:9px; display:flex; flex-direction:column; gap:9px; background:#080b10; }
+    .side-box{ border:1px solid var(--line); border-radius:9px; background:var(--card); overflow:hidden; }
+    .gauge-box{ height:132px; } #c4-gauge{ width:100%; height:100%; }
+    .nums-box{ flex:1; display:flex; flex-direction:column; padding:8px; gap:6px; }
+    .nr{ display:flex; align-items:baseline; justify-content:space-between; }
+    .nr b{ font-size:17px; font-weight:800; } .nr span{ font-size:9.5px; color:var(--dim); }
+    .nu{ color:#ff5d6b; text-shadow:0 0 10px rgba(255,77,94,.5); }
+    .ng{ color:#1dffa0; text-shadow:0 0 10px rgba(29,255,160,.5); }
+    .ny{ color:#ffd24d; text-shadow:0 0 10px rgba(255,210,77,.5); }
+    .mini-line{ display:flex; flex-direction:column; gap:2px; font-size:10px; margin-top:auto; border-top:1px solid var(--line); padding-top:7px; }
+    .l4-wall{ display:grid; grid-template-columns:repeat(3,1fr); gap:0; overflow:hidden; }
+    .wall-col{ overflow:hidden; position:relative; border-right:1px solid var(--line); }
+    .wall-col:last-child{ border-right:0; }
+    .wall-track{ padding:8px; animation:scrollWall 26s linear infinite; }
+    @keyframes scrollWall{ from{transform:translateY(0);} to{transform:translateY(-50%);} }
+    .wall-i{ display:flex; gap:7px; padding:6px 7px; margin-bottom:3px; border-radius:7px; border:1px solid var(--line); background:rgba(255,255,255,.015); font-size:10.5px; line-height:1.35; }
+    .wall-i .wt{ color:#5a6478; font-size:9.5px; }
+    .wall-i .wty{ font-weight:700; flex-shrink:0; }
+    .wall-i .wnm{ color:var(--txt); font-weight:600; cursor:pointer; }
+    .wall-i .wds{ margin-left:auto; }
+    .l4-news{ height:30px; flex-shrink:0; display:flex; align-items:center; border-top:1px solid var(--line); background:#0a0d12; overflow:hidden; }
+    .news-tag{ flex-shrink:0; font-size:10px; font-weight:800; color:#05070a; background:#ffd24d; padding:3px 9px; margin:0 10px; border-radius:5px; }
+    .news-track{ white-space:nowrap; font-size:11px; color:var(--txt); animation:marq 40s linear infinite; }
+   </style>
+  </section>
+  <section class="layout" id="layout-5">
+   <div class="l5">
+    <header class="l5-top">
+      <div class="l5-brand">TickGold</div>
+      <nav class="l5-menu">
+        <a class="mi">情绪</a><a class="mi">涨停</a><a class="mi">板块</a><a class="mi">资金</a><a class="mi on">雷达</a><a class="mi">异动</a>
+      </nav>
+      <div class="l5-ctl"><span class="wbtn">—</span><span class="wbtn">□</span><span class="wbtn x">×</span></div>
+    </header>
+    <div class="l5-body">
+      <div class="col5 l">
+        <div class="card"><div class="card-h"><span class="bar"></span>情绪</div>
+          <div class="card-b" style="height:128px"><div id="c5-gauge" style="width:100%;height:100%"></div></div></div>
+        <div class="card" style="flex:1;min-height:0"><div class="card-h"><span class="bar"></span>涨停梯队<div class="more">5板</div></div>
+          <div class="card-b scroll"><div class="ladder" id="c5-ladder"></div></div></div>
+      </div>
+      <div class="col5 m">
+        <div class="card radar-card">
+          <div class="card-h"><span class="bar"></span>市场雷达
+            <div class="mode-switch">
+              <button class="ms on" data-m="scan">扫盘</button>
+              <button class="ms" data-m="review">复盘</button>
+            </div>
+          </div>
+          <div class="card-b radar-stage">
+            <div class="r-disc" id="c5-radar">
+              <div class="r-ring r3"></div><div class="r-ring r2"></div><div class="r-ring r1"></div>
+              <div class="r-cross h"></div><div class="r-cross v"></div>
+              <div class="r-sweep"></div>
+              <span class="r-dot hot" style="left:62%;top:28%"><i>半导体</i></span>
+              <span class="r-dot hot" style="left:35%;top:40%"><i>AI算力</i></span>
+              <span class="r-dot warm" style="left:70%;top:62%"><i>机器人</i></span>
+              <span class="r-dot gold" style="left:27%;top:66%"><i>低空经济</i></span>
+              <span class="r-dot hot" style="left:52%;top:73%"><i>消费电子</i></span>
+              <span class="r-dot cool" style="left:40%;top:20%"><i>银行</i></span>
+              <span class="r-dot cool" style="left:73%;top:42%"><i>白酒</i></span>
+              <span class="r-dot cool" style="left:20%;top:33%"><i>煤炭</i></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col5 r">
+        <div class="card" style="flex:1;min-height:0"><div class="card-h"><span class="bar"></span>异动流</div>
+          <div class="card-b scroll feed" id="c5-feed"></div></div>
+        <div class="card"><div class="card-h"><span class="bar"></span>主力资金</div>
+          <div class="card-b fund-mini5">
+            <div class="big up">+126.4<span>亿</span></div>
+            <div class="fr5"><span>超大单</span><b class="up">+68亿</b></div>
+            <div class="fr5"><span>大单</span><b class="up">+42亿</b></div>
+            <div class="fr5"><span>中小单</span><b class="down">-50亿</b></div>
+          </div></div>
+      </div>
+    </div>
+   </div>
+   <style>
+    .l5{ --card:#12101d; --line:#241f36; --line2:#1b1729; --txt:#e9e7f4; --dim:#8a84a4; --hover:#1b1730; --acc:#2de1ff; --acc2:#84ecff;
+      position:absolute; inset:0; display:flex; flex-direction:column; overflow:hidden;
+      background:radial-gradient(900px 500px at 50% -10%,rgba(45,225,255,.10),transparent 60%),radial-gradient(700px 500px at 90% 110%,rgba(150,80,255,.12),transparent 60%),#090712; }
+    .l5-top{ height:36px; flex-shrink:0; display:flex; align-items:center; gap:12px; padding:0 8px 0 12px; background:rgba(15,12,26,.85); border-bottom:1px solid var(--line); }
+    .l5-brand{ font-weight:800; color:var(--acc); font-size:13.5px; letter-spacing:.5px; }
+    .l5-menu{ display:flex; gap:1px; }
+    .l5-menu .mi{ font-size:12px; font-weight:600; color:var(--dim); padding:5px 11px; border-radius:7px; cursor:pointer; transition:.15s; }
+    .l5-menu .mi:hover{ color:#fff; background:var(--hover); }
+    .l5-menu .mi.on{ color:var(--acc2); background:rgba(45,225,255,.12); }
+    .l5-ctl{ margin-left:auto; display:flex; }
+    .l5-ctl .wbtn{ width:32px; height:25px; display:flex; align-items:center; justify-content:center; border-radius:6px; color:var(--dim); cursor:pointer; font-size:13px; }
+    .l5-ctl .wbtn:hover{ background:var(--hover); color:#fff; } .l5-ctl .wbtn.x:hover{ background:#e23b45; color:#fff; }
+    .l5-body{ flex:1; min-height:0; padding:9px; display:grid; gap:9px; grid-template-columns:195px 1fr 235px; }
+    .col5{ display:flex; flex-direction:column; gap:9px; min-height:0; min-width:0; }
+    .radar-card{ flex:1; min-height:0; }
+    .radar-stage{ display:flex; align-items:center; justify-content:center; }
+    .r-disc{ position:relative; aspect-ratio:1; height:98%; border-radius:50%; border:1px solid rgba(45,225,255,.28);
+      background:radial-gradient(circle,rgba(45,225,255,.06),rgba(45,225,255,.015) 70%); }
+    .r-ring{ position:absolute; border:1px solid rgba(45,225,255,.16); border-radius:50%; }
+    .r3{ inset:0; } .r2{ inset:18%; } .r1{ inset:36%; }
+    .r-cross{ position:absolute; background:rgba(45,225,255,.14); }
+    .r-cross.h{ left:0; right:0; height:1px; top:50%; } .r-cross.v{ top:0; bottom:0; width:1px; left:50%; }
+    .r-sweep{ position:absolute; inset:0; border-radius:50%;
+      background:conic-gradient(from 0deg, rgba(45,225,255,0) 0deg, rgba(45,225,255,.30) 52deg, rgba(45,225,255,0) 64deg, transparent 360deg);
+      animation:spin 4s linear infinite; }
+    @keyframes spin{ to{ transform:rotate(360deg); } }
+    .r-dot{ position:absolute; width:9px; height:9px; border-radius:50%; transform:translate(-50%,-50%); animation:rpulse 1.8s ease-in-out infinite; }
+    .r-dot i{ position:absolute; left:11px; top:-7px; font-style:normal; font-size:10px; white-space:nowrap; color:var(--txt); font-weight:600; }
+    .r-dot.hot{ background:#ff5d6b; box-shadow:0 0 10px #ff4d5e; }
+    .r-dot.warm{ background:#ff9a4d; box-shadow:0 0 10px #ff8a3d; }
+    .r-dot.gold{ background:#ffd24d; box-shadow:0 0 10px #ffd24d; }
+    .r-dot.cool{ background:#1dffa0; box-shadow:0 0 10px #1dffa0; }
+    @keyframes rpulse{ 0%,100%{ transform:translate(-50%,-50%) scale(1); opacity:1; } 50%{ transform:translate(-50%,-50%) scale(1.8); opacity:.45; } }
+    .mode-switch{ margin-left:auto; display:flex; background:rgba(0,0,0,.3); border-radius:8px; padding:2px; gap:2px; }
+    .ms{ font-size:10.5px; font-weight:600; color:var(--dim); background:none; border:none; padding:4px 12px; border-radius:6px; cursor:pointer; }
+    .ms.on{ color:#06202a; background:linear-gradient(180deg,#84ecff,#2de1ff); }
+    .fund-mini5{ display:flex; flex-direction:column; gap:3px; }
+    .fund-mini5 .big{ font-size:22px; font-family:var(--mono); font-weight:800; } .fund-mini5 .big span{ font-size:11px; margin-left:2px; }
+    .fr5{ display:flex; justify-content:space-between; font-size:11px; color:var(--dim); } .fr5 b{ font-family:var(--mono); font-size:11px; }
+   </style>
+  </section>
+</div>
+
+<script>
+/* ===== 原型切换 ===== */
+const tabs = document.querySelectorAll('.proto-tab');
+const layouts = document.querySelectorAll('.layout');
+const rendered = { 1:false, 2:false, 3:false, 4:false, 5:false };
+function switchTo(n){
+  tabs.forEach(t=>t.classList.toggle('active', t.dataset.n===String(n)));
+  layouts.forEach(l=>l.classList.toggle('show', l.id==='layout-'+n));
+  if(!rendered[n]){ renderLayout(n); rendered[n]=true; }
+  setTimeout(()=>window.dispatchEvent(new Event('resize')),60);
+}
+tabs.forEach(t=>t.addEventListener('click',()=>switchTo(t.dataset.n)));
+
+/* 窗口/布局变化时，让所有已初始化图表校正尺寸（含从隐藏到显示）*/
+window.addEventListener('resize',()=>{
+  document.querySelectorAll('.chart-box,.cpane').forEach(d=>{
+    const inst=echarts.getInstanceByDom(d);
+    if(inst && d.offsetWidth) inst.resize();
+  });
+});
+
+/* ===== 共享仿真数据 ===== */
+const INDICES = [
+  { n:'上证指数', v:3358.26, p:0.62 },
+  { n:'深证成指', v:10284.77, p:1.18 },
+  { n:'创业板指', v:2046.93, p:1.74 },
+  { n:'科创50',   v:986.42,  p:0.95 },
+  { n:'北证50',   v:1124.38, p:-0.34 },
+];
+const SENT = { up:3214, down:1856, flat:172, lim:68, dl:4, broken:12, sealRate:85, temp:72 };
+const FEED = [
+  { t:'09:42', ty:1, tn:'封涨停板', nm:'华懋科技', ds:'+10.01%' },
+  { t:'09:41', ty:0, tn:'快速拉升', nm:'中科曙光', ds:'+6.82%' },
+  { t:'09:40', ty:3, tn:'大单买入', nm:'工业富联', ds:'+4.15%' },
+  { t:'09:38', ty:0, tn:'快速拉升', nm:'寒武纪',   ds:'+8.24%' },
+  { t:'09:36', ty:1, tn:'封涨停板', nm:'高新发展', ds:'+10.00%' },
+  { t:'09:34', ty:2, tn:'快速下跌', nm:'某高位股', ds:'-5.62%' },
+  { t:'09:32', ty:3, tn:'大单买入', nm:'浪潮信息', ds:'+3.47%' },
+  { t:'09:30', ty:0, tn:'快速拉升', nm:'新易盛',   ds:'+5.91%' },
+  { t:'09:28', ty:1, tn:'涨停打开', nm:'昨日高标', ds:'+7.34%' },
+  { t:'09:25', ty:0, tn:'集合竞价', nm:'半导体板块', ds:'高开1.2%' },
+];
+const SECTORS = [
+  { n:'半导体', v:3.8, m:420 }, { n:'AI算力', v:3.2, m:380 }, { n:'机器人', v:2.7, m:260 },
+  { n:'低空经济', v:2.1, m:180 }, { n:'消费电子', v:1.8, m:240 }, { n:'光伏设备', v:1.4, m:210 },
+  { n:'汽车零部件', v:0.9, m:160 }, { n:'医药商业', v:0.5, m:90 }, { n:'银行', v:-0.4, m:300 },
+  { n:'白酒', v:-0.8, m:280 }, { n:'煤炭', v:-1.2, m:150 }, { n:'房地产', v:-1.7, m:120 },
+];
+const LADDER = [
+  { h:5, c:'#ff4d4f', items:[['华懋科技','68.4']] },
+  { h:4, c:'#ff6b4a', items:[['高新发展','24.8'],['某龙头','15.2']] },
+  { h:3, c:'#ff8a3d', items:[['中科曙光','52.6'],['浪潮信息','41.3'],['新易盛','88.9']] },
+  { h:2, c:'#ffa940', items:[['寒武纪','246'],['工业富联','28.4'],['中际旭创','152'],['天孚通信','98']] },
+];
+
+function feedHtml(rows){
+  const cls=['ty-up','ty-dn','ty-lim','ty-big'];
+  return rows.map(r=>`<div class="feed-i">
+    <span class="t">${r.t}</span>
+    <span class="ty ${cls[r.ty]}">${r.tn}</span>
+    <span class="nm">${r.nm}</span>
+    <span class="ds ${r.ty===2?'down':'up'}">${r.ds}</span>
+  </div>`).join('');
+}
+function ladderHtml(rows, firstCount){
+  let h = rows.map(r=>`<div class="ld-row">
+    <span class="ld-tag" style="background:${r.c}">${r.h}板</span>
+    <div class="ld-chips">${r.items.map(i=>`<span class="ld-chip">${i[0]} <b class="up">${i[1]}</b></span>`).join('')}</div>
+  </div>`).join('');
+  h += `<div class="ld-row">
+    <span class="ld-tag" style="background:#7a4d2e">首板</span>
+    <div class="ld-chips"><span class="ld-chip">共 <b class="up">${firstCount||54}</b> 只（点击展开）</span></div>
+  </div>`;
+  return h;
+}
+
+/* ===== 各方案渲染（在 switch 时懒执行）===== */
+function renderLayout(n){ ({1:r1,2:r2,3:r3,4:r4,5:r5})[n] && ({1:r1,2:r2,3:r3,4:r4,5:r5})[n](); }
+function r1(){
+  document.getElementById('l1-idx').innerHTML = INDICES.map(i=>
+    `<span class="idx-pill"><span class="nm">${i.n}</span><span class="vp ${i.p>=0?'up':'down'}">${i.v.toFixed(2)} ${i.p>=0?'+'+i.p.toFixed(2):i.p.toFixed(2)}%</span></span>`).join('');
+  document.getElementById('c1-ladder').innerHTML = ladderHtml(LADDER,54);
+  document.getElementById('c1-feed').innerHTML = feedHtml(FEED);
+  echarts.init(document.getElementById('c1-gauge')).setOption({
+    series:[{type:'gauge',startAngle:210,endAngle:-30,min:0,max:100,radius:'94%',center:['50%','60%'],
+      progress:{show:true,width:13,borderRadius:7,itemStyle:{color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#08db94'},{offset:.55,color:'#e8c66a'},{offset:1,color:'#f23645'}])}},
+      axisLine:{lineStyle:{width:13,color:[[1,'rgba(255,255,255,.07)']]}},
+      axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},pointer:{show:false},anchor:{show:false},
+      detail:{valueAnimation:true,formatter:'{value}',fontSize:32,color:'#ff9a6b',offsetCenter:['0','-4%'],fontFamily:'mono',fontWeight:800},
+      title:{offsetCenter:['0','36%'],color:'#8892a6',fontSize:11},
+      data:[{value:72,name:'情绪温度 · 活跃'}]}]
+  });
+  echarts.init(document.getElementById('c1-fund')).setOption({
+    grid:{left:50,right:50,top:10,bottom:10},
+    xAxis:{type:'value',show:false},
+    yAxis:{type:'category',data:['小单','中单','大单','超大单'],axisLine:{show:false},axisTick:{show:false},axisLabel:{color:'#8892a6',fontSize:10.5}},
+    series:[{type:'bar',barWidth:13,
+      data:[{v:-32,c:'#0bbf86'},{v:-18,c:'#08db94'},{v:42,c:'#ff7a45'},{v:68,c:'#f23645'}].map(d=>({value:d.v,itemStyle:{color:d.c,borderRadius:3},
+        label:{show:true,position:d.v>=0?'right':'left',formatter:(d.v>0?'+':'')+d.v+'亿',color:'#9aa4b6',fontSize:10,fontFamily:'mono'}}))}]
+  });
+  const hc=v=>v>=3?'#f23645':v>=1.5?'#ff7a45':v>=0.5?'#c9a24a':v>=-0.5?'#5a6478':v>=-1.5?'#12a876':'#08db94';
+  echarts.init(document.getElementById('c1-heat')).setOption({
+    series:[{type:'treemap',roam:false,nodeClick:false,breadcrumb:{show:false},
+      itemStyle:{borderColor:'#0a0d13',borderWidth:2,gapWidth:2,borderRadius:5},
+      label:{show:true,color:'#fff',fontSize:10.5,lineHeight:14},
+      data:SECTORS.map(s=>({name:s.n,value:s.m,
+        label:{formatter:s.n+'\n'+(s.v>0?'+'+s.v:s.v)+'%'},
+        itemStyle:{color:hc(s.v)}}))}]
+  });
+}
+function r2(){
+  document.getElementById('c2-ladder').innerHTML = ladderHtml(LADDER,54);
+  document.getElementById('c2-feed').innerHTML = feedHtml(FEED);
+  const NEWS=[
+    {t:'09:40',x:'半导体板块早盘持续走强，多股涨超5%，资金明显回流科技方向'},
+    {t:'09:32',x:'央行今日开展3000亿元逆回购操作，维护流动性合理充裕'},
+    {t:'09:20',x:'多家券商发布策略：市场情绪逐步修复，关注高景气成长赛道'},
+    {t:'09:08',x:'两市融资余额较上日增加，杠杆资金风险偏好回升'},
+    {t:'08:55',x:'外围市场收涨，国际油价回落，避险情绪降温'},
+  ];
+  document.getElementById('c2-news').innerHTML = NEWS.map(n=>
+    `<div class="feed-i"><span class="t">${n.t}</span><span style="color:var(--txt);font-size:11px;line-height:1.4">${n.x}</span></div>`).join('');
+
+  /* 五档盘口 */
+  const sells=[[5,1254.0,120],[4,1253.2,80],[3,1252.5,200],[2,1251.8,60],[1,1251.0,150]];
+  const buys=[[1,1250.0,300],[2,1249.5,90],[3,1248.8,140],[4,1248.0,70],[5,1247.2,110]];
+  const mx=300; let oh='';
+  sells.forEach(s=>{oh+=`<div class="ob-row ob-sell"><span class="lb">卖${s[0]}</span><span class="pr">${s[1].toFixed(1)}</span><span class="vl">${s[2]}</span><span class="volbar" style="width:${s[2]/mx*100}%"></span></div>`;});
+  oh+=`<div class="ob-mid"><span>现价</span><span class="cur">1250.8</span><span class="chg">+0.62%</span></div>`;
+  buys.forEach(s=>{oh+=`<div class="ob-row ob-buy"><span class="lb">买${s[0]}</span><span class="pr">${s[1].toFixed(1)}</span><span class="vl">${s[2]}</span><span class="volbar" style="width:${s[2]/mx*100}%"></span></div>`;});
+  document.getElementById('c2-order').innerHTML=oh;
+
+  /* 分时图 */
+  const P=242,base=1250; let p=base; const pd=[],av=[];
+  for(let i=0;i<P;i++){ p+=Math.sin(i/20)*3.4+(Math.random()-.5)*5.0-(p-base)*0.06; pd.push(+p.toFixed(2)); av.push(+(pd.reduce((x,y)=>x+y,0)/(i+1)).toFixed(2)); }
+  const labs=[]; let hh=9,mm=30;
+  for(let i=0;i<P;i++){ if(i===121){hh=13;mm=0;} labs.push((hh<10?'0'+hh:hh)+':'+(mm<10?'0'+mm:mm)); mm++; if(mm===60){hh++;mm=0;} }
+  echarts.init(document.getElementById('c2-minute')).setOption({
+    animation:false,
+    grid:{left:60,right:18,top:22,bottom:26},
+    tooltip:{trigger:'axis',axisPointer:{type:'cross',label:{fontSize:9}},
+      formatter:ps=>{const i=ps[0].dataIndex;return `${labs[i]}<br/>价 <b>${pd[i]}</b><br/>均 ${av[i]}`;}},
+    xAxis:{type:'category',data:labs,boundaryGap:false,axisLine:{lineStyle:{color:'#2a3344'}},axisTick:{show:false},axisLabel:{color:'#6b7589',fontSize:9.5,interval:60}},
+    yAxis:{type:'value',scale:true,splitNumber:6,splitLine:{lineStyle:{color:'rgba(255,255,255,.05)'}},axisLabel:{color:'#6b7589',fontSize:9.5,formatter:v=>((v-base)/base*100).toFixed(2)+'%'}},
+    series:[
+      {type:'line',data:pd,showSymbol:false,lineStyle:{color:'#eef3fb',width:1.4},
+       areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(242,54,69,.22)'},{offset:1,color:'rgba(242,54,69,0)'}])},
+       markLine:{symbol:'none',silent:true,data:[{yAxis:base}],lineStyle:{color:'#5a6478',type:'dashed',width:1},label:{show:false}}},
+      {type:'line',data:av,showSymbol:false,lineStyle:{color:'#e8c66a',width:1}}
+    ]
+  });
+
+  /* K线 + 成交量 */
+  let ko=1200; const kc=[],kv=[],kd=[];
+  for(let i=0;i<90;i++){ const c=ko+(Math.random()-.48)*24; const hi=Math.max(ko,c)+Math.random()*9; const lo=Math.min(ko,c)-Math.random()*9;
+    kc.push([+ko.toFixed(2),+c.toFixed(2),+lo.toFixed(2),+hi.toFixed(2)]); kv.push(Math.round(7000+Math.random()*13000));
+    kd.push((i%15===0)?'第'+(i)+'日':''); ko=c; }
+  const ma=n=>kc.map((_,i)=>i<n-1?null:+(kc.slice(i-n+1,i+1).reduce((a,k)=>a+k[1],0)/n).toFixed(2));
+  echarts.init(document.getElementById('c2-kline')).setOption({
+    animation:false,
+    grid:[{left:60,right:18,top:24,height:'62%'},{left:60,right:18,top:'74%',height:'16%'}],
+    tooltip:{trigger:'axis',axisPointer:{type:'cross',label:{fontSize:9}},
+      formatter:ps=>{const i=ps[0].dataIndex,k=kc[i];return `第${i}日<br/>开${k[0]} 收<b>${k[1]}</b><br/>低${k[2]} 高${k[3]}`;}},
+    xAxis:[{type:'category',data:kd,scale:true,axisLine:{lineStyle:{color:'#2a3344'}},axisTick:{show:false},axisLabel:{color:'#6b7589',fontSize:9}},
+           {type:'category',gridIndex:1,data:kd,axisLabel:{show:false},axisTick:{show:false},axisLine:{show:false}}],
+    yAxis:[{scale:true,splitLine:{lineStyle:{color:'rgba(255,255,255,.05)'}},axisLabel:{color:'#6b7589',fontSize:9.5}},
+           {gridIndex:1,splitNumber:2,axisLabel:{color:'#6b7589',fontSize:9},splitLine:{show:false}}],
+    dataZoom:[{type:'inside',xAxisIndex:[0,1],start:55,end:100}],
+    series:[
+      {type:'candlestick',data:kc,itemStyle:{color:'#f23645',color0:'#08db94',borderColor:'#f23645',borderColor0:'#08db94'}},
+      {type:'line',data:ma(5),showSymbol:false,smooth:true,lineStyle:{color:'#e8c66a',width:1}},
+      {type:'line',data:ma(10),showSymbol:false,smooth:true,lineStyle:{color:'#c58af9',width:1}},
+      {type:'line',data:ma(20),showSymbol:false,smooth:true,lineStyle:{color:'#4ea1ff',width:1}},
+      {type:'bar',xAxisIndex:1,yAxisIndex:1,data:kv.map((v,i)=>({value:v,itemStyle:{color:kc[i][1]>=kc[i][0]?'#f23645':'#08db94',opacity:.6}}))}
+    ]
+  });
+
+  /* 热力图 */
+  const hc=v=>v>=3?'#f23645':v>=1.5?'#ff7a45':v>=0.5?'#c9a24a':v>=-0.5?'#5a6478':v>=-1.5?'#12a876':'#08db94';
+  echarts.init(document.getElementById('c2-heat')).setOption({
+    series:[{type:'treemap',roam:false,nodeClick:false,breadcrumb:{show:false},
+      itemStyle:{borderColor:'#0a0d13',borderWidth:2,gapWidth:2,borderRadius:5},label:{show:true,color:'#fff',fontSize:10.5,lineHeight:14},
+      data:SECTORS.map(s=>({name:s.n,value:s.m,label:{formatter:s.n+'\n'+(s.v>0?'+'+s.v:s.v)+'%'},itemStyle:{color:hc(s.v)}}))}]
+  });
+
+  /* tab 交互 */
+  document.querySelectorAll('#layout-2 .ct').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('#layout-2 .ct').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+    document.querySelectorAll('#layout-2 .cpane').forEach(p=>p.classList.toggle('show',p.id==='c2-'+b.dataset.c));
+    setTimeout(()=>window.dispatchEvent(new Event('resize')),30);
+  }));
+  document.querySelectorAll('#layout-2 .mt').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('#layout-2 .mt').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+    const f=b.dataset.f;
+    document.getElementById('c2-feed').classList.toggle('show',f==='feed');
+    document.getElementById('c2-news').classList.toggle('show',f==='news');
+  }));
+}
+function r3(){
+  document.getElementById('c3-feed').innerHTML = feedHtml(FEED);
+  echarts.init(document.getElementById('c3-gauge')).setOption({
+    series:[{type:'gauge',startAngle:210,endAngle:-30,min:0,max:100,radius:'88%',center:['50%','56%'],
+      progress:{show:true,width:12,borderRadius:6,itemStyle:{color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#08db94'},{offset:.55,color:'#e8c66a'},{offset:1,color:'#f23645'}])}},
+      axisLine:{lineStyle:{width:12,color:[[1,'rgba(255,255,255,.07)']]}},
+      axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},pointer:{show:false},anchor:{show:false},
+      detail:{valueAnimation:true,formatter:'{value}',fontSize:30,color:'#f0d68a',offsetCenter:['0','-2%'],fontFamily:'mono',fontWeight:800},
+      title:{offsetCenter:['0','34%'],color:'#8b94a6',fontSize:11},
+      data:[{value:72,name:'情绪温度 · 活跃'}]}]
+  });
+  const hc=v=>v>=3?'#f23645':v>=1.5?'#ff7a45':v>=0.5?'#c9a24a':v>=-0.5?'#5a6478':v>=-1.5?'#12a876':'#08db94';
+  echarts.init(document.getElementById('c3-heat')).setOption({
+    series:[{type:'treemap',roam:false,nodeClick:false,breadcrumb:{show:false},
+      itemStyle:{borderColor:'#0b0d11',borderWidth:2,gapWidth:2,borderRadius:5},label:{show:true,color:'#fff',fontSize:10.5,lineHeight:14},
+      data:SECTORS.map(s=>({name:s.n,value:s.m,label:{formatter:s.n+'\n'+(s.v>0?'+'+s.v:s.v)+'%'},itemStyle:{color:hc(s.v)}}))}]
+  });
+  const dl=['跌停','-7~-5','-5~-3','-3~-1','-1~0','0~1','1~3','3~5','5~7','涨停'];
+  const dv=[4,18,60,380,1394,1520,520,120,40,68];
+  echarts.init(document.getElementById('c3-dist')).setOption({
+    grid:{left:34,right:14,top:14,bottom:22},
+    tooltip:{trigger:'axis',formatter:ps=>`${dl[ps[0].dataIndex]}% : <b>${dv[ps[0].dataIndex]}</b> 家`},
+    xAxis:{type:'category',data:dl,axisLine:{lineStyle:{color:'#262b38'}},axisTick:{show:false},axisLabel:{color:'#8b94a6',fontSize:9.5}},
+    yAxis:{type:'value',splitLine:{lineStyle:{color:'rgba(255,255,255,.05)'}},axisLabel:{color:'#6b7589',fontSize:9}},
+    series:[{type:'bar',barWidth:'58%',data:dv.map((v,i)=>({value:v,itemStyle:{color:i<5?(i===0?'#0bbf86':'#12a876'):(i===9?'#f23645':'#e85460'),borderRadius:[3,3,0,0]}}))}]
+  });
+
+  /* 聚焦放大 */
+  const mask=document.querySelector('#layout-3 .b3-mask'); let focused=null;
+  function closeFocus(){ if(!focused)return; focused.classList.remove('focus'); mask.classList.remove('show'); focused=null;
+    setTimeout(()=>window.dispatchEvent(new Event('resize')),140); }
+  document.querySelectorAll('#layout-3 .bcard').forEach(card=>{
+    card.addEventListener('click',e=>{
+      if(focused||e.target.classList.contains('xclose')) return;
+      focused=card; card.classList.add('focus'); mask.classList.add('show');
+      setTimeout(()=>window.dispatchEvent(new Event('resize')),140);
+    });
+  });
+  mask.addEventListener('click',closeFocus);
+  document.querySelectorAll('#layout-3 .xclose').forEach(x=>x.addEventListener('click',e=>{e.stopPropagation();closeFocus();}));
+}
+function r4(){
+  /* 板块 ticker（两份无缝）*/
+  const mp = SECTORS.map(s=>`<span class="mpill"><span class="mn">${s.n}</span><b style="color:${s.v>=0?'#ff5d6b':'#1dffa0'}">${s.v>0?'+'+s.v:s.v}%</b></span>`).join('');
+  document.getElementById('c4-marq').innerHTML = mp+mp;
+
+  /* 情绪环（荧光）*/
+  echarts.init(document.getElementById('c4-gauge')).setOption({
+    series:[{type:'gauge',startAngle:210,endAngle:-30,min:0,max:100,radius:'92%',center:['50%','58%'],
+      progress:{show:true,width:10,borderRadius:5,itemStyle:{color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#0bbf86'},{offset:.55,color:'#ffd24d'},{offset:1,color:'#ff4d5e'}])}},
+      axisLine:{lineStyle:{width:10,color:[[1,'rgba(255,255,255,.07)']]}},
+      axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},pointer:{show:false},anchor:{show:false},
+      detail:{valueAnimation:true,formatter:'{value}',fontSize:26,color:'#1dffa0',offsetCenter:['0','-2%'],fontWeight:800},
+      title:{offsetCenter:['0','36%'],color:'#7e889c',fontSize:9.5},
+      data:[{value:72,name:'情绪温度'}]}]
+  });
+
+  /* 电报墙 */
+  const names=['华懋科技','中科曙光','工业富联','寒武纪','高新发展','浪潮信息','新易盛','中际旭创','天孚通信','立讯精密','北方华创','中微公司','韦尔股份','兆易创新','金山办公','中芯国际'];
+  const types=[['快速拉升','#ff5d6b','+'],['封涨停板','#ff5d6b','+'],['大单买入','#ffd24d','+'],['快速下跌','#1dffa0','-'],['涨停打开','#ffd24d','+'],['触及跌停','#1dffa0','-']];
+  const wall=[]; let wh=9,wm=25;
+  for(let i=0;i<39;i++){ wm+=Math.floor(Math.random()*3)+1; if(wm>=60){wh++;wm-=60;}
+    const nm=names[Math.floor(Math.random()*names.length)], ty=types[Math.floor(Math.random()*types.length)], pc=(Math.random()*9+1).toFixed(2);
+    wall.push({t:(wh<10?'0'+wh:wh)+':'+(wm<10?'0'+wm:wm),ty:ty[0],c:ty[1],nm,ds:(ty[2]==='+'?'+':'-')+pc+'%'}); }
+  const wallHtml=rows=>rows.map(r=>`<div class="wall-i"><span class="wt">${r.t}</span><span class="wty" style="color:${r.c}">${r.ty}</span><span class="wnm">${r.nm}</span><span class="wds" style="color:${r.c}">${r.ds}</span></div>`).join('');
+  let whtml='';
+  for(let c=0;c<3;c++){ const col=wall.slice(c*13,c*13+13), inner=wallHtml(col);
+    whtml+=`<div class="wall-col"><div class="wall-track" style="animation-duration:${22+c*8}s;${c===1?'animation-direction:reverse;':''}">${inner}${inner}</div></div>`; }
+  document.getElementById('c4-wall').innerHTML=whtml;
+
+  /* 快讯条 */
+  const nt='半导体板块早盘走强，多股涨超5%　　｜　　央行开展3000亿元逆回购，维护流动性合理充裕　　｜　　两市融资余额增加，杠杆资金风险偏好回升　　｜　　外围市场收涨，国际油价回落　　｜　　';
+  document.getElementById('c4-newsbar').textContent = nt+nt;
+}
+function r5(){
+  document.getElementById('c5-ladder').innerHTML = ladderHtml(LADDER,54);
+  document.getElementById('c5-feed').innerHTML = feedHtml(FEED);
+  echarts.init(document.getElementById('c5-gauge')).setOption({
+    series:[{type:'gauge',startAngle:210,endAngle:-30,min:0,max:100,radius:'94%',center:['50%','58%'],
+      progress:{show:true,width:11,borderRadius:6,itemStyle:{color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#0bbf86'},{offset:.55,color:'#2de1ff'},{offset:1,color:'#f23645'}])}},
+      axisLine:{lineStyle:{width:11,color:[[1,'rgba(255,255,255,.07)']]}},
+      axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},pointer:{show:false},anchor:{show:false},
+      detail:{valueAnimation:true,formatter:'{value}',fontSize:28,color:'#84ecff',offsetCenter:['0','-2%'],fontWeight:800},
+      title:{offsetCenter:['0','36%'],color:'#8a84a4',fontSize:10},
+      data:[{value:72,name:'情绪温度'}]}]
+  });
+  document.querySelectorAll('#layout-5 .ms').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('#layout-5 .ms').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+    document.querySelector('#layout-5 .r-sweep').style.animationDuration = b.dataset.m==='review'?'9s':'4s';
+  }));
+}
+
+switchTo(1);
+</script>
+</body>
+</html>

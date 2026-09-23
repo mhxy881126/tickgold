@@ -3,6 +3,12 @@ import { db } from "../db/database";
 
 export type CardId =
   | "radar"
+  | "radarsweep"
+  | "reviewtimeline"
+  | "multigrid"
+  | "heatmatrix"
+  | "bentofocus"
+  | "telegraph"
   | "breadth"
   | "chart"
   | "sectorheat"
@@ -35,6 +41,12 @@ export interface CardMeta {
 // 卡片元信息
 export const CARD_META: Record<CardId, CardMeta> = {
   radar: { title: "涨停雷达", accent: "#e0455a", kind: "chart" },
+  radarsweep: { title: "雷达扫盘", accent: "#2de1ff", kind: "chart" },
+  reviewtimeline: { title: "复盘时间线", accent: "#c9a24a", kind: "chart" },
+  multigrid: { title: "多股同列", accent: "#36b8e8", kind: "chart" },
+  heatmatrix: { title: "全市场热力矩阵", accent: "#ff7a45", kind: "chart" },
+  bentofocus: { title: "Bento聚焦网格", accent: "#e8c66a", kind: "chart" },
+  telegraph: { title: "异动电报墙", accent: "#1dffa0", kind: "chart" },
   breadth: { title: "市场宽度", accent: "#4ea1ff", kind: "chart" },
   chart: { title: "K线图", accent: "#2f6fed", kind: "chart" },
   sectorheat: { title: "板块热力图", accent: "#d4af37", kind: "chart" },
@@ -58,7 +70,7 @@ export const CARD_META: Record<CardId, CardMeta> = {
 };
 
 // 宽卡片（主干区域）与窄卡片（右侧）的默认排列顺序，也决定卡片的默认分区
-const WIDE_ORDER: CardId[] = ["radar", "breadth", "chart", "sectorheat", "sector", "screener", "theme", "dist", "f10", "trade", "journal", "calendar", "ipo"];
+const WIDE_ORDER: CardId[] = ["radar", "radarsweep", "reviewtimeline", "multigrid", "heatmatrix", "bentofocus", "telegraph", "breadth", "chart", "sectorheat", "sector", "screener", "theme", "dist", "f10", "trade", "journal", "calendar", "ipo"];
 const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "order", "fundflow", "news", "watch", "rank"];
 const ALL_IDS: CardId[] = [...WIDE_ORDER, ...NARROW_ORDER];
 

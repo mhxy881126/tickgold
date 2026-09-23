@@ -3,6 +3,12 @@ import WatchList from "./WatchList.vue";
 import RankBoard from "./RankBoard.vue";
 import StockChart from "./StockChart.vue";
 import LimitRadar from "./LimitRadar.vue";
+import RadarSweep from "./RadarSweep.vue";
+import ReviewTimeline from "./ReviewTimeline.vue";
+import MultiStockGrid from "./MultiStockGrid.vue";
+import MarketHeatMatrix from "./MarketHeatMatrix.vue";
+import BentoFocus from "./BentoFocus.vue";
+import TelegraphWall from "./TelegraphWall.vue";
 import BreadthBoard from "./BreadthBoard.vue";
 import ShortTermSpider from "./ShortTermSpider.vue";
 import SectorBoard from "./SectorBoard.vue";
@@ -34,6 +40,12 @@ defineEmits<{ select: [code: string] }>();
     <div v-else class="card-empty">从自选或榜单选择一只股票</div>
   </div>
   <LimitRadar v-else-if="id === 'radar'" @select="$emit('select', $event)" />
+  <RadarSweep v-else-if="id === 'radarsweep'" @select="$emit('select', $event)" />
+  <ReviewTimeline v-else-if="id === 'reviewtimeline'" @select="$emit('select', $event)" />
+  <MultiStockGrid v-else-if="id === 'multigrid'" @select="$emit('select', $event)" />
+  <MarketHeatMatrix v-else-if="id === 'heatmatrix'" @select="$emit('select', $event)" />
+  <BentoFocus v-else-if="id === 'bentofocus'" @select="$emit('select', $event)" />
+  <TelegraphWall v-else-if="id === 'telegraph'" @select="$emit('select', $event)" />
   <BreadthBoard v-else-if="id === 'breadth'" :compact="compact" />
   <ShortTermSpider v-else-if="id === 'spider'" @select="$emit('select', $event)" />
   <SectorBoard v-else-if="id === 'sector'" @select="$emit('select', $event)" />
