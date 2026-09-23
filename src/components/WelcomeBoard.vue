@@ -104,9 +104,10 @@ onBeforeUnmount(() => un?.());
 .wb-root {
   position: absolute;
   inset: 0;
+  z-index: 0;
   display: flex;
   flex-direction: column;
-  padding: 16px;
+  padding: 50px 16px 16px;
   overflow: hidden;
   color: var(--text);
   background:

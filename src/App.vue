@@ -407,15 +407,18 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 工作台主区域 -->
-    <main class="workspace" :class="{ dragging: bench.dragId.value !== null }">
-      <!-- 时段切换栏 -->
-      <TimeTabs :active="bench.timeMode.value" @select="bench.enterTimeMode($event)" />
-
-      <div class="ws-body" :class="{ free: bench.freeMode.value }">
-      <!-- 默认欢迎页：指挥中枢 + 沉浸铺满（无卡片时） -->
+    <main
+      class="workspace"
+      :class="{ dragging: bench.dragId.value !== null, bare: bench.openCards.value.length === 0 }"
+    >
+      <!-- 空台沉浸背景：铺满整个 workspace（含时段栏后方），与时段栏融为一体 -->
       <Transition name="welcome">
         <WelcomeBoard v-if="bench.openCards.value.length === 0" />
       </Transition>
+      <!-- 时段切换栏（透明沉浸，无浮条边框） -->
+      <TimeTabs :active="bench.timeMode.value" @select="bench.enterTimeMode($event)" />
+
+      <div class="ws-body" :class="{ free: bench.freeMode.value }">
 
       <!-- ===== 自由布局：卡片绝对定位、可随意拖拽 ===== -->
       <template v-if="bench.freeMode.value">
@@ -633,7 +636,12 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   margin-top: 10px;
+  z-index: 2;
 }
+/* 空台：去除留白，让沉浸背景铺满、时段栏与空台融为一体 */
+.workspace.bare { padding: 0; }
+.workspace.bare .ws-body { margin-top: 0; pointer-events: none; }
+.workspace.bare .timetabs { padding-left: 16px; padding-right: 16px; }
 .card-grid {
   position: relative;
   display: grid;

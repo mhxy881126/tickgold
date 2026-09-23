@@ -56,10 +56,12 @@ const weekday = computed(() => {
   justify-content: space-between;
   height: 36px;
   flex: none;
-  padding: 0 8px;
-  background: linear-gradient(180deg, #121824, #0e141d);
-  border: 1px solid #20272f;
-  border-radius: 9px;
+  padding: 0 4px;
+  position: relative;
+  z-index: 2;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
 }
 .tt-tabs {
   display: flex;
