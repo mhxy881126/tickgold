@@ -387,8 +387,8 @@ pub fn run() {
                 #[cfg(target_os = "macos")]
                 {
                     use tauri::TitleBarStyle;
+                    // 红绿灯保持默认位置，由前端 .topbar.mac 左间距避让（不依赖运行时定位 API）
                     let _ = main.set_title_bar_style(TitleBarStyle::Overlay);
-                    let _ = main.set_traffic_light_position(LogicalPosition::new(10.0, 9.0));
                 }
             }
 
