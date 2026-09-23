@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, provide, watch } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, provide, watch, nextTick } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
@@ -89,78 +89,81 @@ function onGridDragOver(e: DragEvent) {
   bench.hintZone(x < 7 / 12 ? "main" : "side");
 }
 
-// ===== 顶部 Dock：按功能域分组 =====
+// ===== 顶部功能导航：6 大功能域（Mega 菜单 + 命令面板共用）=====
 interface DockItem {
   id: CardId;
   label: string;
   icon: string;
+  desc: string;
+  star?: boolean;
 }
 interface DockGroup {
   name: string;
+  icon: string;
   items: DockItem[];
 }
 const DOCK_GROUPS: DockGroup[] = [
   {
-    name: "总览",
+    name: "大盘总览",
+    icon: "M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z",
     items: [
-      { id: "watch", label: "自选", icon: "M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" },
-      { id: "rank", label: "榜单", icon: "M3 5h18v2H3zm0 4h18v2H3zm0 4h12v2H3zm0 4h12v2H3z" },
-      { id: "breadth", label: "宽度", icon: "M3 12h4l3-8 4 16 3-8h4" },
-      { id: "dist", label: "涨跌分布", icon: "M3 21h2v-7H3zm4 0h2V9H7zm4 0h2V5h-2zm4 0h2v-9h-2zm4 0h2V11h-2z" },
+      { id: "watch", label: "自选", icon: "M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z", desc: "我的股票分组实时行情", star: true },
+      { id: "rank", label: "榜单", icon: "M3 5h18v2H3zm0 4h18v2H3zm0 4h12v2H3zm0 4h12v2H3z", desc: "全市场涨幅/跌幅/成交额排名", star: true },
+      { id: "breadth", label: "市场宽度", icon: "M3 12h4l3-8 4 16 3-8h4", desc: "上涨/下跌家数分时曲线" },
+      { id: "dist", label: "涨跌分布", icon: "M3 21h2v-7H3zm4 0h2V9H7zm4 0h2V5h-2zm4 0h2v-9h-2zm4 0h2V11h-2z", desc: "涨跌幅十档家数分布" },
     ],
   },
   {
-    name: "盯盘",
+    name: "盯盘模式",
+    icon: "M12 2A10 10 0 1 0 22 12h-2A8 8 0 1 1 12 4zM12 6v6l5 2-1 1.7L11 13V6z",
     items: [
-      { id: "radarsweep", label: "雷达扫盘", icon: "M12 2A10 10 0 1 0 22 12h-2A8 8 0 1 1 12 4zM12 6v6l5 2-1 1.7L11 13V6z" },
-      { id: "radar", label: "雷达", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm0 4a6 6 0 100 12 6 6 0 000-12zm0 3a3 3 0 100 6 3 3 0 000-6z" },
-      { id: "spider", label: "精灵", icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8z" },
-      { id: "alert", label: "预警", icon: "M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C8.63 5.36 7 7.92 7 11v5l-2 2v1h14v-1l-2-2z" },
+      { id: "radarsweep", label: "雷达扫盘", icon: "M12 2A10 10 0 1 0 22 12h-2A8 8 0 1 1 12 4zM12 6v6l5 2-1 1.7L11 13V6z", desc: "圆形雷达三栏全屏扫盘", star: true },
+      { id: "reviewtimeline", label: "复盘时间线", icon: "M12 3a2 2 0 100 4 2 2 0 000-4zm0 7a2 2 0 100 4 2 2 0 000-4zm0 7a2 2 0 100 4 2 2 0 000-4z", desc: "全天异动时间线 + 当日总结" },
+      { id: "multigrid", label: "多股同列", icon: "M3 3h5v5H3zm6.5 0h5v5h-5zM16 3h5v5h-5zM3 9.5h5v5H3zm6.5 0h5v5h-5zM16 9.5h5v5h-5zM3 16h5v5H3zm6.5 0h5v5h-5zM16 16h5v5h-5z", desc: "自选 9 只 分时/K线/盘口同屏" },
+      { id: "heatmatrix", label: "热力矩阵", icon: "M3 4h7v4H3zm9 0h9v4h-9zM3 10h9v4H3zm11 0h7v4h-7zM3 16h7v4H3zm9 0h9v4h-9z", desc: "全市场板块热力矩阵" },
+      { id: "bentofocus", label: "Bento聚焦", icon: "M3 3h8v5H3zm9 0h9v9h-9zM3 9h5v12H3zm6 6h12v6H9z", desc: "6 卡不规则总览，点按聚焦" },
+      { id: "telegraph", label: "电报墙", icon: "M4 11a8 8 0 0116 0M7 11a5 5 0 0110 0M10 11a2 2 0 014 0M12 13v8", desc: "三列异动电报实时滚动" },
     ],
   },
   {
-    name: "模式",
+    name: "情绪异动",
+    icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8z",
     items: [
-      { id: "radarsweep", label: "雷达扫盘", icon: "M12 2A10 10 0 1 0 22 12h-2A8 8 0 1 1 12 4zM12 6v6l5 2-1 1.7L11 13V6z" },
-      { id: "reviewtimeline", label: "复盘时间线", icon: "M12 3a2 2 0 100 4 2 2 0 000-4zm0 7a2 2 0 100 4 2 2 0 000-4zm0 7a2 2 0 100 4 2 2 0 000-4z" },
-      { id: "multigrid", label: "多股同列", icon: "M3 3h5v5H3zm6.5 0h5v5h-5zM16 3h5v5h-5zM3 9.5h5v5H3zm6.5 0h5v5h-5zM16 9.5h5v5h-5zM3 16h5v5H3zm6.5 0h5v5h-5zM16 16h5v5h-5z" },
-      { id: "heatmatrix", label: "热力矩阵", icon: "M3 4h7v4H3zm9 0h9v4h-9zM3 10h9v4H3zm11 0h7v4h-7zM3 16h7v4H3zm9 0h9v4h-9z" },
-      { id: "bentofocus", label: "Bento聚焦", icon: "M3 3h8v5H3zm9 0h9v9h-9zM3 9h5v12H3zm6 6h12v6H9z" },
-      { id: "telegraph", label: "电报墙", icon: "M4 11a8 8 0 0116 0M7 11a5 5 0 0110 0M10 11a2 2 0 014 0M12 13v8" },
+      { id: "radar", label: "涨停雷达", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm0 4a6 6 0 100 12 6 6 0 000-12zm0 3a3 3 0 100 6 3 3 0 000-6z", desc: "涨停/炸板/连板/情绪统计", star: true },
+      { id: "spider", label: "短线精灵", icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8z", desc: "活跃股盘中实时异动" },
+      { id: "alert", label: "预警", icon: "M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C8.63 5.36 7 7.92 7 11v5l-2 2v1h14v-1l-2-2z", desc: "价格/涨跌幅触发推送" },
+      { id: "news", label: "快讯", icon: "M5 3h14a2 2 0 012 2v11a2 2 0 01-2 2H8l-4 3V5a2 2 0 011-2z", desc: "7x24 全球财经直播" },
     ],
   },
   {
-    name: "板块",
+    name: "板块题材",
+    icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z",
     items: [
-      { id: "sector", label: "板块", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z" },
-      { id: "sectorheat", label: "热力图", icon: "M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z" },
-      { id: "sectorevent", label: "板块异动", icon: "M3 12h4l3-8 4 16 3-8h4" },
-      { id: "theme", label: "题材轮动", icon: "M12 5l7 3.5-7 3.5L5 8.5 12 5zM5 12l7 3.5L19 12M5 15.5l7 3.5 7-3.5" },
+      { id: "sector", label: "板块行情", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z", desc: "行业/概念板块排名" },
+      { id: "sectorheat", label: "板块热力图", icon: "M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z", desc: "板块 treemap 缩放平移" },
+      { id: "sectorevent", label: "板块异动", icon: "M3 12h4l3-8 4 16 3-8h4", desc: "板块拉升/跳水捕捉" },
+      { id: "theme", label: "题材轮动", icon: "M12 5l7 3.5-7 3.5L5 8.5 12 5zM5 12l7 3.5L19 12M5 15.5l7 3.5 7-3.5", desc: "热门概念标签云" },
     ],
   },
   {
-    name: "行情",
+    name: "个股行情",
+    icon: "M6 3h2v4H6zm0 14h2v4H6zM5 8h4v8H5zm11-9h2v3h-2zm0 12h2v5h-2zm-1-7h4v7h-4z",
     items: [
-      { id: "chart", label: "K线", icon: "M6 3h2v4H6zm0 14h2v4H6zM5 8h4v8H5zm11-9h2v3h-2zm0 12h2v5h-2zm-1-7h4v7h-4z" },
-      { id: "order", label: "盘口", icon: "M5 3h14v18H5zm2 4h10v2H7zm0 4h10v2H7zm0 4h7v2H7z" },
-      { id: "fundflow", label: "资金", icon: "M12 3c-4 0-7 1.3-7 3v12c0 1.7 3 3 7 3s7-1.3 7-3V6c0-1.7-3-3-7-3zm0 2c3.3 0 5 .9 5 1s-1.7 1-5 1-5-.9-5-1 1.7-1 5-1zm-5 4.5c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V12c0 .1-1.7 1-5 1s-5-.9-5-1zm0 4c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V16c0 .1-1.7 1-5 1s-5-.9-5-1z" },
-      { id: "news", label: "快讯", icon: "M5 3h14a2 2 0 012 2v11a2 2 0 01-2 2H8l-4 3V5a2 2 0 011-2z" },
+      { id: "chart", label: "K线/分时", icon: "M6 3h2v4H6zm0 14h2v4H6zM5 8h4v8H5zm11-9h2v3h-2zm0 12h2v5h-2zm-1-7h4v7h-4z", desc: "日周月 K + 当日分时", star: true },
+      { id: "order", label: "五档盘口", icon: "M5 3h14v18H5zm2 4h10v2H7zm0 4h10v2H7zm0 4h7v2H7z", desc: "买卖五档 + 今日概览" },
+      { id: "fundflow", label: "资金流向", icon: "M12 3c-4 0-7 1.3-7 3v12c0 1.7 3 3 7 3s7-1.3 7-3V6c0-1.7-3-3-7-3zm0 2c3.3 0 5 .9 5 1s-1.7 1-5 1-5-.9-5-1 1.7-1 5-1zm-5 4.5c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V12c0 .1-1.7 1-5 1s-5-.9-5-1zm0 4c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V16c0 .1-1.7 1-5 1s-5-.9-5-1z", desc: "主力/散户 四档资金" },
+      { id: "f10", label: "F10资料", icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm0 2l4 4h-4V4zM8 13h8v1.5H8zm0 4h8v1.5H8zm0-8h5v1.5H8z", desc: "公司/财务/筹码分布" },
     ],
   },
   {
-    name: "选股交易",
+    name: "交易工具",
+    icon: "M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z",
     items: [
-      { id: "screener", label: "选股", icon: "M4 5h3v14H4zm6.5 5h3v9h-3zM17 9h3v10h-3z" },
-      { id: "f10", label: "F10", icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm0 2l4 4h-4V4zM8 13h8v1.5H8zm0 4h8v1.5H8zm0-8h5v1.5H8z" },
-      { id: "trade", label: "模拟交易", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1c1.7.3 3 1.4 3 3.1 0 1.9-1.5 2.8-3.4 2.8-1.2 0-2.1-.4-2.6-1l1.2-1c.3.4.8.7 1.5.7.8 0 1.3-.3 1.3-.8s-.4-.8-1.5-1c-1.6-.4-3.2-1-3.2-2.9 0-1.6 1.3-2.7 3-3V5h2zm-1 11h2v2h-2z" },
-    ],
-  },
-  {
-    name: "工具",
-    items: [
-      { id: "journal", label: "日记", icon: "M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1zm3 5h8v1.5H8zm0 4h8v1.5H8zm0 4h5v1.5H8z" },
-      { id: "calendar", label: "财经日历", icon: "M7 2v2H5a2 2 0 00-2 2v13a2 2 0 002 2h14a2 2 0 002-2V6a2 0 002-2 0 00-2-2h-2V2h-2v2H9V2H7zm-2 7h14v10H5V9zm2 2v3h3v-3H7zm5 0v3h3v-3z" },
-      { id: "ipo", label: "新股解禁", icon: "M12 2l2.9 6.3 6.8.7-5 4.6 1.4 6.7L12 17l-6.1 3.3 1.4-6.7-5-4.6 6.8-.7z" },
+      { id: "screener", label: "条件选股", icon: "M4 5h3v14H4zm6.5 5h3v9h-3zM17 9h3v10h-3z", desc: "技术/基本面智能选股" },
+      { id: "trade", label: "模拟交易", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1c1.7.3 3 1.4 3 3.1 0 1.9-1.5 2.8-3.4 2.8-1.2 0-2.1-.4-2.6-1l1.2-1c.3.4.8.7 1.5.7.8 0 1.3-.3 1.3-.8s-.4-.8-1.5-1c-1.6-.4-3.2-1-3.2-2.9 0-1.6 1.3-2.7 3-3V5h2zm-1 11h2v2h-2z", desc: "虚拟资金 T+1 练盘" },
+      { id: "journal", label: "盯盘日记", icon: "M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1zm3 5h8v1.5H8zm0 4h8v1.5H8zm0 4h5v1.5H8z", desc: "交易复盘记录" },
+      { id: "calendar", label: "财经日历", icon: "M7 2v2H5a2 2 0 00-2 2v13a2 2 0 002 2h14a2 2 0 002-2V6a2 0 002-2 0 00-2-2h-2V2h-2v2H9V2H7zm-2 7h14v10H5V9zm2 2v3h3v-3H7zm5 0v3h3v-3z", desc: "休市安排/事件提醒" },
+      { id: "ipo", label: "新股解禁", icon: "M12 2l2.9 6.3 6.8.7-5 4.6 1.4 6.7L12 17l-6.1 3.3 1.4-6.7-5-4.6 6.8-.7z", desc: "新股/解禁日历" },
     ],
   },
 ];
@@ -179,51 +182,82 @@ function isMode(cards: CardId[]) {
   return a === b && a !== "";
 }
 
-// ===== Dock 联动放大（macOS Dock 感：鼠标越近、放大越多并上浮）=====
-const dockRef = ref<HTMLElement | null>(null);
-function onDockMove(e: MouseEvent) {
-  const el = dockRef.value;
-  if (!el) return;
-  const items = el.querySelectorAll<HTMLElement>(".dock-item");
-  items.forEach((it) => {
-    const r = it.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    const d = Math.abs(e.clientX - cx);
-    const t = Math.max(0, 1 - d / 115);
-    it.style.transform = `scale(${1 + t * 0.42}) translateY(${(-t * 6).toFixed(1)}px)`;
-    it.style.zIndex = t > 0.05 ? "10" : "";
-  });
+// ===== Mega 菜单：悬停分类 → 展开多列面板 =====
+const megaKey = ref<string | null>(null);
+const megaGroup = computed<DockGroup | null>(
+  () => DOCK_GROUPS.find((g) => g.name === megaKey.value) ?? null
+);
+function megaOpen(g: DockGroup) {
+  megaKey.value = g.name;
 }
-function onDockLeave() {
-  const el = dockRef.value;
-  if (!el) return;
-  el.querySelectorAll<HTMLElement>(".dock-item").forEach((it) => {
-    it.style.transform = "";
-    it.style.zIndex = "";
-  });
+function megaClose() {
+  megaKey.value = null;
+}
+function pickMega(it: DockItem) {
+  bench.toggle(it.id);
+  megaKey.value = null;
 }
 
-// ===== Dock 超宽横向滚动（滚轮转换 + 左右箭头）=====
-const dockCanL = ref(false);
-const dockCanR = ref(false);
-function updateDockArrows() {
-  const el = dockRef.value;
-  if (!el) return;
-  dockCanL.value = el.scrollLeft > 4;
-  dockCanR.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+// ===== 命令面板（Ctrl / ⌘ + K）=====
+const paletteOpen = ref(false);
+const paletteQuery = ref("");
+const pSel = ref(0);
+const pInput = ref<HTMLInputElement | null>(null);
+interface PaletteRow extends DockItem {
+  cat: string;
 }
-function onDockWheel(e: WheelEvent) {
-  const el = dockRef.value;
-  if (!el || el.scrollWidth <= el.clientWidth) return;
-  if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+const paletteAll: PaletteRow[] = DOCK_GROUPS.flatMap((g) =>
+  g.items.map((it) => ({ ...it, cat: g.name }))
+);
+const pFiltered = computed<PaletteRow[]>(() => {
+  const q = paletteQuery.value.trim().toLowerCase();
+  if (!q)
+    return paletteAll
+      .filter((r) => r.star)
+      .concat(paletteAll.filter((r) => !r.star));
+  return paletteAll.filter((r) =>
+    (r.label + r.desc + r.cat).toLowerCase().includes(q)
+  );
+});
+watch(pFiltered, () => {
+  pSel.value = 0;
+});
+function openPalette() {
+  paletteOpen.value = true;
+  paletteQuery.value = "";
+  pSel.value = 0;
+  nextTick(() => pInput.value?.focus());
+}
+function closePalette() {
+  paletteOpen.value = false;
+}
+function runPalette(r?: PaletteRow) {
+  const t = r ?? pFiltered.value[pSel.value];
+  if (!t) return;
+  bench.toggle(t.id);
+  closePalette();
+}
+function onGlobalKey(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
     e.preventDefault();
-    el.scrollLeft += e.deltaY;
+    paletteOpen.value ? closePalette() : openPalette();
+    return;
   }
-}
-function dockBy(dir: number) {
-  const el = dockRef.value;
-  if (!el) return;
-  el.scrollBy({ left: dir * Math.round(el.clientWidth * 0.65), behavior: "smooth" });
+  if (!paletteOpen.value) return;
+  const n = pFiltered.value.length;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    closePalette();
+  } else if (e.key === "ArrowDown") {
+    e.preventDefault();
+    pSel.value = Math.min(pSel.value + 1, n - 1);
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    pSel.value = Math.max(pSel.value - 1, 0);
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    runPalette();
+  }
 }
 
 // ===== 联动：选中股票 → 打开 K线卡片 =====
@@ -338,16 +372,11 @@ onMounted(async () => {
     console.error("[app] alert engine", e);
   }
 
-  // —— Dock 交互 ——
+  // —— 全局快捷键（命令面板 Ctrl/⌘ + K 等）——
   try {
-    if (dockRef.value) {
-      dockRef.value.addEventListener("wheel", onDockWheel, { passive: false });
-      dockRef.value.addEventListener("scroll", updateDockArrows);
-      window.addEventListener("resize", updateDockArrows);
-      setTimeout(updateDockArrows, 400);
-    }
+    window.addEventListener("keydown", onGlobalKey);
   } catch (e) {
-    console.error("[app] dock", e);
+    console.error("[app] hotkey", e);
   }
 
   // —— 事件监听 ——
@@ -380,6 +409,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   unlistenFns.forEach((f) => f());
   unlistenResize?.();
+  window.removeEventListener("keydown", onGlobalKey);
 });
 </script>
 
@@ -444,49 +474,68 @@ onBeforeUnmount(() => {
     <!-- 指数条 -->
     <Indices class="idx-row" />
 
-    <!-- 顶部功能 Dock（按域分组，hover 联动放大；超宽可横向滚动） -->
-    <div class="dock-wrap">
-    <nav
-      class="topdock"
-      ref="dockRef"
-      @mousemove="onDockMove"
-      @mouseleave="onDockLeave"
-    >
-      <div v-for="g in DOCK_GROUPS" :key="g.name" class="dock-grp">
-        <span class="grp-name">{{ g.name }}</span>
+    <!-- Mega 功能导航：分类标签 + 悬停展开面板 -->
+    <div class="mega-nav" @mouseleave="megaClose()">
+      <div class="mega-tabs">
         <button
-          v-for="it in g.items"
-          :key="it.id"
+          v-for="g in DOCK_GROUPS"
+          :key="g.name"
           type="button"
-          class="dock-item"
-          :class="{ on: bench.isOpen(it.id) }"
-          @click="bench.toggle(it.id)"
+          class="mega-tab"
+          :class="{ on: megaKey === g.name }"
+          @mouseenter="megaOpen(g)"
+          @focus="megaOpen(g)"
         >
-          <svg viewBox="0 0 24 24" class="dock-ic"><path fill="currentColor" :d="it.icon" /></svg>
-          <span class="dock-lb">{{ it.label }}</span>
+          <svg viewBox="0 0 24 24" class="mt-ic"><path fill="currentColor" :d="g.icon" /></svg>
+          <span>{{ g.name }}</span>
         </button>
+
+        <div class="mega-right">
+          <button class="palette-btn" type="button" @click="openPalette">
+            <svg viewBox="0 0 24 24" class="pb-ic"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 10-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1114 9.5 4.5 4.5 0 019.5 14z" /></svg>
+            <span class="pb-tx">命令</span>
+            <kbd class="pb-k">Ctrl K</kbd>
+          </button>
+          <span class="mr-sep"></span>
+          <button
+            v-for="(m, i) in MODE_NAV"
+            :key="'m' + i"
+            type="button"
+            class="layout-preset"
+            :class="{ on: isMode(m.cards) }"
+            :title="m.label + '布局'"
+            @click="bench.setMode(m.cards)"
+          >
+            <svg viewBox="0 0 24 24"><path fill="currentColor" :d="m.icon" /></svg>
+          </button>
+        </div>
       </div>
-      <div class="dock-grp mode-grp">
-        <span class="grp-name">布局</span>
-        <button
-          v-for="(m, i) in MODE_NAV"
-          :key="'m' + i"
-          type="button"
-          class="dock-item"
-          :class="{ on: isMode(m.cards) }"
-          @click="bench.setMode(m.cards)"
-        >
-          <svg viewBox="0 0 24 24" class="dock-ic"><path fill="currentColor" :d="m.icon" /></svg>
-          <span class="dock-lb">{{ m.label }}</span>
-        </button>
-      </div>
-    </nav>
-    <button class="dock-arrow l" v-show="dockCanL" type="button" tabindex="-1" @click="dockBy(-1)">
-      <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z" /></svg>
-    </button>
-    <button class="dock-arrow r" v-show="dockCanR" type="button" tabindex="-1" @click="dockBy(1)">
-      <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M8.6 16.6 10 18l6-6-6-6-1.4 1.4L13.2 12z" /></svg>
-    </button>
+
+      <Transition name="mpanel">
+        <div v-if="megaGroup" class="mega-panel" :key="megaGroup.name">
+          <div class="mp-head">
+            <h3>{{ megaGroup.name }}</h3>
+            <span>{{ megaGroup.items.length }} 个功能 · 点击打开卡片</span>
+          </div>
+          <div class="mp-grid">
+            <button
+              v-for="it in megaGroup.items"
+              :key="it.id"
+              type="button"
+              class="mp-item"
+              :class="{ on: bench.isOpen(it.id) }"
+              @click="pickMega(it)"
+            >
+              <span class="mpi-ic">
+                <svg viewBox="0 0 24 24"><path fill="currentColor" :d="it.icon" /></svg>
+              </span>
+              <span class="mpi-t">{{ it.label }}</span>
+              <span class="mpi-d">{{ it.desc }}</span>
+              <svg v-if="it.star" class="mpi-star" viewBox="0 0 24 24"><path fill="currentColor" d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
+            </button>
+          </div>
+        </div>
+      </Transition>
     </div>
 
     <!-- 工作台主区域 -->
@@ -600,6 +649,53 @@ onBeforeUnmount(() => {
     <UpdateDialog v-model:open="showUpdate" />
     <!-- 设置对话框 -->
     <SettingsDialog v-model:open="showSettings" />
+
+    <!-- 命令面板（Ctrl / ⌘ + K） -->
+    <Transition name="palette">
+      <div v-if="paletteOpen" class="palette-mask" @click="closePalette">
+        <div class="palette" @click.stop>
+          <div class="p-search">
+            <svg viewBox="0 0 24 24" class="ps-ic"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 10-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1114 9.5 4.5 4.5 0 019.5 14z" /></svg>
+            <input
+              ref="pInput"
+              v-model="paletteQuery"
+              type="text"
+              class="ps-input"
+              placeholder="搜索功能、卡片、指标…"
+              spellcheck="false"
+            />
+            <kbd class="ps-esc">ESC</kbd>
+          </div>
+          <div class="p-list">
+            <button
+              v-for="(r, i) in pFiltered.slice(0, 60)"
+              :key="r.cat + r.label"
+              type="button"
+              class="p-opt"
+              :class="{ sel: i === pSel }"
+              @mouseenter="pSel = i"
+              @click="runPalette(r)"
+            >
+              <span class="po-ic">
+                <svg viewBox="0 0 24 24"><path fill="currentColor" :d="r.icon" /></svg>
+              </span>
+              <span class="po-tx">
+                <b>{{ r.label }}</b>
+                <em>{{ r.desc }}</em>
+              </span>
+              <span class="po-cat">{{ r.cat }}</span>
+            </button>
+            <div v-if="!pFiltered.length" class="p-empty">没有匹配的功能，换个关键词试试</div>
+          </div>
+          <div class="p-foot">
+            <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
+            <span><kbd>↵</kbd> 打开</span>
+            <span class="esc"><kbd>esc</kbd> 关闭</span>
+            <span class="cnt">{{ pFiltered.length }} 个功能</span>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -641,68 +737,206 @@ onBeforeUnmount(() => {
 /* 指数条 */
 .idx-row { grid-column: 1; }
 
-/* 顶部功能 Dock */
-.topdock {
+/* ===== Mega 功能导航 ===== */
+.mega-nav {
+  position: relative;
   grid-column: 1;
-  display: flex;
-  align-items: stretch;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
-  padding: 0 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
+  z-index: 40;
 }
-.topdock::-webkit-scrollbar { display: none; }
-
-.dock-wrap { position: relative; grid-column: 1; display: flex; min-width: 0; }
-.dock-wrap .topdock { flex: 1; min-width: 0; }
-.dock-arrow {
-  position: absolute; top: 50%; transform: translateY(-50%);
-  width: 20px; height: 28px; border: 1px solid var(--border);
-  border-radius: 7px; background: rgba(14, 20, 29, 0.92);
-  color: var(--text); cursor: pointer; z-index: 12;
-  display: flex; align-items: center; justify-content: center; padding: 0;
-}
-.dock-arrow:hover { background: #1c2735; border-color: #4ea1ff; color: #4ea1ff; }
-.dock-arrow.l { left: 2px; }
-.dock-arrow.r { right: 2px; }
-.dock-grp {
+.mega-tabs {
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  height: 44px;
+  padding: 0 8px;
   gap: 2px;
-  padding: 4px 9px;
-  border-right: 1px solid var(--border);
 }
-.dock-grp:last-child { border-right: 0; }
-.mode-grp { margin-left: auto; border-right: 0; }
-.grp-name {
-  font-size: 10px;
-  color: var(--text-dim);
-  opacity: 0.65;
-  margin-right: 5px;
-  white-space: nowrap;
-}
-.dock-item {
+.mega-tab {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 8px;
+  gap: 6px;
+  padding: 0 13px;
   border: 0;
-  border-radius: 9px;
   background: transparent;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-  transform-origin: bottom center;
-  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.15s, color 0.15s;
+  position: relative;
+  transition: color 0.16s, background 0.16s;
 }
-.dock-ic { width: 15px; height: 15px; flex: none; }
-.dock-item:hover { color: var(--text); background: var(--bg-hover); }
-.dock-item:hover .dock-ic { color: #4ea1ff; }
-.dock-item.on { color: var(--accent-2); background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.dock-item.on .dock-ic { color: var(--accent-2); }
+.mt-ic { width: 15px; height: 15px; flex: none; opacity: 0.85; }
+.mega-tab:hover { color: var(--text); background: var(--bg-hover); }
+.mega-tab:hover .mt-ic { color: var(--accent-2); opacity: 1; }
+.mega-tab.on { color: var(--accent-2); }
+.mega-tab.on .mt-ic { color: var(--accent-2); opacity: 1; }
+.mega-tab.on::after {
+  content: "";
+  position: absolute; left: 12px; right: 12px; bottom: 0;
+  height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+.mega-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.palette-btn {
+  display: flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 8px 0 10px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text); font-size: 12px; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.pb-ic { width: 14px; height: 14px; color: var(--accent-2); }
+.pb-k {
+  font-family: inherit; font-size: 10px; color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px;
+}
+.palette-btn:hover { border-color: var(--accent); }
+.mr-sep { width: 1px; height: 20px; background: var(--border); margin: 0 3px; }
+.layout-preset {
+  width: 30px; height: 28px; border: 1px solid transparent; border-radius: 8px;
+  background: transparent; color: var(--text-dim); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.layout-preset svg { width: 15px; height: 15px; }
+.layout-preset:hover { color: var(--text); background: var(--bg-hover); }
+.layout-preset.on {
+  color: var(--accent-2);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* Mega 下拉面板 */
+.mega-panel {
+  position: absolute;
+  top: 100%; left: 0; right: 0;
+  background: color-mix(in srgb, var(--bg-panel) 96%, transparent);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+  padding: 12px 16px 16px;
+  z-index: 45;
+}
+.mp-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.mp-head h3 { margin: 0; font-size: 14px; color: var(--accent-2); }
+.mp-head span { font-size: 11px; color: var(--text-dim); }
+.mp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+.mp-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: var(--bg);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s, background 0.15s;
+}
+.mpi-ic {
+  grid-row: 1 / 3;
+  width: 32px; height: 32px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  color: var(--accent-2);
+}
+.mpi-ic svg { width: 17px; height: 17px; }
+.mpi-t { font-size: 12.5px; font-weight: 700; line-height: 1.2; }
+.mpi-d { font-size: 10.5px; color: var(--text-dim); line-height: 1.3; margin-top: 2px; }
+.mpi-star { position: absolute; top: 7px; right: 8px; width: 11px; height: 11px; color: var(--accent); }
+.mp-item:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  transform: translateY(-2px);
+}
+.mp-item.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
+.mp-item.on .mpi-t::after { content: " · 已开"; color: var(--accent-2); font-weight: 500; font-size: 10px; }
+
+/* Mega 面板过渡 */
+.mpanel-enter-active { transition: opacity 0.2s ease, transform 0.2s ease; transform-origin: top center; }
+.mpanel-leave-active { transition: opacity 0.14s ease, transform 0.14s ease; transform-origin: top center; }
+.mpanel-enter-from, .mpanel-leave-to { opacity: 0; transform: translateY(-8px) scaleY(0.98); }
+
+/* ===== 命令面板 ===== */
+.palette-mask {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(5, 8, 12, 0.55);
+  backdrop-filter: blur(3px);
+  display: flex; justify-content: center; align-items: flex-start;
+  padding-top: 13vh;
+}
+.palette {
+  width: min(640px, 92vw);
+  background: var(--bg-panel);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 16px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+.p-search { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.ps-ic { width: 18px; height: 18px; color: var(--accent-2); flex: none; }
+.ps-input { flex: 1; border: 0; background: transparent; color: var(--text); font-size: 15px; outline: none; }
+.ps-input::placeholder { color: var(--text-dim); }
+.ps-esc {
+  font-family: inherit; font-size: 10px; color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px;
+}
+.p-list { max-height: 46vh; overflow-y: auto; padding: 8px; }
+.p-opt {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 8px 10px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--text); text-align: left; cursor: pointer;
+}
+.po-ic {
+  width: 30px; height: 30px; flex: none; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-2);
+}
+.po-ic svg { width: 16px; height: 16px; }
+.po-tx { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.po-tx b { font-size: 13px; font-weight: 700; }
+.po-tx em {
+  font-size: 11px; color: var(--text-dim); font-style: normal;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.po-cat {
+  font-size: 10.5px; color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 5px;
+  padding: 2px 7px; white-space: nowrap;
+}
+.p-opt.sel { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.p-opt.sel .po-cat { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent-2); }
+.p-empty { padding: 30px; text-align: center; color: var(--text-dim); font-size: 12.5px; }
+.p-foot {
+  display: flex; align-items: center; gap: 16px;
+  padding: 9px 16px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-dim);
+}
+.p-foot kbd {
+  font-family: inherit; font-size: 10px; color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; margin-right: 3px;
+}
+.p-foot .cnt { margin-left: auto; }
+
+/* 命令面板过渡 */
+.palette-enter-active { transition: opacity 0.18s ease; }
+.palette-enter-active .palette { animation: paletteIn 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.palette-leave-active { transition: opacity 0.13s ease; }
+.palette-enter-from, .palette-leave-to { opacity: 0; }
+@keyframes paletteIn {
+  from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 
 /* 工作台 */
 .workspace {

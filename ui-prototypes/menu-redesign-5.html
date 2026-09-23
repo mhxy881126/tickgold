@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TickGold 菜单重设计 · 5 套方案</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2004/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%23e8c66a'/%3E%3Ctext x='32' y='44' font-size='32' font-weight='bold' text-anchor='middle' fill='%231a1405' font-family='sans-serif'%3ETG%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0a0c10; --panel:#12151c; --card:#161a22; --card2:#1b1f29;
+  --border:#262b36; --border2:#313744;
+  --gold:#e8c66a; --gold2:#c9a24a; --golddim:rgba(232,198,106,.14);
+  --text:#e8edf5; --dim:#8b94a6; --dimmer:#5d6678;
+  --red:#f25266; --green:#22b573; --blue:#4aa8ff;
+  --shadow:0 18px 50px rgba(0,0,0,.6);
+  --ff:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--ff);background:var(--bg);color:var(--text);overflow:hidden;user-select:none}
+b,strong{font-weight:700}
+svg{display:block}
+button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
+
+/* ===== 假工作台背景 ===== */
+.stage{position:fixed;inset:0;background:
+  radial-gradient(900px 500px at 70% -10%,rgba(201,162,74,.10),transparent 60%),
+  radial-gradient(700px 500px at 10% 110%,rgba(74,168,255,.06),transparent 60%),var(--bg);}
+.fakebar{position:absolute;top:0;left:0;right:0;height:46px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;padding:0 14px;background:rgba(10,12,16,.7);backdrop-filter:blur(8px)}
+.fakebar .logo{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,var(--gold),var(--gold2));
+  display:flex;align-items:center;justify-content:center;color:#1a1405;font-weight:900;font-size:13px}
+.fakebar .fname{font-weight:800;letter-spacing:.3px}
+.fakebar .winctl{margin-left:auto;display:flex;gap:4px}
+.fakebar .winctl span{width:34px;height:30px;display:flex;align-items:center;justify-content:center;color:var(--dim);border-radius:6px}
+.fakecards{position:absolute;top:62px;left:16px;right:16px;bottom:16px;display:grid;gap:12px;
+  grid-template-columns:repeat(4,1fr);grid-auto-rows:1fr;opacity:.5}
+.fakecards i{border:1px solid var(--border);border-radius:12px;background:linear-gradient(160deg,#141821,#0f1218)}
+
+/* ===== 方案切换条 ===== */
+.switcher{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:200;
+  display:flex;gap:4px;padding:5px;border-radius:14px;background:rgba(18,21,28,.92);border:1px solid var(--border2);
+  box-shadow:var(--shadow);backdrop-filter:blur(12px)}
+.switcher button{padding:9px 16px;border-radius:10px;font-size:13px;font-weight:600;color:var(--dim);white-space:nowrap;transition:.2s}
+.switcher button small{display:block;font-size:9px;font-weight:500;color:var(--dimmer);margin-top:1px}
+.switcher button.on{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#1a1405}
+.switcher button.on small{color:rgba(26,20,5,.65)}
+.switcher button:hover:not(.on){color:var(--text);background:rgba(255,255,255,.05)}
+
+/* ===== toast ===== */
+.toast{position:fixed;top:64px;left:50%;transform:translateX(-50%) translateY(-12px);z-index:300;
+  background:var(--card2);border:1px solid var(--gold2);color:var(--text);padding:10px 18px;border-radius:10px;
+  font-size:13px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:.28s}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast b{color:var(--gold)}
+
+.view{position:fixed;inset:0;z-index:100;display:none}
+.view.on{display:block}
+
+/* ============================================================
+   方案1 · 顶部 Mega Menu
+============================================================ */
+.mm{position:absolute;top:46px;left:0;right:0}
+.mm-tabs{display:flex;gap:2px;padding:6px 12px;background:rgba(13,15,21,.92);border-bottom:1px solid var(--border);backdrop-filter:blur(10px)}
+.mm-tab{display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:9px;font-size:13px;font-weight:600;color:var(--dim);transition:.18s;position:relative}
+.mm-tab svg{width:17px;height:17px}
+.mm-tab:hover,.mm-tab.on{color:var(--gold);background:var(--golddim)}
+.mm-tab.on::after{content:"";position:absolute;left:15px;right:15px;bottom:-7px;height:2px;background:var(--gold);border-radius:2px}
+.mm-panel{position:absolute;left:0;right:0;padding:18px 22px;background:rgba(15,17,24,.97);border-bottom:1px solid var(--border2);
+  box-shadow:var(--shadow);backdrop-filter:blur(18px);animation:mmdrop .24s cubic-bezier(.2,.8,.2,1)}
+@keyframes mmdrop{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+.mm-ph{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
+.mm-ph h3{font-size:15px;font-weight:800}
+.mm-ph span{font-size:11px;color:var(--dim)}
+.mm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px}
+.mm-item{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:11px;border:1px solid var(--border);
+  background:var(--card);transition:.18s;cursor:pointer;text-align:left}
+.mm-item:hover{border-color:var(--gold2);background:var(--card2);transform:translateY(-2px)}
+.mm-item .ic{width:34px;height:34px;flex-shrink:0;border-radius:9px;background:var(--golddim);display:flex;align-items:center;justify-content:center;color:var(--gold)}
+.mm-item .ic svg{width:18px;height:18px}
+.mm-item .t{font-size:13px;font-weight:700;margin-bottom:2px}
+.mm-item .d{font-size:11px;color:var(--dim);line-height:1.4}
+.mm-item .star{margin-left:auto;color:var(--gold);flex-shrink:0}
+
+/* ============================================================
+   方案2 · 全屏启动台 Launchpad
+============================================================ */
+.lp{background:rgba(8,9,13,.82);backdrop-filter:blur(26px) saturate(1.2);display:flex;flex-direction:column;animation:fadelp .3s}
+@keyframes fadelp{from{opacity:0}to{opacity:1}}
+.lp-top{display:flex;align-items:center;gap:14px;padding:26px 40px 18px}
+.lp-search{flex:1;max-width:560px;margin:0 auto;display:flex;align-items:center;gap:11px;background:var(--card);
+  border:1px solid var(--border2);border-radius:13px;padding:13px 18px}
+.lp-search:focus-within{border-color:var(--gold2);box-shadow:0 0 0 3px var(--golddim)}
+.lp-search svg{width:18px;height:18px;color:var(--dim)}
+.lp-search input{flex:1;background:none;border:0;outline:none;color:var(--text);font-size:15px;font-family:inherit}
+.lp-search input::placeholder{color:var(--dimmer)}
+.lp-search kbd{font-size:11px;color:var(--dim);border:1px solid var(--border2);border-radius:5px;padding:2px 7px}
+.lp-body{flex:1;min-height:0;display:grid;grid-template-columns:218px 1fr;gap:0}
+.lp-side{padding:10px 14px;overflow-y:auto;border-right:1px solid var(--border)}
+.lp-cat{display:flex;align-items:center;gap:11px;width:100%;padding:11px 13px;border-radius:10px;font-size:13px;font-weight:600;color:var(--dim);transition:.16s;text-align:left;margin-bottom:2px}
+.lp-cat svg{width:17px;height:17px}
+.lp-cat em{margin-left:auto;font-style:normal;font-size:11px;color:var(--dimmer)}
+.lp-cat:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.lp-cat.on{color:var(--gold);background:var(--golddim)}
+.lp-cat.on em{color:var(--gold2)}
+.lp-main{padding:18px 26px;overflow-y:auto}
+.lp-ch{font-size:12px;font-weight:700;color:var(--dim);margin:4px 4px 12px;letter-spacing:.5px}
+.lp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px}
+.lp-app{display:flex;flex-direction:column;align-items:center;gap:9px;padding:20px 12px 16px;border-radius:15px;
+  border:1px solid transparent;background:transparent;transition:.18s;text-align:center}
+.lp-app:hover{background:var(--card);border-color:var(--border);transform:translateY(-3px)}
+.lp-app .aic{width:52px;height:52px;border-radius:14px;background:linear-gradient(150deg,var(--card2),#10131a);
+  border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;color:var(--gold);
+  box-shadow:0 8px 18px rgba(0,0,0,.4)}
+.lp-app .aic svg{width:25px;height:25px}
+.lp-app .an{font-size:12.5px;font-weight:600}
+.lp-app .ad{font-size:10.5px;color:var(--dimmer);line-height:1.35;margin-top:-4px}
+.lp-empty{grid-column:1/-1;text-align:center;color:var(--dim);padding:60px;font-size:13px}
+.lp-foot{padding:14px 40px;border-top:1px solid var(--border);display:flex;align-items:center;gap:18px;font-size:11.5px;color:var(--dim)}
+.lp-foot .rec{display:flex;gap:8px;align-items:center}
+.lp-foot .rec b{color:var(--golddim);color:var(--gold2);font-weight:700}
+.lp-foot .hint{margin-left:auto}
+
+/* ============================================================
+   方案3 · 命令面板 Command Palette
+============================================================ */
+.cp{display:flex;align-items:flex-start;justify-content:center;padding:11vh 20px 20px;background:rgba(6,7,10,.5)}
+.cp-box{width:100%;max-width:640px;background:rgba(17,19,26,.98);border:1px solid var(--border2);border-radius:16px;
+  box-shadow:var(--shadow);overflow:hidden;animation:cpin .26s cubic-bezier(.2,.9,.25,1);backdrop-filter:blur(20px)}
+@keyframes cpin{from{opacity:0;transform:scale(.96) translateY(-10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.cp-search{display:flex;align-items:center;gap:12px;padding:17px 20px;border-bottom:1px solid var(--border)}
+.cp-search svg{width:19px;height:19px;color:var(--gold)}
+.cp-search input{flex:1;background:none;border:0;outline:none;font-size:16px;color:var(--text);font-family:inherit}
+.cp-search input::placeholder{color:var(--dimmer)}
+.cp-search kbd{font-size:11px;color:var(--dim);border:1px solid var(--border2);border-radius:5px;padding:3px 8px}
+.cp-list{max-height:52vh;overflow-y:auto;padding:8px}
+.cp-glabel{font-size:10.5px;font-weight:700;color:var(--dimmer);padding:10px 12px 5px;letter-spacing:.6px}
+.cp-opt{display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;border-radius:10px;font-size:13.5px;text-align:left;transition:.12s}
+.cp-opt .ic{width:30px;height:30px;border-radius:8px;background:var(--golddim);display:flex;align-items:center;justify-content:center;color:var(--gold);flex-shrink:0}
+.cp-opt .ic svg{width:16px;height:16px}
+.cp-opt .nm{font-weight:600}
+.cp-opt .ds{font-size:11px;color:var(--dimmer)}
+.cp-opt .cat{margin-left:auto;font-size:10.5px;color:var(--dimmer);flex-shrink:0}
+.cp-opt:hover,.cp-opt.sel{background:var(--golddim)}
+.cp-opt:hover .nm,.cp-opt.sel .nm{color:var(--gold)}
+.cp-empty{padding:40px;text-align:center;color:var(--dim);font-size:13px}
+.cp-foot{display:flex;gap:16px;padding:11px 18px;border-top:1px solid var(--border);font-size:11px;color:var(--dimmer)}
+.cp-foot span{display:flex;gap:5px;align-items:center}
+.cp-foot kbd{border:1px solid var(--border2);border-radius:4px;padding:1px 6px;color:var(--dim)}
+.cp-foot .right{margin-left:auto}
+
+/* ============================================================
+   方案4 · 左侧 Icon Rail 手风琴
+============================================================ */
+.rail{position:absolute;top:46px;left:0;bottom:0;display:flex}
+.rail-bar{width:66px;background:rgba(13,15,21,.95);border-right:1px solid var(--border);backdrop-filter:blur(10px);
+  display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:6px}
+.rail-ico{width:46px;height:46px;border-radius:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:2px;color:var(--dim);transition:.18s;position:relative}
+.rail-ico svg{width:20px;height:20px}
+.rail-ico small{font-size:8.5px;font-weight:600}
+.rail-ico:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.rail-ico.on{color:var(--gold);background:var(--golddim)}
+.rail-ico.on::before{content:"";position:absolute;left:-12px;top:11px;bottom:11px;width:3px;border-radius:2px;background:var(--gold)}
+.rail-fly{width:248px;background:rgba(15,17,24,.97);border-right:1px solid var(--border2);box-shadow:var(--shadow);
+  backdrop-filter:blur(16px);padding:14px 12px;animation:flyin .22s cubic-bezier(.2,.8,.2,1);overflow-y:auto}
+@keyframes flyin{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:translateX(0)}}
+.rail-fh{display:flex;align-items:center;gap:9px;padding:4px 8px 12px}
+.rail-fh svg{width:17px;height:17px;color:var(--gold)}
+.rail-fh b{font-size:14px;font-weight:800}
+.rail-fh em{margin-left:auto;font-style:normal;font-size:11px;color:var(--dimmer)}
+.rail-fi{display:flex;align-items:center;gap:11px;width:100%;padding:10px;border-radius:10px;text-align:left;transition:.14s;margin-bottom:2px}
+.rail-fi .ic{width:32px;height:32px;border-radius:9px;background:var(--card2);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;color:var(--gold);flex-shrink:0}
+.rail-fi .ic svg{width:16px;height:16px}
+.rail-fi .nm{font-size:13px;font-weight:600}
+.rail-fi .ds{font-size:10.5px;color:var(--dimmer)}
+.rail-fi:hover{background:var(--golddim)}
+.rail-fi:hover .nm{color:var(--gold)}
+
+/* ============================================================
+   方案5 · 径向环形菜单
+============================================================ */
+.rad{display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at center,rgba(201,162,74,.05),transparent 55%)}
+.rad-wrap{position:relative;width:560px;height:560px}
+.rad-ring{position:absolute;inset:0;border-radius:50%;border:1px dashed rgba(232,198,106,.25);animation:spin 60s linear infinite}
+.rad-ring.r2{inset:70px;border-style:solid;border-color:rgba(232,198,106,.12)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.rad-core{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:86px;height:86px;border-radius:50%;
+  background:linear-gradient(145deg,var(--gold),var(--gold2));border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  color:#1a1405;font-weight:900;font-size:15px;box-shadow:0 0 0 8px rgba(232,198,106,.12),0 16px 40px rgba(0,0,0,.5);z-index:5}
+.rad-core small{font-size:9px;font-weight:700;opacity:.7}
+.rad-seg{position:absolute;left:50%;top:50%;width:0;height:0;z-index:3}
+.rad-node{position:absolute;display:flex;flex-direction:column;align-items:center;gap:5px;width:96px;transform:translate(-50%,-50%);
+  padding:0;animation:radin .4s cubic-bezier(.2,.9,.25,1) both}
+@keyframes radin{from{opacity:0;transform:translate(-50%,-50%) scale(.4)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+.rad-node .nic{width:50px;height:50px;border-radius:14px;background:rgba(18,21,28,.95);border:1px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;color:var(--gold);box-shadow:0 8px 20px rgba(0,0,0,.45);transition:.18s}
+.rad-node .nic svg{width:23px;height:23px}
+.rad-node:hover .nic{background:linear-gradient(145deg,var(--gold),var(--gold2));color:#1a1405;border-color:var(--gold);transform:scale(1.08)}
+.rad-node .nl{font-size:11px;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,.8)}
+.rad-node .nd{font-size:9.5px;color:var(--dim);text-align:center;line-height:1.3;margin-top:-2px}
+.rad-catlabel{position:absolute;transform:translate(-50%,-50%);font-size:11px;font-weight:800;color:var(--gold2);
+  letter-spacing:1px;background:rgba(10,12,16,.8);padding:3px 10px;border-radius:20px;border:1px solid var(--border)}
+.rad-hint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:11.5px;color:var(--dim)}
+
+/* 滚动条 */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:#2c323f;border-radius:4px}
+::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="fakebar">
+    <div class="logo">TG</div><div class="fname">TickGold</div>
+    <div class="winctl"><span>—</span><span>▢</span><span>✕</span></div>
+  </div>
+  <div class="fakecards" id="fakecards"></div>
+</div>
+
+<div class="view" id="view"></div>
+<div class="toast" id="toast"></div>
+
+<div class="switcher" id="switcher"></div>
+
+<script>
+/* ============== 数据：6 大域 / 27 项 ============== */
+const P = d => `<svg viewBox="0 0 24 24" fill="currentColor"><path d="${d}"/></svg>`;
+const CATS=[
+ {key:'market',name:'大盘总览',icon:'M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z',items:[
+   {id:'watch',name:'自选',desc:'我的股票分组实时行情',icon:'M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',star:1},
+   {id:'rank',name:'榜单',desc:'全市场涨幅/跌幅/成交额排名',icon:'M3 5h18v2H3zm0 4h18v2H3zm0 4h12v2H3zm0 4h12v2H3z',star:1},
+   {id:'breadth',name:'市场宽度',desc:'上涨/下跌家数分时曲线',icon:'M3 12h4l3-8 4 16 3-8h4'},
+   {id:'dist',name:'涨跌分布',desc:'涨跌幅十档家数分布',icon:'M3 21h2v-7H3zm4 0h2V9H7zm4 0h2V5h-2zm4 0h2v-9h-2zm4 0h2V11h-2z'},
+ ]},
+ {key:'modes',name:'盯盘模式',icon:'M12 2A10 10 0 1 0 22 12h-2A8 8 0 1 1 12 4zM12 6v6l5 2-1 1.7L11 13V6z',items:[
+   {id:'radarsweep',name:'雷达扫盘',desc:'圆形雷达三栏全屏扫盘',icon:'M12 2A10 10 0 1 0 22 12h-2A8 8 0 1 1 12 4zM12 6v6l5 2-1 1.7L11 13V6z',star:1},
+   {id:'reviewtimeline',name:'复盘时间线',desc:'全天异动时间线+当日总结',icon:'M12 3a2 2 0 100 4 2 2 0 000-4zm0 7a2 2 0 100 4 2 2 0 000-4zm0 7a2 2 0 100 4 2 2 0 000-4z'},
+   {id:'multigrid',name:'多股同列',desc:'自选9只 分时/K线/盘口同屏',icon:'M3 3h5v5H3zm6.5 0h5v5h-5zM16 3h5v5h-5zM3 9.5h5v5H3zm6.5 0h5v5h-5zM16 9.5h5v5h-5zM3 16h5v5H3zm6.5 0h5v5h-5zM16 16h5v5h-5z'},
+   {id:'heatmatrix',name:'热力矩阵',desc:'全市场板块热力矩阵',icon:'M3 4h7v4H3zm9 0h9v4h-9zM3 10h9v4H3zm11 0h7v4h-7zM3 16h7v4H3zm9 0h9v4h-9z'},
+   {id:'bentofocus',name:'Bento聚焦',desc:'6卡不规则总览 点按聚焦',icon:'M3 3h8v5H3zm9 0h9v9h-9zM3 9h5v12H3zm6 6h12v6H9z'},
+   {id:'telegraph',name:'电报墙',desc:'三列异动电报实时滚动',icon:'M4 11a8 8 0 0116 0M7 11a5 5 0 0110 0M10 11a2 2 0 014 0M12 13v8'},
+ ]},
+ {key:'pulse',name:'情绪异动',icon:'M13 2 3 14h7l-1 8 10-12h-7l1-8z',items:[
+   {id:'radar',name:'涨停雷达',desc:'涨停/炸板/连板/情绪统计',icon:'M12 2a10 10 0 100 20 10 10 0 000-20zm0 4a6 6 0 100 12 6 6 0 000-12zm0 3a3 3 0 100 6 3 3 0 000-6z',star:1},
+   {id:'spider',name:'短线精灵',desc:'活跃股盘中实时异动',icon:'M13 2 3 14h7l-1 8 10-12h-7l1-8z'},
+   {id:'alert',name:'预警',desc:'价格/涨跌幅触发推送',icon:'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C8.63 5.36 7 7.92 7 11v5l-2 2v1h14v-1l-2-2z'},
+   {id:'news',name:'快讯',desc:'7x24 全球财经直播',icon:'M5 3h14a2 2 0 012 2v11a2 2 0 01-2 2H8l-4 3V5a2 2 0 011-2z'},
+ ]},
+ {key:'sector',name:'板块题材',icon:'M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z',items:[
+   {id:'sector',name:'板块行情',desc:'行业/概念板块排名',icon:'M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z'},
+   {id:'sectorheat',name:'板块热力图',desc:'板块 treemap 缩放平移',icon:'M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z'},
+   {id:'sectorevent',name:'板块异动',desc:'板块拉升/跳水捕捉',icon:'M3 12h4l3-8 4 16 3-8h4'},
+   {id:'theme',name:'题材轮动',desc:'热门概念标签云',icon:'M12 5l7 3.5-7 3.5L5 8.5 12 5zM5 12l7 3.5L19 12M5 15.5l7 3.5 7-3.5'},
+ ]},
+ {key:'stock',name:'个股行情',icon:'M6 3h2v4H6zm0 14h2v4H6zM5 8h4v8H5zm11-9h2v3h-2zm0 12h2v5h-2zm-1-7h4v7h-4z',items:[
+   {id:'chart',name:'K线/分时',desc:'日周月K + 当日分时',icon:'M6 3h2v4H6zm0 14h2v4H6zM5 8h4v8H5zm11-9h2v3h-2zm0 12h2v5h-2zm-1-7h4v7h-4z',star:1},
+   {id:'order',name:'五档盘口',desc:'买卖五档+今日概览',icon:'M5 3h14v18H5zm2 4h10v2H7zm0 4h10v2H7zm0 4h7v2H7z'},
+   {id:'fundflow',name:'资金流向',desc:'主力/散户 四档资金',icon:'M12 3c-4 0-7 1.3-7 3v12c0 1.7 3 3 7 3s7-1.3 7-3V6c0-1.7-3-3-7-3zm0 2c3.3 0 5 .9 5 1s-1.7 1-5 1-5-.9-5-1 1.7-1 5 1zm-5 4.5c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V12c0 .1-1.7 1-5 1s-5-.9-5-1zm0 4c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V16c0 .1-1.7 1-5 1s-5-.9-5-1z'},
+   {id:'f10',name:'F10资料',desc:'公司/财务/筹码分布',icon:'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm0 2l4 4h-4V4zM8 13h8v1.5H8zm0 4h8v1.5H8zm0-8h5v1.5H8z'},
+ ]},
+ {key:'tools',name:'交易工具',icon:'M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z',items:[
+   {id:'screener',name:'条件选股',desc:'技术/基本面智能选股',icon:'M4 5h3v14H4zm6.5 5h3v9h-3zM17 9h3v10h-3z'},
+   {id:'trade',name:'模拟交易',desc:'虚拟资金 T+1 练盘',icon:'M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1c1.7.3 3 1.4 3 3.1 0 1.9-1.5 2.8-3.4 2.8-1.2 0-2.1-.4-2.6-1l1.2-1c.3.4.8.7 1.5.7.8 0 1.3-.3 1.3-.8s-.4-.8-1.5-1c-1.6-.4-3.2-1-3.2-2.9 0-1.6 1.3-2.7 3-3V5h2zm-1 11h2v2h-2z'},
+   {id:'journal',name:'盯盘日记',desc:'交易复盘记录',icon:'M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1zm3 5h8v1.5H8zm0 4h8v1.5H8zm0 4h5v1.5H8z'},
+   {id:'calendar',name:'财经日历',desc:'休市安排/事件提醒',icon:'M7 2v2H5a2 2 0 00-2 2v13a2 2 0 002 2h14a2 2 0 002-2V6a2 0 002-2 0 00-2-2h-2V2h-2v2H9V2H7zm-2 7h14v10H5V9zm2 2v3h3v-3H7zm5 0v3h3v-3z'},
+   {id:'ipo',name:'新股解禁',desc:'新股/解禁日历',icon:'M12 2l2.9 6.3 6.8.7-5 4.6 1.4 6.7L12 17l-6.1 3.3 1.4-6.7-5-4.6 6.8-.7z'},
+ ]},
+];
+const ALL=CATS.flatMap(c=>c.items.map(it=>({...it,cat:c.name,ckey:c.key})));
+const STAR=ALL.filter(i=>i.star);
+
+/* ===== toast ===== */
+const toastEl=document.getElementById('toast');let toastT;
+function toast(name){
+  toastEl.innerHTML=`打开 <b>${name}</b>`;
+  toastEl.classList.add('show');clearTimeout(toastT);
+  toastT=setTimeout(()=>toastEl.classList.remove('show'),1400);
+}
+/* fake cards */
+const fc=document.getElementById('fakecards');
+for(let i=0;i<8;i++)fc.appendChild(document.createElement('i'));
+
+/* ===== 方案切换 ===== */
+const SCHEMES=[
+ {k:'mega',n:'Mega 菜单',s:'顶部悬停多列'},
+ {k:'lp',n:'启动台',s:'全屏分类网格'},
+ {k:'cp',n:'命令面板',s:'Cmd+K 搜索'},
+ {k:'rail',n:'图标侧栏',s:'左栏手风琴'},
+ {k:'rad',n:'环形菜单',s:'径向扇形展开'},
+];
+const sw=document.getElementById('switcher'),view=document.getElementById('view');
+SCHEMES.forEach(s=>{
+  const b=document.createElement('button');
+  b.innerHTML=`${s.n}<small>${s.s}</small>`;
+  b.onclick=()=>go(s.k,b);sw.appendChild(b);
+});
+function go(k,btn){
+  [...sw.children].forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');view.classList.add('on');
+  ({mega:rMega,lp:rLp,cp:rCp,rail:rRail,rad:rRad})[k]();
+}
+
+/* ===== 方案1 · Mega Menu ===== */
+function rMega(){
+  view.innerHTML=`<div class="mm"><div class="mm-tabs" id="mmTabs"></div>
+    <div class="mm-panel" id="mmPanel"></div></div>`;
+  const tabs=document.getElementById('mmTabs'),panel=document.getElementById('mmPanel');
+  const starP=P('M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z');
+  CATS.forEach((c,i)=>{
+    const t=document.createElement('button');
+    t.className='mm-tab'+(i===0?' on':'');t.innerHTML=P(c.icon)+c.name;
+    const sel=()=>{[...tabs.children].forEach(x=>x.classList.remove('on'));t.classList.add('on');show(c);};
+    t.onmouseenter=sel;t.onclick=sel;tabs.appendChild(t);
+  });
+  function show(c){
+    panel.innerHTML=`<div class="mm-ph"><h3>${c.name}</h3>
+      <span>${c.items.length} 个功能 · 悬停顶部分类切换，点击打开</span></div>
+      <div class="mm-grid">${c.items.map(it=>`
+        <button class="mm-item">
+          <span class="ic">${P(it.icon)}</span>
+          <span><div class="t">${it.name}</div><div class="d">${it.desc}</div></span>
+          ${it.star?`<span class="star">${starP}</span>`:''}
+        </button>`).join('')}</div>`;
+    panel.querySelectorAll('.mm-item').forEach((b,i)=>b.onclick=()=>toast(c.items[i].name));
+  }
+  show(CATS[0]);
+}
+
+/* ===== 方案2 · Launchpad ===== */
+function rLp(){
+  view.innerHTML=`<div class="lp">
+    <div class="lp-top"><div class="lp-search">
+      ${P('M15.5 14h-.79l-.28-.27a6.5 6.5 0 10-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1114 9.5 4.5 4.5 0 019.5 14z')}
+      <input id="lpIn" placeholder="搜索功能、卡片、指标…"><kbd>esc</kbd></div></div>
+    <div class="lp-body"><div class="lp-side" id="lpSide"></div>
+      <div class="lp-main" id="lpMain"></div></div>
+    <div class="lp-foot"><span class="rec">常用：${STAR.slice(0,3).map(s=>`<b>${s.name}</b>`).join('')}</span>
+      <span class="hint">点左侧分类浏览 · 输入关键字实时过滤</span></div></div>`;
+  const side=document.getElementById('lpSide'),main=document.getElementById('lpMain'),inp=document.getElementById('lpIn');
+  const cats=[{key:'__all',name:'全部',items:ALL,icon:'M4 6h16M4 12h16M4 18h16'},...CATS];
+  let cur='__all';
+  cats.forEach(c=>{
+    const b=document.createElement('button');
+    b.className='lp-cat'+(c.key==='__all'?' on':'');
+    b.innerHTML=P(c.icon)+c.name+`<em>${c.items.length}</em>`;
+    b.onclick=()=>{cur=c.key;[...side.children].forEach(x=>x.classList.remove('on'));b.classList.add('on');draw();};
+    side.appendChild(b);
+  });
+  function draw(){
+    const q=inp.value.trim().toLowerCase();
+    let list=cur==='__all'?ALL:CATS.find(c=>c.key===cur).items;
+    if(q)list=list.filter(it=>(it.name+it.desc).toLowerCase().includes(q));
+    const title=q?`搜索 “${inp.value}”`:(cur==='__all'?'全部功能':CATS.find(c=>c.key===cur).name);
+    main.innerHTML=`<div class="lp-ch">${title} · ${list.length} 项</div>
+      <div class="lp-grid">${list.length?list.map(it=>`
+        <button class="lp-app"><span class="aic">${P(it.icon)}</span>
+          <span class="an">${it.name}</span><span class="ad">${it.desc}</span></button>`).join('')
+        :'<div class="lp-empty">没有匹配的功能</div>'}</div>`;
+    main.querySelectorAll('.lp-app').forEach((b,i)=>b.onclick=()=>toast(list[i].name));
+  }
+  inp.oninput=draw;inp.focus();draw();
+}
+
+/* ===== 方案3 · Command Palette ===== */
+function rCp(){
+  view.innerHTML=`<div class="cp"><div class="cp-box">
+    <div class="cp-search">${P('M13 2 3 14h7l-1 8 10-12h-7l1-8z')}
+      <input id="cpIn" placeholder="输入功能或关键字，如 涨停、资金、K线…"><kbd>esc</kbd></div>
+    <div class="cp-list" id="cpList"></div>
+    <div class="cp-foot"><span><kbd>↑</kbd><kbd>↓</kbd> 选择</span><span><kbd>↵</kbd> 打开</span>
+      <span class="right">共 ${ALL.length} 个功能</span></div></div></div>`;
+  const inp=document.getElementById('cpIn'),list=document.getElementById('cpList');
+  let sel=0,rows=[];
+  function build(){
+    const q=inp.value.trim().toLowerCase();
+    rows=q?ALL.filter(it=>(it.name+it.desc+it.cat).toLowerCase().includes(q))
+      :[...STAR,...ALL.filter(i=>!i.star)];
+    sel=0;render();
+  }
+  function render(){
+    if(!rows.length){list.innerHTML=`<div class="cp-empty">没有匹配 “${inp.value}” 的功能</div>`;return;}
+    let html='',last=null;
+    rows.slice(0,60).forEach((it,i)=>{
+      if(it.cat!==last){html+=`<div class="cp-glabel">${it.cat}</div>`;last=it.cat;}
+      html+=`<button class="cp-opt${i===sel?' sel':''}" data-i="${i}">
+        <span class="ic">${P(it.icon)}</span>
+        <span><span class="nm">${it.name}</span> <span class="ds">${it.desc}</span></span>
+        <span class="cat">${it.cat}</span></button>`;
+    });
+    list.innerHTML=html;
+    list.querySelectorAll('.cp-opt').forEach(b=>{
+      b.onmouseenter=()=>{sel=+b.dataset.i;[...list.querySelectorAll('.cp-opt')].forEach(x=>x.classList.remove('sel'));b.classList.add('sel');};
+      b.onclick=()=>toast(rows[+b.dataset.i].name);
+    });
+  }
+  inp.oninput=build;
+  inp.onkeydown=e=>{
+    const n=Math.min(rows.length,60);
+    if(e.key==='ArrowDown'){e.preventDefault();sel=Math.min(sel+1,n-1);render();}
+    if(e.key==='ArrowUp'){e.preventDefault();sel=Math.max(sel-1,0);render();}
+    if(e.key==='Enter'&&rows[sel]){e.preventDefault();toast(rows[sel].name);}
+  };
+  inp.focus();build();
+}
+
+/* ===== 方案4 · Icon Rail ===== */
+function rRail(){
+  view.innerHTML=`<div class="rail"><div class="rail-bar" id="railBar"></div>
+    <div class="rail-fly" id="railFly"></div></div>`;
+  const bar=document.getElementById('railBar'),fly=document.getElementById('railFly');
+  CATS.forEach((c,i)=>{
+    const b=document.createElement('button');
+    b.className='rail-ico'+(i===0?' on':'');
+    b.innerHTML=P(c.icon)+`<small>${c.name.slice(0,4)}</small>`;
+    const sel=()=>{[...bar.children].forEach(x=>x.classList.remove('on'));b.classList.add('on');show(c);};
+    b.onclick=sel;b.onmouseenter=sel;bar.appendChild(b);
+  });
+  function show(c){
+    fly.innerHTML=`<div class="rail-fh">${P(c.icon)}<b>${c.name}</b><em>${c.items.length}</em></div>`+
+      c.items.map(it=>`<button class="rail-fi"><span class="ic">${P(it.icon)}</span>
+        <span><div class="nm">${it.name}</div><div class="ds">${it.desc}</div></span></button>`).join('');
+    fly.querySelectorAll('.rail-fi').forEach((b,i)=>b.onclick=()=>toast(c.items[i].name));
+  }
+  show(CATS[0]);
+}
+
+/* ===== 方案5 · Radial Menu ===== */
+function rRad(){
+  view.innerHTML=`<div class="rad"><div class="rad-wrap" id="radWrap">
+      <div class="rad-ring"></div><div class="rad-ring r2"></div>
+      <button class="rad-core">TG<small>功能中枢</small></button></div>
+    <div class="rad-hint">点内圈分类 → 外圈展开该类功能 → 点功能卡片打开</div></div>`;
+  const wrap=document.getElementById('radWrap');
+  const R1=168,R2=242,C=280;
+  const itemsLayer=document.createElement('div');
+  itemsLayer.style.cssText='position:absolute;inset:0';
+  CATS.forEach((c,i)=>{
+    const ang=(-90+i*60)*Math.PI/180;
+    const n=document.createElement('button');
+    n.className='rad-node';
+    n.style.left=(C+R1*Math.cos(ang))+'px';n.style.top=(C+R1*Math.sin(ang))+'px';
+    n.style.animationDelay=(i*.05)+'s';
+    n.innerHTML=`<span class="nic">${P(c.icon)}</span><span class="nl">${c.name}</span>`;
+    n.onclick=()=>drawItems(i);wrap.appendChild(n);
+  });
+  wrap.appendChild(itemsLayer);
+  function drawItems(active){
+    const c=CATS[active],base=-90+active*60;
+    const spread=Math.max(21,Math.min(26,120/Math.max(c.items.length,1)));
+    itemsLayer.innerHTML='';
+    c.items.forEach((it,j)=>{
+      const ang=(base+(j-(c.items.length-1)/2)*spread)*Math.PI/180;
+      const n=document.createElement('button');
+      n.className='rad-node';
+      n.style.left=(C+R2*Math.cos(ang))+'px';n.style.top=(C+R2*Math.sin(ang))+'px';
+      n.innerHTML=`<span class="nic">${P(it.icon)}</span><span class="nl">${it.name}</span>
+        <span class="nd">${it.desc}</span>`;
+      n.onclick=e=>{e.stopPropagation();toast(it.name);};
+      itemsLayer.appendChild(n);
+    });
+  }
+  drawItems(0);
+}
+
+/* ===== 初始化：默认方案1 ===== */
+go('mega',sw.children[0]);
+</script>
+</body>
+</html>
