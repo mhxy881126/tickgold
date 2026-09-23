@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TickGold 盯盘总览驾驶舱 · 5 款布局</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230a0e15'/><path d='M7 20l5-6 4 4 6-9' stroke='%23d4af37' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<style>
+  :root{
+    --bg:#080b11;--panel:#0e141d;--panel2:#111927;--line:#1b2433;--line2:#222d40;
+    --t:#e9eef6;--m:#8b97a8;--dim:#5d6878;
+    --up:#f23645;--up2:#ff6a72;--dn:#08c98a;--dn2:#2fe6a6;--flat:#8b97a8;
+    --gold:#d4af37;--gold2:#e8c96a;--gold3:#b8941f;--blue:#4ea1ff;--purple:#b07cff;
+    --mono:'SF Mono',ui-monospace,'Cascadia Code',Consolas,'Courier New',monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{background:radial-gradient(1200px 700px at 50% -10%,#101726 0%,var(--bg) 55%);color:var(--t);
+    font-family:'PingFang SC','Microsoft YaHei',-apple-system,'Segoe UI',sans-serif;min-height:100%}
+  body{padding:34px 26px 60px}
+  .wrap{max-width:1420px;margin:0 auto}
+  .kicker{display:inline-block;margin:0 auto;font-size:10.5px;letter-spacing:3px;color:var(--gold2);
+    border:1px solid var(--gold3);border-radius:20px;padding:5px 15px;background:rgba(212,175,55,.06)}
+  h1{text-align:center;font-size:30px;margin:16px 0 8px;font-weight:800;letter-spacing:.5px}
+  h1 .g{background:linear-gradient(90deg,var(--gold2),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{text-align:center;color:var(--m);font-size:13px;margin-bottom:22px}
+  #tabs{display:flex;gap:9px;justify-content:center;flex-wrap:wrap;margin-bottom:20px}
+  .tab{background:var(--panel);border:1px solid var(--line);color:var(--m);font-size:12.5px;padding:9px 16px;
+    border-radius:10px;cursor:pointer;transition:.2s;font-weight:600}
+  .tab b{color:var(--dim);font-family:var(--mono);margin-right:6px;font-weight:600}
+  .tab:hover{border-color:var(--gold3);color:var(--t);transform:translateY(-1px)}
+  .tab.active{background:linear-gradient(180deg,rgba(212,175,55,.16),rgba(212,175,55,.06));
+    border-color:var(--gold);color:var(--gold2);box-shadow:0 6px 22px -8px rgba(212,175,55,.5)}
+
+  .mock{display:none}
+  .mock.active{display:block;animation:fadein .45s ease}
+  @keyframes fadein{from{opacity:0;transform:translateY(10px) scale(.99)}to{opacity:1;transform:none}}
+
+  /* 应用窗口 */
+  .stage{background:var(--bg);border:1px solid var(--line2);border-radius:14px;overflow:hidden;
+    box-shadow:0 40px 90px -30px #000,0 0 0 1px rgba(255,255,255,.02)}
+  .win-bar{display:flex;align-items:center;gap:7px;padding:10px 14px;background:#0b111a;border-bottom:1px solid var(--line);flex:none}
+  .win-bar i{width:11px;height:11px;border-radius:50%;display:block}
+  .win-bar .wt{margin-left:10px;font-size:11px;color:var(--dim);font-weight:600}
+  .win-bar .live{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--m)}
+  .live .dot{width:7px;height:7px;border-radius:50%;background:var(--up);box-shadow:0 0 9px var(--up);animation:pl 1.6s infinite}
+  @keyframes pl{50%{opacity:.35}}
+  .stage-bd{height:660px;display:flex;flex-direction:column;overflow:hidden}
+
+  /* 通用卡片 */
+  .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);
+    border-radius:11px;display:flex;flex-direction:column;min-height:0;min-width:0;position:relative;overflow:hidden}
+  .card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
+    background:linear-gradient(90deg,transparent,rgba(232,201,106,.5),transparent)}
+  .card-hd{display:flex;align-items:center;gap:7px;padding:9px 12px;border-bottom:1px solid var(--line);
+    font-size:12px;font-weight:700;flex:none;color:var(--t)}
+  .card-hd .ic{width:14px;height:14px;color:var(--gold2);flex:none}
+  .card-hd .tag{margin-left:auto;font-size:9.5px;color:var(--dim);font-weight:500;font-family:var(--mono)}
+  .card-hd .mini-tabs{display:flex;gap:4px;margin-left:auto}
+  .card-hd .mini-tabs span{font-size:10px;color:var(--dim);padding:2px 8px;border-radius:5px;cursor:pointer;font-weight:600}
+  .card-hd .mini-tabs span.on{background:rgba(212,175,55,.15);color:var(--gold2)}
+  .card-bd{flex:1;min-height:0;overflow:auto;padding:10px 12px}
+  .card-bd.np{padding:0}
+  .card-bd.flush{padding:0;overflow:hidden}
+
+  /* 指数条 */
+  .idx-strip{display:flex;flex:none;background:#0b111a;border-bottom:1px solid var(--line)}
+  .idx{flex:1;padding:9px 12px;border-right:1px solid var(--line);min-width:0}
+  .idx:last-child{border-right:0}
+  .idx .nm{display:flex;justify-content:space-between;font-size:10.5px;color:var(--m);margin-bottom:3px}
+  .idx .vl{font-size:17px;font-weight:800;font-family:var(--mono)}
+  .up{color:var(--up2)} .dn{color:var(--dn2)} .flat{color:var(--flat)}
+
+  /* 情绪指标 */
+  .sent-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .metric{background:#0b111a;border:1px solid var(--line);border-radius:9px;padding:9px 10px}
+  .metric .lb{font-size:10px;color:var(--dim);margin-bottom:4px}
+  .metric .vl{font-size:19px;font-weight:800;font-family:var(--mono);line-height:1}
+  .metric .sub2{font-size:9.5px;color:var(--dim);margin-top:3px;font-family:var(--mono)}
+  .ring-wrap{display:flex;align-items:center;gap:12px}
+  .ring{width:74px;height:74px;border-radius:50%;flex:none;display:grid;place-items:center;position:relative}
+  .ring::after{content:'';position:absolute;inset:8px;border-radius:50%;background:var(--panel)}
+  .ring .rt{position:relative;z-index:1;text-align:center}
+  .ring .rt b{font-size:17px;font-family:var(--mono);display:block}
+  .ring .rt small{font-size:8.5px;color:var(--dim)}
+  .ring-legend{font-size:10.5px;color:var(--m);line-height:1.9;flex:1}
+  .ring-legend b{font-family:var(--mono);float:right}
+
+  /* 涨跌分布 */
+  .dist{display:flex;align-items:flex-end;gap:2px;height:120px;padding-top:6px}
+  .dist .db{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:1px;min-width:0}
+  .dist .db i{display:block;border-radius:1.5px 1.5px 0 0;min-height:1px}
+  .dist-lb{display:flex;justify-content:space-between;font-size:8.5px;color:var(--dim);margin-top:5px;font-family:var(--mono)}
+
+  /* 板块热力图 */
+  .heat{width:100%;height:100%;display:block}
+  .heat-grid{display:grid;grid-template-columns:repeat(12,1fr);grid-template-rows:repeat(4,1fr);
+    grid-auto-flow:row dense;gap:2px;height:100%}
+  .heat-cell{border-radius:3px;padding:5px 7px;display:flex;flex-direction:column;justify-content:space-between;
+    cursor:pointer;overflow:hidden;min-width:0}
+  .heat-cell .nm{font-size:10.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .heat-cell .pct{font-size:11px;font-family:var(--mono);font-weight:800}
+  .heat text{pointer-events:none;font-family:'PingFang SC',sans-serif;fill:#fff}
+
+  /* 板块 / 榜单表格 */
+  .stbl{width:100%;border-collapse:collapse;font-size:11px;font-variant-numeric:tabular-nums}
+  .stbl th{position:sticky;top:0;background:#101826;color:var(--dim);font-weight:600;font-size:9.5px;
+    padding:6px 8px;text-align:right;border-bottom:1px solid var(--line2)}
+  .stbl th:first-child{text-align:left}
+  .stbl td{padding:6px 8px;text-align:right;font-family:var(--mono);border-bottom:1px solid #141c2a;white-space:nowrap}
+  .stbl td.nm{text-align:left;font-family:inherit;font-weight:600}
+  .stbl td small{display:block;color:var(--dim);font-size:9px;font-family:inherit;margin-top:1px}
+  .stbl tbody tr{cursor:pointer}
+  .stbl tbody tr:hover{background:#131c2c}
+  .stbl tbody tr.sel{background:#1a2436}
+
+  /* 资金横向条 */
+  .fbar{margin-bottom:9px}
+  .fbar .top{display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px}
+  .fbar .top .nm{font-weight:600}
+  .fbar .track{height:13px;background:#0b111a;border-radius:4px;position:relative;overflow:hidden;display:flex}
+  .fbar .track .in{height:100%;background:linear-gradient(90deg,#c11f30,#f23645);border-radius:4px 0 0 4px}
+  .fbar .track .out{height:100%;background:linear-gradient(90deg,#08c98a,#0a9f6d);border-radius:0 4px 4px 0;margin-left:auto}
+  .fbar .zero{position:absolute;top:0;bottom:0;width:1px;background:#3a4658}
+
+  /* 主力分项 */
+  .force-row{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid #141c2a;font-size:11px}
+  .force-row .lb{width:52px;color:var(--m);flex:none}
+  .force-row .bar{flex:1;height:9px;background:#0b111a;border-radius:5px;position:relative;overflow:hidden}
+  .force-row .bar i{position:absolute;top:0;bottom:0;border-radius:5px}
+  .force-row .vl{width:84px;text-align:right;font-family:var(--mono);font-weight:700;flex:none}
+
+  /* 信息流 */
+  .feed{display:flex;flex-direction:column;gap:9px}
+  .fc{background:#0b111a;border:1px solid var(--line);border-radius:10px;padding:10px 11px;animation:slidein .5s ease}
+  @keyframes slidein{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:none}}
+  .fc .fhd{display:flex;align-items:center;gap:7px;margin-bottom:6px}
+  .fc .fchip{font-size:9px;padding:2px 7px;border-radius:5px;font-weight:700}
+  .fc .ftm{margin-left:auto;font-size:9.5px;color:var(--dim);font-family:var(--mono)}
+  .fc .ftt{font-size:12px;line-height:1.5;font-weight:600}
+  .fc .fmeta{display:flex;gap:12px;margin-top:7px;font-size:10px;color:var(--m);font-family:var(--mono)}
+  .fc .fspark{height:42px;margin-top:7px}
+  .c-up{background:rgba(242,54,69,.16);color:var(--up2)}
+  .c-dn{background:rgba(8,201,138,.16);color:var(--dn2)}
+  .c-gold{background:rgba(212,175,55,.16);color:var(--gold2)}
+  .c-blue{background:rgba(78,161,255,.16);color:var(--blue)}
+  .c-purple{background:rgba(176,124,255,.16);color:var(--purple)}
+
+  /* 异动流 */
+  .flow-item{display:flex;gap:8px;padding:7px 0;border-bottom:1px solid #141c2a;font-size:11px;align-items:flex-start}
+  .flow-item .tm{color:var(--dim);font-family:var(--mono);font-size:9.5px;width:34px;flex:none;padding-top:1px}
+  .flow-item .ic{width:14px;height:14px;flex:none;margin-top:1px}
+  .flow-item .tt{line-height:1.4} .flow-item .tt b{font-weight:700}
+
+  /* 连板梯队 */
+  .lad-row{display:flex;gap:8px;padding:8px 0;border-bottom:1px solid #141c2a;align-items:flex-start}
+  .lad-badge{flex:none;width:44px;text-align:center;border-radius:7px;padding:5px 0;font-weight:800;font-size:11px}
+  .lad-badge small{display:block;font-size:8px;font-weight:600;opacity:.85;margin-top:1px}
+  .lad-stocks{display:flex;flex-wrap:wrap;gap:5px;flex:1;min-width:0}
+  .lad-stock{font-size:10px;background:#0b111a;border:1px solid var(--line2);border-radius:6px;padding:3px 8px;cursor:pointer}
+  .lad-stock small{color:var(--dim);font-family:var(--mono);margin-left:4px}
+
+  /* 题材轮动 */
+  .themes{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+  .theme{border-radius:18px;padding:6px 13px;cursor:pointer;font-weight:700;border:1px;white-space:nowrap;display:flex;gap:6px;align-items:center}
+  .theme small{font-family:var(--mono);opacity:.8}
+  .theme-h{font-size:10px;color:var(--dim);margin-bottom:7px}
+
+  /* 资讯 */
+  .news-item{display:flex;gap:9px;padding:8px 0;border-bottom:1px solid #141c2a;font-size:11.5px;line-height:1.5}
+  .news-item .tm{color:var(--dim);font-family:var(--mono);font-size:9.5px;flex:none;width:36px;padding-top:1px}
+  .news-item .src{color:var(--gold2);font-weight:700;margin-right:5px}
+  .news-item.imp{border-left:2px solid var(--gold);padding-left:8px}
+
+  /* 雷达 / 星图 */
+  .radar-svg,.star-svg{width:100%;height:100%;display:block}
+  .star-svg circle{cursor:pointer;transition:opacity .15s}
+  .star-svg circle:hover{opacity:.8}
+
+  /* bento */
+  .bento{display:grid;grid-template-columns:repeat(12,1fr);grid-auto-rows:minmax(0,1fr);gap:10px;flex:1;min-height:0;padding:12px}
+  .bento .card{grid-column:span 4;grid-row:span 1}
+  .mode-tabs{display:flex;gap:6px;padding:9px 12px;background:#0b111a;border-bottom:1px solid var(--line);flex:none}
+  .mode-tabs .mt{font-size:11px;color:var(--m);padding:6px 13px;border-radius:7px;cursor:pointer;font-weight:600;display:flex;gap:6px;align-items:center}
+  .mode-tabs .mt.on{background:rgba(212,175,55,.15);color:var(--gold2)}
+  .mode-tabs .clock{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--gold2);align-self:center}
+
+  /* 滚动条 */
+  ::-webkit-scrollbar{width:7px;height:7px}
+  ::-webkit-scrollbar-thumb{background:#263144;border-radius:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  .toast-box{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);z-index:99;display:flex;flex-direction:column;gap:8px}
+  .toast{background:#141c2b;border:1px solid var(--gold);color:var(--gold2);font-size:12px;
+    padding:9px 16px;border-radius:9px;box-shadow:0 10px 30px -10px #000;transition:opacity .4s}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div style="text-align:center"><span class="kicker">MARKET OVERVIEW COMMAND DECK</span></div>
+  <h1>TickGold <span class="g">盯盘总览驾驶舱</span> 5 款布局</h1>
+  <p class="sub">聚焦大盘 · 板块 · 题材 · 资金 · 情绪 · 消息面 · 热点 · 主力 的全局态势，点击顶部切换，卡片可点选联动。</p>
+  <div id="tabs">
+    <button class="tab active" data-m="1"><b>1</b>作战指挥舱</button>
+    <button class="tab" data-m="2"><b>2</b>智能信息流</button>
+    <button class="tab" data-m="3"><b>3</b>三维矩阵</button>
+    <button class="tab" data-m="4"><b>4</b>态势星图</button>
+    <button class="tab" data-m="5"><b>5</b>时段驾驶舱</button>
+  </div>
+
+    <!-- ===== 款 1 · 作战指挥舱 ===== -->
+  <div class="mock active" data-mock="1">
+    <div class="stage">
+      <div class="win-bar">
+        <i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
+        <span class="wt">TickGold · 作战指挥舱</span>
+        <span class="live"><span class="dot"></span>实时行情已连接 · 2026-09-23</span>
+      </div>
+      <div class="stage-bd" style="height:auto;min-height:660px">
+        <div class="idx-strip" data-view="idx"></div>
+        <div style="flex:none;display:grid;grid-template-columns:252px 1fr 286px;gap:10px;padding:10px;align-items:start;min-height:524px">
+          <!-- 左列 -->
+          <div style="display:flex;flex-direction:column;gap:10px;min-height:0">
+            <div class="card" style="flex:none">
+              <div class="card-hd"><svg class="ic"><use href="#o-gauge" xlink:href="#o-gauge"/></svg>市场情绪
+                <span class="tag">赚钱效应</span></div>
+              <div class="card-bd" style="overflow:visible;flex:none" data-view="sentiment"></div>
+            </div>
+            <div class="card" style="flex:none">
+              <div class="card-hd"><svg class="ic"><use href="#o-bars" xlink:href="#o-bars"/></svg>涨跌分布</div>
+              <div class="card-bd" style="overflow:visible;flex:none" data-view="dist"></div>
+            </div>
+          </div>
+          <!-- 中列 -->
+          <div style="display:flex;flex-direction:column;gap:10px;min-height:0">
+            <div class="card" style="flex:none">
+              <div class="card-hd"><svg class="ic"><use href="#o-grid" xlink:href="#o-grid"/></svg>板块热力图
+                <span class="mini-tabs"><span class="on">行业</span><span>概念</span></span></div>
+              <div class="card-bd flush" style="flex:none;height:372px" data-view="heat"></div>
+            </div>
+            <div class="card" style="flex:none">
+              <div class="card-hd"><svg class="ic"><use href="#o-coin" xlink:href="#o-coin"/></svg>主力资金 · 行业净流入</div>
+              <div class="card-bd" style="overflow:visible;flex:none" data-view="fundbarmni"></div>
+            </div>
+          </div>
+          <!-- 右列 -->
+          <div style="display:flex;flex-direction:column;gap:10px;min-height:0">
+            <div class="card" style="flex:none">
+              <div class="card-hd"><svg class="ic"><use href="#o-bolt" xlink:href="#o-bolt"/></svg>短线精灵 · 异动实时流
+                <span class="tag">LIVE</span></div>
+              <div class="card-bd np" style="padding:2px 10px;overflow:visible;flex:none" data-view="flowmini"></div>
+            </div>
+            <div class="card" style="flex:none">
+              <div class="card-hd"><svg class="ic"><use href="#o-ladder" xlink:href="#o-ladder"/></svg>涨停连板梯队</div>
+              <div class="card-bd np" style="padding:2px 10px;overflow:visible;flex:none" data-view="ladder"></div>
+            </div>
+          </div>
+        </div>
+        <!-- 底部题材 -->
+        <div style="flex:none;padding:0 10px 10px">
+          <div class="card">
+            <div class="card-hd"><svg class="ic"><use href="#o-fire" xlink:href="#o-fire"/></svg>题材轮动 · 今日热点主线
+              <span class="tag">按热度 / 资金</span></div>
+            <div class="card-bd" data-view="themes"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 款 2 · 智能信息流 ===== -->
+  <div class="mock" data-mock="2">
+    <style>
+      .ffilter{display:flex;flex-wrap:wrap;gap:6px}
+      .ffilter span{font-size:10.5px;padding:5px 11px;border-radius:7px;background:#0b111a;border:1px solid var(--line);
+        color:var(--m);cursor:pointer;font-weight:600}
+      .ffilter span.on{background:rgba(212,175,55,.15);border-color:var(--gold);color:var(--gold2)}
+      .feed-hd-bar{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line);flex:none;background:#0b111a}
+      .feed-hd-bar b{font-size:12.5px}
+      .feed-hd-bar .aut{margin-left:auto;font-size:10px;color:var(--m);display:flex;align-items:center;gap:6px}
+    </style>
+    <div class="stage">
+      <div class="win-bar">
+        <i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
+        <span class="wt">TickGold · 智能信息流</span>
+        <span class="live"><span class="dot"></span>智能盯盘流 · 自动聚合重要事件</span>
+      </div>
+      <div class="stage-bd">
+        <div class="idx-strip" data-view="idx"></div>
+        <div style="flex:1;display:grid;grid-template-columns:224px 1fr 288px;gap:10px;padding:10px;min-height:0">
+          <!-- 左：筛选 + 情绪 -->
+          <div style="display:flex;flex-direction:column;gap:10px;min-height:0">
+            <div class="card" style="flex:none">
+              <div class="card-hd"><svg class="ic"><use href="#o-filter" xlink:href="#o-filter"/></svg>信息流筛选</div>
+              <div class="card-bd">
+                <div class="ffilter"><span class="on">全部</span><span>异动</span><span>资金</span>
+                  <span>板块</span><span>题材</span><span>消息</span></div>
+                <div style="margin-top:11px;font-size:10px;color:var(--dim);line-height:1.7">
+                  自动刷新 · 3s<br>仅推送高优先级事件<br>已开启声音 / 灵动岛提醒</div>
+              </div>
+            </div>
+            <div class="card" style="flex:1">
+              <div class="card-hd"><svg class="ic"><use href="#o-gauge" xlink:href="#o-gauge"/></svg>情绪温度</div>
+              <div class="card-bd" data-view="sentimentmini"></div>
+            </div>
+          </div>
+          <!-- 中：Feed -->
+          <div class="card" style="min-height:0">
+            <div class="feed-hd-bar">
+              <svg class="ic" style="width:15px;height:15px;color:var(--gold2)"><use href="#o-rss" xlink:href="#o-rss"/></svg>
+              <b>智能盯盘流</b>
+              <span class="aut"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:var(--up);display:inline-block"></span>实时 · 自动展开新事件</span>
+            </div>
+            <div class="card-bd" style="padding:11px" data-view="feed"></div>
+          </div>
+          <!-- 右：雷达 + 资金 -->
+          <div style="display:flex;flex-direction:column;gap:10px;min-height:0">
+            <div class="card" style="flex:1">
+              <div class="card-hd"><svg class="ic"><use href="#o-radar" xlink:href="#o-radar"/></svg>涨停雷达</div>
+              <div class="card-bd np" style="padding:2px 10px" data-view="radarmni"></div>
+            </div>
+            <div class="card" style="flex:1">
+              <div class="card-hd"><svg class="ic"><use href="#o-coin" xlink:href="#o-coin"/></svg>主力资金</div>
+              <div class="card-bd" data-view="fundbarmni"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 款 3 · 三维矩阵 ===== -->
+  <div class="mock" data-mock="3">
+    <div class="stage">
+      <div class="win-bar">
+        <i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
+        <span class="wt">TickGold · 板块 × 资金 × 情绪 矩阵</span>
+        <span class="live"><span class="dot"></span>三维联动监控</span>
+      </div>
+      <div class="stage-bd">
+        <div class="idx-strip" data-view="idx"></div>
+        <div style="flex:1;display:grid;grid-template-columns:1.12fr 1fr 1fr;gap:10px;padding:10px;min-height:0">
+          <!-- 板块维度 -->
+          <div class="card" style="min-height:0">
+            <div class="card-hd"><svg class="ic"><use href="#o-grid" xlink:href="#o-grid"/></svg>板块行情 · 涨跌幅 / 资金
+              <span class="mini-tabs"><span class="on">行业</span><span>概念</span><span>异动</span></span></div>
+            <div class="card-bd np" data-view="sectorrank"></div>
+          </div>
+          <!-- 资金维度 -->
+          <div class="card" style="min-height:0">
+            <div class="card-hd"><svg class="ic"><use href="#o-coin" xlink:href="#o-coin"/></svg>主力资金 · 大单结构</div>
+            <div class="card-bd" data-view="force"></div>
+          </div>
+          <!-- 情绪维度 -->
+          <div class="card" style="min-height:0">
+            <div class="card-hd"><svg class="ic"><use href="#o-gauge" xlink:href="#o-gauge"/></svg>市场情绪 · 涨停结构</div>
+            <div class="card-bd" data-view="emotioncol"></div>
+          </div>
+        </div>
+        <div style="flex:none;padding:0 10px 10px">
+          <div class="card">
+            <div class="card-hd"><svg class="ic"><use href="#o-fire" xlink:href="#o-fire"/></svg>题材轮动 · 热点主线分布
+              <span class="tag">气泡大小 = 热度</span></div>
+            <div class="card-bd" data-view="themes"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 款 4 · 态势星图 ===== -->
+  <div class="mock" data-mock="4">
+    <div class="stage">
+      <div class="win-bar">
+        <i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
+        <span class="wt">TickGold · 市场态势星图</span>
+        <span class="live"><span class="dot"></span>全局态势感知 · 气泡 = 板块 / 题材</span>
+      </div>
+      <div class="stage-bd">
+        <div class="idx-strip" data-view="idx"></div>
+        <div style="flex:1;display:grid;grid-template-columns:286px 1fr 268px;gap:10px;padding:10px;min-height:0">
+          <!-- 左：雷达 + 情绪 -->
+          <div style="display:flex;flex-direction:column;gap:10px;min-height:0">
+            <div class="card" style="flex:1.25">
+              <div class="card-hd"><svg class="ic"><use href="#o-radar" xlink:href="#o-radar"/></svg>市场态势雷达
+                <span class="tag">6 维</span></div>
+              <div class="card-bd flush" data-view="radarchart"></div>
+            </div>
+            <div class="card" style="flex:1">
+              <div class="card-hd"><svg class="ic"><use href="#o-gauge" xlink:href="#o-gauge"/></svg>情绪关键数</div>
+              <div class="card-bd" data-view="sentimentmini"></div>
+            </div>
+          </div>
+          <!-- 中：星图 + 资金 -->
+          <div style="display:flex;flex-direction:column;gap:10px;min-height:0">
+            <div class="card" style="flex:1.8">
+              <div class="card-hd"><svg class="ic"><use href="#o-star" xlink:href="#o-star"/></svg>热点星图 · 板块 / 题材聚类
+                <span class="mini-tabs"><span class="on">行业</span><span>题材</span><span>资金</span></span></div>
+              <div class="card-bd flush" data-view="starmap"></div>
+            </div>
+            <div class="card" style="flex:1">
+              <div class="card-hd"><svg class="ic"><use href="#o-coin" xlink:href="#o-coin"/></svg>主力资金</div>
+              <div class="card-bd" data-view="fundbarmni"></div>
+            </div>
+          </div>
+          <!-- 右：涨停 + 异动 -->
+          <div style="display:flex;flex-direction:column;gap:10px;min-height:0">
+            <div class="card" style="flex:1">
+              <div class="card-hd"><svg class="ic"><use href="#o-ladder" xlink:href="#o-ladder"/></svg>涨停雷达</div>
+              <div class="card-bd np" style="padding:2px 10px" data-view="radarmni"></div>
+            </div>
+            <div class="card" style="flex:1.2">
+              <div class="card-hd"><svg class="ic"><use href="#o-bolt" xlink:href="#o-bolt"/></svg>异动实时流</div>
+              <div class="card-bd np" style="padding:2px 10px" data-view="flowmini"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 款 5 · 时段驾驶舱 ===== -->
+  <div class="mock" data-mock="5">
+    <div class="stage">
+      <div class="win-bar">
+        <i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
+        <span class="wt">TickGold · 时段智能驾驶舱</span>
+        <span class="live"><span class="dot"></span>按时段自动呈现关键卡片</span>
+      </div>
+      <div class="stage-bd">
+        <div class="mode-tabs">
+          <span class="mt on">集合竞价</span>
+          <span class="mt">早盘 9:30</span>
+          <span class="mt">午盘</span>
+          <span class="mt">尾盘 14:30</span>
+          <span class="mt">盘后复盘</span>
+          <span class="clock">09:24:38</span>
+        </div>
+        <div class="idx-strip" data-view="idx"></div>
+        <div class="bento">
+          <div class="card" style="grid-column:span 6;grid-row:span 2">
+            <div class="card-hd"><svg class="ic"><use href="#o-grid" xlink:href="#o-grid"/></svg>板块热力图
+              <span class="mini-tabs"><span class="on">行业</span><span>概念</span></span></div>
+            <div class="card-bd flush" data-view="heat"></div>
+          </div>
+          <div class="card" style="grid-column:span 3">
+            <div class="card-hd"><svg class="ic"><use href="#o-gauge" xlink:href="#o-gauge"/></svg>市场情绪</div>
+            <div class="card-bd" data-view="sentimentmini"></div>
+          </div>
+          <div class="card" style="grid-column:span 3">
+            <div class="card-hd"><svg class="ic"><use href="#o-ladder" xlink:href="#o-ladder"/></svg>涨停雷达</div>
+            <div class="card-bd np" style="padding:2px 10px" data-view="radarmni"></div>
+          </div>
+          <div class="card" style="grid-column:span 3">
+            <div class="card-hd"><svg class="ic"><use href="#o-coin" xlink:href="#o-coin"/></svg>主力资金</div>
+            <div class="card-bd" data-view="fundbarmni"></div>
+          </div>
+          <div class="card" style="grid-column:span 3">
+            <div class="card-hd"><svg class="ic"><use href="#o-bolt" xlink:href="#o-bolt"/></svg>异动流</div>
+            <div class="card-bd np" style="padding:2px 10px" data-view="flowmini"></div>
+          </div>
+          <div class="card" style="grid-column:span 4">
+            <div class="card-hd"><svg class="ic"><use href="#o-fire" xlink:href="#o-fire"/></svg>题材轮动</div>
+            <div class="card-bd" data-view="themes"></div>
+          </div>
+          <div class="card" style="grid-column:span 3">
+            <div class="card-hd"><svg class="ic"><use href="#o-bars" xlink:href="#o-bars"/></svg>涨跌分布</div>
+            <div class="card-bd" data-view="distmini"></div>
+          </div>
+          <div class="card" style="grid-column:span 5">
+            <div class="card-hd"><svg class="ic"><use href="#o-news" xlink:href="#o-news"/></svg>消息面 · 盘中快讯
+              <span class="tag">财联社 / 上证报</span></div>
+            <div class="card-bd np" style="padding:2px 11px" data-view="newsmini"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<!--MOCKS-->
+
+</div>
+<script>
+(function(){
+  /* ---------- 数据 ---------- */
+  var IDX=[['上证指数',3142],['深证成指',10286],['创业板指',2068],['科创50',958],
+    ['沪深300',3786],['中证500',5842],['上证50',2648],['北证50',1086]];
+  var NAMES=[
+    '贵州茅台','平安银行','中国平安','招商银行','五粮液','宁德时代','隆基绿能','长江电力',
+    '紫金矿业','美的集团','比亚迪','恒瑞医药','中国中免','药明康德','立讯精密','东方财富',
+    '中信证券','兴业银行','浦发银行','万科A','工商银行','伊利股份','格力电器','中国人寿',
+    '中国石化','中国石油','海康威视','迈瑞医疗','海天味业','三一重工','科大讯飞','爱尔眼科'];
+  var SECTORS=['半导体','人工智能','算力','消费电子','白酒','新能源汽车','光伏设备','储能',
+    '锂电池','创新药','医疗器械','银行','证券','保险','汽车零部件','军工','房地产','煤炭',
+    '有色金属','机器人','低空经济','数据要素','基础化工','钢铁'];
+  var CONCEPTS=['人形机器人','固态电池','华为产业链','AI算力','国产芯片','数据要素','低空经济',
+    '并购重组','高股息','消费复苏','光刻机','商业航天','稀土永磁','虚拟电厂','脑机接口','信创'];
+  var NEWS=['央行公开市场净投放，资金面保持合理充裕','三大指数集体收涨，科技成长赛道领涨两市',
+    '北向资金午后净流入，消费板块获增持','多家券商发布策略，看好科技与高端制造主线',
+    '光伏行业需求回暖，龙头企业排产上调','储能招标规模创新高，产业链景气延续',
+    '半导体设备国产化提速，相关订单增长','两市成交额较昨日放量，市场情绪回暖',
+    '创新药板块估值修复，机构关注研发进展','稳增长政策持续发力，基建链表现活跃',
+    '机器人概念盘中走强，多只个股涨停','人民币汇率小幅升值，外资配置意愿提升'];
+  var EVT=['火箭发射','快速反弹','大笔买入','封涨停板','打开跌停','大笔卖出','高台跳水','加速下跌','逆势拉升','放量突破'];
+
+  /* 当日自洽情绪常量 */
+  var MKT={up:3286,dn:1842,flat:156,zt:78,dt:6,broken:19,height:6,
+    mainNet:-48.6,superBig:-21.3,big:-27.3,mid:35.8,small:12.8};
+  var LADDER=[[6,1],[5,1],[4,2],[3,4],[2,11],[1,59]];
+
+  /* ---------- 工具 ---------- */
+  function h(s){var x=0;for(var i=0;i<s.length;i++)x=(x*31+s.charCodeAt(i))>>>0;return x;}
+  function r1(s){var x=Math.sin(s*127.1+13.7)*43758.5453;return x-Math.floor(x);}
+  function cls(v){return v>0?'up':(v<0?'dn':'flat');}
+  function sg(v){return (v>0?'+':'')+v.toFixed(2);}
+  function f1(v){return v.toFixed(1);}
+  function pick(i){return NAMES[((i%NAMES.length)+NAMES.length)%NAMES.length];}
+
+  function idxQuote(name,base){
+    var s=h(name),pct=r1(s)*4.2-2.1,price=base*(1+pct/100);
+    return {pct:pct,price:price};
+  }
+  function sectorData(name,i){
+    var s=h(name);
+    return {name:name,pct:r1(s)*6.8-2.4,amount:r1(s+1)*680+90,net:r1(s+2)*88-34,
+      lead:pick(i),upN:Math.round(r1(s+3)*42+8)};
+  }
+
+  /* ---------- 指数条 ---------- */
+  function viewIdx(el){
+    var h_='';
+    IDX.forEach(function(d){var q=idxQuote(d[0],d[1]);
+      h_+='<div class="idx"><span class="nm"><span>'+d[0]+'</span><span class="'+cls(q.pct)+'">'+sg(q.pct)+'%</span></span>'
+        +'<span class="vl '+cls(q.pct)+'">'+q.price.toFixed(2)+'</span></div>';});
+    el.innerHTML=h_;
+  }
+
+  /* ---------- 市场情绪（完整） ---------- */
+  function viewSentiment(el){
+    var seal=MKT.zt/(MKT.zt+MKT.broken)*100;
+    var h_='<div class="sent-grid">'
+      +'<div class="metric"><div class="lb">上涨家数</div><div class="vl up">'+MKT.up+'</div><div class="sub2">占比 '+f1(MKT.up/(MKT.up+MKT.dn)*100)+'%</div></div>'
+      +'<div class="metric"><div class="lb">下跌家数</div><div class="vl dn">'+MKT.dn+'</div><div class="sub2">平盘 '+MKT.flat+'</div></div>'
+      +'<div class="metric"><div class="lb">涨停 / 跌停</div><div class="vl"><span class="up">'+MKT.zt+'</span> / <span class="dn">'+MKT.dt+'</span></div><div class="sub2">炸板 '+MKT.broken+'</div></div>'
+      +'<div class="metric"><div class="lb">连板高度</div><div class="vl" style="color:var(--gold2)">'+MKT.height+'板</div><div class="sub2">赚钱效应偏好</div></div>'
+      +'</div><div style="height:11px"></div>'
+      +'<div class="ring-wrap"><div class="ring" style="background:conic-gradient(var(--gold) 0 '+seal+'%,#1b2433 '+seal+'% 100%)">'
+      +'<span class="rt"><b style="color:var(--gold2)">'+f1(seal)+'%</b><small>封板率</small></span></div>'
+      +'<span class="ring-legend">昨日涨停表现<b class="up">+2.4%</b>晋级率<b class="up">31%</b>'
+      +'打板溢价<b class="up">+1.8%</b>北向资金<b class="up">+38亿</b></span></div>';
+    el.innerHTML=h_;
+  }
+
+  /* ---------- 情绪精简 ---------- */
+  function viewSentimentmini(el){
+    var seal=MKT.zt/(MKT.zt+MKT.broken)*100;
+    var h_='<div class="ring-wrap"><div class="ring" style="width:66px;height:66px;background:conic-gradient(var(--gold) 0 '+seal+'%,#1b2433 '+seal+'% 100%)">'
+      +'<span class="rt"><b style="color:var(--gold2);font-size:15px">'+f1(seal)+'%</b><small>封板率</small></span></div>'
+      +'<span class="ring-legend" style="line-height:1.7">上涨<b class="up">'+MKT.up+'</b>下跌<b class="dn">'+MKT.dn+'</b>'
+      +'涨停<b class="up">'+MKT.zt+'</b>跌停<b class="dn">'+MKT.dt+'</b></span></div>'
+      +'<div style="height:9px"></div>'
+      +'<div class="sent-grid" style="grid-template-columns:1fr 1fr">'
+      +'<div class="metric"><div class="lb">连板高度</div><div class="vl" style="font-size:16px;color:var(--gold2)">'+MKT.height+'板</div></div>'
+      +'<div class="metric"><div class="lb">炸板率</div><div class="vl '+cls(MKT.broken-MKT.zt/2)+'" style="font-size:16px">'+f1(MKT.broken/(MKT.zt+MKT.broken)*100)+'%</div></div></div>';
+    el.innerHTML=h_;
+  }
+
+  /* ---------- 涨跌分布 ---------- */
+  var DIST=[4,6,9,14,22,38,68,120,240,480,1180,980,620,380,210,130,80,48,26,14,18];
+  function distHTML(mini){
+    var max=Math.max.apply(null,DIST),h_='<div class="dist" style="height:'+(mini?92:120)+'px">';
+    DIST.forEach(function(v,i){var up=i>10,c=i===10;
+      var hh=v/max*100;
+      var col=up?'#f23645':(c?'#5d6878':'#08c98a');
+      h_+='<span class="db"><i style="height:'+hh.toFixed(1)+'%;background:'+col+'"></i></span>';});
+    h_+='</div><div class="dist-lb"><span class="dn">-10% 跌停</span><span>0</span><span class="up">+10% 涨停</span></div>';
+    return h_;
+  }
+  function viewDist(el){el.innerHTML=distHTML(false);}
+  function viewDistmini(el){el.innerHTML=distHTML(true);}
+
+  /* ---------- 板块热力图 ---------- */
+  function viewHeat(el){
+    var h_='<div class="heat-grid">';
+    for(var i=0;i<15;i++){
+      var sd=sectorData(SECTORS[i],i),cs,rs;
+      if(i<3){cs=3;rs=2;}else if(i<9){cs=3;rs=1;}else{cs=2;rs=1;}
+      var a=Math.min(.93,.22+Math.abs(sd.pct)/6.5);
+      var col=sd.pct>=0?'rgba(242,54,69,'+a.toFixed(2)+')':'rgba(8,201,138,'+a.toFixed(2)+')';
+      h_+='<div class="heat-cell" style="grid-column:span '+cs+';grid-row:span '+rs+';background:'+col+'">'
+        +'<span class="nm">'+sd.name+'</span><span class="pct">'+sg(sd.pct)+'%</span></div>';
+    }
+    el.innerHTML=h_+'</div>';
+  }
+
+  /* ---------- 板块行情表 ---------- */
+  function viewSectorrank(el){
+    var rows='';
+    SECTORS.forEach(function(n,i){var sd=sectorData(n,i);
+      rows+='<tr class="'+(i===0?'sel':'')+'"><td class="nm">'+sd.name
+        +'<small>'+sd.upN+'家上涨 · 领涨 '+sd.lead+'</small></td>'
+        +'<td class="'+cls(sd.pct)+'">'+sg(sd.pct)+'%</td>'
+        +'<td class="'+cls(sd.net)+'">'+sg(sd.net)+'</td>'
+        +'<td>'+f1(sd.amount)+'亿</td></tr>';});
+    el.innerHTML='<table class="stbl"><thead><tr><th>板块 / 领涨</th><th>涨跌幅</th><th>主力净流</th><th>成交额</th></tr></thead>'
+      +'<tbody>'+rows+'</tbody></table>';
+  }
+
+  /* ---------- 资金条 ---------- */
+  function fbarHTML(n){
+    var h_='';
+    for(var i=0;i<n;i++){var sd=sectorData(SECTORS[i],i),net=sd.net,w=Math.min(48,Math.abs(net)/90*48);
+      h_+='<div class="fbar"><div class="top"><span class="nm">'+sd.name+'</span>'
+        +'<span class="'+cls(net)+'">'+sg(net)+'亿</span></div><div class="track">'
+        +'<span style="position:absolute;top:0;bottom:0;left:50%;width:1px;background:#3a4658"></span>';
+      if(net>=0)h_+='<span style="position:absolute;left:50%;top:0;bottom:0;width:'+w.toFixed(1)+'%;background:linear-gradient(90deg,#c11f30,#f23645);border-radius:0 3px 3px 0"></span>';
+      else h_+='<span style="position:absolute;right:50%;top:0;bottom:0;width:'+w.toFixed(1)+'%;background:linear-gradient(90deg,#0a9f6d,#08c98a);border-radius:3px 0 0 3px"></span>';
+      h_+='</div></div>';}
+    return h_;
+  }
+  function viewFundbar(el){el.innerHTML=fbarHTML(7);}
+  function viewFundbarmni(el){el.innerHTML=fbarHTML(4);}
+
+  /* ---------- 主力大单结构 ---------- */
+  function viewForce(el){
+    var h_='<div style="background:#0b111a;border:1px solid var(--line);border-radius:9px;padding:11px;margin-bottom:10px">'
+      +'<div style="font-size:10px;color:var(--dim)">大盘主力资金净流入</div>'
+      +'<div class="'+cls(MKT.mainNet)+'" style="font-size:25px;font-weight:800;font-family:var(--mono);margin-top:3px">'+sg(MKT.mainNet)+'亿</div></div>';
+    [['超大单',MKT.superBig],['大单',MKT.big],['中单',MKT.mid],['小单',MKT.small]].forEach(function(r){
+      var v=r[1],w=Math.min(48,Math.abs(v)/40*48);
+      h_+='<div class="force-row"><span class="lb">'+r[0]+'</span><span class="bar">'
+        +'<span style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:#3a4658"></span>';
+      if(v>=0)h_+='<i style="position:absolute;left:50%;top:0;bottom:0;width:'+w.toFixed(1)+'%;background:#f23645;border-radius:0 4px 4px 0"></i>';
+      else h_+='<i style="position:absolute;right:50%;top:0;bottom:0;width:'+w.toFixed(1)+'%;background:#08c98a;border-radius:4px 0 0 4px"></i>';
+      h_+='</span><span class="vl '+cls(v)+'">'+sg(v)+'亿</span></div>';});
+    h_+='<div style="height:8px"></div><div style="font-size:10px;color:var(--dim);margin-bottom:5px">行业主力净流入 TOP</div>'+fbarHTML(4);
+    el.innerHTML=h_;
+  }
+
+  /* ---------- 情绪列 ---------- */
+  function viewEmotioncol(el){
+    var seal=MKT.zt/(MKT.zt+MKT.broken)*100;
+    var h_='<div class="sent-grid">'
+      +'<div class="metric"><div class="lb">上涨</div><div class="vl up" style="font-size:17px">'+MKT.up+'</div></div>'
+      +'<div class="metric"><div class="lb">下跌</div><div class="vl dn" style="font-size:17px">'+MKT.dn+'</div></div>'
+      +'<div class="metric"><div class="lb">涨停</div><div class="vl up" style="font-size:17px">'+MKT.zt+'</div></div>'
+      +'<div class="metric"><div class="lb">跌停</div><div class="vl dn" style="font-size:17px">'+MKT.dt+'</div></div></div>'
+      +'<div style="height:10px"></div><div class="ring-wrap"><div class="ring" style="background:conic-gradient(var(--gold) 0 '+seal+'%,#1b2433 '+seal+'% 100%)">'
+      +'<span class="rt"><b style="color:var(--gold2)">'+f1(seal)+'%</b><small>封板率</small></span></div>'
+      +'<span class="ring-legend">炸板<b>'+MKT.broken+'</b>晋级率<b class="up">31%</b>溢价<b class="up">+1.8%</b></span></div>'
+      +'<div style="height:11px"></div><div style="font-size:10.5px;font-weight:700;margin-bottom:4px">连板梯队 TOP</div>'
+      +ladderRows(3);
+    el.innerHTML=h_;
+  }
+
+  /* ---------- 迷你走势 ---------- */
+  function spark(seed,up){
+    var W=200,H=42,p=10,pts=[];
+    for(var i=0;i<30;i++){p=p*(1+(r1(seed+i*3)-(up?.47:.53))*.02);pts.push(p);}
+    var hi=Math.max.apply(null,pts),lo=Math.min.apply(null,pts);
+    function y(v){return 2+(hi-v)/(hi-lo)*36;}
+    var xs=W/29;
+    var lp=pts.map(function(v,i){return (i*xs).toFixed(1)+','+y(v).toFixed(1);});
+    var col=up?'#f23645':'#08c98a';
+    return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="width:100%;height:100%;display:block">'
+      +'<polyline points="'+lp.join(' ')+'" fill="none" stroke="'+col+'" stroke-width="1.4"/></svg>';
+  }
+
+  /* ---------- 智能信息流 ---------- */
+  function viewFeed(el){
+    var cards=[
+      ['异动','c-up','贵州茅台 火箭发射，涨幅扩大至 +2.4%',['14:52','成交放大 2.1亿'],true],
+      ['资金','c-gold','半导体板块主力净流入 46.8 亿，居行业首位',['14:50','超大单 +28亿'],true],
+      ['板块','c-blue','算力板块异动拉升 +3.1%，工业富联领涨',['14:47','12家上涨'],true],
+      ['题材','c-gold','人形机器人题材持续发酵，板块 8 股涨停',['14:44','热度 96'],true],
+      ['消息','c-purple','央行公开市场净投放，资金面保持合理充裕',['14:40','7天逆回购'],false],
+      ['涨停','c-up','立讯精密 封涨停板，封单金额 3.2 亿',['14:36','换手 4.1%'],true],
+      ['资金','c-gold','北向资金午后净流入 38 亿，加仓消费电子',['14:33','沪股通 +22亿'],true],
+      ['板块','c-blue','低空经济板块走强，多只个股涨超 5%',['14:30','概念股活跃'],true],
+      ['风险','c-dn','高位股 高台跳水，涨幅快速回落，注意炸板',['14:27','炸板预警'],false]];
+    var h_='<div class="feed">';
+    cards.forEach(function(c){
+      h_+='<div class="fc"><div class="fhd"><span class="fchip '+c[1]+'">'+c[0]+'</span>'
+        +'<span class="ftm">'+c[3][0]+'</span></div><div class="ftt">'+c[2]+'</div>';
+      if(c[4])h_+='<div class="fspark">'+spark(h(c[2]),c[1]!=='c-dn')+'</div>';
+      h_+='<div class="fmeta"><span>'+c[3][1]+'</span><span>已推送灵动岛</span></div></div>';});
+    el.innerHTML=h_+'</div>';
+  }
+
+  /* ---------- 异动流 ---------- */
+  function flowRows(n){
+    var h_='';
+    for(var i=0;i<n;i++){
+      var st=pick(i),ev=EVT[Math.floor(r1(i*5+2)*EVT.length)];
+      var good=['火箭发射','快速反弹','大笔买入','封涨停板','打开跌停','逆势拉升','放量突破'].indexOf(ev)>=0;
+      var t='14:'+(''+(56-Math.floor(i/3))).padStart(2,'0'),pct=(r1(i*9+1)*7+1).toFixed(2);
+      h_+='<div class="flow-item"><span class="tm">'+t+'</span>'
+        +'<svg class="ic" style="color:'+(good?'var(--up2)':'var(--dn2)')+'"><use href="#o-bolt" xlink:href="#o-bolt"/></svg>'
+        +'<span class="tt"><b>'+st+'</b> '+ev+'，涨幅 '+(good?'+':'-')+pct+'%</span></div>';}
+    return h_;
+  }
+  function viewFlow(el){el.innerHTML=flowRows(16);}
+  function viewFlowmini(el){el.innerHTML=flowRows(8);}
+
+  /* ---------- 连板梯队 ---------- */
+  function ladderRows(n){
+    var h_='',rows=LADDER.slice(0,n);
+    rows.forEach(function(r,k){
+      var boards=r[0],count=r[1],hi=boards>=4;
+      var badge='<div class="lad-badge" style="'+(hi?'background:rgba(212,175,55,.18);color:var(--gold2);border:1px solid var(--gold3)'
+        :'background:rgba(242,54,69,.12);color:var(--up2);border:1px solid #5a2030')+'">'
+        +boards+'板<small>'+count+'只</small></div>';
+      var stocks='<div class="lad-stocks">';
+      for(var s=0;s<Math.min(count,6);s++)stocks+='<span class="lad-stock">'+pick(k*7+s)+'<small>+'+boards*10+'%</small></span>';
+      if(count>6)stocks+='<span class="lad-stock" style="color:var(--dim);border-color:var(--line)">…+'+(count-6)+'</span>';
+      h_+='<div class="lad-row">'+badge+stocks+'</div></div>';});
+    return h_;
+  }
+  function viewLadder(el){el.innerHTML=ladderRows(6);}
+
+  /* ---------- 题材轮动 ---------- */
+  function viewThemes(el){
+    var h_='<div class="themes">';
+    CONCEPTS.forEach(function(n){
+      var s=h(n),pct=r1(s)*6-1.5,hot=r1(s+1)*100,fs=10.5+Math.round(hot/100*4);
+      var bg,c,bd;
+      if(pct>=3){bg='rgba(242,54,69,.15)';c='var(--up2)';bd='#5a2030';}
+      else if(pct<0){bg='rgba(8,201,138,.13)';c='var(--dn2)';bd='#1c4a3c';}
+      else if(hot>70){bg='rgba(212,175,55,.14)';c='var(--gold2)';bd='var(--gold3)';}
+      else{bg='#0b111a';c='var(--m)';bd='var(--line2)';}
+      h_+='<span class="theme" style="font-size:'+fs+'px;background:'+bg+';color:'+c+';border-color:'+bd+'">'
+        +n+'<small>'+sg(pct)+'%</small></span>';});
+    el.innerHTML=h_+'</div>';
+  }
+
+  /* ---------- 快讯 ---------- */
+  function viewNewsmini(el){
+    var srcs=['财联社','上证报','证券时报','新华财经','第一财经','财联社','上证报'],h_='';
+    for(var i=0;i<7;i++){var t='14:'+(''+(56-i*3)).padStart(2,'0');
+      h_+='<div class="news-item '+(i<2?'imp':'')+'"><span class="tm">'+t+'</span>'
+        +'<span><span class="src">'+srcs[i]+'</span>'+NEWS[i%NEWS.length]+'</span></div>';}
+    el.innerHTML=h_;
+  }
+
+  /* ---------- 涨停雷达精简 ---------- */
+  function viewRadarmni(el){
+    var h_='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;padding:8px 0">'
+      +'<div class="metric" style="padding:7px"><div class="lb">涨停</div><div class="vl up" style="font-size:16px">'+MKT.zt+'</div></div>'
+      +'<div class="metric" style="padding:7px"><div class="lb">跌停</div><div class="vl dn" style="font-size:16px">'+MKT.dt+'</div></div>'
+      +'<div class="metric" style="padding:7px"><div class="lb">炸板</div><div class="vl" style="font-size:16px;color:var(--gold2)">'+MKT.broken+'</div></div></div>'
+      +'<div style="font-size:10.5px;font-weight:700;margin:2px 0 4px">连板高度 '+MKT.height+'板 · 梯队</div>'+ladderRows(3);
+    el.innerHTML=h_;
+  }
+
+  /* ---------- 六维态势雷达 ---------- */
+  function viewRadarchart(el){
+    var dims=['趋势','资金','情绪','宽度','动量','赚钱'],vals=[62,41,72,64,68,71];
+    var cx=150,cy=134,R=82;
+    function pt(i,r){var a=(-90+i*60)*Math.PI/180;return [cx+Math.cos(a)*r,cy+Math.sin(a)*r];}
+    var s='';
+    for(var layer=1;layer<=4;layer++){var rr=R*layer/4,p=[];
+      for(var i=0;i<6;i++){var q=pt(i,rr);p.push(q[0].toFixed(1)+','+q[1].toFixed(1));}
+      s+='<polygon points="'+p.join(' ')+'" fill="none" stroke="#222d40"/>';}
+    for(var a2=0;a2<6;a2++){var q2=pt(a2,R);
+      s+='<line x1="'+cx+'" y1="'+cy+'" x2="'+q2[0].toFixed(1)+'" y2="'+q2[1].toFixed(1)+'" stroke="#1b2433"/>';}
+    var dp=[];for(var d=0;d<6;d++){var q3=pt(d,R*vals[d]/100);dp.push(q3[0].toFixed(1)+','+q3[1].toFixed(1));}
+    s+='<polygon points="'+dp.join(' ')+'" fill="rgba(212,175,55,.22)" stroke="#e8c96a" stroke-width="1.6"/>';
+    for(var d2=0;d2<6;d2++){var q4=pt(d2,R*vals[d2]/100);
+      s+='<circle cx="'+q4[0].toFixed(1)+'" cy="'+q4[1].toFixed(1)+'" r="2.8" fill="#e8c96a"/>';
+      var q5=pt(d2,R+15);
+      s+='<text x="'+q5[0].toFixed(1)+'" y="'+(q5[1]+3).toFixed(1)+'" fill="#9aa5b5" font-size="10.5" text-anchor="middle">'
+        +dims[d2]+' '+vals[d2]+'</text>';}
+    el.innerHTML='<svg class="radar-svg" viewBox="0 0 300 264">'+s+'</svg>';
+  }
+
+  /* ---------- 热点星图 ---------- */
+  function viewStarmap(el){
+    var clusters=[[155,150],[430,135],[175,345],[435,330]],items=[];
+    SECTORS.slice(0,18).forEach(function(n,i){
+      var c=clusters[i%4],s=h(n),ang=r1(s)*Math.PI*2,rr=r1(s+1)*66;
+      items.push({n:n,x:c[0]+Math.cos(ang)*rr,y:c[1]+Math.sin(ang)*rr,
+        r:10+r1(s+2)*22,pct:r1(s+3)*6.5-2.5});});
+    var s='';
+    clusters.forEach(function(c){s+='<circle cx="'+c[0]+'" cy="'+c[1]+'" r="86" fill="rgba(212,175,55,.035)"/>';});
+    items.forEach(function(it){
+      var fill=it.pct>=0?'rgba(242,54,69,.5)':'rgba(8,201,138,.48)',stroke=it.pct>=0?'#f23645':'#08c98a';
+      s+='<circle cx="'+it.x.toFixed(0)+'" cy="'+it.y.toFixed(0)+'" r="'+it.r.toFixed(0)+'" fill="'+fill+'" stroke="'+stroke+'"/>';
+      if(it.r>21)s+='<text x="'+it.x.toFixed(0)+'" y="'+(it.y+3).toFixed(0)+'" fill="#fff" font-size="9.5" text-anchor="middle" pointer-events="none">'+it.n+'</text>';});
+    el.innerHTML='<svg class="star-svg" viewBox="0 0 600 460">'+s+'</svg>';
+  }
+
+  /* ---------- Toast ---------- */
+  var tb=document.createElement('div');tb.className='toast-box';document.body.appendChild(tb);
+  function toast(m){var d=document.createElement('div');d.className='toast';d.textContent=m;tb.appendChild(d);
+    setTimeout(function(){d.style.opacity='0';setTimeout(function(){d.remove();},400);},1600);}
+
+  /* ---------- Tab 切换（data-m） ---------- */
+  var tabs=document.getElementById('tabs');
+  tabs.addEventListener('click',function(e){var t=e.target.closest('.tab');if(!t)return;var n=t.getAttribute('data-m');
+    tabs.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('active',x===t);});
+    document.querySelectorAll('.mock').forEach(function(m){
+      m.classList.toggle('active',m.getAttribute('data-mock')===n);});});
+
+  /* ---------- 交互委托 ---------- */
+  document.addEventListener('click',function(e){
+    var tr=e.target.closest('.stbl tbody tr');
+    if(tr){tr.closest('table').querySelectorAll('tr.sel').forEach(function(r){r.classList.remove('sel');});tr.classList.add('sel');
+      toast('已联动板块：'+tr.querySelector('.nm').firstChild.textContent);return;}
+    var hc=e.target.closest('.heat-cell');
+    if(hc){toast('打开板块「'+hc.querySelector('.nm').textContent+'」详情（演示）');return;}
+    var thm=e.target.closest('.theme');
+    if(thm){toast('打开题材「'+thm.textContent.split(' ')[0]+'」成分（演示）');return;}
+    var lds=e.target.closest('.lad-stock');
+    if(lds){toast('查看个股「'+lds.textContent.split('+')[0].trim()+'」（演示）');return;}
+    var mts=e.target.closest('.card-hd .mini-tabs');
+    if(mts){mts.querySelectorAll('span').forEach(function(s){s.classList.toggle('on',s===e.target);});return;}
+    var ff=e.target.closest('.ffilter');
+    if(ff){ff.querySelectorAll('span').forEach(function(s){s.classList.toggle('on',s===e.target);});
+      toast('信息流筛选：'+e.target.textContent);return;}
+    var md=e.target.closest('.mode-tabs .mt');
+    if(md){md.parentNode.querySelectorAll('.mt').forEach(function(s){s.classList.toggle('on',s===md);});
+      toast('切换盯盘时段：'+md.textContent.trim());return;}
+  });
+
+  /* ---------- 渲染分发 ---------- */
+  var R={idx:viewIdx,sentiment:viewSentiment,sentimentmini:viewSentimentmini,dist:viewDist,distmini:viewDistmini,
+    heat:viewHeat,sectorrank:viewSectorrank,fundbar:viewFundbar,fundbarmni:viewFundbarmni,force:viewForce,
+    emotioncol:viewEmotioncol,feed:viewFeed,flow:viewFlow,flowmini:viewFlowmini,ladder:viewLadder,
+    themes:viewThemes,newsmini:viewNewsmini,radarmni:viewRadarmni,radarchart:viewRadarchart,starmap:viewStarmap};
+  document.querySelectorAll('[data-view]').forEach(function(el){
+    var f=R[el.getAttribute('data-view')];if(f)f(el);});
+})();
+</script>
+</body>
+</html>

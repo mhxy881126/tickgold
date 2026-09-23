@@ -742,3 +742,30 @@ pub async fn get_screener(f: ScreenFilter) -> Result<Vec<ScreenResult>, String> 
     }
     Ok(results)
 }
+
+#[cfg(test)]
+mod live_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn live_quotes() {
+        let codes = vec![
+            "600519".to_string(),
+            "000001".to_string(),
+            "300750".to_string(),
+        ];
+        match get_quotes(codes).await {
+            Ok(v) => {
+                println!("OK rows={}", v.len());
+                for q in &v {
+                    println!(
+                        "  {} {} price={} pct={} amount={} src={}",
+                        q.code, q.name, q.price, q.pct, q.amount, q.source
+                    );
+                }
+                assert!(valid_quotes(&v), "should return valid quotes");
+            }
+            Err(e) => panic!("get_quotes failed: {e}"),
+        }
+    }
+}

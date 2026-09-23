@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { fetchNewsFlash, type NewsItem } from "../api/market";
 
 const items = ref<NewsItem[]>([]);
@@ -41,8 +41,31 @@ function onScroll(e: Event) {
   }
 }
 
-function open(n: NewsItem) {
-  if (n.url) openUrl(n.url).catch(() => {});
+const NEWS_LABEL = "news-web";
+async function open(n: NewsItem) {
+  if (!n.url) return;
+  // 复用同一个内置网页弹窗：先关旧窗再开新窗，避免堆叠；窗口本身可拖动/缩放/关闭
+  try {
+    const old = await WebviewWindow.getByLabel(NEWS_LABEL);
+    if (old) await old.close();
+  } catch {
+    /* ignore */
+  }
+  try {
+    const w = new WebviewWindow(NEWS_LABEL, {
+      url: n.url,
+      title: n.text ? n.text.replace(/\s+/g, " ").slice(0, 26) : "盘中快讯",
+      width: 1080,
+      height: 760,
+      resizable: true,
+    });
+    await new Promise((res, rej) => {
+      w.once("tauri://created", res);
+      w.once("tauri://error", rej);
+    });
+  } catch (e) {
+    console.error("open news webview", e);
+  }
 }
 
 let timer = 0;

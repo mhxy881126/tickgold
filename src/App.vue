@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, provide, watch } from "vue";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import CardShell from "./components/CardShell.vue";
@@ -53,7 +54,8 @@ const selected = ref<string | null>(null);
 // 自由布局画布 DOM（同步给布局引擎，用于指针拖拽换算）
 const freeCanvasEl = ref<HTMLElement | null>(null);
 watch(freeCanvasEl, (el) => {
-  bench.freeCanvasRef.value = el;
+  // ref 绑在 TransitionGroup 上，拿到的是组件实例，需取其根 DOM($el)
+  bench.freeCanvasRef.value = ((el as any)?.$el as HTMLElement) ?? (el as unknown as HTMLElement);
 });
 
 // ===== 分区列表（落点指示用）=====
@@ -76,7 +78,11 @@ function dropPos(id: CardId): "before" | "after" | null {
 function onGridDragOver(e: DragEvent) {
   e.preventDefault();
   const t = e.target as HTMLElement;
-  if (typeof t.closest === "function" && t.closest(".card-head")) return; // 标题栏已给精确落点
+  if (typeof t.closest === "function") {
+    // 悬停在卡片上时，卡片自身已给出精确落点，不要覆盖成"区末尾"
+    if (t.closest(".card-shell")) return;
+    if (t.closest(".card-head")) return;
+  }
   const grid = e.currentTarget as HTMLElement;
   const r = grid.getBoundingClientRect();
   const x = (e.clientX - r.left) / r.width;
@@ -232,6 +238,12 @@ const inTauri = typeof window !== "undefined" && "__TAURI__" in window;
 const appWin = inTauri ? getCurrentWindow() : null;
 
 async function syncMax() {
+  try {
+    isMax.value = await invoke<boolean>("win_is_maximized");
+    return;
+  } catch {
+    /* fall through to JS API */
+  }
   if (!appWin) return;
   try {
     isMax.value = await appWin.isMaximized();
@@ -239,57 +251,95 @@ async function syncMax() {
     /* ignore */
   }
 }
-function winMinimize() {
-  appWin?.minimize().catch(() => {});
+async function winMinimize() {
+  try {
+    await invoke("win_minimize");
+  } catch {
+    appWin?.minimize().catch(() => {});
+  }
 }
-function winToggleMax() {
-  appWin?.toggleMaximize().then(syncMax).catch(() => {});
+async function winToggleMax() {
+  try {
+    isMax.value = await invoke<boolean>("win_toggle_maximize");
+  } catch {
+    appWin?.toggleMaximize().then(syncMax).catch(() => {});
+  }
 }
-function winClose() {
-  appWin?.close().catch(() => {});
+async function winClose() {
+  try {
+    await invoke("win_close");
+  } catch {
+    appWin?.close().catch(() => {});
+  }
 }
 let unlistenResize: (() => void) | null = null;
 
 const unlistenFns: (() => void)[] = [];
 
 onMounted(async () => {
+  // —— 平台与版本（独立容错）——
   try {
     const pf = (navigator.platform || navigator.userAgent || "").toLowerCase();
     isMac.value = pf.includes("mac");
     isWin.value = pf.includes("win");
     curVersion.value = await getVersion();
+  } catch (e) {
+    console.error("[app] platform/version", e);
+  }
+  // —— 窗口最大化状态同步 ——
+  try {
     await syncMax();
     if (appWin) {
-      try {
-        unlistenResize = await appWin.onResized(() => {
-          syncMax();
-        });
-      } catch {
-        /* ignore */
-      }
+      unlistenResize = await appWin.onResized(() => {
+        syncMax();
+      });
     }
-    await ensureDb();
-    await theme.load();
-    await wl.load();
-    await alerts.load();
-    // 优先恢复上次保存的工作台布局；否则首次进入时段驾驶舱
+  } catch {
+    /* ignore */
+  }
+  // —— 基础数据（各自独立容错，互不影响）——
+  try { await ensureDb(); } catch (e) { console.error("[app] db", e); }
+  try { await theme.load(); } catch (e) { console.error("[app] theme", e); }
+  try { await wl.load(); } catch (e) { console.error("[app] watchlist", e); }
+  try { await alerts.load(); } catch (e) { console.error("[app] alerts", e); }
+
+  // —— 行情轮询：盯盘核心，自选加载后立即启动，不被后续任何步骤拖累 ——
+  quotes.start(2000);
+
+  // —— 布局恢复（容错）——
+  try {
     const restored = await bench.restoreCurrent();
     if (!restored) {
       bench.enterTimeMode(currentTimeSlot());
     }
-    if (wl.codes.length) {
-      selected.value = wl.codes[0];
-    }
-    // 有启用规则则启动后端预警引擎
+  } catch (e) {
+    console.error("[app] restore layout", e);
+  }
+  if (wl.codes.length) {
+    selected.value = wl.codes[0];
+  }
+
+  // —— 预警引擎（容错，失败不影响行情）——
+  try {
     await alerts.syncEngine();
-    quotes.start(2000);
-    // Dock：滚轮横向滚动（非 passive 才能 preventDefault）+ 箭头状态
+  } catch (e) {
+    console.error("[app] alert engine", e);
+  }
+
+  // —— Dock 交互 ——
+  try {
     if (dockRef.value) {
       dockRef.value.addEventListener("wheel", onDockWheel, { passive: false });
       dockRef.value.addEventListener("scroll", updateDockArrows);
       window.addEventListener("resize", updateDockArrows);
       setTimeout(updateDockArrows, 400);
     }
+  } catch (e) {
+    console.error("[app] dock", e);
+  }
+
+  // —— 事件监听 ——
+  try {
     unlistenFns.push(
       await listen<string>("island:select", (e) => {
         selected.value = e.payload;
@@ -312,7 +362,7 @@ onMounted(async () => {
       })
     );
   } catch (e) {
-    console.error("[app] init failed", e);
+    console.error("[app] listeners", e);
   }
 });
 onBeforeUnmount(() => {
@@ -343,16 +393,37 @@ onBeforeUnmount(() => {
         <span class="sep">|</span>
         <button class="upd" @click="showUpdate = true">检查更新</button>
       </div>
-      <!-- Windows 自绘窗口控制按钮（macOS 使用原生红绿灯） -->
-      <div v-if="isWin" class="win-ctl">
-        <button class="wc-btn" type="button" title="最小化" @click="winMinimize">
+      <!-- Windows 自绘窗口控制（macOS 使用原生红绿灯） -->
+      <div v-if="isWin" class="win-ctl" data-tauri-drag-region="false">
+        <button
+          class="wc-btn"
+          type="button"
+          data-tauri-drag-region="false"
+          title="最小化"
+          @mousedown.stop
+          @click="winMinimize"
+        >
           <svg viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1" /></svg>
         </button>
-        <button class="wc-btn" type="button" :title="isMax ? '向下还原' : '最大化'" @click="winToggleMax">
+        <button
+          class="wc-btn"
+          type="button"
+          data-tauri-drag-region="false"
+          :title="isMax ? '向下还原' : '最大化'"
+          @mousedown.stop
+          @click="winToggleMax"
+        >
           <svg v-if="!isMax" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1" /></svg>
           <svg v-else viewBox="0 0 12 12"><rect x="3.4" y="4.4" width="5.2" height="5" fill="none" stroke="currentColor" stroke-width="1" /><path d="M4.4 4.4V3h4.6v4.6H7.6" fill="none" stroke="currentColor" stroke-width="1" /></svg>
         </button>
-        <button class="wc-btn close" type="button" title="关闭" @click="winClose">
+        <button
+          class="wc-btn close"
+          type="button"
+          data-tauri-drag-region="false"
+          title="关闭"
+          @mousedown.stop
+          @click="winClose"
+        >
           <svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1" /></svg>
         </button>
       </div>
@@ -486,6 +557,7 @@ onBeforeUnmount(() => {
           v-for="id in bench.openCards.value"
           :key="id"
           class="card-slot"
+          :data-card-id="id"
           :class="{
             'drop-before': dropPos(id) === 'before',
             'drop-after': dropPos(id) === 'after',
@@ -497,10 +569,7 @@ onBeforeUnmount(() => {
             :accent="CARD_META[id].accent"
             :dragging="bench.dragId.value === id"
             @close="bench.close(id)"
-            @dragstart="bench.dragStart(id)"
-            @dragend="bench.dragEnd()"
-            @dragover="(r: number) => bench.hintOver(id, r)"
-            @drop="bench.applyDrop()"
+            @pdrag="(e: PointerEvent) => bench.pointerDragStart(id, e)"
           >
             <CardContent
               :id="id"
@@ -528,6 +597,8 @@ onBeforeUnmount(() => {
   grid-template-rows: 38px 32px 44px 1fr;
   grid-template-columns: 1fr;
   height: 100vh;
+  background: var(--bg);
+  color: var(--text);
 }
 
 /* 顶栏 */
@@ -630,6 +701,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  background: var(--bg);
 }
 .ws-body {
   position: relative;

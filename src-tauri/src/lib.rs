@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 use tauri::{
-    menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     LogicalPosition, Manager, WebviewUrl, WebviewWindowBuilder,
 };
 use tauri_plugin_global_shortcut::ShortcutState;
@@ -187,6 +187,46 @@ fn stop_alert_engine(
     Ok("stopped".to_string())
 }
 
+// ===== 自绘标题栏窗口控制（Rust 端直接操作，绕过前端 ACL 与 drag-region 对点击的干扰）=====
+#[tauri::command]
+fn win_minimize(app: tauri::AppHandle) -> Result<(), String> {
+    let w = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+    w.minimize().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn win_toggle_maximize(app: tauri::AppHandle) -> Result<bool, String> {
+    let w = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+    if w.is_maximized().map_err(|e| e.to_string())? {
+        w.unmaximize().map_err(|e| e.to_string())?;
+        Ok(false)
+    } else {
+        w.maximize().map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+}
+
+#[tauri::command]
+fn win_close(app: tauri::AppHandle) -> Result<(), String> {
+    let w = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+    // 不销毁窗口，隐藏到托盘；这样可从托盘 / 左键托盘重新打开（真正退出走托盘“退出”）
+    w.hide().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn win_is_maximized(app: tauri::AppHandle) -> Result<bool, String> {
+    let w = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+    w.is_maximized().map_err(|e| e.to_string())
+}
+
 /// 老板键：切换所有窗口显隐
 fn boss_toggle(app: &tauri::AppHandle) {
     let state = app.state::<BossHidden>();
@@ -203,6 +243,25 @@ fn boss_toggle(app: &tauri::AppHandle) {
             let _ = w.set_focus();
         }
     }
+}
+
+/// 切换指定窗口显隐，并把对应托盘勾选项与窗口实际可见性对齐
+fn toggle_window<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    label: &str,
+    check: &CheckMenuItem<R>,
+) {
+    let Some(w) = app.get_webview_window(label) else {
+        return;
+    };
+    let vis = w.is_visible().unwrap_or(false);
+    if vis {
+        let _ = w.hide();
+    } else {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+    let _ = check.set_checked(!vis);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -412,29 +471,48 @@ pub fn run() {
                 let _ = island.set_position(LogicalPosition::new(x, 12.0));
             }
 
-            // ===== 系统托盘 =====
-            let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
-            let show_island = MenuItem::with_id(app, "show_island", "显示灵动岛", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &show_island, &quit])?;
+            // ===== 系统托盘：勾选式菜单，分别控制主窗口 / 灵动岛显隐 =====
+            // with_id(manager, id, text, enabled, checked, accelerator)
+            let main_item =
+                CheckMenuItem::with_id(app, "toggle_main", "主窗口", true, true, None::<&str>)?;
+            let island_item = CheckMenuItem::with_id(
+                app,
+                "toggle_island",
+                "灵动岛",
+                true,
+                true,
+                None::<&str>,
+            )?;
+            let sep = PredefinedMenuItem::separator(app)?;
+            let quit = MenuItem::with_id(app, "quit", "退出 TickGold", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&main_item, &island_item, &sep, &quit])?;
+
+            // 菜单项内部为 Arc，克隆句柄供事件闭包使用
+            let main_c = main_item.clone();
+            let island_c = island_item.clone();
+            let main_c2 = main_item.clone();
+
             TrayIconBuilder::with_id("main-tray")
-                .tooltip("TickGold - 金睛盯盘 (Alt+` 老板键)")
+                .tooltip("TickGold · 金睛盯盘 (Alt+` 老板键)")
                 .menu(&menu)
-                .on_menu_event(|app, event| match event.id().as_ref() {
-                    "show" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
-                    }
-                    "show_island" => {
-                        if let Some(w) = app.get_webview_window("island") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
-                    }
+                .show_menu_on_left_click(false)
+                .on_menu_event(move |app, event| match event.id().as_ref() {
+                    "toggle_main" => toggle_window(app, "main", &main_c),
+                    "toggle_island" => toggle_window(app, "island", &island_c),
                     "quit" => app.exit(0),
                     _ => {}
+                })
+                .on_tray_icon_event(move |tray, event| {
+                    // 左键单击托盘图标：切换主窗口显隐
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        toggle_window(app, "main", &main_c2);
+                    }
                 })
                 .build(app)?;
             Ok(())
@@ -463,7 +541,11 @@ pub fn run() {
             start_radar,
             stop_radar,
             start_alert_engine,
-            stop_alert_engine
+            stop_alert_engine,
+            win_minimize,
+            win_toggle_maximize,
+            win_close,
+            win_is_maximized
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

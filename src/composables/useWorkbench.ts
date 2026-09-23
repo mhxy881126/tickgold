@@ -428,6 +428,58 @@ export function useWorkbench() {
     dropHint.value = null;
   }
 
+  // ===== Pointer 拖拽（替代 HTML5 DnD，WebView2 下更可靠）=====
+  // 按住标题栏移动超过阈值即进入拖拽，实时按指针位置算落点，松手换位
+  function pointerDragStart(id: CardId, e: PointerEvent) {
+    if (e.button !== 0) return;
+    const st = { sx: e.clientX, sy: e.clientY, active: false };
+    let lastX = e.clientX;
+    let lastY = e.clientY;
+    let raf = 0;
+    // 落点计算（elementFromPoint 会强制布局，放进 rAF，每帧最多一次）
+    const compute = () => {
+      raf = 0;
+      const el = document.elementFromPoint(lastX, lastY) as HTMLElement | null;
+      const slot = el && el.closest ? (el.closest(".card-slot") as HTMLElement | null) : null;
+      if (slot) {
+        const cid = slot.getAttribute("data-card-id") as CardId | null;
+        if (cid) {
+          const r = slot.getBoundingClientRect();
+          hintOver(cid, (lastY - r.top) / r.height);
+          return;
+        }
+      }
+      // 落在网格空白区：按 x 归到主干 / 侧栏末尾
+      const grid = el && el.closest ? (el.closest(".card-grid") as HTMLElement | null) : null;
+      if (grid) {
+        const gr = grid.getBoundingClientRect();
+        const x = (lastX - gr.left) / gr.width;
+        hintZone(x < 7 / 12 ? "main" : "side");
+      }
+    };
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - st.sx;
+      const dy = ev.clientY - st.sy;
+      if (!st.active && Math.hypot(dx, dy) < 6) return;
+      if (!st.active) {
+        st.active = true;
+        dragId.value = id;
+      }
+      lastX = ev.clientX;
+      lastY = ev.clientY;
+      if (!raf) raf = requestAnimationFrame(compute);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (raf) cancelAnimationFrame(raf);
+      if (st.active) applyDrop();
+      dragEnd();
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
   // 在分区有序列表中把 src 放到锚点之后（after=null 表示该区开头）
   function insertIntoZone(ids: CardId[], src: CardId, z: Zone, after: CardId | null): CardId[] {
     const zIds = ids.filter((i) => zoneOf(i) === z);
@@ -457,6 +509,8 @@ export function useWorkbench() {
     const after: CardId | null = clamped > 0 ? zoneList[clamped - 1] : null;
     if (zoneOf(src) !== hint.zone) zoneOverride.value[src] = hint.zone;
     openCards.value = insertIntoZone(ids, src, hint.zone, after);
+    // 拖拽 = 自定义排布，退出时段驾驶舱固定 Bento，否则位置会被预设坐标覆盖
+    timeMode.value = null;
     dragEnd();
   }
 
@@ -491,18 +545,28 @@ export function useWorkbench() {
     freeDrag.value = { id, ...base };
     const cr = canvas.getBoundingClientRect();
     const cellW = (cr.width - (COLS + 1) * GAP) / COLS;
-    const move = (ev: PointerEvent) => {
-      const mx = ev.clientX - cr.left;
-      const my = ev.clientY - cr.top;
+    let lastX = 0;
+    let lastY = 0;
+    let raf = 0;
+    const compute = () => {
+      raf = 0;
+      const mx = lastX - cr.left;
+      const my = lastY - cr.top;
       const col = Math.round((mx - GAP) / (cellW + GAP));
       const row = Math.round((my - GAP) / (ROW_UNIT + GAP));
       const nx = clampNum(col - Math.round(base.w / 2), 0, COLS - base.w);
       const ny = clampNum(row - Math.round(base.h / 2), 0, 60);
       freeDrag.value = { id, x: nx, y: ny, w: base.w, h: base.h };
     };
+    const move = (ev: PointerEvent) => {
+      lastX = ev.clientX;
+      lastY = ev.clientY;
+      if (!raf) raf = requestAnimationFrame(compute);
+    };
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      if (raf) cancelAnimationFrame(raf);
       const g = freeDrag.value;
       if (g) {
         freeRects.value[id] = { x: g.x, y: g.y, w: g.w, h: g.h };
@@ -671,6 +735,7 @@ export function useWorkbench() {
     clearHint,
     applyDrop,
     dragEnd,
+    pointerDragStart,
     // 自由布局
     freeMode,
     freeRects,

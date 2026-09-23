@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TickGold 后续开发路线图 · v0.21 → v1.0</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0e14'/%3E%3Cpath d='M14 44 L26 30 L34 36 L50 18' fill='none' stroke='%23e8c96a' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#131822; --panel2:#171d29; --line:#232b3a;
+    --gold:#d4af37; --gold2:#e8c96a; --blue:#4ea1ff; --red:#f23645; --green:#08db94;
+    --t:#e8edf5; --m:#8b949e; --dim:#5b6573;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:radial-gradient(1200px 600px at 70% -10%,#16202e 0%,var(--bg) 55%);
+    color:var(--t); font-family:"Noto Sans SC","Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    line-height:1.6; -webkit-font-smoothing:antialiased; padding-bottom:60px;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:0 26px}
+  /* header */
+  header.hero{padding:54px 0 30px;text-align:center}
+  .kicker{display:inline-flex;align-items:center;gap:8px;font-size:12px;letter-spacing:2px;color:var(--gold2);
+    border:1px solid rgba(212,175,55,.35);border-radius:999px;padding:5px 15px;background:rgba(212,175,55,.06)}
+  header.hero h1{font-size:38px;font-weight:800;margin:18px 0 10px;letter-spacing:.5px}
+  header.hero h1 .g{background:linear-gradient(90deg,var(--gold2),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent}
+  header.hero p{color:var(--m);font-size:14px;max-width:680px;margin:0 auto}
+  .ver-flow{display:flex;justify-content:center;align-items:center;gap:14px;margin-top:24px;flex-wrap:wrap}
+  .ver-chip{font-size:13px;font-weight:700;padding:8px 18px;border-radius:10px;border:1px solid var(--line);background:var(--panel)}
+  .ver-chip.now{border-color:var(--gold);color:var(--gold2);box-shadow:0 0 0 3px rgba(212,175,55,.12)}
+  .ver-chip.goal{border-color:var(--green);color:var(--green)}
+  .arrow-r{color:var(--m)}
+  section{margin-top:46px}
+  .sec-title{display:flex;align-items:center;gap:11px;font-size:19px;font-weight:800;margin-bottom:20px}
+  .sec-title .bar{width:5px;height:20px;border-radius:3px;background:linear-gradient(var(--gold2),var(--gold))}
+  .sec-title small{font-weight:500;color:var(--m);font-size:12px;margin-left:6px}
+  /* progress stats */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .stat{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:14px;padding:20px;text-align:center}
+  .stat .num{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums}
+  .stat .lab{font-size:12px;color:var(--m);margin-top:4px}
+  .stat.done .num{color:var(--green)} .stat.part .num{color:var(--gold2)}
+  .stat.todo .num{color:var(--blue)} .stat.no .num{color:var(--m)}
+  .pbar-wrap{margin-top:22px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .pbar-top{display:flex;justify-content:space-between;font-size:12px;color:var(--m);margin-bottom:9px}
+  .pbar{height:12px;border-radius:7px;overflow:hidden;display:flex;background:#0d121b}
+  .seg-done{background:var(--green)} .seg-part{background:var(--gold2)} .seg-todo{background:var(--blue)} .seg-no{background:#3a4356}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--m)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+  /* phases + version cards */
+  .phase{margin-bottom:26px}
+  .phase-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+  .phase-tag{font-size:12px;font-weight:800;padding:4px 12px;border-radius:8px;color:#0b0e14}
+  .p0 .phase-tag{background:var(--green)} .p1 .phase-tag{background:var(--blue)}
+  .p2 .phase-tag{background:var(--gold2)} .p3 .phase-tag{background:#b07cff} .p4 .phase-tag{background:var(--red)}
+  .phase-head .pn{font-size:14px;font-weight:700}
+  .phase-head .pd{font-size:12px;color:var(--m)}
+  .vgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .vcard{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:13px;padding:16px;position:relative;overflow:hidden}
+  .p0 .vcard::before,.p1 .vcard::before,.p2 .vcard::before,.p3 .vcard::before,.p4 .vcard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
+  .p0 .vcard::before{background:var(--green)} .p1 .vcard::before{background:var(--blue)}
+  .p2 .vcard::before{background:var(--gold2)} .p3 .vcard::before{background:#b07cff} .p4 .vcard::before{background:var(--red)}
+  .vcard .v{font-size:15px;font-weight:800;padding-left:6px}
+  .vcard .theme{color:var(--gold2);font-size:13px;font-weight:700;margin:2px 0 8px;padding-left:6px}
+  .vcard ul{list-style:none;font-size:12.5px;color:var(--m);padding-left:6px}
+  .vcard li{padding-left:14px;position:relative;margin:4px 0}
+  .vcard li::before{content:'';position:absolute;left:2px;top:9px;width:5px;height:5px;border-radius:50%;background:var(--dim)}
+  .vcard .acc{margin:10px 0 0 6px;font-size:11.5px;color:var(--dim);border-top:1px dashed var(--line);padding-top:8px}
+  /* domains */
+  .domains{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  .domain{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:13px;padding:17px}
+  .domain .dh{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+  .domain .dico{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:rgba(212,175,55,.1);color:var(--gold2)}
+  .domain .dt{font-size:14px;font-weight:800}
+  .domain .dc{font-size:11px;color:var(--dim);margin-left:auto}
+  .domain .dc .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:0}
+  .dot-h{background:var(--green)} .dot-m{background:var(--gold2)} .dot-l{background:var(--red)}
+  .domain p{font-size:12.5px;color:var(--m)}
+  .domain .covers{margin-top:9px;font-size:11px;color:var(--dim)}
+  /* delivery flow */
+  .flow{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  .fstep{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:13px}
+  .fstep .n{width:24px;height:24px;border-radius:50%;background:linear-gradient(var(--gold2),var(--gold));color:#0b0e14;font-weight:800;font-size:12px;display:grid;place-items:center;margin-bottom:8px}
+  .fstep .ft{font-size:12px;font-weight:700}
+  .fstep .fd{font-size:11px;color:var(--m);margin-top:3px}
+  /* DoD */
+  .dod{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .dod-item{display:flex;gap:10px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:12.5px;color:var(--m)}
+  .ck{width:17px;height:17px;border-radius:5px;border:1.5px solid var(--gold);flex:0 0 auto;margin-top:2px}
+  /* boundary */
+  .bound{background:linear-gradient(180deg,#151b26,#10151f);border:1px solid var(--line);border-radius:14px;padding:22px 24px}
+  .bound ul{margin-left:20px}
+  .bound li{font-size:13px;color:var(--m);margin:8px 0}
+  .bound li b{color:var(--t)}
+  .foot{text-align:center;color:var(--dim);font-size:12px;margin-top:42px}
+  .foot .g{color:var(--gold2)}
+  @media(max-width:900px){
+    .stats{grid-template-columns:repeat(2,1fr)}.vgrid{grid-template-columns:1fr}
+    .domains,.dod{grid-template-columns:1fr}.flow{grid-template-columns:repeat(2,1fr)}
+    header.hero h1{font-size:28px}
+  }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">OPEN SOURCE · CROSS PLATFORM · A-SHARE TERMINAL</span>
+    <h1>TickGold <span class="g">后续开发完整路线</span></h1>
+    <p>Tauri 2 + Rust + Vue 3 + ECharts，一套代码图形化发布 Windows / macOS。基于 v0.20.1 现状，重新核对 22 项功能并规划到 v1.0 正式版。</p>
+    <div class="ver-flow">
+      <span class="ver-chip now">当前 v0.20.1</span>
+      <span class="arrow-r">&rarr;</span>
+      <span class="ver-chip">v0.21 – v0.30 功能补齐</span>
+      <span class="arrow-r">&rarr;</span>
+      <span class="ver-chip">v0.31 工具集</span>
+      <span class="arrow-r">&rarr;</span>
+      <span class="ver-chip goal">v1.0 正式版</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <section>
+    <div class="sec-title"><span class="bar"></span>22 项功能完成度<small>v0.20.1 核对</small></div>
+    <div class="stats">
+      <div class="stat done"><div class="num">13</div><div class="lab">已完成</div></div>
+      <div class="stat part"><div class="num">5</div><div class="lab">部分具备 / 可增强</div></div>
+      <div class="stat todo"><div class="num">6</div><div class="lab">待做（资讯 3 项合并）</div></div>
+      <div class="stat no"><div class="num">1</div><div class="lab">不做（合规）</div></div>
+    </div>
+    <div class="pbar-wrap">
+      <div class="pbar-top"><span>整体进度</span><span>约 65% → v1.0</span></div>
+      <div class="pbar">
+        <div class="seg-done" style="width:59%"></div>
+        <div class="seg-part" style="width:23%"></div>
+        <div class="seg-todo" style="width:14%"></div>
+        <div class="seg-no" style="width:4%"></div>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--green)"></i>已完成</span>
+        <span><i style="background:var(--gold2)"></i>部分 / 增强</span>
+        <span><i style="background:var(--blue)"></i>待做</span>
+        <span><i style="background:#3a4356"></i>不做（确定性预测）</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-title"><span class="bar"></span>完整版本路线<small>v0.21 → v1.0，每版一主题、可独立发布</small></div>
+
+    <div class="phase p0">
+      <div class="phase-head"><span class="phase-tag">P0</span><span class="pn">数据现成 · 盯盘高频</span><span class="pd">复用已验证接口，开工即做</span></div>
+      <div class="vgrid">
+        <div class="vcard"><div class="v">v0.21.0</div><div class="theme">热点复盘</div>
+          <ul><li>收盘自动汇总涨停 / 连板 / 炸板</li><li>板块 / 资金 / 宽度一页聚合</li><li>雷达卡片新增「复盘」Tab</li></ul>
+          <div class="acc">验收：一键生成、口径与各卡一致、可回看历史</div></div>
+        <div class="vcard"><div class="v">v0.22.0</div><div class="theme">情绪分时</div>
+          <ul><li>情绪温度盘中分时曲线</li><li>涨跌停 / 炸板率分时</li><li>红绿家数随快照累积</li></ul>
+          <div class="acc">验收：曲线随全市场快照累积、口径一致</div></div>
+        <div class="vcard"><div class="v">v0.23.0</div><div class="theme">大盘主力全景</div>
+          <ul><li>两市主力净流入分时</li><li>主力净流入多日趋势</li><li>行业资金排名（可联动）</li></ul>
+          <div class="acc">验收：分时 / 多日正确、行业排名可点</div></div>
+      </div>
+    </div>
+
+    <div class="phase p1">
+      <div class="phase-head"><span class="phase-tag">P1</span><span class="pn">交易时段专景 · 板块深度</span><span class="pd">部分需开盘实测 / 自建历史</span></div>
+      <div class="vgrid">
+        <div class="vcard"><div class="v">v0.24.0</div><div class="theme">集合竞价</div>
+          <ul><li>9:15–9:25 竞价量 / 竞价额</li><li>高开低开、匹配量</li><li>虚拟参考量 / 未匹配量</li></ul>
+          <div class="acc">验收：早盘字段实测准确，非竞价时段提示</div></div>
+        <div class="vcard"><div class="v">v0.25.0</div><div class="theme">题材轮动</div>
+          <ul><li>每日快照自建板块历史</li><li>概念阶段强弱 / 轮动矩阵</li><li>主线切换识别</li></ul>
+          <div class="acc">验收：上线即积累，矩阵随时间完整</div></div>
+        <div class="vcard"><div class="v">v0.26.0</div><div class="theme">市场专项</div>
+          <ul><li>科创板（688）专项筛选</li><li>北交所（4/8）专项</li><li>次新股板块行情</li></ul>
+          <div class="acc">验收：专项榜单与次新行情真实数据</div></div>
+      </div>
+    </div>
+
+    <div class="phase p2">
+      <div class="phase-head"><span class="phase-tag">P2</span><span class="pn">选股与游资</span><span class="pd">需备源容灾</span></div>
+      <div class="vgrid">
+        <div class="vcard"><div class="v">v0.27.0</div><div class="theme">龙虎榜</div>
+          <ul><li>上榜个股、买卖净额</li><li>席位 / 营业部明细</li><li>多源 + 镜像容灾</li></ul>
+          <div class="acc">验收：席位数据真实、失败可降级</div></div>
+        <div class="vcard"><div class="v">v0.28.0</div><div class="theme">选股 / F10 增强</div>
+          <ul><li>全市场选股范围</li><li>涨停战法 / 资金共振条件</li><li>F10 三大报表 / 股东页</li></ul>
+          <div class="acc">验收：全市场可筛、F10 资料完整</div></div>
+        <div class="vcard"><div class="v">v0.28.x</div><div class="theme">数据容灾加固</div>
+          <ul><li>新接口统一多源封装</li><li>超时 / 熔断 / 降级提示</li><li>口径与现有卡片对齐</li></ul>
+          <div class="acc">验收：单源故障不影响整体</div></div>
+      </div>
+    </div>
+
+    <div class="phase p3">
+      <div class="phase-head"><span class="phase-tag">P3</span><span class="pn">资讯消息</span><span class="pd">爬虫 / 清洗 / 合规量大，最后做</span></div>
+      <div class="vgrid">
+        <div class="vcard"><div class="v">v0.29.0</div><div class="theme">资讯中心</div>
+          <ul><li>财经头条、7×24 电报</li><li>个股 / 板块相关聚合</li><li>标题摘要链回原文</li></ul>
+          <div class="acc">验收：去重聚合、遵守数据源条款</div></div>
+        <div class="vcard"><div class="v">v0.30.0</div><div class="theme">明日主线参考</div>
+          <ul><li>题材 + 资讯 + 涨停综合</li><li>主线热度排序</li><li>全程标注非投资建议</li></ul>
+          <div class="acc">验收：综合有据、合规标注完整</div></div>
+        <div class="vcard"><div class="v">v0.30.x</div><div class="theme">资讯稳定性</div>
+          <ul><li>编码 / 反爬容错</li><li>刷新频率与缓存</li><li>空数据 / 失败兜底</li></ul>
+          <div class="acc">验收：盘中持续可用、不裂内容</div></div>
+      </div>
+    </div>
+
+    <div class="phase p4">
+      <div class="phase-head"><span class="phase-tag">P4</span><span class="pn">工具集与 v1.0 收口</span><span class="pd">成熟度 + 签名 + 正式发布</span></div>
+      <div class="vgrid">
+        <div class="vcard"><div class="v">v0.31.0</div><div class="theme">交易工具集</div>
+          <ul><li>画线（趋势线 / 黄金分割）</li><li>投资计算器（仓位 / 复利）</li><li>CSV 导出、设置中心</li></ul>
+          <div class="acc">验收：画线随缩放联动并持久化</div></div>
+        <div class="vcard"><div class="v">v0.32.0</div><div class="theme">技术债清理</div>
+          <ul><li>移除 hqchart / klinecharts 残留</li><li>移除 jquery / babel-runtime、死代码</li><li>性能与稳定性打磨</li></ul>
+          <div class="acc">验收：无废弃依赖、控制台无错误</div></div>
+        <div class="vcard"><div class="v">v1.0.0</div><div class="theme">签名与正式版</div>
+          <ul><li>rc：Authenticode / 公证、全量回归</li><li>三平台签名安装包</li><li>文档 / Wiki / License 定稿</li></ul>
+          <div class="acc">验收：无安全拦截、升级不丢数据</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-title"><span class="bar"></span>剩余任务 · 功能域看板<small>相关功能合并为多 Tab 卡片，同屏建议 4–6 张</small></div>
+    <div class="domains">
+      <div class="domain"><div class="dh"><span class="dico">A</span><span class="dt">盘面复盘与情绪</span><span class="dc"><span class="dot dot-h"></span>高</span></div>
+        <p>热点复盘（零新接口）、情绪温度 / 涨跌停 / 炸板率分时，复用全市场快照存时序。</p>
+        <div class="covers">覆盖 #14、#17</div></div>
+      <div class="domain"><div class="dh"><span class="dico">B</span><span class="dt">资金面深化</span><span class="dc"><span class="dot dot-h"></span>高</span></div>
+        <p>大盘主力资金全景：两市主力净流入分时 / 多日、行业资金排名，新浪资金接口扩展。</p>
+        <div class="covers">覆盖 #19；#8 已完成</div></div>
+      <div class="domain"><div class="dh"><span class="dico">C</span><span class="dt">交易时段专景</span><span class="dc"><span class="dot dot-m"></span>中</span></div>
+        <p>集合竞价看板：9:15–9:25 竞价量 / 额、高开低开、匹配量，腾讯早盘字段开盘实测。</p>
+        <div class="covers">覆盖 #9</div></div>
+      <div class="domain"><div class="dh"><span class="dico">D</span><span class="dt">板块题材深度</span><span class="dc"><span class="dot dot-m"></span>中</span></div>
+        <p>题材轮动（自建每日快照历史）、科创板 / 北交所专项、次新股板块行情。</p>
+        <div class="covers">覆盖 #5、#6、#20</div></div>
+      <div class="domain"><div class="dh"><span class="dico">E</span><span class="dt">选股与游资</span><span class="dc"><span class="dot dot-m"></span>中</span></div>
+        <p>龙虎榜席位 / 营业部（多源容灾）、全市场智能选股增强、F10 报表与股东页补全。</p>
+        <div class="covers">覆盖 #2、#7</div></div>
+      <div class="domain"><div class="dh"><span class="dico">F</span><span class="dt">资讯消息</span><span class="dc"><span class="dot dot-l"></span>低</span></div>
+        <p>资讯中心（头条 / 电报 / 个股板块聚合）、明日主线参考，爬虫清洗与合规，最后做。</p>
+        <div class="covers">覆盖 #4、#15、#22</div></div>
+      <div class="domain" style="grid-column:1/-1"><div class="dh"><span class="dico">G</span><span class="dt">工具与平台成熟度</span><span class="dc">穿插 / 收口</span></div>
+        <p>画线工具、投资计算器、CSV 导出、设置中心（数据源 / 频率 / 主题 / 代理）；Windows Authenticode / macOS 公证；技术债清理（hqchart / klinecharts / jquery / babel-runtime 残留、东财死代码）。</p>
+        <div class="covers">支撑 v1.0 发布标准</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-title"><span class="bar"></span>每版标准交付流程<small>已在多个版本跑顺，10 步闭环</small></div>
+    <div class="flow">
+      <div class="fstep"><div class="n">1</div><div class="ft">Rust 数据命令</div><div class="fd">market 模块 + 多源容灾熔断</div></div>
+      <div class="fstep"><div class="n">2</div><div class="ft">TS 封装</div><div class="fd">api/market.ts + 类型定义</div></div>
+      <div class="fstep"><div class="n">3</div><div class="ft">卡片组件</div><div class="fd">CARD_META 注册 + 渲染分支</div></div>
+      <div class="fstep"><div class="n">4</div><div class="ft">前端验证</div><div class="fd">pnpm build（vue-tsc + vite）</div></div>
+      <div class="fstep"><div class="n">5</div><div class="ft">Rust 验证</div><div class="fd">tauri build --no-bundle</div></div>
+      <div class="fstep"><div class="n">6</div><div class="ft">bump 版本</div><div class="fd">conf / package / Cargo 三处</div></div>
+      <div class="fstep"><div class="n">7</div><div class="ft">提交打 tag</div><div class="fd">push 失败走 Git Data API</div></div>
+      <div class="fstep"><div class="n">8</div><div class="ft">CI 自动发布</div><div class="fd">三平台构建 + publish 自动发</div></div>
+      <div class="fstep"><div class="n">9</div><div class="ft">更新实测</div><div class="fd">检查 / 下载 / 安装全链路</div></div>
+      <div class="fstep"><div class="n">10</div><div class="ft">同步 README</div><div class="fd">每次发版必做</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-title"><span class="bar"></span>v1.0 发布标准<small>Definition of Done</small></div>
+    <div class="dod">
+      <div class="dod-item"><span class="ck"></span><span>22 项中「确定要做」的功能全部交付（资讯 / 明日主线按实测推进）</span></div>
+      <div class="dod-item"><span class="ck"></span><span>三平台安装包代码签名（Authenticode / 公证），无安全拦截</span></div>
+      <div class="dod-item"><span class="ck"></span><span>在线更新连续 3 个版本无失败，多镜像容灾生效</span></div>
+      <div class="dod-item"><span class="ck"></span><span>卡片 / 布局 / 自选 / 预警迁移稳定，升级不丢数据</span></div>
+      <div class="dod-item"><span class="ck"></span><span>技术债清理完毕，无废弃依赖 / 死代码 / 控制台错误</span></div>
+      <div class="dod-item"><span class="ck"></span><span>README / 截图 / 文档 / License 完整，开源引用规范</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-title"><span class="bar"></span>产品边界<small>合规与诚信</small></div>
+    <div class="bound">
+      <ul>
+        <li><b>不做真实委托下单</b>：需券商官方接口与资质，个人开源项目无法接入，仅模拟交易。</li>
+        <li><b>不做确定性走势预测 / 目标价承诺</b>：只做基于历史数据的技术信号与概率参考。</li>
+        <li><b>维持五档盘口</b>：免费公开接口不提供 Level-2 十档 / 逐笔。</li>
+        <li><b>数据仅供参考</b>：不保证实时性与准确性，不构成投资建议。</li>
+      </ul>
+    </div>
+    <div class="foot">TickGold · Open Source（MIT） · <span class="g">为交易者盯盘而生</span></div>
+  </section>
+</div>
+</body>
+</html>

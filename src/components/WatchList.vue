@@ -77,32 +77,29 @@ async function commitEdit(g: { id: number }) {
   if (name) await wl.renameGroup(g.id, name);
 }
 
-// 移动到其他分组（fixed 弹层，避免被卡片 overflow 裁切）
+// 移动到分组（居中弹层，Teleport 到 body，避免被卡片 overflow 裁切或 fixed 定位异常）
 const menuCode = ref<string | null>(null);
-const menuPos = ref<{ top?: number; bottom?: number; left: number } | null>(null);
-function toggleMenu(e: MouseEvent, code: string) {
-  if (menuCode.value === code) {
-    closeMoveMenu();
-    return;
-  }
-  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-  const h = Math.min(otherGroups(code).length * 30 + 38, 280);
-  const left = Math.max(8, r.right - 156);
-  if (window.innerHeight - r.bottom > h + 8) menuPos.value = { top: r.bottom + 4, left };
-  else menuPos.value = { bottom: window.innerHeight - r.top + 4, left };
+const moveNewName = ref("");
+function openMove(code: string) {
   menuCode.value = code;
 }
 function closeMoveMenu() {
   menuCode.value = null;
-  menuPos.value = null;
+  moveNewName.value = "";
 }
-function otherGroups(code: string) {
-  const cur = wl.stocks.find((x) => x.code === code)?.groupId;
-  return wl.groups.filter((g) => g.id !== cur);
+function isCurrent(code: string, gid: number): boolean {
+  return wl.stocks.find((x) => x.code === code)?.groupId === gid;
 }
 async function moveTo(code: string, gid: number) {
   await wl.moveToGroup(code, gid);
+  wl.selectGroup(gid);
   closeMoveMenu();
+}
+async function moveAddGroup() {
+  const n = moveNewName.value.trim();
+  if (!n || !menuCode.value) return;
+  const gid = await wl.addGroup(n);
+  await moveTo(menuCode.value, gid);
 }
 </script>
 
@@ -206,9 +203,8 @@ async function moveTo(code: string, gid: number) {
             <span v-else>--</span>
           </td>
           <td class="c ops">
-            <button class="op move" title="移动到其他分组" @click.stop="toggleMenu($event, s.code)">⇄</button>
+            <button class="op move" title="移动到其他分组" @click.stop="openMove(s.code)">⇄</button>
             <button class="op del" title="移出自选" @click.stop="wl.remove(s.code)">×</button>
-            <!-- 移动菜单已改为底部 Teleport 弹层 -->
           </td>
         </tr>
         <tr v-if="wl.currentStocks.length === 0">
@@ -216,20 +212,44 @@ async function moveTo(code: string, gid: number) {
         </tr>
       </tbody>
     </table>
-    <div v-if="menuCode" class="menu-mask" @click="closeMoveMenu"></div>
-
     <Teleport to="body">
-      <div v-if="menuCode && menuPos" class="move-pop" :style="menuPos" @click.stop>
-        <div class="mm-title">移动到分组</div>
-        <button
-          v-for="g in otherGroups(menuCode)"
-          :key="g.id"
-          class="mp-item"
-          @click.stop="moveTo(menuCode, g.id)"
-        >
-          <span>{{ g.name }}</span><span class="mm-c">{{ wl.stocksOf(g.id).length }}</span>
-        </button>
-        <div v-if="otherGroups(menuCode).length === 0" class="mm-empty">没有其他分组，请先新建</div>
+      <div v-if="menuCode" class="move-modal">
+        <div class="mm-mask" @click="closeMoveMenu"></div>
+        <div class="mm-box">
+          <div class="mm-head">
+            <span class="mm-caption">移动到分组</span>
+            <button class="mm-x" title="关闭" @click="closeMoveMenu">×</button>
+          </div>
+          <div class="mm-stock">
+            {{ qOf(menuCode)?.name || "--" }}
+            <span class="mm-scode">{{ menuCode }}</span>
+          </div>
+          <div class="mm-list">
+            <button
+              v-for="g in wl.groups"
+              :key="g.id"
+              class="mm-item"
+              :class="{ cur: isCurrent(menuCode, g.id) }"
+              :disabled="isCurrent(menuCode, g.id)"
+              @click="moveTo(menuCode, g.id)"
+            >
+              <span class="mm-gname">{{ g.name }}</span>
+              <span class="mm-right">
+                <span class="mm-c">{{ wl.stocksOf(g.id).length }}</span>
+                <span v-if="isCurrent(menuCode, g.id)" class="mm-tag">当前</span>
+              </span>
+            </button>
+          </div>
+          <div class="mm-add">
+            <input
+              v-model="moveNewName"
+              placeholder="新建分组名称"
+              maxlength="12"
+              @keydown.enter="moveAddGroup"
+            />
+            <button class="mm-addgo" @click="moveAddGroup">新建并移动</button>
+          </div>
+        </div>
       </div>
     </Teleport>
   </div>
@@ -297,20 +317,65 @@ th.c, td.c { text-align: center; }
 tbody tr:hover .op { border-color: var(--border); }
 .op.move:hover { color: #e8c66a; border-color: #d4af37; }
 .op.del:hover { color: #f23645; border-color: #f23645; }
-.move-pop {
-  position: fixed; z-index: 999; width: 156px; text-align: left;
-  background: #111722; border: 1px solid #2a3543; border-radius: 9px;
-  padding: 4px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.6);
+/* ===== 移动分组居中弹层 ===== */
+.move-modal {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
 }
-.mm-title { font-size: 10px; color: var(--text-dim); padding: 4px 7px 5px; }
+.mm-mask { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px); }
+.mm-box {
+  position: relative; width: 300px; max-width: calc(100vw - 32px);
+  background: var(--bg-panel); border: 1px solid var(--border-light); border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6); padding: 14px;
+  animation: mmPop 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes mmPop {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+.mm-head { display: flex; align-items: center; margin-bottom: 8px; }
+.mm-caption { font-size: 13px; font-weight: 700; color: var(--text); }
+.mm-x {
+  margin-left: auto; width: 22px; height: 22px; border: none;
+  background: transparent; color: var(--text-dim); font-size: 16px;
+  cursor: pointer; border-radius: 6px; line-height: 1;
+}
+.mm-x:hover { background: var(--bg-hover); color: var(--text); }
+.mm-stock {
+  font-size: 12px; color: var(--text); padding: 6px 9px;
+  background: var(--bg-hover); border-radius: 7px; margin-bottom: 10px;
+}
+.mm-scode { color: var(--text-dim); font-size: 10px; margin-left: 6px; }
+.mm-list {
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: 220px; overflow-y: auto; margin-bottom: 10px;
+}
 .mm-item {
-  display: flex; width: 100%; justify-content: space-between; gap: 10px;
-  background: transparent; border: none; color: #d6dae0; font-size: 11px;
-  padding: 5px 7px; border-radius: 5px; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: transparent; color: var(--text); font-size: 12px; cursor: pointer;
 }
-.mm-item:hover { background: var(--bg-hover); color: #e8c66a; }
-.mm-c { color: var(--text-dim); font-size: 10px; }
-.mm-empty { font-size: 10px; color: var(--text-dim); padding: 7px; }
-.menu-mask { position: fixed; inset: 0; z-index: 35; background: transparent; }
+.mm-item:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-2); }
+.mm-item.cur { opacity: 0.55; cursor: default; }
+.mm-gname { text-align: left; }
+.mm-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.mm-c {
+  font-size: 10px; background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px; padding: 0 7px; color: var(--text-dim);
+}
+.mm-tag { font-size: 10px; color: var(--accent-2); }
+.mm-add { display: flex; gap: 6px; }
+.mm-add input {
+  flex: 1; min-width: 0; height: 30px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--bg);
+  color: var(--text); padding: 0 9px; font-size: 12px;
+}
+.mm-add input:focus { outline: none; border-color: var(--accent); }
+.mm-addgo {
+  height: 30px; padding: 0 12px; border: none; border-radius: 7px;
+  background: var(--accent); color: #1a1405; font-size: 12px;
+  font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.mm-addgo:hover { filter: brightness(1.08); }
 .empty { text-align: center; color: var(--text-dim); padding: 30px; font-size: 12px; }
 </style>

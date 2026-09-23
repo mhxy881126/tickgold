@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TickGold 工作台 · 整体 UI 布局方案（5 款）</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b0d12'/%3E%3Ctext x='16' y='22' font-size='15' font-family='Arial' font-weight='bold' fill='%23e8c878' text-anchor='middle'%3ETG%3C/text%3E%3C/svg%3E">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root{ color-scheme:dark; }
+html,body{ background:#06070b; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif; -webkit-font-smoothing:antialiased; }
+.num{ font-variant-numeric:tabular-nums; }
+
+.page{ max-width:1300px; margin:0 auto; padding:28px 18px 60px; }
+.page-head h1{ font-size:22px; color:#f2f3f7; letter-spacing:.5px; }
+.page-head p{ margin-top:8px; font-size:13px; color:#8b90a0; line-height:1.7; }
+.legend{ margin-top:14px; display:flex; flex-wrap:wrap; gap:8px; }
+.legend span{ font-size:11px; padding:4px 11px; border-radius:20px; background:#11131a; border:1px solid #23262f; color:#aeb3c2; }
+
+.scheme{ margin-top:34px; }
+.scheme-label{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:10px; padding-left:4px; }
+.scheme-label .no{ font-size:12px; color:#06070b; background:#e8c878; border-radius:6px; padding:2px 8px; font-weight:700; }
+.scheme-label .nm{ font-size:17px; font-weight:700; color:#f0f1f5; letter-spacing:.5px; }
+.scheme-label .en{ font-size:11px; color:#6c7180; letter-spacing:2px; }
+.scheme-label .ds{ font-size:12px; color:#9095a5; }
+
+/* ===== 工作台外框（模拟应用窗口） ===== */
+.desk{ border-radius:14px; overflow:hidden; border:1px solid var(--line); box-shadow:0 24px 60px rgba(0,0,0,.55); position:relative;
+  display:grid; grid-template-rows:38px 32px 44px 34px 1fr; background:var(--bg); color:var(--text); }
+.desk::before{ content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
+  background:
+   radial-gradient(900px 420px at 18% -8%, color-mix(in srgb,var(--accent) 16%,transparent), transparent 60%),
+   radial-gradient(800px 420px at 92% 108%, color-mix(in srgb,var(--accent2) 12%,transparent), transparent 60%),
+   linear-gradient(180deg,var(--bg2),var(--bg)); }
+.desk > *{ position:relative; z-index:1; }
+
+/* -- 标题栏 -- */
+.titlebar{ display:flex; align-items:center; gap:12px; padding:0 0 0 12px; background:color-mix(in srgb,var(--panel-solid) 88%,transparent); border-bottom:1px solid var(--line); }
+.brand{ font-weight:800; font-size:14px; color:var(--accent); white-space:nowrap; }
+.search{ display:flex; align-items:center; gap:6px; height:24px; width:250px; padding:0 10px; border-radius:7px; background:color-mix(in srgb,var(--bg) 60%,transparent); border:1px solid var(--line); color:var(--dim); font-size:11px; }
+.tstatus{ margin-left:auto; display:flex; align-items:center; gap:5px; font-size:11px; color:var(--dim); padding-right:8px; }
+.tstatus .sd{ margin:0 7px; opacity:.5; }
+.tstatus .live{ color:var(--down); }
+.tstatus .live::before{ content:""; display:inline-block; width:6px;height:6px;border-radius:50%;background:var(--down);margin-right:5px; }
+.tstatus .tb{ border:1px solid var(--line); border-radius:5px; padding:1px 8px; color:var(--dim); background:transparent; }
+.winctl{ display:flex; align-self:stretch; }
+.winctl b{ width:44px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:400; color:var(--dim); cursor:default; }
+.winctl b:last-child:hover{ background:var(--up); color:#fff; }
+
+/* -- 指数条 -- */
+.indices{ display:flex; align-items:center; gap:26px; padding:0 14px; background:color-mix(in srgb,var(--panel-solid) 70%,transparent); border-bottom:1px solid var(--line); overflow:hidden; }
+.idx{ white-space:nowrap; font-size:11px; color:var(--dim); }
+.idx b{ color:var(--text); font-weight:700; margin-right:6px; }
+.idx .up{ color:var(--up); margin-right:5px; } .idx .down{ color:var(--down); margin-right:5px; }
+
+/* -- Dock -- */
+.dock{ display:flex; align-items:stretch; padding:0 6px; background:color-mix(in srgb,var(--panel-solid) 80%,transparent); border-bottom:1px solid var(--line); overflow:hidden; position:relative; }
+.dock::after{ content:""; position:absolute; top:0; right:0; width:48px; height:100%; pointer-events:none;
+  background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--panel-solid) 94%,transparent)); }
+.dgrp{ display:flex; align-items:center; gap:1px; padding:3px 8px; border-right:1px solid var(--line); }
+.dgrp:last-child{ border-right:0; }
+.dgrp .gn{ font-size:9px; color:var(--dim); opacity:.6; margin-right:4px; white-space:nowrap; }
+.ditem{ display:flex; align-items:center; gap:4px; border:0; background:transparent; color:var(--dim); font-size:11px; font-weight:600; white-space:nowrap; padding:4px 7px; border-radius:8px; cursor:default; }
+.ditem svg{ width:14px; height:14px; }
+.ditem.on{ color:var(--accent); background:color-mix(in srgb,var(--accent) 13%,transparent); }
+.dgrp.mode{ margin-left:auto; }
+
+/* -- 时段栏 -- */
+.timetabs{ display:flex; align-items:center; gap:4px; padding:0 12px; background:color-mix(in srgb,var(--panel-solid) 55%,transparent); border-bottom:1px solid var(--line); }
+.tt{ font-size:11px; color:var(--dim); padding:3px 10px; border-radius:7px; cursor:default; }
+.tt.on{ color:var(--accent); background:color-mix(in srgb,var(--accent) 13%,transparent); }
+.ttclock{ margin-left:auto; font-size:11px; color:var(--dim); display:flex; gap:10px; align-items:center; }
+.ttclock b{ color:var(--accent); font-weight:700; }
+
+/* -- 卡片区 -- */
+.cards{ display:grid; grid-template-columns:repeat(12,1fr); gap:11px; padding:11px; min-height:0; min-width:0; }
+.slot{ display:flex; min-width:0; min-height:0; }
+.card{ flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; border-radius:12px; border:1px solid var(--line);
+  background:var(--panel); overflow:hidden; position:relative; }
+.card-h{ display:flex; align-items:center; gap:7px; padding:8px 10px; border-bottom:1px solid var(--line); flex:none; }
+.card-h .bar2{ width:3px; height:13px; border-radius:2px; background:var(--accent); }
+.card-h .ct{ font-size:12px; font-weight:700; color:var(--text); }
+.card-h .cx{ margin-left:auto; display:flex; gap:6px; color:var(--dim); font-size:13px; }
+.card-b{ flex:1; min-height:0; padding:9px 10px; display:flex; flex-direction:column; }
+
+/* 热力图 */
+.heat-tabs{ display:flex; gap:5px; margin-bottom:8px; flex:none; }
+.heat-tabs .htb{ font-size:10px; padding:2px 8px; border-radius:5px; border:1px solid var(--line); color:var(--dim); }
+.heat-tabs .htb.on{ color:var(--accent); border-color:var(--accent); }
+.heat-grid{ flex:1; display:grid; grid-template-columns:repeat(5,1fr); grid-auto-rows:1fr; gap:3px; min-height:0; }
+.hcell{ border-radius:4px; padding:4px; display:flex; flex-direction:column; justify-content:space-between; color:#eef2f5; overflow:hidden; }
+.hcell .hn{ font-size:9.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hcell .hp{ font-size:10px; font-weight:700; }
+.hcell.d1{ background:rgba(28,196,140,.30);} .hcell.d2{ background:rgba(28,196,140,.50);} .hcell.d3{ background:rgba(28,196,140,.72);}
+.hcell.u1{ background:rgba(246,74,90,.55);} .hcell.u2{ background:rgba(246,74,90,.78);}
+
+/* 宽度 */
+.br-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; flex:none; }
+.bri{ border:1px solid var(--line); border-radius:8px; padding:7px 4px; text-align:center; background:color-mix(in srgb,var(--panel) 60%,transparent); }
+.bri .bl{ font-size:9.5px; color:var(--dim); } .bri .bv{ font-size:17px; font-weight:800; margin-top:2px; }
+.bri .bv.up{ color:var(--up);} .bri .bv.down{ color:var(--down);} .bri .bv.acc{ color:var(--accent);}
+.br-bar{ margin-top:auto; }
+.br-bar .brr{ display:flex; height:9px; border-radius:5px; overflow:hidden; }
+.br-bar .brr i{ display:block; height:100%; }
+.br-bar .bl2{ display:flex; justify-content:space-between; font-size:10px; color:var(--dim); margin-top:6px; }
+
+/* 雷达 */
+.rd-top{ display:flex; gap:10px; align-items:center; flex:none; }
+.gauge{ width:84px; height:84px; border-radius:50%; flex:none; position:relative; display:flex; align-items:center; justify-content:center;
+  background:conic-gradient(var(--up) 0 calc(var(--p)*1%), var(--line) calc(var(--p)*1%) 100%); }
+.gauge::before{ content:""; position:absolute; inset:9px; border-radius:50%; background:var(--panel-solid); }
+.gauge .gv{ position:relative; text-align:center; } .gauge .gv b{ font-size:22px; font-weight:800; color:var(--up); } .gauge .gv span{ display:block; font-size:9px; color:var(--dim); }
+.rd-stats{ flex:1; display:grid; grid-template-columns:repeat(2,1fr); gap:5px; }
+.rds{ text-align:center; border:1px solid var(--line); border-radius:7px; padding:4px 2px; }
+.rds .rl{ font-size:9px; color:var(--dim); } .rds .rv{ font-size:14px; font-weight:800; }
+.rds .rv.up{color:var(--up);} .rds .rv.down{color:var(--down);} .rds .rv.acc{color:var(--accent);}
+.ladder{ margin-top:9px; flex:1; min-height:0; overflow:hidden; border-top:1px solid var(--line); padding-top:8px; }
+.ladder .lt{ font-size:10px; color:var(--dim); margin-bottom:6px; }
+.lchips{ display:flex; flex-wrap:wrap; gap:5px; }
+.lchip{ font-size:10px; border:1px solid var(--line); border-radius:6px; padding:2px 7px; color:var(--text); background:color-mix(in srgb,var(--panel) 60%,transparent); }
+.lchip b{ color:var(--accent); margin-left:4px; }
+
+/* 题材 */
+.th-tabs{ display:flex; gap:5px; margin-bottom:8px; flex:none; }
+.th-tabs .ttb{ font-size:9.5px; padding:2px 7px; border-radius:5px; border:1px solid var(--line); color:var(--dim); }
+.th-tabs .ttb b{ color:var(--accent); }
+.tags{ flex:1; display:flex; flex-wrap:wrap; gap:6px; align-content:flex-start; overflow:hidden; }
+.tag{ font-size:10.5px; padding:3px 9px; border-radius:14px; border:1px solid var(--line); }
+.tag.u{ color:var(--up); border-color:color-mix(in srgb,var(--up) 45%,var(--line)); background:color-mix(in srgb,var(--up) 10%,transparent); }
+.tag.d{ color:var(--down); border-color:color-mix(in srgb,var(--down) 45%,var(--line)); background:color-mix(in srgb,var(--down) 9%,transparent); }
+.tag.hot{ border-width:1.5px; font-weight:700; }
+
+/* 分布 */
+.dist-wrap{ flex:1; display:flex; align-items:flex-end; justify-content:center; gap:4px; padding:4px 2px 0; min-height:0; }
+.dbar{ width:13px; border-radius:3px 3px 0 0; background:var(--up); position:relative; }
+.dbar.dn{ background:var(--down); }
+.dist-foot{ display:flex; justify-content:space-between; font-size:10px; color:var(--dim); margin-top:8px; padding-top:7px; border-top:1px solid var(--line); }
+.dist-foot b{ font-size:12px; }
+.dist-foot .up{ color:var(--up);} .dist-foot .down{ color:var(--down);}
+
+/* K线 */
+.chart-tabs{ display:flex; gap:4px; margin-bottom:6px; flex:none; }
+.chart-tabs .ctb{ font-size:10px; padding:2px 9px; border-radius:6px; color:var(--dim); border:1px solid var(--line); }
+.chart-tabs .ctb.on{ color:var(--accent); border-color:var(--accent); background:color-mix(in srgb,var(--accent) 10%,transparent); }
+.ma-leg{ display:flex; gap:10px; font-size:9.5px; color:var(--dim); margin-bottom:3px; flex:none; }
+.ma-leg i{ display:inline-block; width:8px; height:3px; border-radius:2px; margin-right:4px; vertical-align:middle; }
+.kline-svg{ flex:1; min-height:0; width:100%; }
+
+/* ===== 5 款主题变量 ===== */
+.s1{ --bg:#0a0614; --bg2:#150a28; --panel:rgba(24,14,44,.72); --panel-solid:#160e2a; --line:rgba(140,100,232,.30);
+  --text:#eae7f9; --dim:#9d93c6; --accent:#28e0ff; --accent2:#ff4dd2; --up:#ff4d6d; --down:#1ce6a4; }
+.s2{ --bg:#0b0a06; --bg2:#161208; --panel:#151209; --panel-solid:#18150c; --line:rgba(216,180,96,.28);
+  --text:#f2ebd7; --dim:#b4a77f; --accent:#e8c878; --accent2:#c9a24a; --up:#ef5f6b; --down:#2fbf95; }
+.s3{ --bg:#0a1018; --bg2:#0d1724; --panel:#0f1a29; --panel-solid:#111c2d; --line:rgba(110,172,232,.24);
+  --text:#e8f1fb; --dim:#8ba4c1; --accent:#5eb6ff; --accent2:#9fd8ff; --up:#f25b6a; --down:#1fc28f; }
+.s4{ --bg:#0d0a1b; --bg2:#160f2c; --panel:rgba(31,23,62,.62); --panel-solid:#1c1639; --line:rgba(150,120,255,.28);
+  --text:#eeeafd; --dim:#a097cd; --accent:#a78bfa; --accent2:#5eead4; --up:#fb5d7a; --down:#22d3a0; }
+.s5{ --bg:#0d0b09; --bg2:#18120e; --panel:#16120e; --panel-solid:#1a1510; --line:rgba(255,140,80,.22);
+  --text:#f6eee7; --dim:#b39d8f; --accent:#ff8a4c; --accent2:#d8cfc2; --up:#f65a5a; --down:#20c794; }
+
+/* 款1 霓虹特殊光 */
+.s1 .card{ box-shadow:inset 0 1px 0 color-mix(in srgb,var(--accent) 18%,transparent); border-color:color-mix(in srgb,var(--accent) 30%,var(--line)); }
+.s1 .card:nth-child(even){ border-color:color-mix(in srgb,var(--accent2) 28%,var(--line)); }
+/* 款2 金色 */
+.s2 .card{ box-shadow:inset 0 1px 0 rgba(232,200,120,.14); }
+/* 款4 玻璃 */
+.s4 .card{ backdrop-filter:blur(9px); }
+.s4 .cards{ background:transparent; }
+
+.foot-note{ margin-top:40px; font-size:12px; color:#707585; line-height:1.9; border-top:1px solid #1c1f28; padding-top:18px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="page-head">
+    <h1>TickGold 盯盘工作台 · 整体 UI 布局方案</h1>
+    <p>卡片动画交互与全部功能菜单（顶部 Dock / 时段栏 / 指数条）保持不变，仅调整<strong style="color:#c8ccd8">布局结构</strong>与<strong style="color:#c8ccd8">配色</strong>。以下 5 款均为完整盯盘态（6 张卡：热力图 / 宽度 / 雷达 / 题材 / 分布 / K线），数据为模拟。</p>
+    <div class="legend">
+      <span>款1 赛博霓虹 · 3列网格 / 青紫发光</span>
+      <span>款2 鎏金奢华 · 主干+侧栏 / 暗金</span>
+      <span>款3 极地冰蓝 · 三栏分区 / 冷冽</span>
+      <span>款4 量子紫辉 · Bento 不规则 / 玻璃</span>
+      <span>款5 熔岩钛橙 · 主舞台+信息流 / 暖色</span>
+    </div>
+  </div>
+
+  <!-- ============ 款 1 ============ -->
+  <section class="scheme s1">
+    <div class="scheme-label"><span class="no">款 1</span><span class="nm">赛博霓虹</span><span class="en">CYBER NEON</span><span class="ds">3 列 × 2 行均分网格 · 青色/品红双色霓虹描边 · 夜间高对比</span></div>
+    <div class="desk" data-chrome>
+      <div class="cards c1">
+        <div class="slot" style="grid-column:1/5;grid-row:1" data-card="heat"></div>
+        <div class="slot" style="grid-column:5/9;grid-row:1" data-card="breadth"></div>
+        <div class="slot" style="grid-column:9/13;grid-row:1" data-card="radar"></div>
+        <div class="slot" style="grid-column:1/5;grid-row:2" data-card="theme"></div>
+        <div class="slot" style="grid-column:5/9;grid-row:2" data-card="dist"></div>
+        <div class="slot" style="grid-column:9/13;grid-row:2" data-card="chart"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 款 2 ============ -->
+  <section class="scheme s2">
+    <div class="scheme-label"><span class="no">款 2</span><span class="nm">鎏金奢华</span><span class="en">ROYAL GOLD</span><span class="ds">左主干大热力图 + 右侧状态栏 · 香槟金细边 · 高端稳重</span></div>
+    <div class="desk" data-chrome>
+      <div class="cards c2">
+        <div class="slot" style="grid-column:1/9;grid-row:1/3" data-card="heat"></div>
+        <div class="slot" style="grid-column:9/13;grid-row:1" data-card="breadth"></div>
+        <div class="slot" style="grid-column:9/13;grid-row:2" data-card="radar"></div>
+        <div class="slot" style="grid-column:1/5;grid-row:3" data-card="theme"></div>
+        <div class="slot" style="grid-column:5/9;grid-row:3" data-card="chart"></div>
+        <div class="slot" style="grid-column:9/13;grid-row:3" data-card="dist"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 款 3 ============ -->
+  <section class="scheme s3">
+    <div class="scheme-label"><span class="no">款 3</span><span class="nm">极地冰蓝</span><span class="en">ARCTIC BLUE</span><span class="ds">左状态竖栏 / 中央主图 / 右题材栏 · 冰蓝冷色 · 清爽专业</span></div>
+    <div class="desk" data-chrome>
+      <div class="cards c3">
+        <div class="slot" style="grid-column:1/4;grid-row:1" data-card="breadth"></div>
+        <div class="slot" style="grid-column:4/9;grid-row:1/3" data-card="heat"></div>
+        <div class="slot" style="grid-column:9/13;grid-row:1" data-card="radar"></div>
+        <div class="slot" style="grid-column:1/4;grid-row:2/4" data-card="dist"></div>
+        <div class="slot" style="grid-column:4/13;grid-row:3" data-card="chart"></div>
+        <div class="slot" style="grid-column:9/13;grid-row:2" data-card="theme"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 款 4 ============ -->
+  <section class="scheme s4">
+    <div class="scheme-label"><span class="no">款 4</span><span class="nm">量子紫辉</span><span class="en">QUANTUM VIOLET</span><span class="ds">Bento 不规则大小卡 + 横贯 K线 · 玻璃拟态 · 未来科技</span></div>
+    <div class="desk" data-chrome>
+      <div class="cards c4">
+        <div class="slot" style="grid-column:1/7;grid-row:1/3" data-card="heat"></div>
+        <div class="slot" style="grid-column:7/10;grid-row:1" data-card="radar"></div>
+        <div class="slot" style="grid-column:10/13;grid-row:1" data-card="breadth"></div>
+        <div class="slot" style="grid-column:7/10;grid-row:2" data-card="theme"></div>
+        <div class="slot" style="grid-column:10/13;grid-row:2" data-card="dist"></div>
+        <div class="slot" style="grid-column:1/13;grid-row:3" data-card="chart"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 款 5 ============ -->
+  <section class="scheme s5">
+    <div class="scheme-label"><span class="no">款 5</span><span class="nm">熔岩钛橙</span><span class="en">MAGMA TITANIUM</span><span class="ds">顶部双主舞台（热力图+K线）· 下方四列信息流入 · 暖色能量</span></div>
+    <div class="desk" data-chrome>
+      <div class="cards c5">
+        <div class="slot" style="grid-column:1/8;grid-row:1/3" data-card="heat"></div>
+        <div class="slot" style="grid-column:8/13;grid-row:1/3" data-card="chart"></div>
+        <div class="slot" style="grid-column:1/4;grid-row:3" data-card="breadth"></div>
+        <div class="slot" style="grid-column:4/7;grid-row:3" data-card="radar"></div>
+        <div class="slot" style="grid-column:7/10;grid-row:3" data-card="theme"></div>
+        <div class="slot" style="grid-column:10/13;grid-row:3" data-card="dist"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot-note">
+    说明：5 款共用同一套功能菜单与卡片组件，差异仅在 <b>CSS 变量配色</b> 与 <b>卡片网格定位</b>，落地到 Tauri 时无需改动任何卡片逻辑与动画，仅切换主题 class / 布局坐标即可。红涨绿跌语义色在各主题中保持一致。选定某款后，我可直接替换 global.css 变量与工作台坐标并发布。
+  </div>
+</div>
+<!-- ===== 公共菜单模板（标题栏/指数条/Dock/时段栏） ===== -->
+<template id="t-chrome">
+  <header class="titlebar">
+    <div class="brand">TickGold</div>
+    <div class="search"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 10-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1114 9.5 4.5 4.5 0 019.5 14z"/></svg>搜索代码 / 名称 / 拼音</div>
+    <div class="tstatus">
+      <span class="live">实时</span><span class="sd">|</span>9 只<span class="sd">|</span><span class="num">14:53:52</span><span class="sd">|</span>v0.26.1<span class="sd">|</span>
+      <span class="tb">布局</span><span class="tb">设置</span><span class="tb">检查更新</span>
+    </div>
+    <div class="winctl"><b><svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.2" fill="none"/></svg></b><b><svg width="11" height="11" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" stroke="currentColor" stroke-width="1.1" fill="none"/></svg></b><b><svg width="11" height="11" viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.2" fill="none"/></svg></b></div>
+  </header>
+  <div class="indices">
+    <div class="idx"><b>上证指数</b><span class="num">3936.06</span> <span class="down num">-16.07</span> <span class="down num">-0.41%</span></div>
+    <div class="idx"><b>深证成指</b><span class="num">13631.10</span> <span class="down num">-92.64</span> <span class="down num">-0.68%</span></div>
+    <div class="idx"><b>创业板指</b><span class="num">3378.43</span> <span class="down num">-21.50</span> <span class="down num">-0.63%</span></div>
+    <div class="idx"><b>沪深300</b><span class="num">4515.98</span> <span class="down num">-28.61</span> <span class="down num">-0.63%</span></div>
+    <div class="idx"><b>科创50</b><span class="num">1660.69</span> <span class="down num">-4.35</span> <span class="down num">-0.26%</span></div>
+  </div>
+  <nav class="dock">
+    <div class="dgrp"><span class="gn">总览</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>自选</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 5h18v2H3zm0 4h18v2H3zm0 4h12v2H3zm0 4h12v2H3z"/></svg>榜单</span>
+      <span class="ditem on"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 12h4l3-8 4 16 3-8h4"/></svg>宽度</span>
+      <span class="ditem on"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 21h2v-7H3zm4 0h2V9H7zm4 0h2V5h-2zm4 0h2v-9h-2zm4 0h2V11h-2z"/></svg>涨跌分布</span>
+    </div>
+    <div class="dgrp"><span class="gn">盯盘</span>
+      <span class="ditem on"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 4a6 6 0 100 12 6 6 0 000-12zm0 3a3 3 0 100 6 3 3 0 000-6z"/></svg>雷达</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>精灵</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C8.63 5.36 7 7.92 7 11v5l-2 2v1h14v-1l-2-2z"/></svg>预警</span>
+    </div>
+    <div class="dgrp"><span class="gn">板块</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z"/></svg>板块</span>
+      <span class="ditem on"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z"/></svg>热力图</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 12h4l3-8 4 16 3-8h4"/></svg>板块异动</span>
+      <span class="ditem on"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 5l7 3.5-7 3.5L5 8.5 12 5zM5 12l7 3.5L19 12M5 15.5l7 3.5 7-3.5"/></svg>题材轮动</span>
+    </div>
+    <div class="dgrp"><span class="gn">行情</span>
+      <span class="ditem on"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 3h2v4H6zm0 14h2v4H6zM5 8h4v8H5zm11-9h2v3h-2zm0 12h2v5h-2zm-1-7h4v7h-4z"/></svg>K线</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 3h14v18H5zm2 4h10v2H7zm0 4h10v2H7zm0 4h7v2H7z"/></svg>盘口</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 3c-4 0-7 1.3-7 3v12c0 1.7 3 3 7 3s7-1.3 7-3V6c0-1.7-3-3-7-3zm0 2c3.3 0 5 .9 5 1s-1.7 1-5 1-5-.9-5-1 1.7-1 5-1zm-5 4.5c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V12c0 .1-1.7 1-5 1s-5-.9-5-1zm0 4c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V16c0 .1-1.7 1-5 1s-5-.9-5-1z"/></svg>资金</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 3h14a2 2 0 012 2v11a2 2 0 01-2 2H8l-4 3V5a2 2 0 011-2z"/></svg>快讯</span>
+    </div>
+    <div class="dgrp"><span class="gn">选股交易</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 5h3v14H4zm6.5 5h3v9h-3zM17 9h3v10h-3z"/></svg>选股</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm0 2l4 4h-4V4zM8 13h8v1.5H8zm0 4h8v1.5H8zm0-8h5v1.5H8z"/></svg>F10</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1c1.7.3 3 1.4 3 3.1 0 1.9-1.5 2.8-3.4 2.8-1.2 0-2.1-.4-2.6-1l1.2-1c.3.4.8.7 1.5.7.8 0 1.3-.3 1.3-.8s-.4-.8-1.5-1c-1.6-.4-3.2-1-3.2-2.9 0-1.6 1.3-2.7 3-3V5h2zm-1 11h2v2h-2z"/></svg>模拟交易</span>
+    </div>
+    <div class="dgrp"><span class="gn">工具</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1zm3 5h8v1.5H8zm0 4h8v1.5H8zm0 4h5v1.5H8z"/></svg>日记</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 2v2H5a2 2 0 00-2 2v13a2 2 0 002 2h14a2 2 0 002-2V6a2 0 002-2 0 00-2-2h-2V2h-2v2H9V2H7zm-2 7h14v10H5V9zm2 2v3h3v-3H7zm5 0v3h3v-3z"/></svg>财经日历</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2l2.9 6.3 6.8.7-5 4.6 1.4 6.7L12 17l-6.1 3.3 1.4-6.7-5-4.6 6.8-.7z"/></svg>新股解禁</span>
+    </div>
+    <div class="dgrp mode"><span class="gn">布局</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8H3z"/></svg>专业</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 12h4l3-8 4 16 3-8h4"/></svg>板块</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>选股</span>
+      <span class="ditem"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z"/></svg>全屏</span>
+    </div>
+  </nav>
+  <div class="timetabs">
+    <span class="tt">集合竞价</span><span class="tt">早盘 9:30</span><span class="tt">午盘</span><span class="tt on">尾盘 14:30</span><span class="tt">盘后复盘</span>
+    <span class="ttclock"><span>尾盘 14:30</span><span>9/23 周三</span><b class="num">14:53:53</b></span>
+  </div>
+</template>
+
+<!-- ===== 热力图卡片 ===== -->
+<template id="t-heat">
+  <div class="card">
+    <div class="card-h"><span class="bar2"></span><span class="ct">板块热力图</span><span class="cx">⋯ ×</span></div>
+    <div class="card-b">
+      <div class="heat-tabs"><span class="htb">行业</span><span class="htb">概念</span><span class="htb on">成交额</span><span class="htb">净流入</span></div>
+      <div class="heat-grid">
+        <div class="hcell d1"><span class="hn">电子器件</span><span class="hp">-0.19%</span></div>
+        <div class="hcell d3"><span class="hn">电子信息</span><span class="hp">-1.63%</span></div>
+        <div class="hcell d2"><span class="hn">机械行业</span><span class="hp">-0.70%</span></div>
+        <div class="hcell d1"><span class="hn">房地产</span><span class="hp">0.00%</span></div>
+        <div class="hcell d2"><span class="hn">汽车配件</span><span class="hp">-0.91%</span></div>
+        <div class="hcell d1"><span class="hn">生物制药</span><span class="hp">-0.43%</span></div>
+        <div class="hcell d1"><span class="hn">普通电源</span><span class="hp">-0.45%</span></div>
+        <div class="hcell d1"><span class="hn">化工行业</span><span class="hp">-0.29%</span></div>
+        <div class="hcell u1"><span class="hn">有色金属</span><span class="hp">+0.10%</span></div>
+        <div class="hcell d2"><span class="hn">医疗器械</span><span class="hp">-0.55%</span></div>
+        <div class="hcell d2"><span class="hn">软件服务</span><span class="hp">-0.77%</span></div>
+        <div class="hcell d1"><span class="hn">通信设备</span><span class="hp">-0.33%</span></div>
+        <div class="hcell d3"><span class="hn">半导体</span><span class="hp">-1.20%</span></div>
+        <div class="hcell u1"><span class="hn">银行</span><span class="hp">+0.21%</span></div>
+        <div class="hcell u1"><span class="hn">证券</span><span class="hp">+0.08%</span></div>
+        <div class="hcell d1"><span class="hn">保险</span><span class="hp">-0.12%</span></div>
+        <div class="hcell d2"><span class="hn">家电</span><span class="hp">-0.66%</span></div>
+        <div class="hcell d1"><span class="hn">食品饮料</span><span class="hp">-0.40%</span></div>
+        <div class="hcell d2"><span class="hn">传媒</span><span class="hp">-0.88%</span></div>
+        <div class="hcell u1"><span class="hn">钢铁</span><span class="hp">+0.15%</span></div>
+        <div class="hcell d1"><span class="hn">建材</span><span class="hp">-0.25%</span></div>
+        <div class="hcell u2"><span class="hn">煤炭</span><span class="hp">+0.30%</span></div>
+        <div class="hcell u1"><span class="hn">电力</span><span class="hp">+0.18%</span></div>
+        <div class="hcell d2"><span class="hn">农业</span><span class="hp">-0.51%</span></div>
+        <div class="hcell d2"><span class="hn">纺织</span><span class="hp">-0.62%</span></div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- ===== 市场宽度卡片 ===== -->
+<template id="t-breadth">
+  <div class="card">
+    <div class="card-h"><span class="bar2"></span><span class="ct">市场宽度</span><span class="cx">⋯ ×</span></div>
+    <div class="card-b">
+      <div class="br-grid">
+        <div class="bri"><div class="bl">上涨</div><div class="bv up">93</div></div>
+        <div class="bri"><div class="bl">下跌</div><div class="bv down">0</div></div>
+        <div class="bri"><div class="bl">平盘</div><div class="bv">0</div></div>
+        <div class="bri"><div class="bl">涨停</div><div class="bv up">50</div></div>
+        <div class="bri"><div class="bl">跌停</div><div class="bv down">0</div></div>
+        <div class="bri"><div class="bl">炸板</div><div class="bv acc">7</div></div>
+      </div>
+      <div class="br-bar">
+        <div class="brr"><i style="width:93%;background:var(--up)"></i><i style="width:7%;background:var(--accent)"></i></div>
+        <div class="bl2"><span>炸板率 12%</span><span>已定格</span></div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- ===== 涨停雷达卡片 ===== -->
+<template id="t-radar">
+  <div class="card">
+    <div class="card-h"><span class="bar2"></span><span class="ct">涨停雷达</span><span class="cx">⋯ ×</span></div>
+    <div class="card-b">
+      <div class="rd-top">
+        <div class="gauge" style="--p:97"><div class="gv"><b>97</b><span>亢奋</span></div></div>
+        <div class="rd-stats">
+          <div class="rds"><div class="rl">涨停</div><div class="rv up">50</div></div>
+          <div class="rds"><div class="rl">跌停</div><div class="rv down">0</div></div>
+          <div class="rds"><div class="rl">炸板</div><div class="rv acc">7</div></div>
+          <div class="rds"><div class="rl">炸板率</div><div class="rv acc">12%</div></div>
+          <div class="rds"><div class="rl">最高板</div><div class="rv acc">1</div></div>
+          <div class="rds"><div class="rl">上涨</div><div class="rv up">93</div></div>
+        </div>
+      </div>
+      <div class="ladder">
+        <div class="lt">连板梯队</div>
+        <div class="lchips">
+          <span class="lchip">慧智微-U<b>17.32</b></span><span class="lchip">浩敬博<b>141.04</b></span>
+          <span class="lchip">中一科技<b>49.20</b></span><span class="lchip">普源精电<b>57.18</b></span>
+          <span class="lchip">莱伯泰科<b>52.92</b></span><span class="lchip">优利德<b>114.44</b></span>
+          <span class="lchip">通用电梯<b>19.21</b></span><span class="lchip">华远电...<b>--</b></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- ===== 题材轮动卡片 ===== -->
+<template id="t-theme">
+  <div class="card">
+    <div class="card-h"><span class="bar2"></span><span class="ct">题材轮动</span><span class="cx">⋯ ×</span></div>
+    <div class="card-b">
+      <div class="th-tabs"><span class="ttb"><b>领涨 17</b></span><span class="ttb">领跌 164</span><span class="ttb">全部</span><span class="ttb">概念题材</span></div>
+      <div class="tags">
+        <span class="tag u hot">CRO概念 +0.99</span><span class="tag u hot">甲型流感 +0.58</span>
+        <span class="tag d">TOPCon -0.54</span><span class="tag u">汽车电子 +0.41</span>
+        <span class="tag u">BC电池 +0.41</span><span class="tag u">碳纤维 +0.33</span>
+        <span class="tag u">外资背景 +0.21</span><span class="tag d">触摸屏 -0.20</span>
+        <span class="tag u">钙钛矿 +0.13</span><span class="tag u">建筑节能 +0.11</span>
+        <span class="tag u">创新药 +0.10</span><span class="tag u">专精特新 +0.10</span>
+        <span class="tag u">自贸区 +0.05</span><span class="tag u">基因概念 +0.02</span>
+        <span class="tag u">鸿蒙概念 +0.01</span><span class="tag d">代糖概念 0.00</span>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- ===== 涨跌分布卡片 ===== -->
+<template id="t-dist">
+  <div class="card">
+    <div class="card-h"><span class="bar2"></span><span class="ct">涨跌分布</span><span class="cx">⋯ ×</span></div>
+    <div class="card-b">
+      <div class="dist-wrap">
+        <div class="dbar dn" style="height:3%"></div><div class="dbar dn" style="height:4%"></div>
+        <div class="dbar dn" style="height:5%"></div><div class="dbar dn" style="height:4%"></div>
+        <div class="dbar dn" style="height:6%"></div><div class="dbar dn" style="height:5%"></div>
+        <div class="dbar dn" style="height:7%"></div>
+        <div class="dbar" style="height:2%;background:var(--line)"></div>
+        <div class="dbar" style="height:9%"></div><div class="dbar" style="height:14%"></div>
+        <div class="dbar" style="height:21%"></div><div class="dbar" style="height:30%"></div>
+        <div class="dbar" style="height:44%"></div><div class="dbar" style="height:92%"></div>
+        <div class="dbar" style="height:38%"></div>
+      </div>
+      <div class="dist-foot"><span class="down">跌 <b>0</b></span><span>平 <b>0</b></span><span class="up">涨 <b>93</b></span></div>
+    </div>
+  </div>
+</template>
+
+<!-- ===== K线卡片 ===== -->
+<template id="t-chart">
+  <div class="card">
+    <div class="card-h"><span class="bar2"></span><span class="ct">K线图</span><span class="cx">⋯ ×</span></div>
+    <div class="card-b">
+      <div class="chart-tabs"><span class="ctb">分时</span><span class="ctb on">日K</span><span class="ctb">周K</span><span class="ctb">月K</span></div>
+      <div class="ma-leg"><span><i style="background:#f0c24c"></i>MA5</span><span><i style="background:#5eb6ff"></i>MA10</span><span><i style="background:#c77dff"></i>MA20</span></div>
+      <svg class="kline-svg" viewBox="0 0 320 150" preserveAspectRatio="xMidYMid meet">
+        <g stroke="var(--line)" stroke-width=".6" opacity=".5">
+          <line x1="0" y1="20" x2="320" y2="20"/><line x1="0" y1="50" x2="320" y2="50"/>
+          <line x1="0" y1="80" x2="320" y2="80"/><line x1="0" y1="110" x2="320" y2="110"/>
+          <line x1="0" y1="140" x2="320" y2="140"/>
+        </g>
+        <g stroke-width="1.4" fill="none">
+          <line x1="24" y1="34" x2="24" y2="82" style="stroke:var(--up)"/><rect x="16" y="42" width="16" height="30" style="fill:var(--up)"/>
+          <line x1="60" y1="58" x2="60" y2="98" style="stroke:var(--up)"/><rect x="52" y="66" width="16" height="24" style="fill:var(--up)"/>
+          <line x1="96" y1="64" x2="96" y2="102" style="stroke:var(--down)"/><rect x="88" y="70" width="16" height="26" style="fill:var(--down)"/>
+          <line x1="132" y1="56" x2="132" y2="104" style="stroke:var(--up)"/><rect x="124" y="64" width="16" height="32" style="fill:var(--up)"/>
+          <line x1="168" y1="82" x2="168" y2="124" style="stroke:var(--up)"/><rect x="160" y="88" width="16" height="28" style="fill:var(--up)"/>
+          <line x1="204" y1="90" x2="204" y2="126" style="stroke:var(--down)"/><rect x="196" y="98" width="16" height="22" style="fill:var(--down)"/>
+          <line x1="240" y1="84" x2="240" y2="128" style="stroke:var(--up)"/><rect x="232" y="92" width="16" height="28" style="fill:var(--up)"/>
+          <line x1="276" y1="104" x2="276" y2="140" style="stroke:var(--up)"/><rect x="268" y="112" width="16" height="22" style="fill:var(--up)"/>
+        </g>
+        <path d="M24,80 L60,86 L96,82 L132,90 L168,100 L204,102 L240,108 L276,118" stroke="#f0c24c" stroke-width="1.4" fill="none"/>
+        <path d="M96,92 L132,94 L168,99 L204,101 L240,105 L276,110" stroke="#5eb6ff" stroke-width="1.4" fill="none"/>
+        <text x="196" y="148" font-size="8" fill="var(--dim)">9/18</text>
+        <text x="268" y="148" font-size="8" fill="var(--dim)">9/19</text>
+      </svg>
+    </div>
+  </div>
+</template>
+
+<script>
+document.querySelectorAll("[data-chrome]").forEach(function (desk) {
+  var node = document.getElementById("t-chrome").content.cloneNode(true);
+  desk.insertBefore(node, desk.firstChild);
+});
+document.querySelectorAll(".slot").forEach(function (slot) {
+  var key = slot.getAttribute("data-card");
+  slot.appendChild(document.getElementById("t-" + key).content.cloneNode(true));
+});
+</script>
+</body>
+</html>

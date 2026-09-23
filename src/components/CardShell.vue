@@ -7,38 +7,17 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   close: [];
-  dragstart: [];
-  dragend: [];
-  dragover: [ratio: number];
-  drop: [];
   grab: [e: PointerEvent];
+  pdrag: [e: PointerEvent];
 }>();
 
-function onGrab(e: PointerEvent) {
-  if (props.freeDrag) emit("grab", e);
-}
-
-function onDragStart(e: DragEvent) {
-  // 从关闭按钮发起的拖拽不处理
-  const t = e.target as HTMLElement;
-  if (t.closest(".card-close")) {
-    e.preventDefault();
+function onPointerDown(e: PointerEvent) {
+  if (props.freeDrag) {
+    emit("grab", e);
     return;
   }
-  e.dataTransfer?.setData("text/plain", props.title);
-  if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-  emit("dragstart");
-}
-function onDragOver(e: DragEvent) {
-  e.preventDefault();
-  if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-  const head = e.currentTarget as HTMLElement;
-  const r = head.getBoundingClientRect();
-  emit("dragover", (e.clientY - r.top) / r.height);
-}
-function onDrop(e: DragEvent) {
-  e.preventDefault();
-  emit("drop");
+  if (e.button !== 0) return;
+  emit("pdrag", e);
 }
 </script>
 
@@ -48,15 +27,7 @@ function onDrop(e: DragEvent) {
     :class="{ dragging }"
     :style="accent ? { '--accent-var': accent } : {}"
   >
-    <header
-      class="card-head"
-      :draggable="!freeDrag"
-      @dragstart="onDragStart"
-      @dragend="emit('dragend')"
-      @dragover="onDragOver"
-      @drop="onDrop"
-      @pointerdown="onGrab"
-    >
+    <header class="card-head" @pointerdown="onPointerDown">
       <span class="card-bar"></span>
       <svg viewBox="0 0 24 24" class="card-grip" title="按住拖动可调整位置">
         <circle cx="9" cy="6" r="1.4" fill="currentColor" />

@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TickGold · 融入式标题栏 + 5 套配色</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23d4af37'/><text x='16' y='22' font-size='16' font-family='Arial' font-weight='bold' text-anchor='middle' fill='%23111'>TG</text></svg>" />
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  background: #05070c;
+  min-height: 100vh;
+  padding: 18px;
+  color: #dfe6f0;
+}
+
+/* ===== 页面级方案切换器（不属于软件）===== */
+.switcher {
+  max-width: 1280px; margin: 0 auto 14px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.switcher .lab { font-size: 13px; color: #9aa6b8; margin-right: 6px; }
+.switcher button {
+  padding: 6px 14px; border-radius: 8px; font-size: 12px; cursor: pointer;
+  background: #111824; color: #aab4c4; border: 1px solid #232d3d;
+  transition: all .15s;
+}
+.switcher button:hover { border-color: #4a5a72; color: #fff; }
+.switcher button.active { background: var(--accent, #d4af37); color: #0a0c11; border-color: transparent; font-weight: 700; }
+.switcher .cur { margin-left: auto; font-size: 12px; color: #7d8798; }
+
+/* ===== 模拟桌面窗口 ===== */
+.window {
+  max-width: 1280px; margin: 0 auto;
+  border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 70px rgba(0,0,0,.6);
+  background: var(--bg);
+}
+
+/* ----- 5 套配色主题 ----- */
+.window[data-theme="obsidian"] {
+  --bg:#05070b; --panel:#0b0f16; --panel2:#0e141d; --line:#1d2635; --line2:#283346;
+  --t:#e9eef6; --m:#8b97a8; --dim:#5d6878;
+  --up:#f23645; --dn:#08c98a; --accent:#d4af37; --accent2:#e8c96a; --blue:#4ea1ff;
+  --hover:#16202e;
+}
+.window[data-theme="midnight"] {
+  --bg:#060b18; --panel:#0a1322; --panel2:#0d1830; --line:#182a4e; --line2:#22386a;
+  --t:#e6eeff; --m:#8294ba; --dim:#5a6c92;
+  --up:#ff5a6a; --dn:#1fd0a0; --accent:#4ea1ff; --accent2:#7cc0ff; --blue:#6ab0ff;
+  --hover:#12203a;
+}
+.window[data-theme="graphite"] {
+  --bg:#15181d; --panel:#1b1f26; --panel2:#21262e; --line:#2e353f; --line2:#3a424d;
+  --t:#e9ecf1; --m:#9aa3af; --dim:#6c7580;
+  --up:#f0606d; --dn:#22c09a; --accent:#cfd5dd; --accent2:#e6ebf2; --blue:#6aa6e8;
+  --hover:#282e38;
+}
+.window[data-theme="nebula"] {
+  --bg:#0d0a17; --panel:#151026; --panel2:#1a1432; --line:#2c2349; --line2:#3a2e60;
+  --t:#f0eaff; --m:#9a8ebc; --dim:#6c608c;
+  --up:#ff6080; --dn:#2dd4a8; --accent:#b07cff; --accent2:#cda6ff; --blue:#7c9cff;
+  --hover:#221a3c;
+}
+.window[data-theme="emerald"] {
+  --bg:#07120e; --panel:#0b1915; --panel2:#0e201a; --line:#19342b; --line2:#224538;
+  --t:#e7f6ef; --m:#86ab9b; --dim:#5e8070;
+  --up:#ff5a66; --dn:#2fe6a6; --accent:#2fd4a6; --accent2:#7af0cc; --blue:#5aa6e8;
+  --hover:#122822;
+}
+
+/* ===== 融入式标题栏（可拖拽，窗口控制在右侧）===== */
+.titlebar {
+  height: 40px; display: flex; align-items: center;
+  background: linear-gradient(180deg, var(--panel) 0%, var(--bg) 100%);
+  border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag; app-region: drag;
+}
+.tb-left { display: flex; align-items: center; gap: 14px; padding-left: 12px; flex: 1; min-width: 0; }
+.brand { font-size: 14px; font-weight: 800; color: var(--accent2); letter-spacing: .5px; white-space: nowrap; }
+.search {
+  -webkit-app-region: no-drag; app-region: no-drag;
+  display: flex; align-items: center; gap: 6px;
+  height: 26px; width: 280px; padding: 0 10px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 7px;
+}
+.search svg { color: var(--dim); flex: none; }
+.search input {
+  flex: 1; min-width: 0; background: transparent; border: none; outline: none;
+  color: var(--t); font-size: 12px;
+}
+.tb-right {
+  -webkit-app-region: no-drag; app-region: no-drag;
+  display: flex; align-items: center; gap: 4px; height: 100%;
+}
+.tb-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--m); padding: 0 10px; }
+.tb-meta .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dn); }
+.tb-btn {
+  height: 26px; padding: 0 10px; font-size: 11px; cursor: pointer;
+  background: transparent; color: var(--m); border: 1px solid var(--line); border-radius: 6px;
+}
+.tb-btn:hover { color: var(--t); border-color: var(--line2); background: var(--hover); }
+.tb-sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
+
+/* 窗口控制按钮（Windows 风格，贴右） */
+.win-ctl { display: flex; height: 40px; margin-left: 6px; }
+.wc {
+  width: 46px; height: 40px; border: none; cursor: pointer;
+  background: transparent; color: var(--m);
+  display: flex; align-items: center; justify-content: center;
+}
+.wc svg { width: 11px; height: 11px; }
+.wc:hover { background: var(--hover); color: var(--t); }
+.wc.close:hover { background: #e81123; color: #fff; }
+.wc.close:active { background: #f1707a; }
+
+/* ===== 指数条 ===== */
+.indices {
+  height: 34px; display: flex; align-items: center; gap: 26px; padding: 0 14px;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+  font-size: 12px; overflow: hidden;
+}
+.indices .ix { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.indices .ix .nm { color: var(--m); }
+.indices .ix .px { font-weight: 700; font-variant-numeric: tabular-nums; }
+.indices .ix .pc { font-size: 11px; font-variant-numeric: tabular-nums; }
+.up { color: var(--up); } .dn { color: var(--dn); } .flat { color: var(--m); }
+
+/* ===== Dock ===== */
+.dock {
+  display: flex; align-items: center; gap: 2px;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+  padding: 4px 8px; overflow-x: auto; scrollbar-width: none;
+}
+.dock::-webkit-scrollbar { display: none; }
+.dock .grp { display: flex; align-items: center; padding: 0 8px; border-right: 1px solid var(--line); }
+.dock .grp:last-child { border-right: none; }
+.dock .gn { font-size: 10px; color: var(--dim); margin-right: 6px; }
+.dock .di {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 8px; border: none; border-radius: 8px; cursor: pointer;
+  background: transparent; color: var(--m); font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.dock .di svg { width: 14px; height: 14px; }
+.dock .di:hover { color: var(--t); background: var(--hover); }
+.dock .di.on { color: var(--accent2); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+/* ===== 时段 Tabs ===== */
+.timetabs {
+  display: flex; align-items: center; gap: 4px;
+  padding: 8px 12px 0; background: var(--bg);
+}
+.timetabs .tt {
+  padding: 5px 14px; font-size: 12px; cursor: pointer;
+  color: var(--m); border-radius: 8px 8px 0 0;
+}
+.timetabs .tt.on { color: var(--accent2); background: var(--panel2); font-weight: 700; }
+.timetabs .clock { margin-left: auto; font-size: 13px; font-weight: 700; color: var(--accent2); font-variant-numeric: tabular-nums; padding-right: 4px; }
+
+/* ===== 卡片网格 ===== */
+.cards {
+  display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px;
+  padding: 12px; background: var(--bg);
+}
+.card {
+  background: linear-gradient(180deg, var(--panel2), color-mix(in srgb, var(--panel2) 80%, var(--bg)));
+  border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.c-head {
+  height: 34px; flex: none; display: flex; align-items: center; gap: 7px;
+  padding: 0 10px; border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 700; color: var(--t);
+}
+.c-head .bar { width: 3px; height: 12px; border-radius: 2px; background: var(--accent); }
+.c-head .x { margin-left: auto; color: var(--dim); cursor: pointer; }
+.c-body { flex: 1; min-height: 0; padding: 10px; font-size: 12px; overflow: auto; }
+
+/* 卡片落位 */
+.kline { grid-column: span 7; min-height: 268px; }
+.watchc { grid-column: span 3; min-height: 128px; }
+.newsc { grid-column: span 2; min-height: 268px; }
+.screenc { grid-column: span 7; min-height: 178px; }
+.eventc { grid-column: span 5; min-height: 178px; }
+
+/* K线占位（SVG 蜡烛） */
+.kline .seg { display: flex; gap: 8px; margin-bottom: 8px; font-size: 11px; color: var(--m); }
+.kline .seg span.on { color: var(--accent2); background: var(--hover); padding: 2px 8px; border-radius: 5px; }
+.kchart { flex: 1; width: 100%; }
+
+/* 自选行 */
+.wrow { display: flex; align-items: center; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--line); }
+.wrow .n { flex: 1; color: var(--t); font-weight: 600; }
+.wrow .p { font-variant-numeric: tabular-nums; }
+
+/* 快讯 */
+.nrow { padding: 7px 0; border-bottom: 1px solid var(--line); color: var(--m); font-size: 11px; line-height: 1.5; }
+.nrow .tg { color: var(--accent2); font-weight: 700; margin-right: 5px; }
+
+/* 选股 */
+.scr-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.scr-tags .t { padding: 3px 10px; border-radius: 12px; border: 1px solid var(--line); color: var(--m); font-size: 11px; cursor: pointer; }
+.scr-tags .t.on { color: var(--accent2); border-color: var(--accent); }
+.scr-go { padding: 6px 18px; border: none; border-radius: 7px; background: var(--accent); color: #0a0c11; font-weight: 700; font-size: 12px; cursor: pointer; }
+
+/* 板块异动 */
+.erow { display: flex; gap: 8px; align-items: flex-start; padding: 8px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.erow .tag { flex: none; font-size: 10px; padding: 2px 7px; border-radius: 5px; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent2); font-weight: 700; }
+.erow .msg { font-size: 11px; color: var(--m); line-height: 1.5; }
+.erow .msg b { color: var(--t); }
+</style>
+</head>
+<body>
+
+<div class="switcher">
+  <span class="lab">融入式标题栏 + 背景配色（点击切换）：</span>
+  <button data-set="obsidian" class="active">① 曜石黑金</button>
+  <button data-set="midnight">② 午夜科技蓝</button>
+  <button data-set="graphite">③ 石墨护眼灰</button>
+  <button data-set="nebula">④ 星云暗紫</button>
+  <button data-set="emerald">⑤ 墨青翡翠</button>
+  <span class="cur" id="curName">当前：① 曜石黑金（经典专业）</span>
+</div>
+
+<div class="window" id="win" data-theme="obsidian">
+
+  <!-- 融入式标题栏：原生白色栏已删除，窗口控制在最右 -->
+  <div class="titlebar">
+    <div class="tb-left">
+      <div class="brand">TickGold</div>
+      <div class="search">
+        <svg viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 10-.7.7l.27.28v.79l5 4.99L20.49 19zm-6 0A4.5 4.5 0 1114 9.5 4.5 4.5 0 019.5 14z"/></svg>
+        <input placeholder="搜索代码 / 名称 / 拼音" />
+      </div>
+    </div>
+    <div class="tb-right">
+      <div class="tb-meta"><span class="dot"></span>实时 · 4 只 · 07:52:04</div>
+      <button class="tb-btn">布局</button>
+      <button class="tb-btn">检查更新</button>
+      <div class="tb-sep"></div>
+      <div class="win-ctl">
+        <button class="wc min" title="最小化">
+          <svg viewBox="0 0 12 12"><path fill="currentColor" d="M0 6h12v1H0z"/></svg>
+        </button>
+        <button class="wc max" title="最大化">
+          <svg viewBox="0 0 12 12"><path fill="currentColor" d="M0 0h12v12H0zm1 1v10h10V1z"/></svg>
+        </button>
+        <button class="wc close" title="关闭">
+          <svg viewBox="0 0 12 12"><path fill="currentColor" d="M1 0l5 5L11 0l1 1-5 5 5 5-1 1-5-5-5 5-1-1 5-5L0 1z"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 指数条 -->
+  <div class="indices">
+    <div class="ix"><span class="nm">上证指数</span><span class="px up">3952.13</span><span class="pc up">+2.22 +0.06%</span></div>
+    <div class="ix"><span class="nm">深证成指</span><span class="px dn">13723.74</span><span class="pc dn">-6.28 -0.05%</span></div>
+    <div class="ix"><span class="nm">创业板指</span><span class="px up">3399.93</span><span class="pc up">+0.34 +0.01%</span></div>
+    <div class="ix"><span class="nm">沪深300</span><span class="px up">4544.59</span><span class="pc up">+5.02 +0.11%</span></div>
+    <div class="ix"><span class="nm">科创50</span><span class="px up">1665.04</span><span class="pc up">+7.56 +0.46%</span></div>
+  </div>
+
+  <!-- Dock -->
+  <nav class="dock">
+    <div class="grp"><span class="gn">总览</span>
+      <button class="di">自选</button><button class="di">榜单</button><button class="di">宽度</button><button class="di">涨跌分布</button>
+    </div>
+    <div class="grp"><span class="gn">盯盘</span>
+      <button class="di">雷达</button><button class="di">精灵</button><button class="di">预警</button>
+    </div>
+    <div class="grp"><span class="gn">板块</span>
+      <button class="di">板块</button><button class="di on">热力图</button><button class="di on">板块异动</button><button class="di">题材</button>
+    </div>
+    <div class="grp"><span class="gn">行情</span>
+      <button class="di on">K线</button><button class="di">盘口</button><button class="di">资金</button><button class="di on">快讯</button>
+    </div>
+    <div class="grp"><span class="gn">选股交易</span>
+      <button class="di">选股</button><button class="di">F10</button><button class="di">模拟交易</button>
+    </div>
+  </nav>
+
+  <!-- 时段 -->
+  <div class="timetabs">
+    <span class="tt">集合竞价</span><span class="tt">早盘</span><span class="tt on">午盘</span><span class="tt">尾盘</span><span class="tt">盘后复盘</span>
+    <span class="clock">07:52:04</span>
+  </div>
+
+  <!-- 卡片 -->
+  <div class="cards">
+    <div class="card kline">
+      <div class="c-head"><span class="bar"></span>K线图<span class="x">×</span></div>
+      <div class="c-body">
+        <div class="seg"><span>分时</span><span class="on">日K</span><span>周K</span><span>月K</span></div>
+        <svg class="kchart" viewBox="0 0 560 180" preserveAspectRatio="none">
+          <defs>
+            <line id="g" />
+          </defs>
+          <!-- 网格 -->
+          <g stroke="var(--line)" stroke-width="1">
+            <line x1="0" y1="45" x2="560" y2="45"/><line x1="0" y1="90" x2="560" y2="90"/><line x1="0" y1="135" x2="560" y2="135"/>
+          </g>
+          <!-- 蜡烛 -->
+          <g>
+            <rect x="40" y="70" width="9" height="60" fill="var(--up)"/><line x1="44.5" y1="60" x2="44.5" y2="140" stroke="var(--up)"/>
+            <rect x="70" y="55" width="9" height="50" fill="var(--up)"/><line x1="74.5" y1="45" x2="74.5" y2="115" stroke="var(--up)"/>
+            <rect x="100" y="65" width="9" height="45" fill="var(--dn)"/><line x1="104.5" y1="55" x2="104.5" y2="120" stroke="var(--dn)"/>
+            <rect x="130" y="40" width="9" height="55" fill="var(--up)"/><line x1="134.5" y1="30" x2="134.5" y2="105" stroke="var(--up)"/>
+            <rect x="160" y="50" width="9" height="40" fill="var(--dn)"/><line x1="164.5" y1="40" x2="164.5" y2="100" stroke="var(--dn)"/>
+            <rect x="190" y="30" width="9" height="60" fill="var(--up)"/><line x1="194.5" y1="20" x2="194.5" y2="100" stroke="var(--up)"/>
+            <rect x="220" y="45" width="9" height="50" fill="var(--up)"/><line x1="224.5" y1="35" x2="224.5" y2="105" stroke="var(--up)"/>
+            <rect x="250" y="60" width="9" height="40" fill="var(--dn)"/><line x1="254.5" y1="50" x2="254.5" y2="110" stroke="var(--dn)"/>
+            <rect x="280" y="35" width="9" height="55" fill="var(--up)"/><line x1="284.5" y1="25" x2="284.5" y2="100" stroke="var(--up)"/>
+            <rect x="310" y="25" width="9" height="50" fill="var(--up)"/><line x1="314.5" y1="15" x2="314.5" y2="85" stroke="var(--up)"/>
+            <rect x="340" y="40" width="9" height="45" fill="var(--dn)"/><line x1="344.5" y1="30" x2="344.5" y2="95" stroke="var(--dn)"/>
+            <rect x="370" y="20" width="9" height="55" fill="var(--up)"/><line x1="374.5" y1="10" x2="374.5" y2="85" stroke="var(--up)"/>
+          </g>
+          <!-- 均线 -->
+          <path d="M44 100 Q150 70 250 75 T378 60" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+          <path d="M44 120 Q160 95 260 92 T378 80" fill="none" stroke="var(--blue)" stroke-width="1.6"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="card watchc">
+      <div class="c-head"><span class="bar"></span>自选股<span class="x">×</span></div>
+      <div class="c-body">
+        <div class="wrow"><span class="n">盛达资源</span><span class="p dn">33.40</span><span class="p dn">-2.28%</span></div>
+        <div class="wrow"><span class="n">泸州老窖</span><span class="p dn">71.48</span><span class="p dn">-1.00%</span></div>
+        <div class="wrow"><span class="n">N中塑</span><span class="p up">433.0</span><span class="p up">+683%</span></div>
+        <div class="wrow"><span class="n">C沈铖</span><span class="p up">37.98</span><span class="p up">+0.69%</span></div>
+      </div>
+    </div>
+
+    <div class="card newsc">
+      <div class="c-head"><span class="bar"></span>盘中快讯<span class="x">×</span></div>
+      <div class="c-body">
+        <div class="nrow"><span class="tg">宏观</span>央行公开市场净投放 2000 亿元。</div>
+        <div class="nrow"><span class="tg">行业</span>新能源汽车 9 月销量同比增长。</div>
+        <div class="nrow"><span class="tg">公司</span>多家龙头披露回购计划。</div>
+        <div class="nrow"><span class="tg">外围</span>隔夜美股三大指数收涨。</div>
+        <div class="nrow"><span class="tg">商品</span>国际金价创阶段新高。</div>
+      </div>
+    </div>
+
+    <div class="card screenc">
+      <div class="c-head"><span class="bar"></span>条件选股<span class="x">×</span></div>
+      <div class="c-body">
+        <div class="scr-tags">
+          <span class="t on">均线多头</span><span class="t on">MACD金叉</span><span class="t">放量突破</span><span class="t">当日强势</span><span class="t">低估值</span><span class="t">大盘蓝筹</span>
+        </div>
+        <button class="scr-go">开始选股</button>
+      </div>
+    </div>
+
+    <div class="card eventc">
+      <div class="c-head"><span class="bar"></span>板块异动<span class="x">×</span></div>
+      <div class="c-body">
+        <div class="erow"><span class="tag">快涨</span><span class="msg"><b>信创安全</b> 当前涨幅 +2.88%，龙头快速拉升。</span></div>
+        <div class="erow"><span class="tag">快涨</span><span class="msg"><b>印刷包装</b> 当前涨幅 +2.50%。</span></div>
+        <div class="erow"><span class="tag">快涨</span><span class="msg"><b>陶瓷概念</b> 当前涨幅 +2.34%。</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const names = {
+  obsidian: "① 曜石黑金（经典专业）",
+  midnight: "② 午夜科技蓝（冷冽科技）",
+  graphite: "③ 石墨护眼灰（柔和中性）",
+  nebula: "④ 星云暗紫（神秘高级）",
+  emerald: "⑤ 墨青翡翠（沉稳金融）",
+};
+const win = document.getElementById("win");
+document.querySelectorAll(".switcher button").forEach((b) => {
+  b.addEventListener("click", () => {
+    const t = b.dataset.set;
+    win.dataset.theme = t;
+    document.querySelectorAll(".switcher button").forEach((x) => x.classList.remove("active"));
+    b.classList.add("active");
+    document.getElementById("curName").textContent = "当前：" + names[t];
+  });
+});
+</script>
+</body>
+</html>
