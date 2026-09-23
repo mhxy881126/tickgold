@@ -1,5 +1,5 @@
 // 新浪数据源：实时行情（GBK，hq.sinajs.cn）+ K线（UTF-8 JSON，money.finance.sina）
-use super::{cnc_symbol, http, now_millis, FundFlow, FundLevel, KBar, Quote, Sector};
+use super::{cnc_symbol, http, now_millis, FundFlow, FundLevel, KBar, NewsItem, Quote, Sector};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -290,5 +290,77 @@ pub async fn rank_page(sort: &str, page: i64, num: i64) -> Result<Vec<Quote>, St
         })
         .collect();
     Ok(out)
+}
+
+// ===== 盘中快讯（新浪财经 7x24 全球直播，UTF-8 JSON；24 小时有内容） =====
+pub async fn news_flash(page: i64, size: i64) -> Result<Vec<NewsItem>, String> {
+    let url = format!(
+        "https://zhibo.sina.com.cn/api/zhibo/feed?page={page}&page_size={size}&zhibo_id=152&tag_id=0&type=0"
+    );
+    let v: Value = http()
+        .get(&url)
+        .header("Referer", "https://zhibo.sina.com.cn/")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let list = v
+        .pointer("/result/data/feed/list")
+        .and_then(|x| x.as_array())
+        .ok_or_else(|| "快讯解析失败".to_string())?;
+
+    let out: Vec<NewsItem> = list
+        .iter()
+        .filter_map(|x| {
+            let id = x["id"].as_i64()?;
+            let text = strip_html(x["rich_text"].as_str().unwrap_or(""));
+            let mut tags: Vec<String> = Vec::new();
+            if let Some(arr) = x["tag"].as_array() {
+                for t in arr {
+                    if let Some(s) = t.get("name").and_then(|y| y.as_str()) {
+                        tags.push(s.to_string());
+                    } else if let Some(s) = t.as_str() {
+                        tags.push(s.to_string());
+                    }
+                }
+            } else if let Some(s) = x["tag"].as_str() {
+                if !s.is_empty() {
+                    tags.push(s.to_string());
+                }
+            }
+            Some(NewsItem {
+                id,
+                time: x["create_time"].as_str().unwrap_or("").to_string(),
+                text,
+                tags,
+                url: x["docurl"].as_str().unwrap_or("").to_string(),
+            })
+        })
+        .collect();
+    if out.is_empty() {
+        return Err("快讯返回空".to_string());
+    }
+    Ok(out)
+}
+
+/// 去除文本中可能残留的 HTML 标签
+fn strip_html(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut depth = 0;
+    for ch in s.chars() {
+        match ch {
+            '<' => depth += 1,
+            '>' => {
+                if depth > 0 {
+                    depth -= 1
+                }
+            }
+            _ if depth == 0 => out.push(ch),
+            _ => {}
+        }
+    }
+    out
 }
 

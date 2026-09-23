@@ -125,6 +125,17 @@ pub struct Sector {
     pub lead_pct: f64, // 领涨股涨幅 %
 }
 
+/// 盘中快讯（新浪 7x24）
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NewsItem {
+    pub id: i64,
+    pub time: String, // create_time，"2026-09-23 09:45:12"
+    pub text: String,
+    pub tags: Vec<String>,
+    pub url: String,
+}
+
 /// 条件选股过滤器（区间为 None 表示不限）
 #[derive(Deserialize, Debug, Clone)]
 #[serde(default, rename_all = "camelCase")]
@@ -386,6 +397,16 @@ pub async fn get_sectors(kind: String) -> Result<Vec<Sector>, String> {
     tokio::time::timeout(Duration::from_secs(KLINE_TIMEOUT), sina::sectors(&kind))
         .await
         .map_err(|_| "板块: 超时".to_string())?
+}
+
+/// 盘中快讯：新浪 7x24（page 从 1 开始）
+pub async fn get_news_flash(page: i64, size: i64) -> Result<Vec<NewsItem>, String> {
+    tokio::time::timeout(
+        Duration::from_secs(KLINE_TIMEOUT),
+        sina::news_flash(page, size),
+    )
+    .await
+    .map_err(|_| "快讯: 超时".to_string())?
 }
 
 /// 当日分时：腾讯
