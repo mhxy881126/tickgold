@@ -70,6 +70,11 @@ async fn get_rank_page(
 }
 
 #[tauri::command]
+async fn get_news_flash(page: i64, size: i64) -> Result<Vec<market::NewsItem>, String> {
+    market::get_news_flash(page, size).await
+}
+
+#[tauri::command]
 async fn check_latest() -> Result<market::LatestInfo, String> {
     market::check_latest().await
 }
@@ -367,10 +372,23 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            // 显式为主窗口设置图标，确保 Windows 任务栏 / 标题栏正确显示（部分环境默认未应用）
-            if let Some(icon) = app.default_window_icon().cloned() {
-                if let Some(main) = app.get_webview_window("main") {
+            // ===== 主窗口：标题栏融入工作台 =====
+            if let Some(main) = app.get_webview_window("main") {
+                // 显式设置图标，确保 Windows 任务栏正确显示
+                if let Some(icon) = app.default_window_icon().cloned() {
                     let _ = main.set_icon(icon);
+                }
+
+                // Windows/Linux —— 去掉原生标题栏（前端自绘最小化 / 最大化 / 关闭）
+                #[cfg(not(target_os = "macos"))]
+                let _ = main.set_decorations(false);
+
+                // macOS —— 保留原生红绿灯，仅隐藏标题栏背景、内嵌入自绘顶栏
+                #[cfg(target_os = "macos")]
+                {
+                    use tauri::TitleBarStyle;
+                    let _ = main.set_title_bar_style(TitleBarStyle::Overlay);
+                    let _ = main.set_traffic_light_position(LogicalPosition::new(10.0, 9.0));
                 }
             }
 
@@ -432,6 +450,7 @@ pub fn run() {
             search_stocks,
             get_index_quotes,
             get_rank_page,
+            get_news_flash,
             check_latest,
             get_f10_profile,
             get_f10_finance,

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, provide, watch } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import CardShell from "./components/CardShell.vue";
 import CardContent from "./components/CardContent.vue";
 import UpdateDialog from "./components/UpdateDialog.vue";
@@ -222,11 +223,50 @@ const curVersion = ref("");
 const showUpdate = ref(false);
 const showSettings = ref(false);
 
+// ===== 自绘标题栏窗口控制（Windows；macOS 用原生红绿灯）=====
+const isMac = ref(false);
+const isWin = ref(false);
+const isMax = ref(false);
+const inTauri = typeof window !== "undefined" && "__TAURI__" in window;
+const appWin = inTauri ? getCurrentWindow() : null;
+
+async function syncMax() {
+  if (!appWin) return;
+  try {
+    isMax.value = await appWin.isMaximized();
+  } catch {
+    /* ignore */
+  }
+}
+function winMinimize() {
+  appWin?.minimize().catch(() => {});
+}
+function winToggleMax() {
+  appWin?.toggleMaximize().then(syncMax).catch(() => {});
+}
+function winClose() {
+  appWin?.close().catch(() => {});
+}
+let unlistenResize: (() => void) | null = null;
+
 const unlistenFns: (() => void)[] = [];
 
 onMounted(async () => {
   try {
+    const pf = (navigator.platform || navigator.userAgent || "").toLowerCase();
+    isMac.value = pf.includes("mac");
+    isWin.value = pf.includes("win");
     curVersion.value = await getVersion();
+    await syncMax();
+    if (appWin) {
+      try {
+        unlistenResize = await appWin.onResized(() => {
+          syncMax();
+        });
+      } catch {
+        /* ignore */
+      }
+    }
     await ensureDb();
     await theme.load();
     await wl.load();
@@ -276,14 +316,15 @@ onMounted(async () => {
 });
 onBeforeUnmount(() => {
   unlistenFns.forEach((f) => f());
+  unlistenResize?.();
 });
 </script>
 
 <template>
   <div class="app">
     <!-- 顶栏 -->
-    <header class="topbar">
-      <div class="brand">TickGold</div>
+    <header class="topbar" :class="{ mac: isMac }" data-tauri-drag-region>
+      <div class="brand" data-tauri-drag-region>TickGold</div>
       <SearchBox @select="onSearchSelect" />
       <div class="status">
         <span :class="quotes.polling ? 'dot on' : 'dot'"></span>
@@ -300,6 +341,19 @@ onBeforeUnmount(() => {
         <button class="upd" @click="showSettings = true">设置</button>
         <span class="sep">|</span>
         <button class="upd" @click="showUpdate = true">检查更新</button>
+      </div>
+      <!-- Windows 自绘窗口控制按钮（macOS 使用原生红绿灯） -->
+      <div v-if="isWin" class="win-ctl">
+        <button class="wc-btn" type="button" title="最小化" @click="winMinimize">
+          <svg viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1" /></svg>
+        </button>
+        <button class="wc-btn" type="button" :title="isMax ? '向下还原' : '最大化'" @click="winToggleMax">
+          <svg v-if="!isMax" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1" /></svg>
+          <svg v-else viewBox="0 0 12 12"><rect x="3.4" y="4.4" width="5.2" height="5" fill="none" stroke="currentColor" stroke-width="1" /><path d="M4.4 4.4V3h4.6v4.6H7.6" fill="none" stroke="currentColor" stroke-width="1" /></svg>
+        </button>
+        <button class="wc-btn close" type="button" title="关闭" @click="winClose">
+          <svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1" /></svg>
+        </button>
       </div>
     </header>
 
@@ -486,15 +540,26 @@ onBeforeUnmount(() => {
 .topbar {
   grid-column: 1;
   display: flex; align-items: center; gap: 14px;
-  padding: 0 12px; background: var(--bg-panel); border-bottom: 1px solid var(--border);
-  -webkit-app-region: drag;
+  padding: 0 0 0 12px; background: var(--bg-panel); border-bottom: 1px solid var(--border);
 }
+.topbar.mac { padding-left: 72px; }
 .brand { font-weight: 700; color: var(--accent); white-space: nowrap; }
-.status { flex: 1; display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); justify-content: flex-end; -webkit-app-region: no-drag; }
+.status { flex: 1; display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); justify-content: flex-end; padding-right: 6px; }
 .sep { margin: 0 8px; }
 .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #555; margin-right: 5px; }
 .dot.on { background: #26d07c; }
 .ver { opacity: 0.8; }
+
+/* Windows 自绘窗口控制 */
+.win-ctl { display: flex; align-items: stretch; align-self: stretch; margin-left: 4px; }
+.wc-btn {
+  width: 46px; border: 0; background: transparent; color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  transition: background 0.13s, color 0.13s;
+}
+.wc-btn svg { width: 12px; height: 12px; }
+.wc-btn:hover { background: var(--bg-hover); color: var(--text); }
+.wc-btn.close:hover { background: #e23b45; color: #fff; }
 
 /* 指数条 */
 .idx-row { grid-column: 1; }
@@ -703,8 +768,22 @@ onBeforeUnmount(() => {
 .welcome {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  z-index: 5;
+  z-index: 5; border-radius: 12px; overflow: hidden; color: var(--text);
+  background:
+    radial-gradient(900px 420px at 50% -10%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 60%),
+    radial-gradient(700px 380px at 50% 115%, color-mix(in srgb, var(--blue) 12%, transparent), transparent 60%),
+    var(--bg);
 }
+.welcome::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--text) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--text) 5%, transparent) 1px, transparent 1px);
+  background-size: 38px 38px;
+  -webkit-mask-image: radial-gradient(620px 380px at 50% 50%, #000 28%, transparent 74%);
+  mask-image: radial-gradient(620px 380px at 50% 50%, #000 28%, transparent 74%);
+}
+.welcome > * { position: relative; z-index: 1; }
 .welcome-enter-active { transition: all 0.35s ease; }
 .welcome-leave-active { transition: all 0.25s ease; }
 .welcome-enter-from, .welcome-leave-to { opacity: 0; transform: scale(0.96); }
@@ -717,7 +796,7 @@ onBeforeUnmount(() => {
   box-shadow: 0 8px 28px rgba(212, 175, 55, 0.4);
   margin-bottom: 20px;
 }
-.w-title { font-size: 22px; font-weight: 700; margin: 0 0 8px; }
+.w-title { font-size: 22px; font-weight: 700; margin: 0 0 8px; color: var(--text); }
 .w-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 28px; }
 .w-btns { display: flex; gap: 12px; }
 .w-btn {
@@ -726,8 +805,8 @@ onBeforeUnmount(() => {
   transition: all 0.15s;
 }
 .w-btn:hover { border-color: var(--text-dim); }
-.w-btn.primary { background: #2f6fed; border-color: #2f6fed; color: #fff; }
-.w-btn.primary:hover { background: #3d7bf5; }
+.w-btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+.w-btn.primary:hover { filter: brightness(1.12); }
 
 /* 更新 */
 .upd {
