@@ -32,6 +32,7 @@ import TimeTabs from "./components/TimeTabs.vue";
 import DistBoard from "./components/DistBoard.vue";
 import ThemeRotation from "./components/ThemeRotation.vue";
 import NewsFlash from "./components/NewsFlash.vue";
+import WelcomeBoard from "./components/WelcomeBoard.vue";
 import { useWatchlistStore } from "./stores/watchlist";
 import { useQuotesStore } from "./stores/quotes";
 import { useAlertStore } from "./stores/alert";
@@ -411,19 +412,9 @@ onBeforeUnmount(() => {
       <TimeTabs :active="bench.timeMode.value" @select="bench.enterTimeMode($event)" />
 
       <div class="ws-body" :class="{ free: bench.freeMode.value }">
-      <!-- 默认欢迎页（无卡片时） -->
+      <!-- 默认欢迎页：指挥中枢 + 沉浸铺满（无卡片时） -->
       <Transition name="welcome">
-        <div v-if="bench.openCards.value.length === 0" class="welcome">
-          <div class="w-logo">TG</div>
-          <h1 class="w-title">TickGold 盯盘工作台</h1>
-          <p class="w-sub">从顶部 Dock 打开功能卡片，或选择一个布局模式快速开始</p>
-          <div class="w-btns">
-            <button class="w-btn primary" @click="bench.setMode(MODES.pro)">专业盯盘</button>
-            <button class="w-btn" @click="bench.setMode(MODES.sector)">板块模式</button>
-            <button class="w-btn" @click="bench.setMode(MODES.scanner)">选股模式</button>
-            <button class="w-btn" @click="bench.setMode(MODES.full)">全屏布局</button>
-          </div>
-        </div>
+        <WelcomeBoard v-if="bench.openCards.value.length === 0" />
       </Transition>
 
       <!-- ===== 自由布局：卡片绝对定位、可随意拖拽 ===== -->
@@ -544,7 +535,7 @@ onBeforeUnmount(() => {
 }
 .topbar.mac { padding-left: 72px; }
 .brand { font-weight: 700; color: var(--accent); white-space: nowrap; }
-.status { flex: 1; display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); justify-content: flex-end; padding-right: 6px; }
+.status { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); margin-left: auto; padding-right: 6px; }
 .sep { margin: 0 8px; }
 .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #555; margin-right: 5px; }
 .dot.on { background: #26d07c; }
@@ -764,49 +755,10 @@ onBeforeUnmount(() => {
   color: var(--text-dim); font-size: 12px;
 }
 
-/* 默认欢迎页 */
-.welcome {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  z-index: 5; border-radius: 12px; overflow: hidden; color: var(--text);
-  background:
-    radial-gradient(900px 420px at 50% -10%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 60%),
-    radial-gradient(700px 380px at 50% 115%, color-mix(in srgb, var(--blue) 12%, transparent), transparent 60%),
-    var(--bg);
-}
-.welcome::before {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background-image:
-    linear-gradient(color-mix(in srgb, var(--text) 5%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--text) 5%, transparent) 1px, transparent 1px);
-  background-size: 38px 38px;
-  -webkit-mask-image: radial-gradient(620px 380px at 50% 50%, #000 28%, transparent 74%);
-  mask-image: radial-gradient(620px 380px at 50% 50%, #000 28%, transparent 74%);
-}
-.welcome > * { position: relative; z-index: 1; }
+/* 欢迎页过渡（作用于 WelcomeBoard 根元素） */
 .welcome-enter-active { transition: all 0.35s ease; }
 .welcome-leave-active { transition: all 0.25s ease; }
-.welcome-enter-from, .welcome-leave-to { opacity: 0; transform: scale(0.96); }
-
-.w-logo {
-  width: 64px; height: 64px; border-radius: 18px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 24px; font-weight: 700; color: #1a1a1a;
-  background: linear-gradient(135deg, #e8c66a, #c8992e);
-  box-shadow: 0 8px 28px rgba(212, 175, 55, 0.4);
-  margin-bottom: 20px;
-}
-.w-title { font-size: 22px; font-weight: 700; margin: 0 0 8px; color: var(--text); }
-.w-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 28px; }
-.w-btns { display: flex; gap: 12px; }
-.w-btn {
-  padding: 9px 22px; border-radius: 8px; font-size: 13px; cursor: pointer;
-  background: var(--bg-panel); border: 1px solid var(--border); color: var(--text);
-  transition: all 0.15s;
-}
-.w-btn:hover { border-color: var(--text-dim); }
-.w-btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
-.w-btn.primary:hover { filter: brightness(1.12); }
+.welcome-enter-from, .welcome-leave-to { opacity: 0; transform: scale(0.97); }
 
 /* 更新 */
 .upd {

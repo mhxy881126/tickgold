@@ -95,7 +95,9 @@ html[data-theme="titanium"] {
   --blue: #6aa0e8;
 }
 
-html, body, #app { height: 100%; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+html, body, #app { height: 100%; background: var(--bg); }
 body { background: var(--bg); color: var(--text); font-size: 13px; }
 
 .up { color: var(--up); }
