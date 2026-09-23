@@ -1,25 +1,25 @@
 /* =========================================================
    TickGold 全局主题变量
-   4 套配色：曜石黑金 / 石墨护眼灰 / 碳纤维(默认) / 深空钛金属
-   通过 <html data-theme="..."> 切换；未设置时默认碳纤维
+   7 套配色：鎏金奢华(默认) / 极地冰蓝 / 熔岩钛橙 / 曜石黑金 / 石墨护眼灰 / 碳纤维 / 深空钛金属
+   通过 <html data-theme="..."> 切换；未设置时默认鎏金奢华
    ========================================================= */
 :root {
-  /* 碳纤维（默认） */
-  --bg: #0a0a0c;
-  --bg-panel: #101013;
-  --bg-card: #141418;
-  --bg-card2: #0e0e12;
-  --bg-hover: #1c1c22;
-  --border: #24242a;
-  --border-light: #2e2e36;
-  --text: #ececf0;
-  --text-dim: #90909a;
-  --up: #f6485a;        /* A股红涨 */
-  --down: #16c98e;      /* 绿跌 */
-  --flat: #90909a;
-  --accent: #d8d8e0;
-  --accent-2: #f0f0f5;
-  --blue: #6aa0e8;
+  /* 鎏金奢华（默认） */
+  --bg: #0b0a06;
+  --bg-panel: #15120a;
+  --bg-card: #17130b;
+  --bg-card2: #120f08;
+  --bg-hover: #201b0e;
+  --border: #2a2414;
+  --border-light: #3a311b;
+  --text: #f2ebd7;
+  --text-dim: #b4a77f;
+  --up: #ef5f6b;        /* A股红涨 */
+  --down: #2fbf95;      /* 绿跌 */
+  --flat: #b4a77f;
+  --accent: #e8c878;
+  --accent-2: #f0d69a;
+  --blue: #6aa6e8;
   font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
 }
 
@@ -95,6 +95,60 @@ html[data-theme="titanium"] {
   --blue: #6aa0e8;
 }
 
+html[data-theme="gold"] {
+  --bg: #0b0a06;
+  --bg-panel: #15120a;
+  --bg-card: #17130b;
+  --bg-card2: #120f08;
+  --bg-hover: #201b0e;
+  --border: #2a2414;
+  --border-light: #3a311b;
+  --text: #f2ebd7;
+  --text-dim: #b4a77f;
+  --up: #ef5f6b;
+  --down: #2fbf95;
+  --flat: #b4a77f;
+  --accent: #e8c878;
+  --accent-2: #f0d69a;
+  --blue: #6aa6e8;
+}
+
+html[data-theme="arctic"] {
+  --bg: #0a1018;
+  --bg-panel: #0f1a29;
+  --bg-card: #11202f;
+  --bg-card2: #0d1825;
+  --bg-hover: #16283c;
+  --border: #1e2f42;
+  --border-light: #2a3f56;
+  --text: #e8f1fb;
+  --text-dim: #8ba4c1;
+  --up: #f25b6a;
+  --down: #1fc28f;
+  --flat: #8ba4c1;
+  --accent: #5eb6ff;
+  --accent-2: #a9d8ff;
+  --blue: #5eb6ff;
+}
+
+html[data-theme="magma"] {
+  --bg: #0d0b09;
+  --bg-panel: #16120e;
+  --bg-card: #1a1510;
+  --bg-card2: #130f0b;
+  --bg-hover: #241b14;
+  --border: #33271d;
+  --border-light: #453527;
+  --text: #f6eee7;
+  --text-dim: #b39d8f;
+  --up: #f65a5a;
+  --down: #20c794;
+  --flat: #b39d8f;
+  --accent: #ff8a4c;
+  --accent-2: #ffb380;
+  --blue: #7a9fc8;
+}
+
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 html, body, #app { height: 100%; background: var(--bg); }
@@ -110,7 +164,6 @@ body::before {
   opacity: 0; transition: opacity 0.3s;
   background: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.022) 0 2px, transparent 2px 5px);
 }
-html:not([data-theme]) body::before,
 html[data-theme="carbon"] body::before { opacity: 1; }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }

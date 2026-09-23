@@ -2,7 +2,7 @@
 import { ref } from "vue";
 import { ensureDb, db } from "../db/database";
 
-export type ThemeId = "obsidian" | "graphite" | "carbon" | "titanium";
+export type ThemeId = "gold" | "arctic" | "magma" | "obsidian" | "graphite" | "carbon" | "titanium";
 
 export interface ThemeMeta {
   id: ThemeId;
@@ -14,6 +14,24 @@ export interface ThemeMeta {
 const KEY = "app_theme";
 
 export const THEMES: ThemeMeta[] = [
+  {
+    id: "gold",
+    name: "鎏金奢华",
+    desc: "曜石黑底 + 香槟金，高端稳重",
+    sw: ["#0b0a06", "#e8c878", "#ef5f6b", "#2fbf95"],
+  },
+  {
+    id: "arctic",
+    name: "极地冰蓝",
+    desc: "深蓝冷冽 + 冰蓝，清爽专业",
+    sw: ["#0a1018", "#5eb6ff", "#f25b6a", "#1fc28f"],
+  },
+  {
+    id: "magma",
+    name: "熔岩钛橙",
+    desc: "炭黑暖橙，能量感强",
+    sw: ["#0d0b09", "#ff8a4c", "#f65a5a", "#20c794"],
+  },
   {
     id: "obsidian",
     name: "曜石黑金",
@@ -40,15 +58,15 @@ export const THEMES: ThemeMeta[] = [
   },
 ];
 
-const theme = ref<ThemeId>("carbon");
+const theme = ref<ThemeId>("gold");
 
 function apply(t: ThemeId) {
   document.documentElement.setAttribute("data-theme", t);
 }
 
-/** 启动时读取已保存的主题；无记录或 web 预览时使用默认碳纤维 */
+/** 启动时读取已保存的主题；无记录或 web 预览时使用默认鎏金奢华 */
 async function load() {
-  let t: ThemeId = "carbon";
+  let t: ThemeId = "gold";
   try {
     await ensureDb();
     const rows = await db().select<{ value: string }[]>(
