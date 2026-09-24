@@ -130,6 +130,9 @@ export interface ScreenFilter {
   volumeUp: boolean;  // 放量上涨
   breakout: boolean;  // 突破新高
   aboveMa20: boolean; // 站上20日线
+  kdjGolden: boolean;  // KDJ 低位金叉
+  rsiOversold: boolean; // RSI 超卖反弹
+  bollBreak: boolean;  // BOLL 开口突破
   limit: number;
 }
 

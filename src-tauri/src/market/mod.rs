@@ -8,6 +8,7 @@ pub mod limitup;
 pub mod alert;
 pub mod f10;
 pub mod cninfo;
+pub mod cache;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -171,6 +172,9 @@ pub struct ScreenFilter {
     pub volume_up: bool,  // 放量上涨
     pub breakout: bool,   // 突破新高
     pub above_ma20: bool, // 站上 20 日线
+    pub kdj_golden: bool,  // KDJ 低位金叉
+    pub rsi_oversold: bool, // RSI 超卖（RSI6<30）
+    pub boll_break: bool,  // 收盘突破 BOLL 上轨
     pub limit: i64,
 }
 impl Default for ScreenFilter {
@@ -197,6 +201,9 @@ impl Default for ScreenFilter {
             volume_up: false,
             breakout: false,
             above_ma20: false,
+            kdj_golden: false,
+            rsi_oversold: false,
+            boll_break: false,
             limit: 50,
         }
     }
@@ -346,12 +353,34 @@ pub async fn get_quotes(codes: Vec<String>) -> Result<Vec<Quote>, String> {
 }
 
 /// K线：腾讯（日 kline/kline、分钟 mkline，周月为自然周/月）→ 新浪兜底
+/// K 线（网络优先，成功后异步刷新缓存；网络失败则本地缓存兜底）
 pub async fn get_kline(code: String, period: i64, count: i64) -> Result<Vec<KBar>, String> {
+    match fetch_kline_network(&code, period, count).await {
+        Ok(v) => {
+            let (c, p, b) = (code.clone(), period, v.clone());
+            tokio::task::spawn_blocking(move || {
+                let _ = cache::write_kline(&c, p, &b);
+            });
+            Ok(v)
+        }
+        Err(e) => {
+            if let Some(v) = cache::read_kline(&code, period) {
+                if !v.is_empty() {
+                    return Ok(v);
+                }
+            }
+            Err(e)
+        }
+    }
+}
+
+/// 网络聚合：腾讯 → 新浪
+async fn fetch_kline_network(code: &str, period: i64, count: i64) -> Result<Vec<KBar>, String> {
     let mut last_err = String::from("K线源均不可用");
 
     match tokio::time::timeout(
         Duration::from_secs(KLINE_TIMEOUT),
-        tencent::kline(&code, period, count),
+        tencent::kline(code, period, count),
     )
     .await
     {
@@ -373,7 +402,7 @@ pub async fn get_kline(code: String, period: i64, count: i64) -> Result<Vec<KBar
     if is_open("sina_kline") {
         match tokio::time::timeout(
             Duration::from_secs(KLINE_TIMEOUT),
-            sina::kline(&code, period, count),
+            sina::kline(code, period, count),
         )
         .await
         {
@@ -763,6 +792,123 @@ fn signal_above_ma20(bars: &[KBar]) -> bool {
     *c.last().unwrap() > sma(&c, 20)
 }
 
+// ---- KDJ（9,3,3）：返回 (K,D,J) 序列 ----
+fn kdj_series(bars: &[KBar]) -> Option<(Vec<f64>, Vec<f64>, Vec<f64>)> {
+    let n = bars.len();
+    if n < 9 {
+        return None;
+    }
+    let mut k = vec![50.0; n];
+    let mut d = vec![50.0; n];
+    let mut j = vec![50.0; n];
+    for i in 0..n {
+        let lo = i.saturating_sub(8);
+        let hh = bars[lo..=i].iter().map(|b| b.high).fold(f64::MIN, f64::max);
+        let ll = bars[lo..=i].iter().map(|b| b.low).fold(f64::MAX, f64::min);
+        let rsv = if hh > ll {
+            (bars[i].close - ll) / (hh - ll) * 100.0
+        } else {
+            50.0
+        };
+        let pk = if i > 0 { k[i - 1] } else { 50.0 };
+        let pd = if i > 0 { d[i - 1] } else { 50.0 };
+        k[i] = 2.0 / 3.0 * pk + 1.0 / 3.0 * rsv;
+        d[i] = 2.0 / 3.0 * pd + 1.0 / 3.0 * k[i];
+        j[i] = 3.0 * k[i] - 2.0 * d[i];
+    }
+    Some((k, d, j))
+}
+/// KDJ 低位金叉：近 3 日 K 上穿 D，且上穿时 K<50
+fn signal_kdj_golden(bars: &[KBar]) -> bool {
+    let Some((k, d, _)) = kdj_series(bars) else {
+        return false;
+    };
+    let n = k.len();
+    for i in n.saturating_sub(3)..n {
+        if i > 0 && k[i] > d[i] && k[i - 1] <= d[i - 1] && k[i] < 50.0 {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- RSI（Wilder 平滑，默认周期 6）----
+fn rsi_series(closes: &[f64], n: usize) -> Vec<f64> {
+    let len = closes.len();
+    let mut out = vec![50.0; len];
+    if len < 2 {
+        return out;
+    }
+    let start = n.min(len - 1);
+    let mut up = 0.0;
+    let mut dn = 0.0;
+    for i in 1..=start {
+        let ch = closes[i] - closes[i - 1];
+        if ch > 0.0 {
+            up += ch;
+        } else {
+            dn -= ch;
+        }
+    }
+    up /= n as f64;
+    dn /= n as f64;
+    out[start] = if up + dn > 0.0 {
+        up / (up + dn) * 100.0
+    } else {
+        50.0
+    };
+    for i in (start + 1)..len {
+        let ch = closes[i] - closes[i - 1];
+        let (u, d) = if ch > 0.0 { (ch, 0.0) } else { (0.0, -ch) };
+        up = (up * (n as f64 - 1.0) + u) / n as f64;
+        dn = (dn * (n as f64 - 1.0) + d) / n as f64;
+        out[i] = if up + dn > 0.0 {
+            up / (up + dn) * 100.0
+        } else {
+            50.0
+        };
+    }
+    out
+}
+/// RSI 超卖：RSI6 < 30
+fn signal_rsi_oversold(bars: &[KBar]) -> bool {
+    if bars.len() < 7 {
+        return false;
+    }
+    let c = closes(bars);
+    *rsi_series(&c, 6).last().unwrap() < 30.0
+}
+
+// ---- BOLL（20,2）：返回 (中轨,上轨,下轨) ----
+fn boll_series(closes: &[f64], n: usize) -> Option<(Vec<f64>, Vec<f64>, Vec<f64>)> {
+    let len = closes.len();
+    if len < n {
+        return None;
+    }
+    let mut mid = vec![0.0; len];
+    let mut up = vec![0.0; len];
+    let mut dn = vec![0.0; len];
+    for i in (n - 1)..len {
+        let win = &closes[i - (n - 1)..=i];
+        let m = win.iter().sum::<f64>() / n as f64;
+        let var = win.iter().map(|x| (x - m) * (x - m)).sum::<f64>() / n as f64;
+        let sd = var.sqrt();
+        mid[i] = m;
+        up[i] = m + 2.0 * sd;
+        dn[i] = m - 2.0 * sd;
+    }
+    Some((mid, up, dn))
+}
+/// BOLL 突破：收盘站上上轨
+fn signal_boll_break(bars: &[KBar]) -> bool {
+    let c = closes(bars);
+    let Some((_, up, _)) = boll_series(&c, 20) else {
+        return false;
+    };
+    let n = c.len();
+    up[n - 1] > 0.0 && c[n - 1] > up[n - 1]
+}
+
 /// 条件选股：股池批量行情 → 基础筛选 → （可选）并发拉日K做技术形态筛选
 pub async fn get_screener(f: ScreenFilter) -> Result<Vec<ScreenResult>, String> {
     // 股池（去重）
@@ -783,7 +929,10 @@ pub async fn get_screener(f: ScreenFilter) -> Result<Vec<ScreenResult>, String> 
         + f.macd_golden as usize
         + f.volume_up as usize
         + f.breakout as usize
-        + f.above_ma20 as usize;
+        + f.above_ma20 as usize
+        + f.kdj_golden as usize
+        + f.rsi_oversold as usize
+        + f.boll_break as usize;
 
     let mut results: Vec<ScreenResult> = Vec::new();
 
@@ -830,6 +979,15 @@ pub async fn get_screener(f: ScreenFilter) -> Result<Vec<ScreenResult>, String> 
             }
             if f.above_ma20 && signal_above_ma20(&bars) {
                 sigs.push("站上20日线".to_string());
+            }
+            if f.kdj_golden && signal_kdj_golden(&bars) {
+                sigs.push("KDJ金叉".to_string());
+            }
+            if f.rsi_oversold && signal_rsi_oversold(&bars) {
+                sigs.push("RSI超卖".to_string());
+            }
+            if f.boll_break && signal_boll_break(&bars) {
+                sigs.push("BOLL突破".to_string());
             }
             // 勾选的技术条件必须全部满足（AND）
             if sigs.len() == need {

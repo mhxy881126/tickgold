@@ -23,6 +23,9 @@ const tech = reactive({
   volumeUp: false,
   breakout: false,
   aboveMa20: false,
+  kdjGolden: false,
+  rsiOversold: false,
+  bollBreak: false,
 });
 
 const RANGE_FIELDS: { key: RangeKey; label: string }[] = [
@@ -41,6 +44,9 @@ const TECH_FIELDS: { key: keyof typeof tech; label: string }[] = [
   { key: "volumeUp", label: "放量上涨" },
   { key: "breakout", label: "突破新高" },
   { key: "aboveMa20", label: "站上20日线" },
+  { key: "kdjGolden", label: "KDJ 低位金叉" },
+  { key: "rsiOversold", label: "RSI 超卖反弹" },
+  { key: "bollBreak", label: "BOLL 开口突破" },
 ];
 
 // ===== 预设方案 =====
@@ -75,6 +81,28 @@ const PRESETS: { name: string; apply: () => void }[] = [
       clearAll();
       tech.volumeUp = true;
       tech.breakout = true;
+    },
+  },
+  {
+    name: "KDJ低位金叉",
+    apply: () => {
+      clearAll();
+      tech.kdjGolden = true;
+    },
+  },
+  {
+    name: "RSI超卖反弹",
+    apply: () => {
+      clearAll();
+      tech.rsiOversold = true;
+    },
+  },
+  {
+    name: "BOLL开口突破",
+    apply: () => {
+      clearAll();
+      tech.bollBreak = true;
+      tech.volumeUp = true;
     },
   },
   {
@@ -131,6 +159,9 @@ function buildFilter(): ScreenFilter {
     volumeUp: tech.volumeUp,
     breakout: tech.breakout,
     aboveMa20: tech.aboveMa20,
+    kdjGolden: tech.kdjGolden,
+    rsiOversold: tech.rsiOversold,
+    bollBreak: tech.bollBreak,
     limit: 80,
   };
 }

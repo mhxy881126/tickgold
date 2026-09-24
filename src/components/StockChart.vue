@@ -40,7 +40,14 @@
       >{{ t.label }}</button>
       <div class="sc-tabs-right">
         <button class="sc-tab ghost" :class="{ on: drawBar }" @click="toggleDraw">画线工具</button>
-        <button v-if="!tabs[active].minute" class="sc-tab ghost" @click="openMaDlg">均线设置</button>
+        <template v-if="!tabs[active].minute">
+          <button class="sc-tab ghost" @click="openMaDlg">均线设置</button>
+          <button class="sc-tab ghost" :class="{ on: showBoll }" @click="toggleBoll">BOLL</button>
+          <span class="sc-sep"></span>
+          <button class="sc-tab ghost" :class="{ on: subInd==='MACD' }" @click="switchSub('MACD')">MACD</button>
+          <button class="sc-tab ghost" :class="{ on: subInd==='KDJ' }" @click="switchSub('KDJ')">KDJ</button>
+          <button class="sc-tab ghost" :class="{ on: subInd==='RSI' }" @click="switchSub('RSI')">RSI</button>
+        </template>
       </div>
     </div>
 
@@ -248,6 +255,10 @@ const showPosInfo = ref(false);
 const showCostLine = ref(false);
 const showTradePts = ref(false);
 const showTd = ref(true); // 神奇九转默认开启（K线 / 分时均显示）
+const showBoll = ref(false); // BOLL 主图叠加
+type SubInd = "MACD" | "KDJ" | "RSI";
+const subInd = ref<SubInd>("MACD"); // 副图震荡指标
+let subPaneId: string | null = null;
 
 // ---- 头部合并字段（Quote 为主，OrderBook 兜底）----
 const headName = computed(() => q.value?.name ?? ob.value?.name ?? "-");
@@ -597,10 +608,11 @@ function renderChart(bars: KBar[], minute: boolean) {
       styles: { lines: maCfg.value.colors.map((c) => line(c)) },
     } as any, false, { id: "candle_pane" });
     chart.createIndicator("VOL", false, { height: 76 });
-    chart.createIndicator("MACD", false, { height: 84 });
+    subPaneId = chart.createIndicator(subInd.value, false, { height: 84 }) as string | null;
   }
 
   // 叠加层恢复（同 pane 叠加必须 isStack=true，否则会清空 MA/AVG）
+  if (showBoll.value) chart.createIndicator("BOLL", true, { id: "candle_pane" });
   if (showTd.value) chart.createIndicator("td9", true, { id: "candle_pane" });
   if (showTradePts.value) addTradePointsToChart();
   if (showCostLine.value) addCostLineToChart();
@@ -660,6 +672,23 @@ async function switchTab(i: number) {
   saveDrawings(); // 先用旧周期 key 保存画线
   active.value = i;
   await load();
+}
+
+// BOLL 主图叠加开关
+function toggleBoll() {
+  showBoll.value = !showBoll.value;
+  if (chart) {
+    if (showBoll.value) chart.createIndicator("BOLL", true, { id: "candle_pane" });
+    else chart.removeIndicator("BOLL");
+  }
+}
+// 副图震荡指标切换（移除旧副图 pane，新建新指标 pane）
+function switchSub(name: SubInd) {
+  if (subInd.value === name) return;
+  subInd.value = name;
+  if (!chart) return;
+  if (subPaneId) chart.removeIndicator({ paneId: subPaneId } as any);
+  subPaneId = chart.createIndicator(name, false, { height: 84 }) as string | null;
 }
 
 // ===== 跟随鼠标浮窗 =====
@@ -1034,7 +1063,8 @@ watch(() => props.code, async () => {
 .sc-tab:hover { background: rgba(255,255,255,.06); color: #e6e9f0; }
 .sc-tab.active { background: rgba(255,50,50,.18); color: #ff7070; }
 .sc-tab.ghost { color: #b9c0cf; }
-.sc-tabs-right { margin-left: auto; }
+.sc-tabs-right { margin-left: auto; display: flex; align-items: center; }
+.sc-sep { width: 1px; height: 14px; background: rgba(255,255,255,.12); margin: 0 4px; }
 
 /* 主体 */
 .sc-body { flex: 1; min-height: 0; display: flex; }
