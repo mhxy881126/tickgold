@@ -1,6 +1,6 @@
 /* =========================================================
    TickGold 全局主题变量
-   7 套配色：鎏金奢华(默认) / 极地冰蓝 / 熔岩钛橙 / 曜石黑金 / 石墨护眼灰 / 碳纤维 / 深空钛金属
+   9 套配色：鎏金奢华(默认) / 极地冰蓝 / 熔岩钛橙 / 曜石黑金 / 石墨护眼灰 / 碳纤维 / 深空钛金属 / 同花顺曜石黑 / 同花顺经典白
    通过 <html data-theme="..."> 切换；未设置时默认鎏金奢华
    ========================================================= */
 :root {
@@ -147,6 +147,44 @@ html[data-theme="magma"] {
   --accent: #ff8a4c;
   --accent-2: #ffb380;
   --blue: #7a9fc8;
+}
+
+/* 同花顺曜石黑（仿同花顺经典深色终端） */
+html[data-theme="ths-black"] {
+  --bg: #070a0d;
+  --bg-panel: #10151a;
+  --bg-card: #181e25;
+  --bg-card2: #0c1014;
+  --bg-hover: #1b222b;
+  --border: #262d35;
+  --border-light: #353d47;
+  --text: #d6dbe0;
+  --text-dim: #8b949e;
+  --up: #ff3b30;
+  --down: #17c489;
+  --flat: #9aa3ab;
+  --accent: #f5d248;
+  --accent-2: #f8de7c;
+  --blue: #4a86d8;
+}
+
+/* 同花顺经典白（仿同花顺白天模式） */
+html[data-theme="ths-white"] {
+  --bg: #c6cad1;
+  --bg-panel: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card2: #eef0f4;
+  --bg-hover: #e9eef6;
+  --border: #c2c7cf;
+  --border-light: #aab2bc;
+  --text: #1a1d22;
+  --text-dim: #5d6670;
+  --up: #e60e1e;
+  --down: #00a35c;
+  --flat: #6b7280;
+  --accent: #c8102e;
+  --accent-2: #e23c54;
+  --blue: #2f72d6;
 }
 
 * { box-sizing: border-box; }

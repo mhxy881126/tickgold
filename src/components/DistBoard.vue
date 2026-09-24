@@ -78,7 +78,7 @@ onBeforeUnmount(() => un?.());
 .d-val {
   font-size: 9px;
   height: 12px;
-  color: #8b949e;
+  color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
 .d-barwrap {
@@ -95,15 +95,15 @@ onBeforeUnmount(() => un?.());
   border-radius: 2px 2px 0 0;
 }
 .d-bar.up {
-  background: linear-gradient(180deg, #f23645, #c11f30);
+  background: var(--up);
 }
 .d-bar.down {
-  background: linear-gradient(180deg, #08c98a, #0a9f6d);
+  background: var(--down);
 }
 .d-lb {
   font-size: 7.5px;
   height: 13px;
-  color: #7d8792;
+  color: var(--text-dim);
   white-space: nowrap;
   transform: scale(0.9);
 }
@@ -111,9 +111,9 @@ onBeforeUnmount(() => un?.());
   display: flex;
   justify-content: space-between;
   font-size: 10px;
-  color: #7d8792;
+  color: var(--text-dim);
   padding-top: 5px;
-  border-top: 1px solid #20272f;
+  border-top: 1px solid var(--border);
   margin-top: 4px;
 }
 .d-sum b {
@@ -121,12 +121,12 @@ onBeforeUnmount(() => un?.());
   font-weight: 700;
 }
 .d-sum .up b {
-  color: #ef5350;
+  color: var(--up);
 }
 .d-sum .down b {
-  color: #26a69a;
+  color: var(--down);
 }
 .d-sum .flat b {
-  color: #9ca3af;
+  color: var(--text-dim);
 }
 </style>

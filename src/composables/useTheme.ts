@@ -2,7 +2,7 @@
 import { ref } from "vue";
 import { ensureDb, db } from "../db/database";
 
-export type ThemeId = "gold" | "arctic" | "magma" | "obsidian" | "graphite" | "carbon" | "titanium";
+export type ThemeId = "gold" | "arctic" | "magma" | "obsidian" | "graphite" | "carbon" | "titanium" | "ths-black" | "ths-white";
 
 export interface ThemeMeta {
   id: ThemeId;
@@ -55,6 +55,18 @@ export const THEMES: ThemeMeta[] = [
     name: "深空钛金属",
     desc: "钛灰蓝金属质感，沉稳高级",
     sw: ["#0e1013", "#aeb8c4", "#f25868", "#1ec896"],
+  },
+  {
+    id: "ths-black",
+    name: "同花顺曜石黑",
+    desc: "仿同花顺经典深色终端，红涨绿跌",
+    sw: ["#070a0d", "#f5d248", "#ff3b30", "#17c489"],
+  },
+  {
+    id: "ths-white",
+    name: "同花顺经典白",
+    desc: "仿同花顺白天模式，明亮清晰",
+    sw: ["#ffffff", "#c8102e", "#e60e1e", "#00a35c"],
   },
 ];
 

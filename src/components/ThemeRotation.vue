@@ -91,21 +91,21 @@ onMounted(async () => {
 }
 .tt button {
   font-size: 10px;
-  color: #8b949e;
-  background: #141920;
-  border: 1px solid #232b34;
+  color: var(--text-dim);
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
   border-radius: 5px;
   padding: 2px 8px;
   cursor: pointer;
 }
 .tt button.on {
-  color: #fff;
-  background: #2a3543;
-  border-color: #3a4a5e;
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--border-light);
 }
 .th-src {
   font-size: 9px;
-  color: #5d6878;
+  color: var(--text-dim);
 }
 .th-cloud {
   flex: 1;
@@ -123,18 +123,18 @@ onMounted(async () => {
   gap: 4px;
   padding: 3px 8px;
   border-radius: 14px;
-  border: 1px solid #232b34;
-  background: #141920;
+  border: 1px solid var(--border);
+  background: var(--bg-card2);
   cursor: pointer;
   line-height: 1.3;
   transition: transform 0.12s, border-color 0.15s;
 }
 .tag:hover {
   transform: translateY(-1px);
-  border-color: #3a4a5e;
+  border-color: var(--border-light);
 }
 .tn {
-  color: #c9d1d9;
+  color: var(--text);
 }
 .tp {
   font-size: 9px;
@@ -142,18 +142,18 @@ onMounted(async () => {
   font-variant-numeric: tabular-nums;
 }
 .tp.up {
-  color: #ef5350;
+  color: var(--up);
 }
 .tp.down {
-  color: #26a69a;
+  color: var(--down);
 }
 .tag.hot {
-  border-color: rgba(212, 175, 55, 0.55);
+  border-color: var(--accent);
 }
 .tag.hot .tn {
-  color: #e8c96a;
+  color: var(--accent);
 }
 .tag.inflow {
-  box-shadow: inset 2px 0 0 rgba(212, 175, 55, 0.7);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 </style>
