@@ -84,16 +84,18 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
-import { init, dispose, registerIndicator } from "klinecharts";
+import { init, dispose, registerIndicator, ActionType } from "klinecharts";
 import type { Chart, KLineData } from "klinecharts";
 import { fetchQuotes, fetchKLine, fetchMinute, fetchOrderBook } from "../api/market";
 import type { Quote, OrderBook, KBar } from "../api/types";
 
 const props = defineProps<{ code: string }>();
 
-const UP = "#f23645";
-const DOWN = "#08db94";
-const FLAT = "#8b93a7";
+const UP = "#FF3232";       // 涨：阳线 / 盘口上涨
+const DOWN_K = "#54FCFC";   // K线阴线、成交量（青色）
+const DOWN = "#1DBE7D";     // 盘口下跌（绿色）
+const FLAT = "#9aa4b8";
+const AVG_Y = "#f5d020";    // 分时均价黄
 
 const tabs = [
   { label: "分时", minute: true },
@@ -163,7 +165,7 @@ registerIndicator({
     key: "avg",
     title: "均价",
     type: "line",
-    styles: (() => ({ color: "#f5c542" })) as any,
+    styles: (() => ({ color: AVG_Y })) as any,
   }],
   calc: (dataList: KLineData[]) => {
     let tv = 0, v = 0;
@@ -198,11 +200,16 @@ const hhmmUTC = (ts: number) => {
   const d = new Date(ts);
   return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 };
+function dateLabel(ts: number) {
+  const d = new Date(ts);
+  const wk = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")} ${wk[d.getUTCDay()]}`;
+}
 
 // ---- 深色 + 红涨绿跌样式 ----
 function buildStyles(minute: boolean, avgMap?: Map<number, number>) {
   const axisText = "#8b93a7";
-  const gridLine = "rgba(255,255,255,.055)";
+  const gridLine = "rgba(255,70,70,.16)";
   const base: any = {
     grid: {
       show: true,
@@ -212,15 +219,15 @@ function buildStyles(minute: boolean, avgMap?: Map<number, number>) {
     candle: {
       type: minute ? "area" : "candle_solid",
       bar: {
-        upColor: UP, downColor: DOWN, noChangeColor: FLAT,
-        upBorderColor: UP, downBorderColor: DOWN, noChangeBorderColor: FLAT,
-        upWickColor: UP, downWickColor: DOWN, noChangeWickColor: FLAT,
+        upColor: UP, downColor: DOWN_K, noChangeColor: FLAT,
+        upBorderColor: UP, downBorderColor: DOWN_K, noChangeBorderColor: FLAT,
+        upWickColor: UP, downWickColor: DOWN_K, noChangeWickColor: FLAT,
       },
       area: {
-        lineSize: 1, lineColor: UP, value: "close", smooth: false,
+        lineSize: 1, lineColor: "#ffffff", value: "close", smooth: false,
         backgroundColor: [
-          { offset: 0, color: "rgba(242,54,69,.22)" },
-          { offset: 1, color: "rgba(242,54,69,.02)" },
+          { offset: 0, color: "rgba(0,0,0,0)" },
+          { offset: 1, color: "rgba(0,0,0,0)" },
         ],
         point: { show: false },
       },
@@ -229,12 +236,12 @@ function buildStyles(minute: boolean, avgMap?: Map<number, number>) {
         high: { show: true, color: axisText },
         low: { show: true, color: axisText },
         last: {
-          show: true, upColor: UP, downColor: DOWN, noChangeColor: FLAT,
+          show: true, upColor: UP, downColor: DOWN_K, noChangeColor: FLAT,
           line: { show: true, color: "rgba(255,255,255,.25)" },
         },
       },
     },
-    indicator: { ohlc: { upColor: UP, downColor: DOWN, noChangeColor: FLAT } },
+    indicator: { ohlc: { upColor: UP, downColor: DOWN_K, noChangeColor: FLAT } },
     xAxis: {
       axisLine: { show: true, color: gridLine },
       tickLine: { show: true, color: gridLine },
@@ -261,17 +268,45 @@ function buildStyles(minute: boolean, avgMap?: Map<number, number>) {
   if (minute && avgMap) {
     const pc = prevClose.value;
     base.candle.tooltip = {
+      showRule: "follow_cross",
       custom: ({ current }: any) => {
         const avg = avgMap.get(current.timestamp);
         const ch = current.close - pc;
         const pp = pc ? (ch / pc) * 100 : 0;
         const c = ch >= 0 ? UP : DOWN;
+        const leg = (label: string, val: string, col?: string) =>
+          ({ title: label, value: { text: val, color: col ?? "#d6dae3" } });
         return [
-          { title: hhmmUTC(current.timestamp) },
-          { title: "分时", color: c, text: current.close.toFixed(2) },
-          { title: "均价", color: "#f5c542", text: avg != null ? avg.toFixed(2) : "--" },
-          { title: "涨跌", color: c, text: `${ch >= 0 ? "+" : ""}${ch.toFixed(2)}  ${pp.toFixed(2)}%` },
-          { title: "成交量", text: fmtVol(current.volume) },
+          { title: hhmmUTC(current.timestamp), value: "" },
+          leg("分时", current.close.toFixed(2), c),
+          leg("均价", avg != null ? avg.toFixed(2) : "--", AVG_Y),
+          leg("涨跌", `${ch >= 0 ? "+" : ""}${ch.toFixed(2)}  ${pp.toFixed(2)}%`, c),
+          leg("成交量", fmtVol(current.volume)),
+        ];
+      },
+    };
+  } else {
+    // K线：十字光标详细浮窗（跟随光标、矩形深色框）
+    base.candle.tooltip = {
+      showRule: "follow_cross",
+      showType: "rect",
+      custom: ({ prev, current }: any) => {
+        const ref = prev?.close ?? current.open;
+        const ch = current.close - ref;
+        const pp = ref ? (ch / ref) * 100 : 0;
+        const amp = ref ? ((current.high - current.low) / ref) * 100 : 0;
+        const c = ch >= 0 ? UP : DOWN;
+        const leg = (label: string, val: string, col?: string) =>
+          ({ title: label, value: { text: val, color: col ?? "#d6dae3" } });
+        return [
+          { title: dateLabel(current.timestamp), value: "" },
+          leg("开盘价", current.open.toFixed(2), current.open >= ref ? UP : DOWN_K),
+          leg("最高价", current.high.toFixed(2), UP),
+          leg("最低价", current.low.toFixed(2), DOWN_K),
+          leg("收盘价", current.close.toFixed(2), c),
+          leg("涨跌幅", `${ch >= 0 ? "+" : ""}${pp.toFixed(2)}%`, c),
+          leg("振幅", amp.toFixed(2) + "%"),
+          leg("成交量", fmtVol(current.volume)),
         ];
       },
     };
@@ -291,6 +326,7 @@ function renderChart(bars: KBar[], minute: boolean) {
   const avgMap = minute ? buildAvgMap(bars) : undefined;
   chart.setStyles(buildStyles(minute, avgMap));
   chart.applyNewData(toKData(bars));
+  lastBarTs = bars[bars.length - 1].timestamp;
 
   if (minute) {
     chart.createIndicator("AVG", false, { id: "candle_pane" });
@@ -299,6 +335,7 @@ function renderChart(bars: KBar[], minute: boolean) {
     chart.createIndicator("MA", false, { id: "candle_pane" });
     chart.createIndicator("VOL", false, { height: 78 });
     chart.createIndicator("MACD", false, { height: 88 });
+    chart.subscribeAction(ActionType.OnCandleBarClick, onBarClick);
   }
   chart.resize();
   if (minute) fitMinute();
@@ -310,6 +347,21 @@ function fitMinute() {
   const w = host.value.clientWidth;
   chart.setBarSpace(Math.max(1.5, w / 242));
   chart.scrollToRealTime();
+}
+
+// 双击当日（最新）蜡烛 → 打开当日分时
+let lastBarTs = 0;
+let lastClick: { ts: number; t: number } | null = null;
+function onBarClick(data: any) {
+  const kd = data?.data ?? data;
+  if (!kd) return;
+  const now = Date.now();
+  if (lastClick && lastClick.ts === kd.timestamp && now - lastClick.t < 350) {
+    if (kd.timestamp === lastBarTs) switchTab(0);
+    lastClick = null;
+  } else {
+    lastClick = { ts: kd.timestamp, t: now };
+  }
 }
 
 // ---- 加载当前 tab 数据 ----
@@ -386,7 +438,7 @@ onUnmounted(() => {
 <style scoped>
 .sc-root {
   flex: 1; min-height: 0; display: flex; flex-direction: column;
-  background: #0c0f14; color: #d6dae3; font-size: 12px;
+  background: #0a0a0a; color: #d6dae3; font-size: 12px;
 }
 
 /* 股票头 */
@@ -418,7 +470,7 @@ onUnmounted(() => {
   padding: 4px 10px; font-size: 12px; border-radius: 5px; cursor: pointer;
 }
 .sc-tab:hover { background: rgba(255,255,255,.06); color: #e6e9f0; }
-.sc-tab.active { background: rgba(242,54,69,.16); color: #ff6b76; }
+.sc-tab.active { background: rgba(255,50,50,.18); color: #ff7070; }
 .sc-tab.ghost { color: #7b8294; }
 .sc-tabs-right { margin-left: auto; }
 
@@ -428,7 +480,7 @@ onUnmounted(() => {
 .chart-host { position: absolute; inset: 0; }
 .sc-mask {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  color: #8b93a7; background: #0c0f14;
+  color: #8b93a7; background: #0a0a0a;
 }
 .sc-mask.err { color: #ff6b76; padding: 0 24px; text-align: center; }
 
@@ -449,8 +501,8 @@ onUnmounted(() => {
   position: absolute; right: 0; top: 2px; bottom: 2px; height: auto;
   opacity: .14; z-index: 0; border-radius: 3px 0 0 3px;
 }
-.ask-lvl .lvl-bar { background: UP; }
-.bid-lvl .lvl-bar { background: DOWN; }
+.ask-lvl .lvl-bar { background: #FF3232; }
+.bid-lvl .lvl-bar { background: #1DBE7D; }
 .book-mid {
   display: flex; align-items: baseline; justify-content: space-between;
   padding: 6px 10px; border-top: 1px solid rgba(255,255,255,.06);
@@ -463,6 +515,6 @@ onUnmounted(() => {
 .book-foot label { color: #7b8294; }
 .book-foot span { color: #c7ccd8; }
 
-.up { color: #ff5b68 !important; }
-.down { color: #16c98d !important; }
+.up { color: #FF3232 !important; }
+.down { color: #1DBE7D !important; }
 </style>
