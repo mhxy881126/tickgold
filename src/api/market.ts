@@ -387,3 +387,55 @@ export async function fetchZtPool(date = ""): Promise<ZtPool> {
 export async function fetchZbPool(date = ""): Promise<ZtPool> {
   return await invoke<ZtPool>("get_zb_pool", { date });
 }
+
+// ===== 龙虎榜复盘 =====
+export interface LhbStock {
+  code: string;
+  name: string;
+  price: number;
+  pct: number;
+  turnover: number;
+  netAmt: number;    // 龙虎榜净买入（元）
+  buyAmt: number;
+  sellAmt: number;
+  dealAmt: number;   // 龙虎榜成交额（元）
+  freeMv: number;
+  reasons: string[];
+}
+export interface LhbList {
+  date: string;
+  total: number;
+  stocks: LhbStock[];
+}
+export interface LhbSeat {
+  name: string;
+  code: string;
+  buy: number;
+  sell: number;
+  net: number;
+  buyRatio: number;
+  sellRatio: number;
+  times3: number;
+  tag: string; // 知名游资 / 机构 / 北向
+}
+export interface LhbReasonGroup {
+  reason: string;
+  buyers: LhbSeat[];
+  sellers: LhbSeat[];
+}
+export interface LhbDetail {
+  code: string;
+  name: string;
+  date: string;
+  price: number;
+  pct: number;
+  groups: LhbReasonGroup[];
+}
+/** 当日龙虎榜个股列表（date 为空取最新交易日，格式 YYYY-MM-DD） */
+export async function fetchLhbList(date = ""): Promise<LhbList> {
+  return await invoke<LhbList>("get_lhb_list", { date });
+}
+/** 个股龙虎榜席位明细（买卖前五，按上榜原因分组） */
+export async function fetchLhbDetail(code: string, date = ""): Promise<LhbDetail> {
+  return await invoke<LhbDetail>("get_lhb_detail", { code, date });
+}

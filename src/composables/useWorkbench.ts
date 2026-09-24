@@ -32,7 +32,8 @@ export type CardId =
   | "theme"
   | "news"
   | "calc"
-  | "export";
+  | "export"
+  | "dragon";
 
 export type Zone = "main" | "side";
 
@@ -75,10 +76,11 @@ export const CARD_META: Record<CardId, CardMeta> = {
   news: { title: "盘中快讯", accent: "#b07cff", kind: "narrow" },
   calc: { title: "投资计算器", accent: "#e8c878", kind: "chart" },
   export: { title: "数据导出", accent: "#6aa6e8", kind: "chart" },
+  dragon: { title: "龙虎榜复盘", accent: "#e8c878", kind: "chart" },
 };
 
 // 宽卡片（主干区域）与窄卡片（右侧）的默认排列顺序，也决定卡片的默认分区
-const WIDE_ORDER: CardId[] = ["auction", "limitpool", "radar", "radarsweep", "reviewtimeline", "multigrid", "heatmatrix", "bentofocus", "telegraph", "breadth", "chart", "sectorheat", "sector", "screener", "theme", "dist", "f10", "trade", "journal", "calendar", "ipo", "calc", "export"];
+const WIDE_ORDER: CardId[] = ["auction", "limitpool", "radar", "radarsweep", "reviewtimeline", "multigrid", "heatmatrix", "bentofocus", "telegraph", "breadth", "chart", "sectorheat", "sector", "screener", "theme", "dist", "f10", "trade", "journal", "calendar", "ipo", "calc", "export", "dragon"];
 const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "order", "fundflow", "news", "watch", "rank"];
 const ALL_IDS: CardId[] = [...WIDE_ORDER, ...NARROW_ORDER];
 
@@ -170,6 +172,7 @@ const FREE_SIZE: Partial<Record<CardId, { w: number; h: number }>> = {
   journal: { w: 6, h: 4 },
   radar: { w: 4, h: 3 },
   breadth: { w: 4, h: 3 },
+  dragon: { w: 8, h: 5 },
 };
 function freeSizeOf(id: CardId): { w: number; h: number } {
   return FREE_SIZE[id] ?? { w: 4, h: 3 };

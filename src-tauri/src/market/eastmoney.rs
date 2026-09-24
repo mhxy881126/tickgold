@@ -640,3 +640,321 @@ pub async fn auction() -> Result<AuctionData, String> {
         low_open: low,
     })
 }
+
+// ===== 龙虎榜复盘（数据中心：每日个股 + 买卖前五席位）=====
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LhbStock {
+    pub code: String,
+    pub name: String,
+    pub price: f64,
+    pub pct: f64,
+    pub turnover: f64,
+    pub net_amt: f64,   // 龙虎榜净买入（元）
+    pub buy_amt: f64,
+    pub sell_amt: f64,
+    pub deal_amt: f64,  // 龙虎榜成交额（元）
+    pub free_mv: f64,   // 流通市值（元）
+    pub reasons: Vec<String>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LhbList {
+    pub date: String,
+    pub total: usize,
+    pub stocks: Vec<LhbStock>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LhbSeat {
+    pub name: String,      // 营业部名称
+    pub code: String,      // 营业部代码
+    pub buy: f64,
+    pub sell: f64,
+    pub net: f64,
+    pub buy_ratio: f64,    // 买入占总成交比例 %
+    pub sell_ratio: f64,
+    pub times3: i64,       // 近 3 日上榜次数
+    pub tag: String,       // 知名游资 / 机构 / 北向 标签
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LhbReasonGroup {
+    pub reason: String,
+    pub buyers: Vec<LhbSeat>,
+    pub sellers: Vec<LhbSeat>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LhbDetail {
+    pub code: String,
+    pub name: String,
+    pub date: String,
+    pub price: f64,
+    pub pct: f64,
+    pub groups: Vec<LhbReasonGroup>,
+}
+
+/// filter 值百分号编码（保留括号，编码 = ' " 等，避免裸 = 破坏 query 键值）
+fn enc_filter(f: &str) -> String {
+    let mut out = String::new();
+    for b in f.bytes() {
+        match b {
+            b'(' | b')' | b',' | b'.' | b'_' | b'-' | b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' => {
+                out.push(b as char)
+            }
+            b'=' => out.push_str("%3D"),
+            b'\'' => out.push_str("%27"),
+            b'"' => out.push_str("%22"),
+            b' ' => out.push_str("%20"),
+            b'>' => out.push_str("%3E"),
+            b'<' => out.push_str("%3C"),
+            _ => out.push_str(&format!("%{:02X}", b)),
+        }
+    }
+    out
+}
+
+/// 数据中心通用 GET，返回 data 数组（宽松 Value 解析）
+async fn dc_get(
+    report: &str,
+    columns: &str,
+    filter: &str,
+    sort_col: &str,
+    sort_type: &str,
+    size: i64,
+    page: i64,
+) -> Result<Vec<Value>, String> {
+    let url = format!(
+        "https://datacenter-web.eastmoney.com/api/data/v1/get?sortColumns={}&sortTypes={}&pageSize={}&pageNumber={}&reportName={}&columns={}&source=WEB&client=WEB&filter={}",
+        sort_col, sort_type, size, page, report, columns, filter
+    );
+    let resp = http()
+        .get(&url)
+        .header("Referer", "https://data.eastmoney.com/stock/lhb.html")
+        .header("Accept", "application/json, text/plain, */*")
+        .timeout(std::time::Duration::from_secs(12))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let v: Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(v.get("result")
+        .and_then(|r| r.get("data"))
+        .and_then(|d| d.as_array())
+        .cloned()
+        .unwrap_or_default())
+}
+
+/// 最新一个龙虎榜交易日（YYYY-MM-DD）
+async fn latest_lhb_date() -> Result<String, String> {
+    let rows = dc_get(
+        "RPT_DAILYBILLBOARD_DETAILS", "TRADE_DATE", "",
+        "TRADE_DATE", "-1", 1, 1,
+    )
+    .await?;
+    let raw = rows
+        .first()
+        .and_then(|v| v.get("TRADE_DATE"))
+        .and_then(|x| x.as_str())
+        .unwrap_or("");
+    if raw.len() >= 10 {
+        Ok(raw[..10].to_string())
+    } else {
+        Err("暂无龙虎榜数据".to_string())
+    }
+}
+
+const LHB_COLS: &str = "SECURITY_CODE,SECURITY_NAME_ABBR,CLOSE_PRICE,CHANGE_RATE,TURNOVERRATE,BILLBOARD_NET_AMT,BILLBOARD_BUY_AMT,BILLBOARD_SELL_AMT,BILLBOARD_DEAL_AMT,EXPLANATION,FREE_MARKET_CAP,TRADE_DATE";
+
+/// 当日龙虎榜个股列表（同股多原因去重合并）。date 为空取最新交易日。
+pub async fn lhb_list(date: &str) -> Result<LhbList, String> {
+    let date = if date.is_empty() {
+        latest_lhb_date().await?
+    } else {
+        date.to_string()
+    };
+    let filter = enc_filter(&format!("(TRADE_DATE='{}')", date));
+    let rows = dc_get(
+        "RPT_DAILYBILLBOARD_DETAILS", LHB_COLS, &filter,
+        "BILLBOARD_NET_AMT", "-1", 500, 1,
+    )
+    .await?;
+
+    let mut map: std::collections::BTreeMap<String, LhbStock> = Default::default();
+    for v in &rows {
+        let code = vs2(v, "SECURITY_CODE");
+        if code.is_empty() {
+            continue;
+        }
+        let reason = vs2(v, "EXPLANATION");
+        let net = vf(v, "BILLBOARD_NET_AMT");
+        let e = map.entry(code.clone()).or_insert_with(|| LhbStock {
+            code: code.clone(),
+            name: vs2(v, "SECURITY_NAME_ABBR"),
+            price: vf(v, "CLOSE_PRICE"),
+            pct: vf(v, "CHANGE_RATE"),
+            turnover: vf(v, "TURNOVERRATE"),
+            net_amt: net,
+            buy_amt: vf(v, "BILLBOARD_BUY_AMT"),
+            sell_amt: vf(v, "BILLBOARD_SELL_AMT"),
+            deal_amt: vf(v, "BILLBOARD_DEAL_AMT"),
+            free_mv: vf(v, "FREE_MARKET_CAP"),
+            reasons: if reason.is_empty() { vec![] } else { vec![reason.clone()] },
+        });
+        if !reason.is_empty() && !e.reasons.contains(&reason) {
+            e.reasons.push(reason);
+        }
+        // 净买入绝对值更大的记录作为代表数值
+        if net.abs() > e.net_amt.abs() {
+            e.net_amt = net;
+            e.buy_amt = vf(v, "BILLBOARD_BUY_AMT");
+            e.sell_amt = vf(v, "BILLBOARD_SELL_AMT");
+            e.deal_amt = vf(v, "BILLBOARD_DEAL_AMT");
+        }
+    }
+    let mut stocks: Vec<LhbStock> = map.into_values().collect();
+    stocks.sort_by(|a, b| {
+        b.net_amt
+            .partial_cmp(&a.net_amt)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let total = stocks.len();
+    Ok(LhbList {
+        date,
+        total,
+        stocks,
+    })
+}
+
+/// 知名游资 / 特色席位识别（按营业部名称关键词）
+fn seat_tag(name: &str) -> String {
+    if name == "机构专用" {
+        return "机构".to_string();
+    }
+    if name.contains("股通专用") {
+        return "北向".to_string();
+    }
+    let rules: &[(&str, &str)] = &[
+        ("拉萨", "拉萨天团"),
+        ("华鑫证券有限责任公司上海分公司", "量化"),
+        ("华鑫证券有限责任公司上海茅台路", "量化"),
+        ("华鑫证券有限责任公司上海宛平南路", "炒股养家"),
+        ("华鑫证券有限责任公司上海浦雪路", "炒股养家"),
+        ("华鑫证券有限责任公司上海莲花路", "炒股养家"),
+        ("华泰证券股份有限公司总部", "量化"),
+        ("中信证券股份有限公司总部", "量化"),
+        ("上海江苏路", "章盟主"),
+        ("绍兴", "赵老哥"),
+        ("上海溧阳路", "孙哥"),
+        ("南京太平南路", "作手新一"),
+        ("南京大钟亭", "作手新一"),
+        ("杭州上塘路", "上塘路"),
+        ("宁波桑田路", "桑田路"),
+        ("佛山绿景路", "佛山无影脚"),
+        ("陕西", "方新侠"),
+        ("成都", "成都系"),
+        ("深圳益田路", "深圳系"),
+        ("杭州体育场路", "杭州系"),
+        ("宁波解放南路", "宁波涨停板"),
+    ];
+    for (k, t) in rules {
+        if name.contains(k) {
+            return t.to_string();
+        }
+    }
+    String::new()
+}
+
+fn seat_from(v: &Value) -> LhbSeat {
+    let name = vs2(v, "OPERATEDEPT_NAME");
+    let tag = seat_tag(&name);
+    LhbSeat {
+        name,
+        code: vs2(v, "OPERATEDEPT_CODE"),
+        buy: vf(v, "BUY"),
+        sell: vf(v, "SELL"),
+        net: vf(v, "NET"),
+        buy_ratio: vf(v, "TOTAL_BUYRIO"),
+        sell_ratio: vf(v, "TOTAL_SELLRIO"),
+        times3: vi(v, "TOTAL_BUYER_SALESTIMES_3DAY"),
+        tag,
+    }
+}
+
+/// 个股龙虎榜席位明细（买卖前五，按上榜原因分组）。date 为空取最新交易日。
+pub async fn lhb_detail(code: &str, date: &str) -> Result<LhbDetail, String> {
+    let date = if date.is_empty() {
+        latest_lhb_date().await?
+    } else {
+        date.to_string()
+    };
+    let filter = enc_filter(&format!(
+        "(TRADE_DATE='{}')(SECURITY_CODE=\"{}\")",
+        date, code
+    ));
+    let buyers = dc_get(
+        "RPT_BILLBOARD_DAILYDETAILSBUY", "ALL", &filter,
+        "BUY", "-1", 100, 1,
+    )
+    .await?;
+    let sellers = dc_get(
+        "RPT_BILLBOARD_DAILYDETAILSSELL", "ALL", &filter,
+        "SELL", "-1", 100, 1,
+    )
+    .await?;
+
+    let mut reason_order: Vec<String> = vec![];
+    let mut bmap: std::collections::BTreeMap<String, Vec<LhbSeat>> = Default::default();
+    let mut smap: std::collections::BTreeMap<String, Vec<LhbSeat>> = Default::default();
+    for v in &buyers {
+        let r = vs2(v, "EXPLANATION");
+        if !r.is_empty() && !reason_order.contains(&r) {
+            reason_order.push(r.clone());
+        }
+        bmap.entry(r).or_default().push(seat_from(v));
+    }
+    for v in &sellers {
+        let r = vs2(v, "EXPLANATION");
+        if !r.is_empty() && !reason_order.contains(&r) {
+            reason_order.push(r.clone());
+        }
+        smap.entry(r).or_default().push(seat_from(v));
+    }
+
+    let mut name = String::new();
+    let mut price = 0.0;
+    let mut pct = 0.0;
+    if let Some(v) = buyers.first().or_else(|| sellers.first()) {
+        name = vs2(v, "SECURITY_NAME_ABBR");
+        price = vf(v, "CLOSE_PRICE");
+        pct = vf(v, "CHANGE_RATE");
+    }
+
+    let groups: Vec<LhbReasonGroup> = reason_order
+        .iter()
+        .map(|r| {
+            let mut b = bmap.remove(r).unwrap_or_default();
+            b.truncate(5);
+            let mut s = smap.remove(r).unwrap_or_default();
+            s.truncate(5);
+            LhbReasonGroup {
+                reason: r.clone(),
+                buyers: b,
+                sellers: s,
+            }
+        })
+        .collect();
+
+    Ok(LhbDetail {
+        code: code.to_string(),
+        name,
+        date,
+        price,
+        pct,
+        groups,
+    })
+}

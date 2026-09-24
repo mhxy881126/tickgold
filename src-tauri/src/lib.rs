@@ -135,6 +135,20 @@ async fn get_zb_pool(date: String) -> Result<market::eastmoney::ZtPool, String> 
     market::get_zb_pool(date).await
 }
 
+// ===== 龙虎榜复盘 =====
+#[tauri::command]
+async fn get_lhb_list(date: String) -> Result<market::eastmoney::LhbList, String> {
+    market::eastmoney::lhb_list(&date).await
+}
+
+#[tauri::command]
+async fn get_lhb_detail(
+    code: String,
+    date: String,
+) -> Result<market::eastmoney::LhbDetail, String> {
+    market::eastmoney::lhb_detail(&code, &date).await
+}
+
 #[tauri::command]
 async fn start_spider(
     app: tauri::AppHandle,
@@ -576,6 +590,8 @@ pub fn run() {
             get_auction,
             get_zt_pool,
             get_zb_pool,
+            get_lhb_list,
+            get_lhb_detail,
             start_spider,
             stop_spider,
             start_radar,
