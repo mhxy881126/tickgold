@@ -232,6 +232,21 @@ fn win_is_maximized(app: tauri::AppHandle) -> Result<bool, String> {
     w.is_maximized().map_err(|e| e.to_string())
 }
 
+// ===== 数据导出：rfd 原生保存对话框选路径，再写入文件（无需 dialog/fs 插件）=====
+#[tauri::command]
+async fn save_export_file(default_name: String, content: String) -> Result<bool, String> {
+    let file = rfd::AsyncFileDialog::new()
+        .set_file_name(&default_name)
+        .save_file()
+        .await
+        .ok_or_else(|| "已取消保存".to_string())?;
+    let path = file.path().to_path_buf();
+    tokio::fs::write(&path, content.as_bytes())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 /// 老板键：切换所有窗口显隐
 fn boss_toggle(app: &tauri::AppHandle) {
     let state = app.state::<BossHidden>();
@@ -551,7 +566,8 @@ pub fn run() {
             win_minimize,
             win_toggle_maximize,
             win_close,
-            win_is_maximized
+            win_is_maximized,
+            save_export_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

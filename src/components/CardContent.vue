@@ -25,6 +25,8 @@ import PaperTrade from "./PaperTrade.vue";
 import Journal from "./Journal.vue";
 import EcoCalendar from "./EcoCalendar.vue";
 import IpoCalendar from "./IpoCalendar.vue";
+import CalcTools from "./CalcTools.vue";
+import DataExport from "./DataExport.vue";
 import RightPanel from "./RightPanel.vue";
 import type { CardId } from "../composables/useWorkbench";
 
@@ -62,6 +64,8 @@ defineEmits<{ select: [code: string] }>();
   <Journal v-else-if="id === 'journal'" :code="selected" />
   <EcoCalendar v-else-if="id === 'calendar'" :code="selected" />
   <IpoCalendar v-else-if="id === 'ipo'" :code="selected" @select="$emit('select', $event)" />
+  <CalcTools v-else-if="id === 'calc'" />
+  <DataExport v-else-if="id === 'export'" :code="selected" />
   <RightPanel v-else :code="selected" />
 </template>
 

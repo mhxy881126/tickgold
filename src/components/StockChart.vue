@@ -39,6 +39,7 @@
         @click="switchTab(i)"
       >{{ t.label }}</button>
       <div class="sc-tabs-right">
+        <button class="sc-tab ghost" :class="{ on: drawBar }" @click="toggleDraw">画线工具</button>
         <button v-if="!tabs[active].minute" class="sc-tab ghost" @click="openMaDlg">均线设置</button>
       </div>
     </div>
@@ -47,6 +48,24 @@
     <div class="sc-body">
       <div class="sc-chart">
         <div ref="host" class="chart-host" @contextmenu.prevent="onContextMenu"></div>
+
+        <!-- 画线工具条（竖排，可收起） -->
+        <div v-if="drawBar" class="draw-bar" @contextmenu.stop.prevent>
+          <button class="db-btn" :class="{ on: activeDraw === '' }" title="光标 / 选择" @click="pickCursor">
+            <svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 3l14 8-6 1.5L9 20l-2-8-2-1z" /></svg>
+          </button>
+          <div class="db-sep"></div>
+          <button
+            v-for="t in drawTools"
+            :key="t.name"
+            class="db-btn txt"
+            :class="{ on: activeDraw === t.name }"
+            :title="t.label"
+            @click="startDraw(t.name)"
+          >{{ t.label }}</button>
+          <div class="db-sep"></div>
+          <button class="db-btn txt danger" title="清除全部画线" @click="clearDrawings">清除</button>
+        </div>
 
         <!-- 持仓信息角标 -->
         <div v-if="showPosInfo && posInfo" class="sc-posinfo" :class="posInfo.pct >= 0 ? 'up' : 'down-k'">
@@ -465,12 +484,102 @@ function buildStyles(minute: boolean) {
   return base;
 }
 
+// ===== 画线工具（KLineChart 内置 overlay）=====
+const drawBar = ref(false);
+const activeDraw = ref("");
+const drawTools = [
+  { name: "segment", label: "线段" },
+  { name: "rayLine", label: "射线" },
+  { name: "straightLine", label: "直线" },
+  { name: "horizontalSegment", label: "水平段" },
+  { name: "horizontalRayLine", label: "水平射" },
+  { name: "horizontalStraightLine", label: "水平线" },
+  { name: "verticalSegment", label: "垂直线" },
+  { name: "parallelStraightLine", label: "平行线" },
+  { name: "priceChannelLine", label: "通道线" },
+  { name: "fibonacciLine", label: "黄金分割" },
+  { name: "simpleTag", label: "标签" },
+];
+const drawInstances = new Map<string, any>();
+const drawKey = computed(() => `tg_draw_${props.code}_${active.value}`);
+let drawTimer = 0;
+
+function toggleDraw() {
+  drawBar.value = !drawBar.value;
+}
+// 移除尚未画完的 overlay（切换工具 / 回到光标时清理）
+function removeUnfinished() {
+  for (const [id, ins] of drawInstances) {
+    if ((ins.points?.length ?? 0) < (ins.totalStep ?? 2) - 1) {
+      chart?.removeOverlay({ id } as any);
+      drawInstances.delete(id);
+    }
+  }
+}
+function startDraw(name: string) {
+  if (!chart) return;
+  removeUnfinished();
+  activeDraw.value = name;
+  const id = chart.createOverlay(name) as unknown as string;
+  const ins = chart.getOverlayById(id);
+  if (ins) drawInstances.set(id, ins);
+}
+function pickCursor() {
+  removeUnfinished();
+  activeDraw.value = "";
+}
+// 只收集已画完的线（点数达到 totalStep-1），points 原样深拷贝（不假设内部坐标格式）
+function collectFinished(): any[] {
+  const out: any[] = [];
+  for (const [, ins] of drawInstances) {
+    const pts = ins.points ?? [];
+    if (pts.length >= (ins.totalStep ?? 2) - 1) {
+      out.push({ name: ins.name, points: pts.map((p: any) => ({ ...p })) });
+    }
+  }
+  return out;
+}
+function saveDrawings() {
+  try {
+    localStorage.setItem(drawKey.value, JSON.stringify(collectFinished()));
+  } catch {
+    /* ignore */
+  }
+}
+function restoreDrawings() {
+  if (!chart) return;
+  let arr: any[] = [];
+  try {
+    arr = JSON.parse(localStorage.getItem(drawKey.value) || "[]");
+  } catch {
+    arr = [];
+  }
+  for (const d of arr) {
+    const id = chart.createOverlay({ name: d.name, points: d.points } as any) as unknown as string;
+    const ins = chart.getOverlayById(id);
+    if (ins) drawInstances.set(id, ins);
+  }
+}
+function clearDrawings() {
+  for (const [id] of drawInstances) chart?.removeOverlay({ id } as any);
+  drawInstances.clear();
+  try {
+    localStorage.removeItem(drawKey.value);
+  } catch {
+    /* ignore */
+  }
+  activeDraw.value = "";
+}
+
 // ---- 渲染图表（每次切换整体重建，避免指标残留）----
 function renderChart(bars: KBar[], minute: boolean) {
   if (!host.value) return;
   currentBars.value = bars;
   avgMapCur = minute ? buildAvgMap(bars) : new Map();
-  if (chart) { dispose(chart); chart = null; }
+  if (chart) {
+    dispose(chart); chart = null;
+    drawInstances.clear(); // 旧 chart 的 overlay 实例已失效
+  }
   chart = init(host.value);
   if (!chart) return;
   chart.setTimezone("UTC");
@@ -499,6 +608,7 @@ function renderChart(bars: KBar[], minute: boolean) {
   chart.subscribeAction(ActionType.OnCrosshairChange, onCrosshair);
   chart.subscribeAction(ActionType.OnCandleBarClick, onBarClick);
 
+  restoreDrawings(); // 数据与指标就绪后恢复该股票+周期的画线
   chart.resize();
   if (minute) fitMinute();
 }
@@ -547,6 +657,7 @@ function retry() { load(); }
 
 async function switchTab(i: number) {
   if (i === active.value) return;
+  saveDrawings(); // 先用旧周期 key 保存画线
   active.value = i;
   await load();
 }
@@ -862,11 +973,14 @@ onMounted(async () => {
   if (host.value) ro.observe(host.value);
   headTimer = window.setInterval(refreshHead, 5000);
   chartTimer = window.setInterval(refreshChart, 10000);
+  drawTimer = window.setInterval(saveDrawings, 2500);
 });
 
 onUnmounted(() => {
+  saveDrawings();
   window.clearInterval(headTimer);
   window.clearInterval(chartTimer);
+  window.clearInterval(drawTimer);
   window.removeEventListener("mousemove", popMove);
   window.removeEventListener("mouseup", popUp);
   ro?.disconnect();
@@ -926,6 +1040,29 @@ watch(() => props.code, async () => {
 .sc-body { flex: 1; min-height: 0; display: flex; }
 .sc-chart { flex: 1; min-width: 0; position: relative; }
 .chart-host { position: absolute; inset: 0; }
+
+/* 画线工具条 */
+.draw-bar {
+  position: absolute; left: 6px; top: 6px; z-index: 6;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 4px; border-radius: 9px;
+  background: rgba(16, 18, 24, .9);
+  border: 1px solid rgba(255, 255, 255, .12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+  max-height: calc(100% - 12px); overflow-y: auto;
+}
+.db-btn {
+  width: 40px; height: 30px; border: none; border-radius: 6px;
+  background: transparent; color: #aab1c0; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; flex-shrink: 0; padding: 0;
+}
+.db-btn svg { width: 17px; height: 17px; }
+.db-btn:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+.db-btn.on { background: rgba(255, 50, 50, .2); color: #ff7a7a; }
+.db-btn.danger { color: #ff8080; }
+.db-btn.danger:hover { background: rgba(255, 60, 60, .22); }
+.db-sep { height: 1px; background: rgba(255, 255, 255, .1); margin: 3px 2px; }
 .sc-mask {
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 12px;

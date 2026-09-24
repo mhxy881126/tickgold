@@ -1,6 +1,6 @@
 [package]
 name = "tickgold"
-version = "0.43.0"
+version = "0.44.0"
 description = "TickGold - 专业交易者跨平台 A 股盯盘终端"
 authors = ["tickgold"]
 edition = "2021"
@@ -30,6 +30,7 @@ scraper = "0.27.0"
 aes = "0.8"
 cbc = { version = "0.1", features = ["alloc"] }
 base64 = "0.22"
+rfd = "0.17.2"
 
 # macOS 透明窗口（灵动岛毛玻璃）需要私有 API
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -28,7 +28,9 @@ export type CardId =
   | "ipo"
   | "dist"
   | "theme"
-  | "news";
+  | "news"
+  | "calc"
+  | "export";
 
 export type Zone = "main" | "side";
 
@@ -67,10 +69,12 @@ export const CARD_META: Record<CardId, CardMeta> = {
   dist: { title: "涨跌分布", accent: "#4ea1ff", kind: "narrow" },
   theme: { title: "题材轮动", accent: "#d4af37", kind: "chart" },
   news: { title: "盘中快讯", accent: "#b07cff", kind: "narrow" },
+  calc: { title: "投资计算器", accent: "#e8c878", kind: "chart" },
+  export: { title: "数据导出", accent: "#6aa6e8", kind: "chart" },
 };
 
 // 宽卡片（主干区域）与窄卡片（右侧）的默认排列顺序，也决定卡片的默认分区
-const WIDE_ORDER: CardId[] = ["radar", "radarsweep", "reviewtimeline", "multigrid", "heatmatrix", "bentofocus", "telegraph", "breadth", "chart", "sectorheat", "sector", "screener", "theme", "dist", "f10", "trade", "journal", "calendar", "ipo"];
+const WIDE_ORDER: CardId[] = ["radar", "radarsweep", "reviewtimeline", "multigrid", "heatmatrix", "bentofocus", "telegraph", "breadth", "chart", "sectorheat", "sector", "screener", "theme", "dist", "f10", "trade", "journal", "calendar", "ipo", "calc", "export"];
 const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "order", "fundflow", "news", "watch", "rank"];
 const ALL_IDS: CardId[] = [...WIDE_ORDER, ...NARROW_ORDER];
 
