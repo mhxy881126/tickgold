@@ -134,14 +134,14 @@ pub async fn kline(code: &str, period: i64, count: i64) -> Result<Vec<KBar>, Str
         return Ok(parse_rows(rows, period));
     }
 
-    // 日/周/月：fqkline（前复权）
+    // 日/周/月：kline/kline（不复权；fqkline 入口被腾讯 WAF 间歇拦截、不稳定）
     let kp = match period {
         102 => "week",
         103 => "month",
         _ => "day",
     };
     let url = format!(
-        "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={},{},,,{},qfq",
+        "https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param={},{},,,{}",
         sym, kp, count
     );
     let v: Value = http()
@@ -153,13 +153,39 @@ pub async fn kline(code: &str, period: i64, count: i64) -> Result<Vec<KBar>, Str
         .await
         .map_err(|e| e.to_string())?;
     let node = &v["data"][sym];
-    let qkey = format!("qfq{}", kp);
     let rows = node
-        .get(&qkey)
-        .or_else(|| node.get(kp))
+        .get(kp)
         .and_then(|x| x.as_array())
         .ok_or("日K解析为空")?;
     Ok(parse_rows(rows, period))
+}
+
+/// 历史分时（最近 5 个交易日，day/query）；date="YYYYMMDD" 指定某天，缺省取最新交易日
+pub async fn hist_minute(code: &str, date: &str) -> Result<Vec<KBar>, String> {
+    let sym = cnc_symbol(code);
+    let url = format!("https://web.ifzq.gtimg.cn/appstock/app/day/query?code={sym}");
+    let v: Value = http()
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let days = v["data"][sym]["data"]
+        .as_array()
+        .ok_or("历史分时为空")?;
+    let target = if date.is_empty() {
+        &days[0]
+    } else {
+        match days.iter().find(|d| d["date"].as_str() == Some(date)) {
+            Some(d) => d,
+            None => return Err(format!("仅支持最近 5 个交易日分时，无 {date} 数据")),
+        }
+    };
+    let date_str = target["date"].as_str().unwrap_or("");
+    let arr = target["data"].as_array().ok_or("该日分时为空")?;
+    parse_minute_rows(date_str, arr)
 }
 
 /// 腾讯行：[date, open, close, high, low, volume, ...]
@@ -253,15 +279,21 @@ pub async fn minute(code: &str) -> Result<Vec<KBar>, String> {
     let node = &v["data"][sym]["data"];
     let date_str = node["date"].as_str().unwrap_or("");
     let arr = node["data"].as_array().ok_or("分时数据为空")?;
+    parse_minute_rows(date_str, arr)
+}
+
+/// 分时行解析（当日 minute/query 与历史 day/query 共用）
+/// 行格式 "HHMM price cumvol(手) cumamt(元)"，累计量差分得当分钟成交量
+fn parse_minute_rows(date_str: &str, arr: &[Value]) -> Result<Vec<KBar>, String> {
     let mut out = Vec::new();
     let mut prev_vol = 0.0f64;
     for item in arr {
         let s = item.as_str().ok_or("分时项格式错")?;
         let parts: Vec<&str> = s.split_whitespace().collect();
-        if parts.len() < 4 { continue; }
+        if parts.len() < 3 { continue; }
         let hhmm = parts[0];
         let price: f64 = parts[1].parse().unwrap_or(0.0);
-        let cumvol: f64 = parts[3].parse().unwrap_or(0.0);
+        let cumvol: f64 = parts[2].parse().unwrap_or(0.0);
         let vol = (cumvol - prev_vol).max(0.0);
         prev_vol = cumvol;
         let ts = minute_ts(date_str, hhmm);

@@ -335,9 +335,30 @@ pub async fn get_quotes(codes: Vec<String>) -> Result<Vec<Quote>, String> {
     }
 }
 
-/// K线：新浪 → 腾讯（东财 push2his 已知不可达，不作为源）
+/// K线：腾讯（日 kline/kline、分钟 mkline，周月为自然周/月）→ 新浪兜底
 pub async fn get_kline(code: String, period: i64, count: i64) -> Result<Vec<KBar>, String> {
     let mut last_err = String::from("K线源均不可用");
+
+    match tokio::time::timeout(
+        Duration::from_secs(KLINE_TIMEOUT),
+        tencent::kline(&code, period, count),
+    )
+    .await
+    {
+        Ok(Ok(v)) if !v.is_empty() => {
+            record_ok("tencent_kline");
+            return Ok(v);
+        }
+        Ok(Ok(_)) => record_fail("tencent_kline"),
+        Ok(Err(e)) => {
+            record_fail("tencent_kline");
+            last_err = format!("腾讯: {e}");
+        }
+        Err(_) => {
+            record_fail("tencent_kline");
+            last_err = "腾讯: 超时".to_string();
+        }
+    }
 
     if is_open("sina_kline") {
         match tokio::time::timeout(
@@ -353,29 +374,16 @@ pub async fn get_kline(code: String, period: i64, count: i64) -> Result<Vec<KBar
             Ok(Ok(_)) => record_fail("sina_kline"),
             Ok(Err(e)) => {
                 record_fail("sina_kline");
-                last_err = format!("新浪: {e}");
+                last_err = format!("{last_err}; 新浪: {e}");
             }
             Err(_) => {
                 record_fail("sina_kline");
-                last_err = "新浪: 超时".to_string();
+                last_err = format!("{last_err}; 新浪: 超时");
             }
         }
     }
 
-    match tokio::time::timeout(
-        Duration::from_secs(KLINE_TIMEOUT),
-        tencent::kline(&code, period, count),
-    )
-    .await
-    {
-        Ok(Ok(v)) if !v.is_empty() => {
-            record_ok("tencent_kline");
-            Ok(v)
-        }
-        Ok(Ok(_)) => Err("腾讯: 返回空".to_string()),
-        Ok(Err(e)) => Err(format!("K线全部失败 → {last_err}; 腾讯: {e}")),
-        Err(_) => Err(format!("K线全部失败 → {last_err}; 腾讯: 超时")),
-    }
+    Err(format!("K线全部失败 → {last_err}"))
 }
 
 /// 五档盘口：腾讯
@@ -414,6 +422,16 @@ pub async fn get_minute(code: String) -> Result<Vec<KBar>, String> {
     tokio::time::timeout(Duration::from_secs(KLINE_TIMEOUT), tencent::minute(&code))
         .await
         .map_err(|_| "分时: 超时".to_string())?
+}
+
+/// 历史分时（最近 5 个交易日）：date="YYYYMMDD"，缺省取最新交易日
+pub async fn get_hist_minute(code: String, date: String) -> Result<Vec<KBar>, String> {
+    tokio::time::timeout(
+        Duration::from_secs(KLINE_TIMEOUT),
+        tencent::hist_minute(&code, &date),
+    )
+    .await
+    .map_err(|_| "历史分时: 超时".to_string())?
 }
 
 /// 热门股池（沪深300成分股精选，用于本地榜单）

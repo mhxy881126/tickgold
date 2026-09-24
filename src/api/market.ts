@@ -55,6 +55,11 @@ export async function fetchMinute(code: string): Promise<KBar[]> {
   return await invoke<KBar[]>("get_minute", { code });
 }
 
+/** 历史分时（最近 5 个交易日）；date="YYYYMMDD" 指定某天，缺省取最新交易日 */
+export async function fetchHistMinute(code: string, date: string): Promise<KBar[]> {
+  return await invoke<KBar[]>("get_hist_minute", { code, date });
+}
+
 /** 五档盘口（卖 1-5 / 买 1-5 + 当日概要） */
 export async function fetchOrderBook(code: string): Promise<OrderBook> {
   return await invoke<OrderBook>("get_orderbook", { code });

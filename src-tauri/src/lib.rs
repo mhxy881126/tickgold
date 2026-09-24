@@ -29,6 +29,11 @@ async fn get_minute(code: String) -> Result<Vec<market::KBar>, String> {
 }
 
 #[tauri::command]
+async fn get_hist_minute(code: String, date: String) -> Result<Vec<market::KBar>, String> {
+    market::get_hist_minute(code, date).await
+}
+
+#[tauri::command]
 async fn get_orderbook(code: String) -> Result<market::OrderBook, String> {
     market::get_orderbook(code).await
 }
@@ -521,6 +526,7 @@ pub fn run() {
             get_quotes,
             get_kline,
             get_minute,
+            get_hist_minute,
             get_orderbook,
             get_fund_flow,
             get_sectors,
