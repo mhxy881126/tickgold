@@ -13,6 +13,9 @@ interface AlertRow {
   downPrice: number | null;
   upPct: number | null;
   downPct: number | null;
+  minVolumeRatio: number | null;
+  riseSpeed: number | null;
+  speedWindowSec: number | null;
   cooldownSec: number;
   enabled: number;
   lastFiredAt: number | null;
@@ -30,7 +33,9 @@ export const useAlertStore = defineStore("alert", () => {
     await ensureDb();
     const rs = await db().select<AlertRow[]>(
       `SELECT id, code, name, up_price AS upPrice, down_price AS downPrice,
-         up_pct AS upPct, down_pct AS downPct, cooldown_sec AS cooldownSec,
+         up_pct AS upPct, down_pct AS downPct,
+         min_volume_ratio AS minVolumeRatio, rise_speed AS riseSpeed,
+         speed_window_sec AS speedWindowSec, cooldown_sec AS cooldownSec,
          enabled, last_fired_at AS lastFiredAt
        FROM alerts ORDER BY code, id`
     );
@@ -42,6 +47,9 @@ export const useAlertStore = defineStore("alert", () => {
       downPrice: r.downPrice ?? undefined,
       upPct: r.upPct ?? undefined,
       downPct: r.downPct ?? undefined,
+      minVolumeRatio: r.minVolumeRatio ?? undefined,
+      riseSpeed: r.riseSpeed ?? undefined,
+      speedWindowSec: r.speedWindowSec ?? undefined,
       cooldownSec: r.cooldownSec ?? 300,
       enabled: !!r.enabled,
       lastFiredAt: r.lastFiredAt ?? undefined,
@@ -52,11 +60,14 @@ export const useAlertStore = defineStore("alert", () => {
   async function save(r: AlertRule) {
     const exists = rules.value.some((x) => x.id === r.id);
     await db().execute(
-      `INSERT INTO alerts(id,code,name,up_price,down_price,up_pct,down_pct,cooldown_sec,enabled,last_fired_at)
-       VALUES(?,?,?,?,?,?,?,?,?,?)
+      `INSERT INTO alerts(id,code,name,up_price,down_price,up_pct,down_pct,
+         min_volume_ratio,rise_speed,speed_window_sec,cooldown_sec,enabled,last_fired_at)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET code=excluded.code, name=excluded.name,
          up_price=excluded.up_price, down_price=excluded.down_price,
          up_pct=excluded.up_pct, down_pct=excluded.down_pct,
+         min_volume_ratio=excluded.min_volume_ratio, rise_speed=excluded.rise_speed,
+         speed_window_sec=excluded.speed_window_sec,
          cooldown_sec=excluded.cooldown_sec, enabled=excluded.enabled,
          last_fired_at=excluded.last_fired_at`,
       [
@@ -67,6 +78,9 @@ export const useAlertStore = defineStore("alert", () => {
         r.downPrice ?? null,
         r.upPct ?? null,
         r.downPct ?? null,
+        r.minVolumeRatio ?? null,
+        r.riseSpeed ?? null,
+        r.speedWindowSec ?? null,
         r.cooldownSec,
         r.enabled ? 1 : 0,
         r.lastFiredAt ?? null,

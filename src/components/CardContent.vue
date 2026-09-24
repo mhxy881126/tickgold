@@ -30,6 +30,7 @@ import IpoCalendar from "./IpoCalendar.vue";
 import CalcTools from "./CalcTools.vue";
 import DataExport from "./DataExport.vue";
 import DragonTiger from "./DragonTiger.vue";
+import TradeTape from "./TradeTape.vue";
 import RightPanel from "./RightPanel.vue";
 import type { CardId } from "../composables/useWorkbench";
 
@@ -72,6 +73,7 @@ defineEmits<{ select: [code: string] }>();
   <CalcTools v-else-if="id === 'calc'" />
   <DataExport v-else-if="id === 'export'" :code="selected" />
   <DragonTiger v-else-if="id === 'dragon'" @select="$emit('select', $event)" />
+  <TradeTape v-else-if="id === 'trades'" :code="selected" />
   <RightPanel v-else :code="selected" />
 </template>
 

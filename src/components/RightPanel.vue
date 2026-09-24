@@ -71,12 +71,12 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer); });
     </div>
     <div v-else class="rblock"><div class="empty-tip">选择一只股票</div></div>
 
-    <!-- 五档盘口 -->
+    <!-- 盘口（免费源动态档数） -->
     <div v-if="ob" class="rblock">
-      <h4>五档盘口</h4>
+      <h4>盘口<span class="tag">{{ ob.asks.length + ob.bids.length }} 档 · 免费</span></h4>
       <table class="kv">
-        <tr v-for="(a, i) in ob.asks.slice().reverse()" :key="'a'+i">
-          <td class="l">卖{{ 5 - i }}</td>
+        <tr v-for="(a, i) in [...ob.asks].reverse()" :key="'a'+i">
+          <td class="l">卖{{ ob.asks.length - i }}</td>
           <td class="v up">{{ fmt(a.price) }}</td>
           <td class="w">{{ amt(a.vol * 100) }}</td>
         </tr>
@@ -107,7 +107,8 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer); });
 <style scoped>
 .right { overflow-y: auto; height: 100%; }
 .rblock { padding: 10px 12px; border-bottom: 1px solid var(--border); }
-h4 { font-size: 11px; color: var(--text-dim); font-weight: 500; margin-bottom: 6px; }
+h4 { font-size: 11px; color: var(--text-dim); font-weight: 500; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+.tag { font-size: 10px; color: var(--text-dim); font-weight: 400; opacity: .8; }
 .price-block { padding: 12px; }
 .price-line { display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; }
 .name { font-weight: 700; font-size: 15px; }

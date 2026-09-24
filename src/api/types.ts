@@ -34,13 +34,13 @@ export interface KBar {
   volume: number;
 }
 
-/** 五档单档（价 / 量，量单位手） */
+/** 盘口单档（价 / 量，量单位手） */
 export interface OrderLevel {
   price: number;
   vol: number;
 }
 
-/** 五档盘口快照 */
+/** 盘口快照（免费源动态档数，通常 5 档） */
 export interface OrderBook {
   name: string;
   code: string;
@@ -51,8 +51,16 @@ export interface OrderBook {
   low: number;
   volume: number;
   amount: number;
-  asks: OrderLevel[];  // 卖 1-5
-  bids: OrderLevel[];  // 买 1-5
+  asks: OrderLevel[];  // 卖盘（档数随数据源）
+  bids: OrderLevel[];  // 买盘（档数随数据源）
+}
+
+/** 逐笔成交（时间 / 价 / 量 / 主动方向） */
+export interface TradeTick {
+  time: string;
+  price: number;
+  vol: number; // 手
+  side: "buy" | "sell" | "neutral";
 }
 
 /** 股票搜索结果项 */
@@ -140,6 +148,9 @@ export interface AlertRule {
   downPrice?: number;
   upPct?: number;
   downPct?: number;
+  minVolumeRatio?: number; // 量比 ≥
+  riseSpeed?: number;      // 涨速 ≥ %（窗口内涨幅）
+  speedWindowSec?: number; // 涨速窗口（秒），默认 300
   cooldownSec: number;   // 触发冷却
   enabled: boolean;
   lastFiredAt?: number;

@@ -1,5 +1,7 @@
 // 东方财富数据源：批量实时行情 + 股票搜索
-use super::{http, now_millis, secid_prefix, Quote, StockItem};
+use super::{
+    http, now_millis, secid_prefix, OrderBook, OrderLevel, Quote, StockItem, TradeTick,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -1134,5 +1136,124 @@ pub async fn seat_trades(code: &str, size: i64, page: i64) -> Result<SeatTrades,
         name,
         total,
         trades,
+    })
+}
+
+// ===== 逐笔成交明细（details/get）=====
+/// 返回最近 n 条逐笔（时间升序）。方向 f54：2=主动买(外盘)，1=主动卖(内盘)，其余中性。
+pub async fn trades(code: &str, n: i64) -> Result<Vec<TradeTick>, String> {
+    let secid = format!("{}.{}", secid_prefix(code), code);
+    let url = format!(
+        "http://push2.eastmoney.com/api/qt/stock/details/get?secid={secid}\
+         &fields1=f1,f2,f3,f4&fields2=f51,f52,f53,f54,f55&pos=-{n}&np=1&fltt=1&invt=2"
+    );
+    let v: Value = http()
+        .get(&url)
+        .header("Referer", "https://quote.eastmoney.com/")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let arr = v["data"]["details"].as_array().ok_or("逐笔数据为空")?;
+    let mut out = Vec::new();
+    for item in arr {
+        let s = item.as_str().unwrap_or("");
+        let p: Vec<&str> = s.split(',').collect();
+        if p.len() < 4 {
+            continue;
+        }
+        let side = match p[3] {
+            "2" => "buy",
+            "1" => "sell",
+            _ => "neutral",
+        };
+        out.push(TradeTick {
+            time: p[0].to_string(),
+            price: p[1].parse().unwrap_or(0.0),
+            vol: p[2].parse().unwrap_or(0.0),
+            side: side.to_string(),
+        });
+    }
+    if out.is_empty() {
+        return Err("逐笔返回空".to_string());
+    }
+    Ok(out)
+}
+
+// ===== 盘口（stock/get，免费源尽力版）=====
+/// 免费行情稳定返回 5 档；动态解析实际非空档位（跌停无买盘 / 涨停无卖盘）。
+pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
+    let secid = format!("{}.{}", secid_prefix(code), code);
+    // f11..f40 连续：买1-5(f11-f20)、买6-10候选(f21-f30)、卖1-5(f31-f40)；
+    // f43最新价 f44高 f45低 f46开 f47量 f48额 f57代码 f58名称 f60昨收
+    let mut fields: Vec<String> = (11..=40).map(|i| format!("f{i}")).collect();
+    fields.extend(
+        ["f43", "f44", "f45", "f46", "f47", "f48", "f57", "f58", "f60"]
+            .iter()
+            .map(|s| s.to_string()),
+    );
+    let url = format!(
+        "http://push2.eastmoney.com/api/qt/stock/get?secid={secid}\
+         &invt=2&fltt=2&np=1&fields={}",
+        fields.join(",")
+    );
+    let v: Value = http()
+        .get(&url)
+        .header("Referer", "https://quote.eastmoney.com/")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let d = &v["data"];
+    if !d.is_object() {
+        return Err("东财盘口为空".to_string());
+    }
+    // 取字段 fxx 的数值（缺失 / "-" 为 0）
+    let fnum = |k: &str| d.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
+
+    // 买盘：从 f11 起按 (价,量) 对连续扫描，价格>0 加入，遇 0 停（扫到 f30 最多 10 档）
+    let mut bids: Vec<OrderLevel> = Vec::new();
+    for i in 0..10 {
+        let pk = format!("f{}", 11 + i * 2);
+        let vk = format!("f{}", 12 + i * 2);
+        let price = fnum(&pk);
+        if price <= 0.0 {
+            break;
+        }
+        bids.push(OrderLevel { price, vol: fnum(&vk) });
+    }
+    // 卖盘：从 f31 起扫描（f31-f40 = 5 档）
+    let mut asks: Vec<OrderLevel> = Vec::new();
+    for i in 0..5 {
+        let pk = format!("f{}", 31 + i * 2);
+        let vk = format!("f{}", 32 + i * 2);
+        let price = fnum(&pk);
+        if price <= 0.0 {
+            break;
+        }
+        asks.push(OrderLevel { price, vol: fnum(&vk) });
+    }
+
+    let code_s = d
+        .get("f57")
+        .and_then(|x| x.as_str())
+        .unwrap_or(code)
+        .to_string();
+    Ok(OrderBook {
+        name: d.get("f58").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+        code: code_s,
+        price: fnum("f43"),
+        prev_close: fnum("f60"),
+        open: fnum("f46"),
+        high: fnum("f44"),
+        low: fnum("f45"),
+        volume: fnum("f47"),
+        amount: fnum("f48"),
+        asks,
+        bids,
     })
 }

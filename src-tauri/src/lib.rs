@@ -39,6 +39,11 @@ async fn get_orderbook(code: String) -> Result<market::OrderBook, String> {
 }
 
 #[tauri::command]
+async fn get_trades(code: String, n: i64) -> Result<Vec<market::TradeTick>, String> {
+    market::get_trades(code, n).await
+}
+
+#[tauri::command]
 async fn get_fund_flow(code: String) -> Result<market::FundFlow, String> {
     market::get_fund_flow(code).await
 }
@@ -475,6 +480,24 @@ pub fn run() {
                             );",
                             kind: MigrationKind::Up,
                         },
+                        Migration {
+                            version: 11,
+                            description: "add min_volume_ratio to alerts",
+                            sql: "ALTER TABLE alerts ADD COLUMN min_volume_ratio REAL;",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 12,
+                            description: "add rise_speed to alerts",
+                            sql: "ALTER TABLE alerts ADD COLUMN rise_speed REAL;",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 13,
+                            description: "add speed_window_sec to alerts",
+                            sql: "ALTER TABLE alerts ADD COLUMN speed_window_sec INTEGER;",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),
@@ -587,6 +610,7 @@ pub fn run() {
             get_minute,
             get_hist_minute,
             get_orderbook,
+            get_trades,
             get_fund_flow,
             get_sectors,
             get_screener,

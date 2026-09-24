@@ -83,6 +83,16 @@ pub struct OrderBook {
     pub bids: Vec<OrderLevel>,
 }
 
+/// 逐笔成交（分笔明细）
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TradeTick {
+    pub time: String,  // HH:MM:SS
+    pub price: f64,
+    pub vol: f64,      // 手
+    pub side: String,  // buy 主动买 / sell 主动卖 / neutral 中性
+}
+
 /// 单档资金（特大 / 大 / 中 / 小单）
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -386,11 +396,36 @@ pub async fn get_kline(code: String, period: i64, count: i64) -> Result<Vec<KBar
     Err(format!("K线全部失败 → {last_err}"))
 }
 
-/// 五档盘口：腾讯
+/// 盘口（免费源尽力版）：东财为主（动态档位），盘后清空或失败回退腾讯
 pub async fn get_orderbook(code: String) -> Result<OrderBook, String> {
+    if is_open("eastmoney_book") {
+        if let Ok(Ok(b)) = tokio::time::timeout(
+            Duration::from_secs(QUOTE_TIMEOUT),
+            eastmoney::orderbook(&code),
+        )
+        .await
+        {
+            if !b.asks.is_empty() || !b.bids.is_empty() {
+                record_ok("eastmoney_book");
+                return Ok(b);
+            }
+        }
+        record_fail("eastmoney_book");
+    }
+    // 回退腾讯（盘后仍返回收盘五档）
     tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), tencent::orderbook(&code))
         .await
         .map_err(|_| "盘口: 超时".to_string())?
+}
+
+/// 逐笔成交明细（东财 details/get），返回最近 n 条
+pub async fn get_trades(code: String, n: i64) -> Result<Vec<TradeTick>, String> {
+    tokio::time::timeout(
+        Duration::from_secs(QUOTE_TIMEOUT),
+        eastmoney::trades(&code, n.max(1).min(200)),
+    )
+    .await
+    .map_err(|_| "逐笔: 超时".to_string())?
 }
 
 /// 资金流向：新浪（当日实时，特大/大/中/小单）

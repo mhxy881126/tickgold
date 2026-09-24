@@ -20,6 +20,12 @@ pub struct AlertRule {
     pub down_price: Option<f64>,
     pub up_pct: Option<f64>,
     pub down_pct: Option<f64>,
+    #[serde(default)]
+    pub min_volume_ratio: Option<f64>, // 量比 ≥
+    #[serde(default)]
+    pub rise_speed: Option<f64>, // 涨速 ≥ %（窗口内涨幅）
+    #[serde(default)]
+    pub speed_window_sec: Option<i64>, // 涨速窗口（秒），默认 300
     pub cooldown_sec: i64,
     pub enabled: bool,
     #[serde(default)]
@@ -48,6 +54,8 @@ pub struct AlertEngine {
     pub rules: Mutex<Vec<AlertRule>>,
     /// "id:kind" -> 上次触发 ms（冷却去重）
     pub fired: Mutex<HashMap<String, i64>>,
+    /// code -> [(ts_ms, price)]，本地计算涨速用
+    pub price_hist: Mutex<HashMap<String, Vec<(i64, f64)>>>,
 }
 impl AlertEngine {
     pub fn new() -> Self {
@@ -55,6 +63,7 @@ impl AlertEngine {
             running: AtomicBool::new(false),
             rules: Mutex::new(Vec::new()),
             fired: Mutex::new(HashMap::new()),
+            price_hist: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -80,6 +89,25 @@ async fn check_once(app: &AppHandle, engine: &AlertEngine) {
     let now = now_millis();
     let mut events: Vec<AlertEvent> = Vec::new();
 
+    // 记录价格历史（本地涨速用），按规则中最大涨速窗口清理
+    let max_window = active
+        .iter()
+        .filter(|r| r.rise_speed.is_some())
+        .map(|r| r.speed_window_sec.unwrap_or(300))
+        .max()
+        .unwrap_or(0);
+    {
+        let mut hist = engine.price_hist.lock().unwrap();
+        for q in qmap.values() {
+            let entry = hist.entry(q.code.clone()).or_default();
+            entry.push((now, q.price));
+            if max_window > 0 {
+                let cutoff = now - (max_window + 60) * 1000;
+                entry.retain(|(ts, _)| *ts >= cutoff);
+            }
+        }
+    }
+
     for r in &active {
         let Some(q) = qmap.get(&r.code) else { continue };
         // (kind,label,target,actual,tone)
@@ -104,6 +132,35 @@ async fn check_once(app: &AppHandle, engine: &AlertEngine) {
                 conds.push(("pct_down", "跌幅触及", t, q.pct, "down"));
             }
         }
+        // 量比放大
+        if let Some(t) = r.min_volume_ratio {
+            if q.volume_ratio >= t && q.volume_ratio > 0.0 {
+                conds.push(("vr_up", "量比放大", t, q.volume_ratio, "up"));
+            }
+        }
+        // 涨速（窗口内本地计算）
+        if let Some(t) = r.rise_speed {
+            let win = r.speed_window_sec.unwrap_or(300);
+            let base = engine
+                .price_hist
+                .lock()
+                .unwrap()
+                .get(&r.code)
+                .and_then(|h| {
+                    h.iter()
+                        .filter(|(ts, _)| *ts <= now - win * 1000)
+                        .map(|(_, p)| *p)
+                        .last()
+                });
+            if let Some(old) = base {
+                if old > 0.0 {
+                    let spd = (q.price - old) / old * 100.0;
+                    if spd >= t {
+                        conds.push(("speed_up", "快速拉升", t, spd, "up"));
+                    }
+                }
+            }
+        }
 
         for (kind, label, target, actual, tone) in conds {
             let key = format!("{}:{}", r.id, kind);
@@ -120,6 +177,16 @@ async fn check_once(app: &AppHandle, engine: &AlertEngine) {
                     label,
                     format!("{:.2}", q.price),
                     format!("{:.2}", target)
+                )
+            } else if kind == "vr_up" {
+                format!("{} 量比放大至 {:.2}，阈值 {:.2}", r.name, actual, target)
+            } else if kind == "speed_up" {
+                format!(
+                    "{} {:.0} 分钟内快速拉升 {:.2}%，阈值 {:.2}%",
+                    r.name,
+                    r.speed_window_sec.unwrap_or(300) as f64 / 60.0,
+                    actual,
+                    target
                 )
             } else {
                 format!(

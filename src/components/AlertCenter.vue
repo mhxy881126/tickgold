@@ -25,9 +25,21 @@ function blank(): AlertRule {
     downPrice: undefined,
     upPct: undefined,
     downPct: undefined,
+    minVolumeRatio: undefined,
+    riseSpeed: undefined,
+    speedWindowSec: 300,
     cooldownSec: 300,
     enabled: true,
   };
+}
+
+// 涨速窗口（分钟，与秒互转）
+const speedMin = computed(() =>
+  Math.max(1, Math.round((form.value.speedWindowSec ?? 300) / 60))
+);
+function onSpeedWin(e: Event) {
+  const v = Number((e.target as HTMLInputElement).value);
+  if (v > 0) form.value.speedWindowSec = Math.round(v * 60);
 }
 
 function onSearchInput() {
@@ -89,12 +101,23 @@ async function save() {
       form.value.upPct != null && form.value.upPct !== 0
         ? Math.abs(form.value.upPct)
         : undefined,
+    minVolumeRatio:
+      form.value.minVolumeRatio != null && form.value.minVolumeRatio > 0
+        ? form.value.minVolumeRatio
+        : undefined,
+    riseSpeed:
+      form.value.riseSpeed != null && form.value.riseSpeed > 0
+        ? form.value.riseSpeed
+        : undefined,
+    speedWindowSec: form.value.speedWindowSec ?? 300,
   };
   const hasCond =
     payload.upPrice != null ||
     payload.downPrice != null ||
     payload.upPct != null ||
-    payload.downPct != null;
+    payload.downPct != null ||
+    payload.minVolumeRatio != null ||
+    payload.riseSpeed != null;
   if (!hasCond) {
     err.value = "请至少设置一个触发条件";
     return;
@@ -113,6 +136,11 @@ function condText(r: AlertRule): string {
   if (r.downPrice != null) parts.push(`跌破 ${r.downPrice.toFixed(2)}`);
   if (r.upPct != null) parts.push(`涨≥${r.upPct.toFixed(1)}%`);
   if (r.downPct != null) parts.push(`跌≥${Math.abs(r.downPct).toFixed(1)}%`);
+  if (r.minVolumeRatio != null) parts.push(`量比≥${r.minVolumeRatio.toFixed(1)}`);
+  if (r.riseSpeed != null)
+    parts.push(
+      `涨速≥${r.riseSpeed.toFixed(1)}%/${Math.round((r.speedWindowSec ?? 300) / 60)}分`
+    );
   return parts.join(" · ") || "无条件";
 }
 
@@ -189,6 +217,21 @@ onMounted(async () => {
         <label>跌幅 ≥</label>
         <input v-model.number="form.downPct" class="inp sm" type="number" step="0.1" placeholder="%" />
         <span class="unit">%</span>
+      </div>
+      <div class="f-row">
+        <label>量比 ≥</label>
+        <input v-model.number="form.minVolumeRatio" class="inp sm" type="number" step="0.1" placeholder="留空不启用" />
+        <span class="unit">倍</span>
+      </div>
+      <div class="f-row">
+        <label>涨速 ≥</label>
+        <input v-model.number="form.riseSpeed" class="inp sm" type="number" step="0.1" placeholder="留空不启用" />
+        <span class="unit">%</span>
+      </div>
+      <div class="f-row">
+        <label>涨速窗口</label>
+        <input :value="speedMin" class="inp sm" type="number" min="1" step="1" @input="onSpeedWin" />
+        <span class="unit">分钟</span>
       </div>
 
       <div class="f-row">

@@ -33,7 +33,8 @@ export type CardId =
   | "news"
   | "calc"
   | "export"
-  | "dragon";
+  | "dragon"
+  | "trades";
 
 export type Zone = "main" | "side";
 
@@ -77,11 +78,12 @@ export const CARD_META: Record<CardId, CardMeta> = {
   calc: { title: "投资计算器", accent: "#e8c878", kind: "chart" },
   export: { title: "数据导出", accent: "#6aa6e8", kind: "chart" },
   dragon: { title: "龙虎榜复盘", accent: "#e8c878", kind: "chart" },
+  trades: { title: "逐笔成交", accent: "#ffb13d", kind: "narrow" },
 };
 
 // 宽卡片（主干区域）与窄卡片（右侧）的默认排列顺序，也决定卡片的默认分区
 const WIDE_ORDER: CardId[] = ["auction", "limitpool", "radar", "radarsweep", "reviewtimeline", "multigrid", "heatmatrix", "bentofocus", "telegraph", "breadth", "chart", "sectorheat", "sector", "screener", "theme", "dist", "f10", "trade", "journal", "calendar", "ipo", "calc", "export", "dragon"];
-const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "order", "fundflow", "news", "watch", "rank"];
+const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "trades", "order", "fundflow", "news", "watch", "rank"];
 const ALL_IDS: CardId[] = [...WIDE_ORDER, ...NARROW_ORDER];
 
 // 模式预设：一键切换一整套卡片
