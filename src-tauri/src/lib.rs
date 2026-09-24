@@ -119,6 +119,22 @@ async fn get_market_restricted(
     market::eastmoney::market_restricted(&start, &end, page, size).await
 }
 
+// ===== 集合竞价 / 涨停池明细 =====
+#[tauri::command]
+async fn get_auction() -> Result<market::eastmoney::AuctionData, String> {
+    market::get_auction().await
+}
+
+#[tauri::command]
+async fn get_zt_pool(date: String) -> Result<market::eastmoney::ZtPool, String> {
+    market::get_zt_pool(date).await
+}
+
+#[tauri::command]
+async fn get_zb_pool(date: String) -> Result<market::eastmoney::ZtPool, String> {
+    market::get_zb_pool(date).await
+}
+
 #[tauri::command]
 async fn start_spider(
     app: tauri::AppHandle,
@@ -557,6 +573,9 @@ pub fn run() {
             get_ipo_list,
             get_restricted_queue,
             get_market_restricted,
+            get_auction,
+            get_zt_pool,
+            get_zb_pool,
             start_spider,
             stop_spider,
             start_radar,

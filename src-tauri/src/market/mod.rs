@@ -458,6 +458,59 @@ pub async fn get_rank_page(sort: String, page: i64, num: i64) -> Result<Vec<Quot
     .map_err(|_| "榜单: 超时".to_string())?
 }
 
+/// 今日日期 YYYYMMDD（北京时间，纯 SystemTime 实现，无 chrono 依赖）
+pub fn today_yyyymmdd() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let days = (secs + 8 * 3600).div_euclid(86400); // 北京时间当日 0 点起的天数
+    // Howard Hinnant civil-from-days
+    let z = days + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if m <= 2 { y + 1 } else { y };
+    format!("{:04}{:02}{:02}", year, m, d)
+}
+
+/// 涨停池明细（date 为空取今日）
+pub async fn get_zt_pool(date: String) -> Result<eastmoney::ZtPool, String> {
+    let d = if date.trim().is_empty() {
+        today_yyyymmdd()
+    } else {
+        date
+    };
+    tokio::time::timeout(Duration::from_secs(KLINE_TIMEOUT), eastmoney::zt_pool(&d))
+        .await
+        .map_err(|_| "涨停池: 超时".to_string())?
+}
+
+/// 炸板池明细（date 为空取今日）
+pub async fn get_zb_pool(date: String) -> Result<eastmoney::ZtPool, String> {
+    let d = if date.trim().is_empty() {
+        today_yyyymmdd()
+    } else {
+        date
+    };
+    tokio::time::timeout(Duration::from_secs(KLINE_TIMEOUT), eastmoney::zb_pool(&d))
+        .await
+        .map_err(|_| "炸板池: 超时".to_string())?
+}
+
+/// 集合竞价（全市场开盘缺口排名，分页拉取，给足超时）
+pub async fn get_auction() -> Result<eastmoney::AuctionData, String> {
+    tokio::time::timeout(Duration::from_secs(15), eastmoney::auction())
+        .await
+        .map_err(|_| "集合竞价: 超时".to_string())?
+}
+
 /// 最新版本信息（更新检查兜底，走与行情同款的 HTTP 客户端 + 多镜像）
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

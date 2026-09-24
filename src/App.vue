@@ -129,6 +129,8 @@ const DOCK_GROUPS: DockGroup[] = [
     name: "情绪异动",
     icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8z",
     items: [
+      { id: "auction", label: "集合竞价", icon: "M3 17h2l3-8 4 14 3-10 2 4h4", desc: "全市场高开抢筹/低开出逃排名", star: true },
+      { id: "limitpool", label: "涨停池明细", icon: "M4 4h16v6H4zm0 10h16v6H4z", desc: "涨停/炸板池封单额/封板时间/题材", star: true },
       { id: "radar", label: "涨停雷达", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm0 4a6 6 0 100 12 6 6 0 000-12zm0 3a3 3 0 100 6 3 3 0 000-6z", desc: "涨停/炸板/连板/情绪统计", star: true },
       { id: "spider", label: "短线精灵", icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8z", desc: "活跃股盘中实时异动" },
       { id: "alert", label: "预警", icon: "M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C8.63 5.36 7 7.92 7 11v5l-2 2v1h14v-1l-2-2z", desc: "价格/涨跌幅触发推送" },

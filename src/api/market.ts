@@ -334,3 +334,56 @@ export async function fetchMarketRestricted(
     size,
   });
 }
+
+// ===== 集合竞价（全市场开盘缺口排名）=====
+export interface AuctionStock {
+  code: string;
+  name: string;
+  open: number;
+  prevClose: number;
+  gap: number;    // 开盘涨幅（缺口）%
+  amount: number; // 成交额（9:25 时刻即竞价成交额）
+  price: number;
+  pct: number;
+}
+export interface AuctionData {
+  updated: number;
+  total: number;
+  highOpen: AuctionStock[]; // 高开抢筹榜
+  lowOpen: AuctionStock[];  // 低开出逃榜
+}
+export async function fetchAuction(): Promise<AuctionData> {
+  return await invoke<AuctionData>("get_auction");
+}
+
+// ===== 涨停池 / 炸板池明细 =====
+export interface ZtStock {
+  code: string;
+  name: string;
+  price: number;
+  pct: number;
+  amount: number;
+  fund: number;        // 封单金额（元）
+  boards: number;      // 连板数
+  firstSeal: number;   // 首次封板时间
+  lastSeal: number;    // 最后封板时间
+  broken: number;      // 炸板次数
+  turnover: number;    // 换手率 %
+  industry: string;    // 所属行业
+  statDays: number;    // N 天
+  statCount: number;   // M 板
+  limitPrice: number;  // 涨停价
+}
+export interface ZtPool {
+  date: string;
+  total: number;
+  list: ZtStock[];
+}
+/** 涨停池（date 为空取今日，格式 YYYYMMDD） */
+export async function fetchZtPool(date = ""): Promise<ZtPool> {
+  return await invoke<ZtPool>("get_zt_pool", { date });
+}
+/** 炸板池 */
+export async function fetchZbPool(date = ""): Promise<ZtPool> {
+  return await invoke<ZtPool>("get_zb_pool", { date });
+}

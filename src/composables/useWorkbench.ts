@@ -2,6 +2,8 @@ import { ref, computed, watch } from "vue";
 import { db } from "../db/database";
 
 export type CardId =
+  | "auction"
+  | "limitpool"
   | "radar"
   | "radarsweep"
   | "reviewtimeline"
@@ -42,6 +44,8 @@ export interface CardMeta {
 
 // 卡片元信息
 export const CARD_META: Record<CardId, CardMeta> = {
+  auction: { title: "集合竞价", accent: "#ffd76a", kind: "chart" },
+  limitpool: { title: "涨停池明细", accent: "#e0455a", kind: "chart" },
   radar: { title: "涨停雷达", accent: "#e0455a", kind: "chart" },
   radarsweep: { title: "雷达扫盘", accent: "#2de1ff", kind: "chart" },
   reviewtimeline: { title: "复盘时间线", accent: "#c9a24a", kind: "chart" },
@@ -74,7 +78,7 @@ export const CARD_META: Record<CardId, CardMeta> = {
 };
 
 // 宽卡片（主干区域）与窄卡片（右侧）的默认排列顺序，也决定卡片的默认分区
-const WIDE_ORDER: CardId[] = ["radar", "radarsweep", "reviewtimeline", "multigrid", "heatmatrix", "bentofocus", "telegraph", "breadth", "chart", "sectorheat", "sector", "screener", "theme", "dist", "f10", "trade", "journal", "calendar", "ipo", "calc", "export"];
+const WIDE_ORDER: CardId[] = ["auction", "limitpool", "radar", "radarsweep", "reviewtimeline", "multigrid", "heatmatrix", "bentofocus", "telegraph", "breadth", "chart", "sectorheat", "sector", "screener", "theme", "dist", "f10", "trade", "journal", "calendar", "ipo", "calc", "export"];
 const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "order", "fundflow", "news", "watch", "rank"];
 const ALL_IDS: CardId[] = [...WIDE_ORDER, ...NARROW_ORDER];
 
