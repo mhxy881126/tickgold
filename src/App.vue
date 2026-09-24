@@ -194,7 +194,7 @@ function megaClose() {
   megaKey.value = null;
 }
 function pickMega(it: DockItem) {
-  bench.toggle(it.id);
+  toggleCard(it.id);
   megaKey.value = null;
 }
 
@@ -234,7 +234,7 @@ function closePalette() {
 function runPalette(r?: PaletteRow) {
   const t = r ?? pFiltered.value[pSel.value];
   if (!t) return;
-  bench.toggle(t.id);
+  toggleCard(t.id);
   closePalette();
 }
 function onGlobalKey(e: KeyboardEvent) {
@@ -342,22 +342,56 @@ function exitFocus() {
   const fid = bench.focusId.value as CardId;
   focusClosing.value = true;
   slotEls().forEach((el) => {
-    if (el.getAttribute("data-card-id") === fid) placeAt(el, originRects[fid]);
+    if (el.getAttribute("data-card-id") !== fid) return;
+    if (originRects[fid]) placeAt(el, originRects[fid]);
+    else {
+      // 聚焦中新增、无原位记录的卡：淡出，避免 placeAt(undefined)
+      el.style.transition = "opacity .3s ease";
+      el.style.opacity = "0";
+    }
   });
   setTimeout(() => {
-    slotEls().forEach((el) => {
-      el.style.position = "";
-      el.style.left = "";
-      el.style.top = "";
-      el.style.width = "";
-      el.style.height = "";
-      el.style.margin = "";
-      el.style.zIndex = "";
-      el.style.transition = "";
-    });
+    bench.clearSlotInline();
     bench.restoreFocus();
     focusClosing.value = false;
   }, 460);
+}
+
+// 统一卡片开关：聚焦态打开新卡 → 直接作为主卡（addAndFocus）
+function toggleCard(id: CardId) {
+  if (bench.isOpen(id)) {
+    bench.close(id);
+    return;
+  }
+  if (bench.isFocused.value) addAndFocus(id);
+  else bench.open(id);
+}
+// 聚焦态新增卡片：新卡直接 fixed 到主区，旧主卡缩回原位
+function addAndFocus(id: CardId) {
+  const old = bench.focusId.value;
+  bench.open(id);
+  bench.focus(id);
+  nextTick(() => {
+    const t = focusTargetEl.value!.getBoundingClientRect();
+    const ne = slotEls().find((e) => e.getAttribute("data-card-id") === id);
+    if (ne) {
+      ne.style.transition = FTRANS;
+      ne.style.position = "fixed";
+      ne.style.margin = "0";
+      ne.style.left = t.left + "px";
+      ne.style.top = t.top + "px";
+      ne.style.width = t.width + "px";
+      ne.style.height = t.height + "px";
+      ne.style.zIndex = "70";
+    }
+    if (old) {
+      const oe = slotEls().find((e) => e.getAttribute("data-card-id") === old);
+      if (oe) {
+        placeAt(oe, originRects[old]);
+        oe.style.zIndex = "40";
+      }
+    }
+  });
 }
 // 聚焦中窗口尺寸变化：主卡跟随新目标
 function refitFocus() {

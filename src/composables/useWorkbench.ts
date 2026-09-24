@@ -342,6 +342,22 @@ export function useWorkbench() {
   function restoreFocus() {
     focusId.value = null;
   }
+  // 清除聚焦逻辑写入卡片根元素的全部内联定位样式
+  // （非聚焦态必须无残留，否则卡片脱离网格 → 叠层 / 按钮点不到 / 排列混乱）
+  function clearSlotInline() {
+    document.querySelectorAll(".card-slot,.free-cell").forEach((node) => {
+      const el = node as HTMLElement;
+      el.style.position = "";
+      el.style.left = "";
+      el.style.top = "";
+      el.style.width = "";
+      el.style.height = "";
+      el.style.margin = "";
+      el.style.zIndex = "";
+      el.style.transition = "";
+      el.style.opacity = "";
+    });
+  }
 
   function open(id: CardId) {
     if (timeMode.value) timeMode.value = null; // 手动加卡 → 退出固定 Bento，回到自由网格
@@ -352,7 +368,11 @@ export function useWorkbench() {
   }
   function close(id: CardId) {
     if (timeMode.value) timeMode.value = null; // Bento 被改动 → 回到自由网格
-    if (focusId.value === id) focusId.value = null; // 关闭的是主卡 → 退出聚焦
+    if (focusId.value !== null) {
+      // 聚焦态关闭任意卡：先清内联定位、整体回到网格，杜绝叠层
+      clearSlotInline();
+      focusId.value = null;
+    }
     openCards.value = openCards.value.filter((c) => c !== id);
     if (freeMode.value) delete freeRects.value[id];
   }
@@ -364,6 +384,7 @@ export function useWorkbench() {
   }
   // 模式：整组替换，并恢复默认分区
   function setMode(cards: CardId[]) {
+    clearSlotInline(); // 切换整组模式前清掉聚焦内联样式
     zoneOverride.value = {};
     timeMode.value = null;
     freeMode.value = false;
@@ -375,6 +396,7 @@ export function useWorkbench() {
   function enterTimeMode(id: string) {
     const p = TIME_PRESETS.find((x) => x.id === id);
     if (!p) return;
+    clearSlotInline(); // 从聚焦 / 其他模式进入时段：清内联定位
     zoneOverride.value = {};
     timeMode.value = id;
     freeMode.value = false;
@@ -631,6 +653,8 @@ export function useWorkbench() {
     return JSON.stringify(cards);
   }
   function applySnapshot(json: string) {
+    clearSlotInline(); // 恢复命名布局 / 启动恢复：清掉聚焦内联定位
+    focusId.value = null;
     try {
       const arr = JSON.parse(json) as SnapshotCard[];
       if (!Array.isArray(arr)) return;
@@ -726,6 +750,8 @@ export function useWorkbench() {
   }
   // 重置：恢复默认分区 + 默认顺序
   function resetLayout() {
+    clearSlotInline();
+    focusId.value = null;
     zoneOverride.value = {};
     freeMode.value = false;
     freeRects.value = {};
@@ -747,6 +773,7 @@ export function useWorkbench() {
     isFocused,
     focus,
     restoreFocus,
+    clearSlotInline,
     setMode,
     layout,
     zoneOf,
