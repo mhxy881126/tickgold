@@ -3,8 +3,12 @@ import { ref, computed, onMounted } from "vue";
 import {
   fetchLhbList,
   fetchLhbDetail,
+  fetchSeatBack,
+  fetchSeatTrades,
   type LhbStock,
   type LhbDetail,
+  type SeatBack,
+  type SeatTrades,
 } from "../api/market";
 
 const emit = defineEmits<{ (e: "select", code: string): void }>();
@@ -15,6 +19,16 @@ const selCode = ref<string | null>(null);
 const detail = ref<LhbDetail | null>(null);
 const loading = ref(false);
 const sortMode = ref<"net" | "pct">("net");
+
+// ===== 席位跟庄统计 =====
+const view = ref<"seat" | "dept">("seat");
+const seatBack = ref<SeatBack | null>(null);
+const seatTrades = ref<SeatTrades | null>(null);
+const seatTag = ref("");
+const seatLoading = ref(false);
+const seatPage = ref(1);
+const horizons = ["d1", "d2", "d3", "d5", "d10"] as const;
+const horizonLabels = ["1日", "2日", "3日", "5日", "10日"];
 
 // ===== 日期工具（跳过周末；节假日手动多点一次）=====
 function fmt(d: Date): string {
@@ -86,6 +100,7 @@ async function loadDate(date: string) {
 // ===== 选中个股 → 席位明细 =====
 async function pick(code: string, link = true) {
   selCode.value = code;
+  view.value = "seat";
   if (link) emit("select", code);
   try {
     detail.value = await fetchLhbDetail(code, curDate.value);
@@ -93,6 +108,50 @@ async function pick(code: string, link = true) {
     console.error("lhb detail", e);
     detail.value = null;
   }
+}
+
+// ===== 点击营业部名 → 该席位跟庄统计 =====
+async function openSeat(s: { code: string; name: string; tag: string }) {
+  if (!s.code) return;
+  seatLoading.value = true;
+  seatTag.value = s.tag;
+  seatPage.value = 1;
+  try {
+    const [b, t] = await Promise.all([
+      fetchSeatBack(s.code),
+      fetchSeatTrades(s.code, 50, 1),
+    ]);
+    seatBack.value = b;
+    seatTrades.value = t;
+    view.value = "dept";
+  } catch (e) {
+    console.error("seat stat", e);
+  } finally {
+    seatLoading.value = false;
+  }
+}
+
+// 历史上榜明细加载更多（翻页）
+async function moreSeat() {
+  if (!seatTrades.value) return;
+  const code = seatTrades.value.code;
+  seatPage.value++;
+  try {
+    const t = await fetchSeatTrades(code, 50, seatPage.value);
+    seatTrades.value.trades.push(...t.trades);
+  } catch (e) {
+    console.error("seat more", e);
+    seatPage.value--;
+  }
+}
+
+function backToSeat() {
+  view.value = "seat";
+}
+
+// 点历史上榜股票 → 联动 K 线
+function selectStock(code: string) {
+  emit("select", code);
 }
 
 function prevDay() {
@@ -112,8 +171,8 @@ function tagClass(tag: string): string {
   if (tag.includes("拉萨")) return "t-lasa";
   return "t-hot";
 }
-function pctCls(n: number): string {
-  return n > 0 ? "up" : n < 0 ? "down" : "";
+function pctCls(n: number | null): string {
+  return n != null && n > 0 ? "up" : n != null && n < 0 ? "down" : "";
 }
 
 onMounted(() => loadDate(""));
@@ -168,9 +227,78 @@ onMounted(() => loadDate(""));
         <div v-if="!loading && !stocks.length" class="empty">当日无龙虎榜数据</div>
       </div>
 
-      <!-- 右侧席位明细 -->
+      <!-- 右侧席位明细 / 席位跟庄统计 -->
       <div class="dt-right">
-        <div v-if="detail" class="detail-wrap">
+        <div v-if="seatLoading" class="loading seat-loading">席位统计加载中…</div>
+        <template v-else>
+        <!-- 跟庄统计视图 -->
+        <div v-if="view === 'dept'" class="dept-wrap">
+          <button class="back-btn" @click="backToSeat">‹ 返回个股席位</button>
+          <div class="dept-head">
+            <b class="dept-name" :title="seatBack?.name">{{ seatBack?.name || seatTrades?.name }}</b>
+            <em v-if="seatTag" class="tag" :class="tagClass(seatTag)">{{ seatTag }}</em>
+          </div>
+
+          <!-- 回测概况：胜率矩阵 -->
+          <div class="sec-title">上榜后表现回测</div>
+          <div class="back-table">
+            <div class="bt-row bt-head">
+              <span class="bt-cycle">周期</span>
+              <span v-for="(h, i) in horizonLabels" :key="i" class="bt-cell">{{ h }}</span>
+            </div>
+            <div v-for="r in seatBack?.rows" :key="r.cycle" class="bt-row">
+              <span class="bt-cycle">{{ r.cycle }}</span>
+              <span v-for="hk in horizons" :key="hk" class="bt-cell">
+                <template v-if="r[hk].times > 0">
+                  <b :class="pctCls(r[hk].avg)">{{ r[hk].avg > 0 ? "+" : "" }}{{ r[hk].avg.toFixed(2) }}%</b>
+                  <i class="prob">胜率 {{ r[hk].prob.toFixed(0) }}%</i>
+                  <i class="times">{{ r[hk].times }} 次</i>
+                </template>
+                <i v-else class="no">—</i>
+              </span>
+            </div>
+          </div>
+          <div v-if="!seatBack?.rows.length" class="mini-empty">该席位暂无回测数据</div>
+
+          <!-- 历史上榜明细 -->
+          <div class="sec-title">
+            历史上榜明细
+            <span class="sec-sub" v-if="seatTrades">共 {{ seatTrades.total }} 次</span>
+          </div>
+          <div class="tr-table">
+            <div class="tr-row tr-head">
+              <span class="c-date">日期</span>
+              <span class="c-stock">股票</span>
+              <span class="c-pct">当日</span>
+              <span class="c-net">净额</span>
+              <span class="c-d">后1日</span>
+              <span class="c-d">后2日</span>
+              <span class="c-d">后3日</span>
+              <span class="c-d">后5日</span>
+            </div>
+            <div v-for="(t, i) in seatTrades?.trades" :key="i" class="tr-row">
+              <span class="c-date">{{ t.date.slice(5) }}</span>
+              <span class="c-stock">
+                <span class="stock-link" @click="selectStock(t.code)">{{ t.name }}</span>
+                <i class="c-code">{{ t.code }}</i>
+              </span>
+              <span class="c-pct" :class="pctCls(t.pct)">{{ t.pct > 0 ? "+" : "" }}{{ t.pct.toFixed(1) }}</span>
+              <span class="c-net" :class="pctCls(t.net)">{{ money(t.net) }}</span>
+              <span class="c-d" :class="pctCls(t.d1)">{{ t.d1 == null ? "—" : (t.d1 > 0 ? "+" : "") + t.d1.toFixed(1) }}</span>
+              <span class="c-d" :class="pctCls(t.d2)">{{ t.d2 == null ? "—" : (t.d2 > 0 ? "+" : "") + t.d2.toFixed(1) }}</span>
+              <span class="c-d" :class="pctCls(t.d3)">{{ t.d3 == null ? "—" : (t.d3 > 0 ? "+" : "") + t.d3.toFixed(1) }}</span>
+              <span class="c-d" :class="pctCls(t.d5)">{{ t.d5 == null ? "—" : (t.d5 > 0 ? "+" : "") + t.d5.toFixed(1) }}</span>
+            </div>
+          </div>
+          <div v-if="seatTrades && seatTrades.trades.length < seatTrades.total" class="more-wrap">
+            <button class="more-btn" @click="moreSeat">
+              加载更多（已显示 {{ seatTrades.trades.length }} / {{ seatTrades.total }}）
+            </button>
+          </div>
+        </div>
+
+        <!-- 席位明细视图 -->
+        <div v-else-if="detail" class="detail-wrap">
           <div class="d-head">
             <b class="d-name">{{ detail.name }}</b>
             <span class="d-code">{{ detail.code }}</span>
@@ -193,7 +321,7 @@ onMounted(() => loadDate(""));
             >
               <span class="sn">
                 <i class="rank buy-rank">买{{ i + 1 }}</i>
-                <span class="sn-name" :title="s.name">{{ s.name }}</span>
+                <span class="sn-name seat-link" :title="s.name + '（点击查看该席位上榜后表现）'" @click.stop="openSeat(s)">{{ s.name }}</span>
                 <em v-if="s.tag" class="tag" :class="tagClass(s.tag)">{{ s.tag }}</em>
               </span>
               <span class="amt up">{{ money(s.buy) }}</span>
@@ -208,7 +336,7 @@ onMounted(() => loadDate(""));
             >
               <span class="sn">
                 <i class="rank sell-rank">卖{{ i + 1 }}</i>
-                <span class="sn-name" :title="s.name">{{ s.name }}</span>
+                <span class="sn-name seat-link" :title="s.name + '（点击查看该席位上榜后表现）'" @click.stop="openSeat(s)">{{ s.name }}</span>
                 <em v-if="s.tag" class="tag" :class="tagClass(s.tag)">{{ s.tag }}</em>
               </span>
               <span class="amt dim">{{ money(s.buy) }}</span>
@@ -218,6 +346,7 @@ onMounted(() => loadDate(""));
           </div>
         </div>
         <div v-else class="empty">点击左侧个股查看买卖席位</div>
+        </template>
       </div>
     </div>
   </div>
@@ -500,6 +629,216 @@ onMounted(() => loadDate(""));
 .t-north { color: #b48de8; background: rgba(180,141,232,.15); }
 .t-quant { color: #54d2d2; background: rgba(84,210,210,.13); }
 .t-lasa { color: #e8a45a; background: rgba(232,164,90,.14); }
+
+/* 席位名可点击 */
+.seat-link {
+  cursor: pointer;
+}
+.seat-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.seat-loading {
+  padding-top: 48px;
+}
+
+/* 跟庄统计面板 */
+.dept-wrap {
+  padding: 8px 10px 16px;
+}
+.back-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 3px 10px;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+.back-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.dept-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.dept-name {
+  font-size: 13px;
+  line-height: 1.3;
+}
+.sec-title {
+  margin-top: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.sec-title::before {
+  content: "";
+  width: 3px;
+  height: 11px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.sec-sub {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+
+/* 回测胜率矩阵 */
+.back-table {
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.bt-row {
+  display: grid;
+  grid-template-columns: 50px repeat(5, 1fr);
+}
+.bt-row + .bt-row {
+  border-top: 1px solid var(--border);
+}
+.bt-head {
+  background: var(--bg-card);
+}
+.bt-head span {
+  font-size: 9.5px;
+  color: var(--text-dim);
+}
+.bt-cycle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 5px 4px;
+}
+.bt-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 3px;
+  border-left: 1px solid var(--border);
+}
+.bt-cell b {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.bt-cell .prob {
+  font-style: normal;
+  font-size: 9px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.bt-cell .times {
+  font-style: normal;
+  font-size: 8.5px;
+  color: var(--text-dim);
+}
+.bt-cell .no {
+  font-style: normal;
+  color: var(--text-dim);
+}
+.mini-empty {
+  margin-top: 8px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* 历史上榜明细表 */
+.tr-table {
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.tr-row {
+  display: grid;
+  grid-template-columns: 38px minmax(64px, 1fr) 42px 44px repeat(4, 39px);
+  align-items: center;
+}
+.tr-row + .tr-row {
+  border-top: 1px solid var(--border);
+}
+.tr-row:hover {
+  background: var(--bg-hover);
+}
+.tr-row > span,
+.tr-row > i {
+  padding: 3.5px 3px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.c-date {
+  text-align: center;
+  color: var(--text-dim);
+}
+.c-stock {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  line-height: 1.25;
+}
+.stock-link {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 10.5px;
+  color: var(--text);
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stock-link:hover {
+  color: var(--accent);
+}
+.c-code {
+  font-style: normal;
+  font-size: 8.5px;
+  color: var(--text-dim);
+}
+.c-pct,
+.c-net,
+.c-d {
+  text-align: right;
+  font-weight: 500;
+}
+.tr-head .c-date {
+  text-align: center;
+}
+.tr-head .c-stock {
+  text-align: left;
+}
+.more-wrap {
+  margin-top: 8px;
+  text-align: center;
+}
+.more-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 6px;
+  font-size: 10.5px;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+.more-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 
 .up { color: var(--up); }
 .down { color: var(--down); }

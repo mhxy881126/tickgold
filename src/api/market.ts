@@ -439,3 +439,58 @@ export async function fetchLhbList(date = ""): Promise<LhbList> {
 export async function fetchLhbDetail(code: string, date = ""): Promise<LhbDetail> {
   return await invoke<LhbDetail>("get_lhb_detail", { code, date });
 }
+
+// ===== 席位跟庄统计（营业部上榜后表现 / 历史上榜明细）=====
+export interface SeatHorizonStat {
+  avg: number;    // 上榜后平均涨幅 %
+  prob: number;   // 上涨概率 %
+  times: number;  // 样本（买入）次数
+}
+export interface SeatBackRow {
+  cycle: string; // 近一月 / 近三月 / 近六月 / 近一年
+  d1: SeatHorizonStat;
+  d2: SeatHorizonStat;
+  d3: SeatHorizonStat;
+  d5: SeatHorizonStat;
+  d10: SeatHorizonStat;
+}
+export interface SeatBack {
+  code: string;
+  name: string;
+  rows: SeatBackRow[];
+}
+export interface SeatTrade {
+  date: string;
+  code: string;
+  name: string;
+  buy: number;
+  sell: number;
+  net: number;
+  pct: number;
+  reason: string;
+  d1: number | null;
+  d2: number | null;
+  d3: number | null;
+  d5: number | null;
+  d10: number | null;
+  d20: number | null;
+  d30: number | null;
+}
+export interface SeatTrades {
+  code: string;
+  name: string;
+  total: number;
+  trades: SeatTrade[];
+}
+/** 营业部上榜后表现回测概况（近月/季/半年/一年 × 1/2/3/5/10 日胜率） */
+export async function fetchSeatBack(code: string): Promise<SeatBack> {
+  return await invoke<SeatBack>("get_seat_back", { code });
+}
+/** 营业部历史上榜明细（含上榜后 1/2/3/5/10/20/30 日涨跌幅，page 从 1 开始） */
+export async function fetchSeatTrades(
+  code: string,
+  size = 50,
+  page = 1
+): Promise<SeatTrades> {
+  return await invoke<SeatTrades>("get_seat_trades", { code, size, page });
+}

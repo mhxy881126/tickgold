@@ -150,6 +150,20 @@ async fn get_lhb_detail(
 }
 
 #[tauri::command]
+async fn get_seat_back(code: String) -> Result<market::eastmoney::SeatBack, String> {
+    market::eastmoney::seat_back(&code).await
+}
+
+#[tauri::command]
+async fn get_seat_trades(
+    code: String,
+    size: i64,
+    page: i64,
+) -> Result<market::eastmoney::SeatTrades, String> {
+    market::eastmoney::seat_trades(&code, size, page).await
+}
+
+#[tauri::command]
 async fn start_spider(
     app: tauri::AppHandle,
     watch: Vec<String>,
@@ -592,6 +606,8 @@ pub fn run() {
             get_zb_pool,
             get_lhb_list,
             get_lhb_detail,
+            get_seat_back,
+            get_seat_trades,
             start_spider,
             stop_spider,
             start_radar,

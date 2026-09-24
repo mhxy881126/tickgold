@@ -958,3 +958,181 @@ pub async fn lhb_detail(code: &str, date: &str) -> Result<LhbDetail, String> {
         groups,
     })
 }
+
+// ===== 席位跟庄统计（营业部上榜后表现 + 历史上榜明细）=====
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SeatHorizonStat {
+    pub avg: f64,    // 上榜后平均涨幅 %
+    pub prob: f64,   // 上涨概率 %
+    pub times: i64,  // 样本（买入）次数
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SeatBackRow {
+    pub cycle: String,   // 近一月 / 近三月 / 近六月 / 近一年
+    pub d1: SeatHorizonStat,
+    pub d2: SeatHorizonStat,
+    pub d3: SeatHorizonStat,
+    pub d5: SeatHorizonStat,
+    pub d10: SeatHorizonStat,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SeatBack {
+    pub code: String,
+    pub name: String,
+    pub rows: Vec<SeatBackRow>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SeatTrade {
+    pub date: String,
+    pub code: String,
+    pub name: String,
+    pub buy: f64,
+    pub sell: f64,
+    pub net: f64,
+    pub pct: f64,
+    pub reason: String,
+    pub d1: Option<f64>,
+    pub d2: Option<f64>,
+    pub d3: Option<f64>,
+    pub d5: Option<f64>,
+    pub d10: Option<f64>,
+    pub d20: Option<f64>,
+    pub d30: Option<f64>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SeatTrades {
+    pub code: String,
+    pub name: String,
+    pub total: i64,
+    pub trades: Vec<SeatTrade>,
+}
+
+/// Value -> Option<f64>（字段为 null 时返回 None）
+fn vfo(v: &Value, k: &str) -> Option<f64> {
+    v.get(k).and_then(|x| x.as_f64())
+}
+
+/// 营业部上榜后表现回测概况（近月/季/半年/一年 × 1/2/3/5/10 日胜率）
+pub async fn seat_back(code: &str) -> Result<SeatBack, String> {
+    let filter = enc_filter(&format!("(OPERATEDEPT_CODE=\"{}\")", code));
+    let rows = dc_get(
+        "RPT_TRADE_BACK_PROFILE", "ALL", &filter, "", "", 50, 1,
+    )
+    .await?;
+
+    let mut sorted = rows.clone();
+    sorted.sort_by_key(|v| vs2(v, "STATISTICSCYCLE"));
+
+    let mut name = String::new();
+    let mut out: Vec<SeatBackRow> = vec![];
+    for v in &sorted {
+        if name.is_empty() {
+            name = vs2(v, "ORG_NAME_ABBR");
+        }
+        let h = |n: &str| SeatHorizonStat {
+            avg: vf(v, &format!("AVERAGE_INCREASE_{}DAY", n)),
+            prob: vf(v, &format!("RISE_PROBABILITY_{}DAY", n)),
+            times: vi(v, &format!("TOTAL_BUYER_SALESTIMES_{}DAY", n)),
+        };
+        out.push(SeatBackRow {
+            cycle: vs2(v, "STATISTICSCYCLENAME"),
+            d1: h("1"),
+            d2: h("2"),
+            d3: h("3"),
+            d5: h("5"),
+            d10: h("10"),
+        });
+    }
+    if name.is_empty() {
+        if let Some(v) = rows.first() {
+            name = vs2(v, "OPERATEDEPT_NAME");
+        }
+    }
+    Ok(SeatBack {
+        code: code.to_string(),
+        name,
+        rows: out,
+    })
+}
+
+/// 营业部历史上榜明细（含上榜后 1/2/3/5/10/20/30 日涨跌幅），按日期倒序分页
+pub async fn seat_trades(code: &str, size: i64, page: i64) -> Result<SeatTrades, String> {
+    let filter = enc_filter(&format!("(OPERATEDEPT_CODE=\"{}\")", code));
+    let url = format!(
+        "https://datacenter-web.eastmoney.com/api/data/v1/get?sortColumns=TRADE_DATE,SECURITY_CODE&sortTypes=-1,1&pageSize={}&pageNumber={}&reportName=RPT_OPERATEDEPT_TRADE_DETAILSNEW&columns=ALL&source=WEB&client=WEB&filter={}",
+        size, page, filter
+    );
+    let resp = http()
+        .get(&url)
+        .header(
+            "Referer",
+            format!("https://data.eastmoney.com/stock/lhb/yyb/{}.html", code),
+        )
+        .header("Accept", "application/json, text/plain, */*")
+        .timeout(std::time::Duration::from_secs(12))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let v: Value = resp.json().await.map_err(|e| e.to_string())?;
+    let result = v.get("result");
+    let total = result
+        .and_then(|r| r.get("count"))
+        .and_then(|c| c.as_i64())
+        .unwrap_or(0);
+    let data = result
+        .and_then(|r| r.get("data"))
+        .and_then(|d| d.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let mut name = String::new();
+    let mut trades: Vec<SeatTrade> = vec![];
+    for x in &data {
+        if name.is_empty() {
+            name = vs2(x, "ORG_NAME_ABBR");
+        }
+        let raw_dt = vs2(x, "TRADE_DATE");
+        let date = if raw_dt.len() >= 10 {
+            raw_dt[..10].to_string()
+        } else {
+            raw_dt
+        };
+        trades.push(SeatTrade {
+            date,
+            code: vs2(x, "SECURITY_CODE"),
+            name: vs2(x, "SECURITY_NAME_ABBR"),
+            buy: vf(x, "ACT_BUY"),
+            sell: vf(x, "ACT_SELL"),
+            net: vf(x, "NET_AMT"),
+            pct: vf(x, "CHANGE_RATE"),
+            reason: vs2(x, "EXPLANATION"),
+            d1: vfo(x, "D1_CLOSE_ADJCHRATE"),
+            d2: vfo(x, "D2_CLOSE_ADJCHRATE"),
+            d3: vfo(x, "D3_CLOSE_ADJCHRATE"),
+            d5: vfo(x, "D5_CLOSE_ADJCHRATE"),
+            d10: vfo(x, "D10_CLOSE_ADJCHRATE"),
+            d20: vfo(x, "D20_CLOSE_ADJCHRATE"),
+            d30: vfo(x, "D30_CLOSE_ADJCHRATE"),
+        });
+    }
+    if name.is_empty() {
+        if let Some(x) = data.first() {
+            name = vs2(x, "OPERATEDEPT_NAME");
+        }
+    }
+    Ok(SeatTrades {
+        code: code.to_string(),
+        name,
+        total,
+        trades,
+    })
+}
