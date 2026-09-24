@@ -268,6 +268,14 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const colOf = (v: number) => (v > 0 ? UP : v < 0 ? DOWN_K : FLAT);
 const frow = (label: string, value: string, color?: string) => ({ label, value, color });
+// 生成完整的 LineStyle（缺字段会导致库内部 mergeLines 读取 dashedValue 崩溃）
+const line = (color: string, size = 1) => ({
+  color,
+  style: "solid" as const,
+  smooth: false,
+  size,
+  dashedValue: [2, 2] as [number, number],
+});
 
 // ===== 自定义指标①：分时均价 =====
 registerIndicator({
@@ -401,8 +409,8 @@ function buildStyles(minute: boolean) {
   const base: any = {
     grid: {
       show: true,
-      horizontal: { show: true, color: gridLine },
-      vertical: { show: true, color: gridLine },
+      horizontal: { show: true, ...line(gridLine) },
+      vertical: { show: true, ...line(gridLine) },
     },
     candle: {
       type: minute ? "area" : "candle_solid",
@@ -471,13 +479,13 @@ function renderChart(bars: KBar[], minute: boolean) {
   chart.applyNewData(toKData(bars));
 
   if (minute) {
-    chart.createIndicator({ name: "AVG", styles: { lines: [{ color: AVG_Y }] } } as any, false, { id: "candle_pane" });
+    chart.createIndicator({ name: "AVG", styles: { lines: [line(AVG_Y)] } } as any, false, { id: "candle_pane" });
     chart.createIndicator("VOL", false, { height: 84 });
   } else {
     chart.createIndicator({
       name: "MA",
       calcParams: maCfg.value.periods.slice(),
-      styles: { lines: maCfg.value.colors.map((c) => ({ color: c })) },
+      styles: { lines: maCfg.value.colors.map((c) => line(c)) },
     } as any, false, { id: "candle_pane" });
     chart.createIndicator("VOL", false, { height: 76 });
     chart.createIndicator("MACD", false, { height: 84 });
@@ -653,7 +661,7 @@ async function openPopup(kd: KLineData) {
   try {
     const hist = await fetchHistMinute(props.code, date);
     pc.applyNewData(toKData(hist));
-    pc.createIndicator({ name: "AVG", styles: { lines: [{ color: AVG_Y }] } } as any, false, { id: "candle_pane" });
+    pc.createIndicator({ name: "AVG", styles: { lines: [line(AVG_Y)] } } as any, false, { id: "candle_pane" });
     pc.createIndicator("VOL", false, { height: 70 });
   } catch (e: any) {
     popupErr.value = e?.message || String(e);
@@ -818,7 +826,7 @@ function applyMaToChart() {
   chart?.overrideIndicator({
     name: "MA", id: "MA",
     calcParams: maCfg.value.periods.slice(),
-    styles: { lines: maCfg.value.colors.map((c) => ({ color: c })) },
+    styles: { lines: maCfg.value.colors.map((c) => line(c)) },
   } as any);
 }
 

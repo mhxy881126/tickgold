@@ -14,7 +14,7 @@ function hhmm(t: number) {
 
 // 三列电报（按序轮播分栏）
 const cols = computed(() => [0, 1, 2].map((c) => events.value.filter((_, i) => i % 3 === c)));
-const durations = [22, 30, 38];
+const durations = [34, 44, 54];
 
 // 快讯
 const newsText = ref("");
@@ -117,7 +117,7 @@ onMounted(async () => {
 .tw { display:flex;flex-direction:column;height:100%;min-height:0;
   background:#05070a;font-family:ui-monospace,'Cascadia Code',Consolas,monospace; }
 .marq { height:34px;flex-shrink:0;overflow:hidden;border-bottom:1px solid #1d2430;background:#080b10;display:flex;align-items:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; }
-.marq-track { display:flex;align-items:center;white-space:nowrap;font-size:13px;animation:marq 200s linear infinite; }
+.marq-track { display:flex;align-items:center;white-space:nowrap;font-size:13px;animation:marq 360s linear infinite; }
 @keyframes marq{from{transform:translateX(0);}to{transform:translateX(-50%);}}
 .mpill { display:inline-flex;gap:8px;padding:0 20px;font-size:13px;border-right:1px solid #1d2430; }
 .mpill .mn { color:#c2ccda;font-weight:500; }
@@ -144,7 +144,7 @@ onMounted(async () => {
 .loading { position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#7e889c;font-size:11px; }
 .news { height:34px;flex-shrink:0;display:flex;align-items:center;border-top:1px solid #1d2430;background:#0a0d12;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; }
 .news-tag { flex-shrink:0;font-size:10px;font-weight:800;color:#05070a;background:#ffd24d;padding:3px 9px;margin:0 10px;border-radius:5px; }
-.news-track { display:flex;white-space:nowrap;font-size:13px;color:#eef2f8;animation:marq 240s linear infinite; }
+.news-track { display:flex;white-space:nowrap;font-size:13px;color:#eef2f8;animation:marq 420s linear infinite; }
 .news-track span { padding-right:60px; }
 .red { color:#ff5d6b; } .green { color:#1dffa0; } .yellow { color:#ffd24d; }
 .tone.up { color:#ff5d6b; } .tone.down { color:#1dffa0; } .tone.neutral { color:#ffd24d; }

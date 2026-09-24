@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<title>KLineChart 渲染诊断</title>
+<style>
+  body { margin:0; background:#0a0a0a; color:#ddd; font-family:sans-serif; }
+  h3 { margin:10px 12px 4px; font-size:13px; }
+  .box { margin:0 12px 14px; height:300px; border:1px solid #222; }
+  #diag { white-space:pre-wrap; font-size:11px; color:#7fd; padding:8px 12px; }
+</style>
+<script>window.process = { env: { NODE_ENV: "production" } };</script>
+<script type="importmap">
+{ "imports": { "klinecharts": "https://cdn.jsdelivr.net/npm/klinecharts@9.8.12/dist/index.esm.js" } }
+</script>
+</head>
+<body>
+<h3>图1 · 最简默认 createIndicator("MA")</h3>
+<div id="c1" class="box"></div>
+<h3>图2 · 自定义 calcParams + styles.lines</h3>
+<div id="c2" class="box"></div>
+<div id="diag">等待诊断…</div>
+
+<script type="module">
+import { init } from "klinecharts";
+
+function gen(n) {
+  const out = []; let p = 50;
+  let t = new Date("2025-01-01T00:00:00Z").getTime();
+  for (let i = 0; i < n; i++) {
+    const o = p;
+    const c = Math.max(1, o + (Math.random() - 0.48) * 1.6);
+    const hi = Math.max(o, c) + Math.random() * 0.8;
+    const lo = Math.min(o, c) - Math.random() * 0.8;
+    out.push({ timestamp: t, open:+o.toFixed(2), high:+hi.toFixed(2),
+      low:+lo.toFixed(2), close:+c.toFixed(2), volume: Math.round(1e5+Math.random()*5e5) });
+    p = c; t += 86400000;
+  }
+  return out;
+}
+const data = gen(300);
+
+const c1 = window.__c1 = init(document.getElementById("c1"));
+c1.applyNewData(data);
+c1.createIndicator("MA", false, { id: "candle_pane" });
+c1.createIndicator("VOL", false, { height: 60 });
+c1.resize();
+
+const c2 = window.__c2 = init(document.getElementById("c2"));
+c2.applyNewData(data);
+const periods = [5, 10, 20, 30, 60];
+const colors = ["#f5d020", "#ff8800", "#c060ff", "#19c3ff", "#3aa6ff"];
+const ls = (c) => ({ color: c, style: "solid", smooth: false, size: 1, dashedValue: [2, 2] });
+c2.createIndicator({
+  name: "MA",
+  calcParams: periods.slice(),
+  styles: { lines: colors.map((c) => ls(c)) },
+}, false, { id: "candle_pane" });
+c2.createIndicator("VOL", false, { height: 60 });
+c2.resize();
+
+window.__diag = function () {
+  const lines = [];
+  for (const tag of ["__c1", "__c2"]) {
+    const ch = window[tag];
+    const store = ch._chartStore;
+    const insts = store.getIndicatorStore().getInstances("candle_pane");
+    lines.push("=== " + tag + " candle_pane indicators: " + insts.map(i=>i.name).join(","));
+    for (const ins of insts) {
+      lines.push(" [" + ins.name + "] calcParams=" + JSON.stringify(ins.calcParams) +
+        " figures.keys=" + JSON.stringify((ins.figures||[]).map(f=>f.key)) +
+        " figures.types=" + JSON.stringify((ins.figures||[]).map(f=>f.type)));
+      const r = ins.result || [];
+      const last = r[r.length-1];
+      lines.push("   result.len=" + r.length + " last=" + JSON.stringify(last) +
+        " styles.lines=" + JSON.stringify((ins.styles?.lines||[]).map(l=>({color:l.color,size:l.size,style:l.style}))));
+    }
+    // grid style
+    lines.push(" grid=" + JSON.stringify(ch.getStyles().grid));
+  }
+  const txt = lines.join("\n");
+  document.getElementById("diag").textContent = txt;
+  return txt;
+};
+setTimeout(() => { const t = window.__diag(); console.log(t); }, 1500);
+</script>
+</body>
+</html>
