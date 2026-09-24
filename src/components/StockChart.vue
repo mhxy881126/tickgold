@@ -228,7 +228,7 @@ let avgMapCur = new Map<number, number>();
 const showPosInfo = ref(false);
 const showCostLine = ref(false);
 const showTradePts = ref(false);
-const showTd = ref(false);
+const showTd = ref(true); // 神奇九转默认开启（K线 / 分时均显示）
 
 // ---- 头部合并字段（Quote 为主，OrderBook 兜底）----
 const headName = computed(() => q.value?.name ?? ob.value?.name ?? "-");
@@ -275,10 +275,7 @@ registerIndicator({
   shortName: "均价",
   series: "price" as any,
   precision: 2,
-  figures: [{
-    key: "avg", title: "均价", type: "line",
-    styles: (() => ({ color: AVG_Y })) as any,
-  }],
+  figures: [{ key: "avg", title: "均价", type: "line" }],
   calc: (dataList: KLineData[]) => {
     let tv = 0, v = 0;
     return dataList.map((d) => {
@@ -293,7 +290,7 @@ registerIndicator({
 registerIndicator({
   name: "td9",
   shortName: "九转",
-  series: "normal" as any,
+  series: "price" as any,
   calcParams: [],
   figures: [],
   calc: (dataList: KLineData[]) => {
@@ -329,7 +326,7 @@ registerIndicator({
       const r = indicator.result?.[i];
       const d = kLineDataList[i];
       if (!r?.td || !d) continue;
-      const x = xAxis.convertToPixel(d.timestamp);
+      const x = xAxis.convertToPixel(i);
       const y = yAxis.convertToPixel(r.isBuy ? d.low : d.high) + (r.isBuy ? size + 5 : -(size + 5));
       ctx.fillStyle = r.isBuy ? DOWN_K : UP;
       ctx.fillText(String(r.td), x, y);
@@ -341,7 +338,7 @@ registerIndicator({
 registerIndicator({
   name: "tradePoints",
   shortName: "买卖点",
-  series: "normal" as any,
+  series: "price" as any,
   calcParams: [],
   figures: [],
   calc: (dataList: KLineData[]) => dataList.map(() => ({})),
@@ -356,7 +353,7 @@ registerIndicator({
     for (const m of marks) {
       const d = kLineDataList[m.index];
       if (!d) continue;
-      const x = xAxis.convertToPixel(d.timestamp);
+      const x = xAxis.convertToPixel(m.index);
       if (m.side === "buy") {
         ctx.fillStyle = UP;
         ctx.fillText("B", x, yAxis.convertToPixel(d.low) + size + 7);
@@ -474,16 +471,19 @@ function renderChart(bars: KBar[], minute: boolean) {
   chart.applyNewData(toKData(bars));
 
   if (minute) {
-    chart.createIndicator("AVG", false, { id: "candle_pane" });
+    chart.createIndicator({ name: "AVG", styles: { lines: [{ color: AVG_Y }] } } as any, false, { id: "candle_pane" });
     chart.createIndicator("VOL", false, { height: 84 });
   } else {
-    chart.createIndicator("MA", false, { id: "candle_pane" });
-    applyMaToChart();
+    chart.createIndicator({
+      name: "MA",
+      calcParams: maCfg.value.periods.slice(),
+      styles: { lines: maCfg.value.colors.map((c) => ({ color: c })) },
+    } as any, false, { id: "candle_pane" });
     chart.createIndicator("VOL", false, { height: 76 });
     chart.createIndicator("MACD", false, { height: 84 });
   }
 
-  // 叠加层恢复
+  // 叠加层恢复（同 pane 叠加必须 isStack=true，否则会清空 MA/AVG）
   if (showTd.value) chart.createIndicator("td9", true, { id: "candle_pane" });
   if (showTradePts.value) addTradePointsToChart();
   if (showCostLine.value) addCostLineToChart();
@@ -653,7 +653,7 @@ async function openPopup(kd: KLineData) {
   try {
     const hist = await fetchHistMinute(props.code, date);
     pc.applyNewData(toKData(hist));
-    pc.createIndicator("AVG", false, { id: "candle_pane" });
+    pc.createIndicator({ name: "AVG", styles: { lines: [{ color: AVG_Y }] } } as any, false, { id: "candle_pane" });
     pc.createIndicator("VOL", false, { height: 70 });
   } catch (e: any) {
     popupErr.value = e?.message || String(e);
@@ -799,8 +799,8 @@ async function newGroupThenAdd() {
 const maDlg = ref(false);
 const maDraft = ref<{ period: number; color: string }[]>([]);
 const maCfg = ref({
-  periods: [5, 10, 20, 60],
-  colors: ["#f5d020", "#ff8800", "#c060ff", "#3aa6ff"],
+  periods: [5, 10, 20, 30, 60],
+  colors: ["#f5d020", "#ff8800", "#c060ff", "#19c3ff", "#3aa6ff"],
 });
 function openMaDlg() {
   maDraft.value = maCfg.value.periods.map((p, i) => ({ period: p, color: maCfg.value.colors[i] }));
@@ -817,7 +817,7 @@ function applyMa() {
 function applyMaToChart() {
   chart?.overrideIndicator({
     name: "MA", id: "MA",
-    calcParams: maCfg.value.periods.map((p) => ({ period: p })),
+    calcParams: maCfg.value.periods.slice(),
     styles: { lines: maCfg.value.colors.map((c) => ({ color: c })) },
   } as any);
 }
