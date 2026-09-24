@@ -4,12 +4,19 @@ const props = defineProps<{
   accent?: string;
   dragging?: boolean;
   freeDrag?: boolean;
+  focused?: boolean;
 }>();
 const emit = defineEmits<{
   close: [];
+  focus: [];
+  restore: [];
   grab: [e: PointerEvent];
   pdrag: [e: PointerEvent];
 }>();
+const EXPAND_D =
+  "M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z";
+const RESTORE_D =
+  "M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z";
 
 function onPointerDown(e: PointerEvent) {
   if (props.freeDrag) {
@@ -38,6 +45,16 @@ function onPointerDown(e: PointerEvent) {
         <circle cx="15" cy="18" r="1.4" fill="currentColor" />
       </svg>
       <span class="card-title">{{ title }}</span>
+      <button
+        class="card-focus"
+        :title="focused ? '还原（Esc）' : '放大聚焦'"
+        draggable="false"
+        @click="focused ? emit('restore') : emit('focus')"
+      >
+        <svg viewBox="0 0 24 24" width="13" height="13">
+          <path fill="currentColor" :d="focused ? RESTORE_D : EXPAND_D" />
+        </svg>
+      </button>
       <button class="card-close" title="关闭卡片" draggable="false" @click="emit('close')">
         <svg viewBox="0 0 24 24" width="13" height="13">
           <path
@@ -128,6 +145,24 @@ function onPointerDown(e: PointerEvent) {
 }
 .card-close:hover {
   background: var(--up);
+  color: #fff;
+}
+.card-focus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.card-focus:hover {
+  background: var(--accent-var, var(--accent));
   color: #fff;
 }
 

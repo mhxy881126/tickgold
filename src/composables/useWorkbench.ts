@@ -333,6 +333,15 @@ export function useWorkbench() {
   const freeRects = ref<Record<string, FreeRect>>({});
   const freeDrag = ref<(FreeRect & { id: CardId }) | null>(null);
   const freeCanvasRef = ref<HTMLElement | null>(null);
+  // 卡片聚焦（主从分屏）：非 null = 该卡放大到主区，其余卡进入右侧快速切换栏
+  const focusId = ref<CardId | null>(null);
+  const isFocused = computed(() => focusId.value !== null);
+  function focus(id: CardId) {
+    focusId.value = id;
+  }
+  function restoreFocus() {
+    focusId.value = null;
+  }
 
   function open(id: CardId) {
     if (timeMode.value) timeMode.value = null; // 手动加卡 → 退出固定 Bento，回到自由网格
@@ -343,6 +352,7 @@ export function useWorkbench() {
   }
   function close(id: CardId) {
     if (timeMode.value) timeMode.value = null; // Bento 被改动 → 回到自由网格
+    if (focusId.value === id) focusId.value = null; // 关闭的是主卡 → 退出聚焦
     openCards.value = openCards.value.filter((c) => c !== id);
     if (freeMode.value) delete freeRects.value[id];
   }
@@ -358,6 +368,7 @@ export function useWorkbench() {
     timeMode.value = null;
     freeMode.value = false;
     freeRects.value = {};
+    focusId.value = null;
     openCards.value = [...cards];
   }
   // 进入时段驾驶舱：套用该时段的卡片集合 + Bento 显式布局
@@ -731,6 +742,11 @@ export function useWorkbench() {
     close,
     toggle,
     isOpen,
+    // 卡片聚焦（主从分屏）
+    focusId,
+    isFocused,
+    focus,
+    restoreFocus,
     setMode,
     layout,
     zoneOf,

@@ -238,6 +238,11 @@ function runPalette(r?: PaletteRow) {
   closePalette();
 }
 function onGlobalKey(e: KeyboardEvent) {
+  if (bench.isFocused.value && e.key === "Escape") {
+    e.preventDefault();
+    exitFocus();
+    return;
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
     e.preventDefault();
     paletteOpen.value ? closePalette() : openPalette();
@@ -258,6 +263,115 @@ function onGlobalKey(e: KeyboardEvent) {
     e.preventDefault();
     runPalette();
   }
+}
+
+// ===== 卡片聚焦：主从分屏 + FLIP 共享元素入场 =====
+const focusTargetEl = ref<HTMLElement | null>(null);
+const focusClosing = ref(false);
+const overlayShow = computed(() => bench.isFocused.value || focusClosing.value);
+const railCards = computed(() => bench.openCards.value);
+let originRects: Record<string, DOMRect> = {};
+
+function slotEls(): HTMLElement[] {
+  const sel = bench.freeMode.value ? ".free-cell" : ".card-slot";
+  return [...document.querySelectorAll(sel)] as HTMLElement[];
+}
+// 把所有卡片固定(fixed)在当前视觉位置，脱离网格、避免重排
+function freezeSlots() {
+  originRects = {};
+  slotEls().forEach((el) => {
+    const cid = el.getAttribute("data-card-id") as string;
+    const r = el.getBoundingClientRect();
+    originRects[cid] = r;
+    el.style.transition = "none";
+    el.style.position = "fixed";
+    el.style.margin = "0";
+    el.style.left = r.left + "px";
+    el.style.top = r.top + "px";
+    el.style.width = r.width + "px";
+    el.style.height = r.height + "px";
+    el.style.zIndex = "40";
+  });
+}
+const FTRANS =
+  "left .44s cubic-bezier(.32,.78,.3,1),top .44s cubic-bezier(.32,.78,.3,1),width .44s cubic-bezier(.32,.78,.3,1),height .44s cubic-bezier(.32,.78,.3,1)";
+function placeAt(el: HTMLElement, r: { left: number; top: number; width: number; height: number }) {
+  el.style.transition = FTRANS;
+  el.style.left = r.left + "px";
+  el.style.top = r.top + "px";
+  el.style.width = r.width + "px";
+  el.style.height = r.height + "px";
+}
+function enterFocus(id: CardId) {
+  if (bench.isFocused.value) {
+    switchFocus(id);
+    return;
+  }
+  freezeSlots();
+  focusClosing.value = false;
+  bench.focus(id);
+  nextTick(() => {
+    const t = focusTargetEl.value!.getBoundingClientRect();
+    void document.body.offsetWidth;
+    slotEls().forEach((el) => {
+      if (el.getAttribute("data-card-id") === id) {
+        placeAt(el, t);
+        el.style.zIndex = "70";
+      }
+    });
+  });
+}
+function switchFocus(id: CardId) {
+  if (id === bench.focusId.value) return;
+  const t = focusTargetEl.value!.getBoundingClientRect();
+  const old = bench.focusId.value;
+  slotEls().forEach((el) => {
+    const cid = el.getAttribute("data-card-id") as string;
+    if (cid === id) {
+      placeAt(el, t);
+      el.style.zIndex = "70";
+    } else if (cid === old) {
+      placeAt(el, originRects[cid]);
+      el.style.zIndex = "40";
+    }
+  });
+  bench.focus(id);
+}
+function exitFocus() {
+  if (!bench.isFocused.value) return;
+  const fid = bench.focusId.value as CardId;
+  focusClosing.value = true;
+  slotEls().forEach((el) => {
+    if (el.getAttribute("data-card-id") === fid) placeAt(el, originRects[fid]);
+  });
+  setTimeout(() => {
+    slotEls().forEach((el) => {
+      el.style.position = "";
+      el.style.left = "";
+      el.style.top = "";
+      el.style.width = "";
+      el.style.height = "";
+      el.style.margin = "";
+      el.style.zIndex = "";
+      el.style.transition = "";
+    });
+    bench.restoreFocus();
+    focusClosing.value = false;
+  }, 460);
+}
+// 聚焦中窗口尺寸变化：主卡跟随新目标
+function refitFocus() {
+  if (!bench.isFocused.value || !focusTargetEl.value) return;
+  const t = focusTargetEl.value.getBoundingClientRect();
+  slotEls().forEach((el) => {
+    if (el.getAttribute("data-card-id") === bench.focusId.value) {
+      el.style.transition = "left .2s,top .2s,width .2s,height .2s";
+      el.style.left = t.left + "px";
+      el.style.top = t.top + "px";
+      el.style.width = t.width + "px";
+      el.style.height = t.height + "px";
+    }
+  });
 }
 
 // ===== 联动：选中股票 → 打开 K线卡片 =====
@@ -375,6 +489,7 @@ onMounted(async () => {
   // —— 全局快捷键（命令面板 Ctrl/⌘ + K 等）——
   try {
     window.addEventListener("keydown", onGlobalKey);
+    window.addEventListener("resize", refitFocus);
   } catch (e) {
     console.error("[app] hotkey", e);
   }
@@ -570,6 +685,7 @@ onBeforeUnmount(() => {
             v-for="id in bench.openCards.value"
             :key="id"
             class="free-cell"
+            :data-card-id="id"
             :class="{ dragging: bench.freeDrag.value?.id === id }"
             :style="bench.freeCellStyle(id)"
           >
@@ -577,13 +693,16 @@ onBeforeUnmount(() => {
               :title="CARD_META[id].title"
               :accent="CARD_META[id].accent"
               free-drag
+              :focused="bench.focusId.value === id"
               @close="bench.close(id)"
+              @focus="enterFocus(id)"
+              @restore="exitFocus"
               @grab="(e: PointerEvent) => bench.startFreeDrag(e, id)"
             >
               <CardContent
                 :id="id"
                 :selected="selected"
-                :compact="bench.timeMode.value !== null"
+                :compact="bench.isFocused.value ? id !== bench.focusId.value && bench.timeMode.value !== null : bench.timeMode.value !== null"
                 @select="onSelect"
               />
             </CardShell>
@@ -629,18 +748,41 @@ onBeforeUnmount(() => {
             :title="CARD_META[id].title"
             :accent="CARD_META[id].accent"
             :dragging="bench.dragId.value === id"
+            :focused="bench.focusId.value === id"
             @close="bench.close(id)"
+            @focus="enterFocus(id)"
+            @restore="exitFocus"
             @pdrag="(e: PointerEvent) => bench.pointerDragStart(id, e)"
           >
             <CardContent
               :id="id"
               :selected="selected"
-              :compact="bench.timeMode.value !== null"
+              :compact="bench.isFocused.value ? id !== bench.focusId.value && bench.timeMode.value !== null : bench.timeMode.value !== null"
               @select="onSelect"
             />
           </CardShell>
         </div>
       </TransitionGroup>
+      </template>
+
+      <!-- 卡片聚焦 overlay：遮罩 + 主区目标 + 右侧快速切换栏（与卡片同处 ws-body 层叠上下文）-->
+      <template v-if="overlayShow">
+        <div class="focus-backdrop" :class="{ closing: focusClosing }" @click="exitFocus"></div>
+        <div class="focus-target" ref="focusTargetEl"></div>
+        <div class="focus-rail" :class="{ closing: focusClosing }">
+          <button
+            v-for="id in railCards"
+            :key="id"
+            type="button"
+            class="rail-item"
+            :class="{ cur: id === bench.focusId.value }"
+            @click="switchFocus(id)"
+          >
+            <span class="ri-bar" :style="{ background: CARD_META[id].accent }"></span>
+            <span class="ri-title">{{ CARD_META[id].title }}</span>
+            <svg class="ri-chev" viewBox="0 0 24 24"><path fill="currentColor" d="M9 6l6 6-6 6z" /></svg>
+          </button>
+        </div>
       </template>
       </div>
     </main>
@@ -1098,4 +1240,46 @@ onBeforeUnmount(() => {
 .upd-text { font-size: 12px; color: #4ea1ff; white-space: nowrap; }
 .bar { width: 120px; height: 5px; border-radius: 3px; background: var(--border); overflow: hidden; }
 .fill { height: 100%; background: #4ea1ff; transition: width 0.2s; }
+
+/* ===== 卡片聚焦（主从分屏 + FLIP 共享元素入场）===== */
+.focus-backdrop {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(5, 7, 11, 0.62);
+  animation: fIn 0.35s ease both;
+}
+.focus-backdrop.closing { animation: fOut 0.3s ease both; }
+.focus-target {
+  position: fixed; left: 12px; top: 124px; right: 306px; bottom: 12px;
+  visibility: hidden; pointer-events: none;
+}
+.focus-rail {
+  position: fixed; top: 124px; right: 12px; bottom: 12px; width: 282px; z-index: 80;
+  display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding: 4px;
+  pointer-events: none;
+  animation: rIn 0.45s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+.focus-rail.closing { animation: rOut 0.28s ease both; }
+.rail-item {
+  display: flex; align-items: center; gap: 9px; flex: none;
+  pointer-events: auto;
+  padding: 10px 11px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg-card); color: var(--text);
+  cursor: pointer; text-align: left; transition: 0.16s;
+}
+.rail-item:hover { border-color: var(--border-light); transform: translateX(-2px); }
+.rail-item.cur {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
+}
+.ri-bar { width: 3px; height: 15px; border-radius: 2px; flex: none; }
+.ri-title {
+  flex: 1; font-size: 12px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ri-chev { width: 13px; height: 13px; color: var(--text-dim); flex: none; }
+.rail-item.cur .ri-chev { color: var(--accent); }
+@keyframes fIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fOut { to { opacity: 0; } }
+@keyframes rIn { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes rOut { to { opacity: 0; transform: translateX(20px); } }
 </style>
