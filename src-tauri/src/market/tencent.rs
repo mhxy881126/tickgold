@@ -183,6 +183,17 @@ fn parse_rows(rows: &[Value], period: i64) -> Vec<KBar> {
         .collect()
 }
 
+/// 公历日期 -> 自 1970-01-01 的天数（Howard Hinnant 正确算法，含闰年）
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let madj = if month > 2 { month - 3 } else { month + 9 };
+    let doy = (153 * madj + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146097 + doe - 719468
+}
+
 /// 腾讯时间串 -> ms：支持 "YYYY-MM-DD"、"YYYY-MM-DD HH:MM"、紧凑 "YYYYMMDDHHMM"
 fn tencent_ts(s: &str, period: i64) -> i64 {
     use std::time::{Duration, UNIX_EPOCH};
@@ -218,7 +229,7 @@ fn tencent_ts(s: &str, period: i64) -> i64 {
     let dd = gi(&ymd, 2, 1);
     let h = gi(&hm, 0, 0);
     let mi = gi(&hm, 1, 0);
-    let days = (y - 1970) * 365 + (y - 1969) / 4 + (mo - 1) * 30 + (dd - 1);
+    let days = days_from_civil(y, mo, dd);
     let secs = days * 86400 + h * 3600 + mi * 60;
     (UNIX_EPOCH + Duration::from_secs(secs as u64))
         .duration_since(UNIX_EPOCH)
@@ -280,7 +291,7 @@ fn minute_ts(date: &str, hhmm: &str) -> i64 {
     let d: i64 = date[6..8].parse().unwrap_or(1);
     let h: i64 = hhmm[0..2].parse().unwrap_or(0);
     let mi: i64 = hhmm[2..4].parse().unwrap_or(0);
-    let days = (y - 1970) * 365 + (y - 1969) / 4 + (mo - 1) * 30 + (d - 1);
+    let days = days_from_civil(y, mo, d);
     let secs = days * 86400 + h * 3600 + mi * 60;
     (UNIX_EPOCH + Duration::from_secs(secs as u64))
         .duration_since(UNIX_EPOCH)

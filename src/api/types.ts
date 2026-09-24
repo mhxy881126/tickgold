@@ -34,6 +34,27 @@ export interface KBar {
   volume: number;
 }
 
+/** 五档单档（价 / 量，量单位手） */
+export interface OrderLevel {
+  price: number;
+  vol: number;
+}
+
+/** 五档盘口快照 */
+export interface OrderBook {
+  name: string;
+  code: string;
+  price: number;
+  prevClose: number;
+  open: number;
+  high: number;
+  low: number;
+  volume: number;
+  amount: number;
+  asks: OrderLevel[];  // 卖 1-5
+  bids: OrderLevel[];  // 买 1-5
+}
+
 /** 股票搜索结果项 */
 export interface StockItem {
   code: string;

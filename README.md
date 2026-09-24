@@ -3,7 +3,7 @@
 <img src="branding/tickgold-logo-2048.png" alt="TickGold logo" width="96" />
 
 > 为「交易者盯盘」而生的跨平台 A 股桌面终端。比传统交易软件更轻、更快、更专注盘中。
-> **Tauri 2.0（Rust）+ Vue 3 + TypeScript + Pinia + ECharts**，一套代码同时发布 Windows 与 macOS（Apple Silicon / Intel）。
+> **Tauri 2.0（Rust）+ Vue 3 + TypeScript + Pinia + KLineChart / ECharts**，一套代码同时发布 Windows 与 macOS（Apple Silicon / Intel）。
 
 [![release](https://img.shields.io/github/v/release/mhxy881126/tickgold)](https://github.com/mhxy881126/tickgold/releases)
 [![license](https://img.shields.io/github/license/mhxy881126/tickgold)](LICENSE)
@@ -66,9 +66,14 @@
 - 涨跌分布直方图：涨跌幅 10 档（≥7% 至 ≤-7%）家数，红涨绿跌、深色为高弹性
 - 顶部实时统计上涨 / 下跌 / 平盘、涨停 / 跌停 / 炸板家数与炸板率
 
-**K 线 / 分时（ECharts）**
-- 日 / 周 / 月 K：红涨绿跌蜡烛 + MA5/10/20 + 成交量副图 + dataZoom
-- 当日分时图、周期切换、十字光标、自适应缩放
+**K 线 / 分时（KLineChart · 同花顺全信息）**
+- 专业 K 线引擎 **KLineChart v9**，点股票即在工作台**主干放大聚焦大区域**呈现（非弹窗），深色专业风、红涨绿跌
+- **股票头**：名称 / 现价 / 涨跌 / 今开 / 最高 / 最低 / 昨收 / 成交量 / 成交额 / 换手 / 振幅 / 量比 / 市盈 / 流通与总市值
+- **周期条 9 项**：分时、1 / 5 / 15 / 30 / 60 分、日 / 周 / 月 K，切换整体重建避免指标残留
+- **K 线主图**：蜡烛 + MA 多周期均线，顶部 OHLC 信息条；**副图** VOL 成交量、MACD
+- **分时图**：红色分时价阶梯线 + 渐变填充、**黄色均价线**、昨收水平虚线、VOL 副图；**固定全天 240 分钟坐标、最新价右对齐、右侧留白等待收盘**
+- **十字光标**：移动即显示该点 OHLC / 均价 / 涨跌 / 成交量悬浮信息；**右侧五档买卖盘**（价量 + 量能条）
+- 盘中 5s 刷新股票头 / 盘口、10s 更新末根 K 线，容器缩放自适应
 
 **五档盘口 · 资金流向 · 板块行情**
 - 五档买卖盘 + 今日概览（开 / 高 / 低 / 量 / 额）
@@ -164,7 +169,7 @@
 | --- | --- |
 | 应用壳 / 后端 | Tauri 2.0、Rust（行情聚合、指标计算、命令、窗口、托盘、自动更新） |
 | 前端 | Vue 3 + TypeScript + Vite + Pinia |
-| 图表 | Apache ECharts（K 线 / 分时 / 资金 / 板块） |
+| 图表 | KLineChart v9（K 线 / 分时 / 五档）、Apache ECharts（资金 / 板块 / 分布 / F10） |
 | 持久化 | SQLite（tauri-plugin-sql，内置迁移） |
 | 数据源 | 腾讯 `qt.gtimg.cn` / `web.ifzq.gtimg.cn`、新浪 `hq.sinajs.cn` / `vip.stock.finance.sina.com.cn`、东方财富（容灾） |
 
@@ -243,6 +248,7 @@ CI 会全自动完成：
 - [x] 指挥中枢待机页（涨跌/涨停跌停状态 + 情绪温度条 + 8 快捷入口，沉浸铺满无边框）
 - [x] 时段栏透明融入、空台背景一体化（去浮条/分层，与空台融为一体）
 - [x] 关闭按钮最小化到托盘（修复关闭后无法打开）、托盘勾选菜单控制主窗口/灵动岛显隐、左键托盘切换主窗口
+- [x] K 线 / 分时重写（KLineChart v9 同花顺全信息：股票头 + 9 周期 + MA/VOL/MACD + 分时黄均价 + 五档 + 十字光标，主干聚焦、全天坐标）
 - [ ] 画线工具、投资计算器、数据导出
 - [ ] Windows Authenticode / macOS 公证（消除安全提示）
 

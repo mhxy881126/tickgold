@@ -408,15 +408,26 @@ function refitFocus() {
   });
 }
 
-// ===== 联动：选中股票 → 打开 K线卡片 =====
-function onSelect(code: string) {
+// ===== 联动：选中股票 → K线进入主干聚焦大区域（非弹窗） =====
+function pickStock(code: string, name?: string) {
   selected.value = code;
-  bench.open("chart");
+  if (name && !wl.codes.includes(code)) wl.add(code, name);
+  if (bench.isOpen("chart")) {
+    if (bench.isFocused.value) {
+      if (bench.focusId.value !== "chart") switchFocus("chart");
+    } else {
+      enterFocus("chart");
+    }
+  } else {
+    bench.open("chart");
+    nextTick(() => enterFocus("chart"));
+  }
+}
+function onSelect(code: string) {
+  pickStock(code);
 }
 function onSearchSelect(code: string, name: string) {
-  selected.value = code;
-  if (!wl.codes.includes(code)) wl.add(code, name);
-  bench.open("chart");
+  pickStock(code, name);
 }
 
 // ===== 自动更新（功能在 UpdateDialog 对话框内）=====
@@ -532,9 +543,9 @@ onMounted(async () => {
   try {
     unlistenFns.push(
       await listen<string>("island:select", (e) => {
-        selected.value = e.payload;
-        if (!wl.codes.includes(e.payload)) wl.add(e.payload);
-        bench.open("chart");
+        const c = e.payload;
+        if (!wl.codes.includes(c)) wl.add(c);
+        pickStock(c);
       })
     );
     // 预警触发：系统通知 + 记录触发时间

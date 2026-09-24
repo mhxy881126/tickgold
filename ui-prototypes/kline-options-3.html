@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>K线图方案选型 · 3款高保真效果</title>
+<style>
+:root{
+  --up:#f23645; --down:#08db94; --flat:#8b95a3;
+  --gold:#d4af37;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  background:#07090c;color:#d6dce3;overflow:hidden;
+}
+/* ===== 顶部选型栏 ===== */
+.picker{
+  height:52px;display:flex;align-items:center;gap:10px;padding:0 16px;
+  background:#0e1216;border-bottom:1px solid #1e252e;
+}
+.picker .logo{font-weight:800;color:var(--gold);font-size:15px;letter-spacing:.5px;margin-right:8px}
+.picker .logo small{color:#8b95a3;font-weight:500;font-size:11px;margin-left:6px}
+.seg{display:flex;background:#0a0d10;border:1px solid #232b34;border-radius:9px;padding:3px;gap:2px}
+.seg button{
+  border:0;background:transparent;color:#9aa4b0;font-size:12.5px;font-weight:600;
+  padding:6px 14px;border-radius:6px;cursor:pointer;white-space:nowrap;transition:.15s;
+}
+.seg button .tag{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:6px;vertical-align:1px}
+.seg button.on{background:linear-gradient(180deg,#26303b,#1b232c);color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.5)}
+.seg button:hover:not(.on){color:#fff}
+.picker .sp{flex:1}
+.picker .note{font-size:11px;color:#6b7684}
+/* ===== 舞台 ===== */
+#stage{position:absolute;top:52px;left:0;right:0;bottom:0;overflow:hidden}
+.kf{position:absolute;inset:0;display:flex;flex-direction:column;animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:scale(.995)}to{opacity:1;transform:none}}
+
+/* 通用股票头 */
+.stock-head{display:flex;align-items:baseline;gap:14px;padding:8px 14px;background:#0e1216;border-bottom:1px solid #1c232b;flex:none;flex-wrap:wrap}
+.sh-name{font-size:16px;font-weight:800}
+.sh-code{font-size:11px;color:#7c8794}
+.sh-price{font-size:20px;font-weight:800}
+.sh-chg{font-size:12px;font-weight:700}
+.sh-fields{display:flex;gap:14px;font-size:11px;color:#93a0ad;flex-wrap:wrap}
+.sh-fields b{color:#c6cfd9;font-weight:600;margin-left:3px}
+.u{color:var(--up)}.d{color:var(--down)}.f{color:var(--flat)}
+
+/* 周期条 */
+.tf-bar{display:flex;align-items:center;gap:2px;padding:4px 10px;background:#0b0f13;border-bottom:1px solid #181f27;flex:none}
+.tf-bar button{border:0;background:transparent;color:#8b95a3;font-size:11.5px;padding:4px 10px;border-radius:5px;cursor:pointer}
+.tf-bar button.on{background:#1d2730;color:var(--gold);font-weight:700}
+.tf-bar button:hover:not(.on){color:#e6ebf0}
+.tf-bar .grow{flex:1}
+.tf-bar .tool{font-size:11px;color:#7c8794;padding:4px 8px;cursor:pointer;border-radius:5px}
+.tf-bar .tool:hover{color:#fff;background:#1a212a}
+
+/* 主体布局 */
+.kf-body{flex:1;display:flex;min-height:0}
+.chart-wrap{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+.chart-wrap canvas{display:block;width:100%}
+.cv-main{flex:1;min-height:0;cursor:crosshair}
+.cv-sub{flex:none;height:96px;border-top:1px solid #161d25}
+.cv-sub2{flex:none;height:84px;border-top:1px solid #161d25}
+.tip{
+  position:absolute;pointer-events:none;background:rgba(16,21,27,.94);border:1px solid #2b3540;
+  border-radius:8px;padding:7px 10px;font-size:11px;line-height:1.6;color:#cdd6e0;white-space:nowrap;
+  box-shadow:0 8px 24px rgba(0,0,0,.5);display:none;z-index:10}
+.tip b{color:#fff}
+
+/* 五档盘口 */
+.order-book{width:212px;flex:none;border-left:1px solid #1c232b;background:#0c1014;display:flex;flex-direction:column;overflow:hidden}
+.ob-tabs{display:flex;border-bottom:1px solid #1a2129}
+.ob-tabs button{flex:1;border:0;background:transparent;color:#8b95a3;font-size:11px;padding:7px 0;cursor:pointer}
+.ob-tabs button.on{color:var(--gold);border-bottom:2px solid var(--gold)}
+.ob-list{padding:6px 10px;flex:none}
+.ob-row{display:grid;grid-template-columns:34px 1fr 1fr;align-items:center;height:21px;font-size:11.5px}
+.ob-row .lab{color:#7c8794}
+.ob-row .px-s{color:var(--up)}.px-x{color:var(--down)}
+.ob-row .vol{text-align:right;color:#aeb8c4;font-variant-numeric:tabular-nums}
+.ob-bar{position:relative}
+.ob-bar i{position:absolute;right:0;top:3px;bottom:3px;opacity:.13;border-radius:2px}
+.ob-mid{display:flex;justify-content:space-between;padding:5px 10px;font-size:11px;color:#7c8794;border-top:1px solid #161d25;border-bottom:1px solid #161d25;background:#0a0e12}
+.ob-mid b{color:#cfd8e2}
+.ob-foot{flex:1;overflow:hidden;padding:6px 10px;font-size:11px;color:#8b95a3}
+.ob-foot .ttl{color:#c6cfd9;font-weight:700;margin-bottom:6px}
+.mini-fields{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px}
+.mini-fields span b{color:#cdd6e0;float:right;font-weight:600}
+
+/* ===== 款B：TradingView 风 ===== */
+.kf-tv{background:#131722}
+.tv-top{display:flex;align-items:center;gap:12px;padding:0 14px;height:46px;background:#131722;border-bottom:1px solid #232832;flex:none}
+.tv-symbol{display:flex;align-items:center;gap:8px}
+.tv-symbol .s{font-size:15px;font-weight:700;color:#e0e4e9}
+.tv-symbol .c{font-size:10.5px;color:#78808c}
+.tv-tools{display:flex;gap:1px}
+.tv-tools button{width:30px;height:30px;border:0;background:transparent;color:#9aa1ad;border-radius:6px;cursor:pointer;font-size:12px}
+.tv-tools button:hover{background:#1e242f;color:#fff}
+.tv-tools .sep2{width:1px;background:#2a303a;margin:6px 6px}
+.tv-body{flex:1;position:relative;min-height:0}
+.tv-body canvas{position:absolute;inset:0;width:100%;height:100%}
+.tv-legend{position:absolute;top:10px;left:12px;font-size:11.5px;line-height:1.7;pointer-events:none;z-index:5}
+.tv-legend .ma5{color:#f6c86b}.tv-legend .ma10{color:#5fb7e8}.tv-legend .ma20{color:#c07be0}
+.tv-ohlc{position:absolute;top:10px;left:12px;font-size:11px;pointer-events:none;display:none;z-index:6;line-height:1.6}
+.tv-watermark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:1}
+.tv-watermark span{font-size:64px;font-weight:800;color:rgba(255,255,255,.035);letter-spacing:2px}
+.tv-attr{position:absolute;bottom:6px;right:12px;font-size:10px;color:#5a626e;pointer-events:none}
+
+/* ===== 款C：盯盘融合 ===== */
+.kf-fuse{background:#0a0d11}
+.fuse-top{display:flex;align-items:center;gap:10px;padding:8px 14px;background:#0d1115;border-bottom:1px solid #1b222a;flex:none;flex-wrap:wrap}
+.fuse-chips{display:flex;gap:6px;margin-left:auto}
+.chip{font-size:11px;padding:4px 11px;border:1px solid #26303a;border-radius:14px;background:#10151b;color:#9aa4b0;cursor:pointer}
+.chip.on{border-color:var(--gold);color:var(--gold);background:rgba(212,175,55,.08)}
+.fuse-body{flex:1;display:flex;min-height:0}
+.fuse-left{width:178px;flex:none;border-right:1px solid #1b222a;background:#0b0f13;padding:8px}
+.fuse-left .sec-t{font-size:11px;color:#7c8794;margin:6px 2px 6px;font-weight:700}
+.fuse-quote{display:grid;grid-template-columns:1fr auto;gap:4px 10px;font-size:11px;color:#93a0ad}
+.fuse-quote b{color:#cdd6e0;font-weight:600}
+.fuse-ob{margin-top:4px}
+.fuse-ob .r{display:flex;justify-content:space-between;font-size:11px;height:19px;align-items:center}
+.fuse-ob .r .p{font-variant-numeric:tabular-nums}
+.fuse-ob .r .v{color:#8b95a3;font-size:10.5px}
+.fuse-main{flex:1;position:relative;min-width:0;display:flex;flex-direction:column}
+.fuse-main canvas{display:block;width:100%}
+.fuse-ind{display:flex;gap:4px;padding:4px 10px;background:#0b0f13;border-bottom:1px solid #181f27;flex:none}
+.fuse-ind button{border:0;background:transparent;color:#8b95a3;font-size:11px;padding:3px 9px;border-radius:5px;cursor:pointer}
+.fuse-ind button.on{color:var(--gold);background:#1a212a;font-weight:700}
+
+.foot-note{position:absolute;bottom:8px;left:14px;font-size:10.5px;color:#5c6672;z-index:20}
+</style>
+</head>
+<body>
+<div class="picker">
+  <div class="logo">TickGold <small>K线图方案选型 · 外观为示意数据</small></div>
+  <div class="seg" id="kindSeg">
+    <button data-k="A" class="on"><span class="tag" style="background:#f23645"></span>款A · 同花顺全信息</button>
+    <button data-k="B"><span class="tag" style="background:#5fb7e8"></span>款B · TradingView 简洁</button>
+    <button data-k="C"><span class="tag" style="background:#d4af37"></span>款C · 盯盘融合</button>
+  </div>
+  <div class="seg" id="tfSeg">
+    <button data-tf="minute">分时</button>
+    <button data-tf="day" class="on">日K</button>
+  </div>
+  <div class="sp"></div>
+  <div class="note">鼠标在图上移动查看十字光标 / 悬浮盘口</div>
+</div>
+<div id="stage"></div>
+<script>
+const UP='#f23645',DOWN='#08db94',DIM='#8b95a3',GOLD='#d4af37';
+const state={k:'A',tf:'day',cx:null,cy:null};
+
+/* ---------- 确定性随机 ---------- */
+function srand(s){return()=>{s=(s*1103515245+12345)&0x7fffffff;return s/0x7fffffff}}
+const RR=srand(20260924);
+
+/* ---------- 日K数据 ---------- */
+function tradeDates(n){
+ const out=[];const dt=new Date(2026,8,24);
+ while(out.length<n){const d=dt.getDay();if(d!==0&&d!==6)out.push(new Date(dt));dt.setDate(dt.getDate()-1)}
+ return out.reverse();
+}
+function genDay(n){
+ let p=9.2,drift=0;const a=[];
+ for(let i=0;i<n;i++){
+  if(i%20===0)drift=(RR()-0.46)*0.05;
+  const o=p,c=Math.round(o*(1+drift+(RR()-0.5)*0.045)*100)/100;
+  const h=Math.round(Math.max(o,c)*(1+RR()*0.011)*100)/100;
+  const l=Math.round(Math.min(o,c)*(1-RR()*0.011)*100)/100;
+  const v=Math.round(180000+RR()*RR()*800000+Math.abs(c-o)*1300000);
+  a.push({o,h,l,c,v});p=c;
+ }
+ // 末端平滑收敛到目标价 9.00，使主图最新价与头部/盘口一致
+ const TGT=9.00,K=42,ks=a.length-K,c0v=a[ks].c;
+ for(let i=ks;i<a.length;i++){
+  const f=(i-ks)/(K-1),anchor=c0v*Math.pow(TGT/c0v,f),r=anchor/a[i].c;
+  const no=a[i].o*r,nc=anchor;
+  const nh=Math.max(a[i].h*r,no,nc),nl=Math.min(a[i].l*r,no,nc);
+  a[i]={o:no,h:nh,l:nl,c:nc,v:a[i].v};
+ }
+ tradeDates(n).forEach((t,i)=>a[i].t=t);
+ const ma=n=>a.map((_,i)=>{if(i<n-1)return null;let s=0;for(let j=i-n+1;j<=i;j++)s+=a[j].c;return s/n});
+ a.ma5=ma(5);a.ma10=ma(10);a.ma20=ma(20);
+ const ema=n=>{const k=2/(n+1);let e=a[0].c;return a.map((x,i)=>{e=i?x.c*k+e*(1-k):x.c;return e})};
+ const e12=ema(12),e26=ema(26);
+ const dif=e12.map((x,i)=>x-e26[i]);let de=dif[0];
+ const dea=dif.map(x=>de=x*0.2+de*0.8);
+ a.dif=dif;a.dea=dea;a.macd=dif.map((x,i)=>(x-dea[i])*2);
+ return a;
+}
+const DAY=genDay(160);
+
+/* ---------- 分时数据 ---------- */
+function minTime(i){let m=i<121?570+i:780+(i-121);return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')}
+function genMinute(){
+ const prev=9.0,pts=[];let p=prev;
+ for(let i=0;i<242;i++){
+  p=Math.max(p*(1+(RR()-0.5)*0.004+Math.sin(i/28)*0.0007),0.01);
+  const v=Math.round(30000+RR()*RR()*420000+(i>235?600000:0));
+  pts.push({p,v});
+ }
+ // 尾盘平滑收敛到昨收，使收盘价与盘口/日K 9.00 一致
+ const K=28,ks=pts.length-K,p0v=pts[ks].p;
+ for(let i=ks;i<pts.length;i++){const f=(i-ks)/(K-1);pts[i].p=p0v+(prev-p0v)*f}
+ // 成交加权均价
+ let aSum=0,vSum=0;pts.forEach(z=>{aSum+=z.p*z.v;vSum+=z.v;z.av=aSum/vSum});
+ return {prev,pts};
+}
+const MIN=genMinute();
+
+/* ---------- Canvas 工具 ---------- */
+function fit(cv){
+ const r=cv.getBoundingClientRect();const d=window.devicePixelRatio||1;
+ cv.width=Math.round(r.width*d);cv.height=Math.round(r.height*d);
+ const ctx=cv.getContext('2d');ctx.setTransform(d,0,0,d,0,0);
+ return {w:r.width,h:r.height,ctx,canvas:cv};
+}
+const L=(c,x1,y1,x2,y2,col,w)=>{c.strokeStyle=col;c.lineWidth=w||1;c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke()};
+const T=(c,s,x,y,col,a,fs)=>{c.fillStyle=col;c.font=(a?'600 ':'')+(fs||10)+'px Segoe UI,Microsoft YaHei';c.textAlign=a||'left';c.fillText(s,x,y)};
+function mouseOf(cv){if(state.cx===null)return null;const r=cv.getBoundingClientRect();return{x:state.cx-r.left,y:state.cy-r.top}}
+const fmtD=d=>(d.getMonth()+1)+'/'+d.getDate();
+const fmtV=v=>v>=1e8?(v/1e8).toFixed(2)+'亿':v>=1e4?(v/1e4).toFixed(1)+'万':v;
+
+/* ---------- 盘口 HTML ---------- */
+const ASKS=[['卖5',9.05,7897,22],['卖4',9.04,2027,9],['卖3',9.03,1334,6],['卖2',9.02,9946,30],['卖1',9.01,1584,14]];
+const BIDS=[['买1',8.99,9946,28],['买2',8.98,6690,19],['买3',8.97,5241,15],['买4',8.96,3547,10],['买5',8.95,2890,8]];
+function obRows(rows,cls){
+ return rows.map(r=>`<div class="ob-row ob-bar"><span class="lab">${r[0]}</span><span class="${cls}">${r[1].toFixed(2)}</span><span class="vol">${r[2]}<i style="background:${cls==='px-s'?UP:DOWN};width:${r[3]*2}px"></i></span></div>`).join('');
+}
+function obBook(){
+ return `<div class="ob-tabs"><button class="on">盘口</button><button>明细</button><button>分价</button></div>
+ <div class="ob-list">${obRows(ASKS,'px-s')}</div>
+ <div class="ob-mid"><span>最新 <b class="u">9.00</b></span><span>均价 9.02</span></div>
+ <div class="ob-list">${obRows(BIDS,'px-x')}</div>
+ <div class="ob-foot"><div class="ttl">今日概览</div>
+ <div class="mini-fields">
+  <span>开盘<b>8.99</b></span><span>昨收<b>8.98</b></span>
+  <span>最高<b class="u">9.06</b></span><span>最低<b class="d">8.95</b></span>
+  <span>成交量<b>29.7万手</b></span><span>成交额<b>2.68亿</b></span>
+  <span>换手率<b>1.06%</b></span><span>振幅<b>1.23%</b></span>
+  <span>量比<b>1.42</b></span><span>市盈<b>5.8</b></span>
+ </div></div>`;
+}
+
+/* ================= 自动布局（款A/C）日K ================= */
+function drawDayAuto(M,opt){
+ const {w,h,ctx}=M;
+ const padR=opt.padR,padL=8,padT=10,padB=4;
+ const pw=w-padR-padL,ph=h-padT-padB;
+ const n=Math.max(20,Math.floor(pw/opt.bw));
+ const st=Math.max(0,DAY.length-n),en=DAY.length;
+ let hi=-1e9,lo=1e9;
+ for(let i=st;i<en;i++){hi=Math.max(hi,DAY[i].h);lo=Math.min(lo,DAY[i].l)}
+ const pad=(hi-lo)*0.08;hi+=pad;lo-=pad;
+ const y=v=>padT+(hi-v)/(hi-lo)*ph;
+ const bw=pw/n,cw=Math.max(1,bw*opt.bodyW);
+ ctx.font=opt.fs+'px Segoe UI';
+ for(let g=0;g<=4;g++){const yy=padT+ph*g/4;L(ctx,padL,yy,w-padR,yy,'rgba(255,255,255,.05)');
+  ctx.fillStyle='#7c8794';ctx.textAlign='left';ctx.fillText((hi-(hi-lo)*g/4).toFixed(2),w-padR+5,yy+3)}
+ for(let i=st;i<en;i++){const k=DAY[i],x=padL+(i-st)*bw+bw/2,up=k.c>=k.o,col=up?UP:DOWN;
+  L(ctx,x,y(k.h),x,y(k.l),col,1);ctx.fillStyle=col;
+  const yo=y(k.o),yc=y(k.c);ctx.fillRect(x-cw/2,Math.min(yo,yc),cw,Math.max(1,Math.abs(yc-yo)))}
+ const plotMA=(arr,col)=>{ctx.strokeStyle=col;ctx.lineWidth=1;ctx.beginPath();let s=false;
+  for(let i=st;i<en;i++){const v=arr[i];if(v==null)continue;const x=padL+(i-st)*bw+bw/2;s?ctx.lineTo(x,y(v)):ctx.moveTo(x,y(v));s=true}ctx.stroke()};
+ plotMA(DAY.ma5,'#f6c86b');plotMA(DAY.ma10,'#5fb7e8');plotMA(DAY.ma20,'#c07be0');
+ const last=DAY[en-1],yl=y(last.c);L(ctx,padL,yl,w-padR,yl,'rgba(242,54,69,.55)',1);
+ ctx.fillStyle=UP;ctx.fillRect(w-padR,yl-7,padR,14);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='600 '+opt.fs+'px Segoe UI';ctx.fillText(last.c.toFixed(2),w-padR/2,yl+3);
+ const info={st,en,bw,padL,padR,pw,padT,ph,xOf:i=>padL+(i-st)*bw+bw/2,y,day:true};
+ drawCross(ctx,M.canvas,info,h);
+ return info;
+}
+function drawCross(ctx,cv,info,H){
+ const mm=mouseOf(cv);if(!mm)return null;
+ const {w}=cv.getBoundingClientRect();
+ if(mm.x<info.padL||mm.x>w-info.padR)return null;
+ let idx=Math.round((mm.x-info.padL-info.bw/2)/info.bw)+info.st;
+ idx=Math.max(info.st,Math.min(info.en-1,idx));
+ const x=info.xOf(idx);
+ L(ctx,x,0,x,H,'rgba(255,255,255,.32)',1);L(ctx,info.padL,mm.y,w-info.padR,mm.y,'rgba(255,255,255,.32)',1);
+ return idx;
+}
+function drawVol(S,info){
+ const {w,h,ctx}=S;const padR=info.padR,padL=8;
+ const pw=w-padR-padL;let mx=0;
+ for(let i=info.st;i<info.en;i++)mx=Math.max(mx,DAY[i].v);
+ const top=14,bot=h-15,bw=pw/(info.en-info.st),cw=Math.max(1,bw*0.6);
+ T(ctx,'VOL',padL,11,'#9aa4b0',false,10);
+ for(let i=info.st;i<info.en;i++){const k=DAY[i],x=padL+(i-info.st)*bw+bw/2,bh=bot-(k.v/mx)*(bot-top);
+  ctx.globalAlpha=.5;ctx.fillStyle=k.c>=k.o?UP:DOWN;ctx.fillRect(x-cw/2,bh,cw,bot-bh);ctx.globalAlpha=1}
+ ctx.fillStyle='#7c8794';ctx.font='10px Segoe UI';ctx.textAlign='center';
+ const step=Math.ceil((info.en-info.st)/6);
+ for(let i=info.st;i<info.en;i+=step){ctx.fillText(fmtD(DAY[i].t),padL+(i-info.st)*bw+bw/2,h-4)}
+ drawCross(ctx,S.canvas,info,h);
+}
+function drawMACD(S2,info){
+ const {w,h,ctx}=S2;const padR=info.padR,padL=8;
+ const pw=w-padR-padL;let hi=1e-6,lo=-1e-6;
+ for(let i=info.st;i<info.en;i++){hi=Math.max(hi,DAY.macd[i],DAY.dif[i],DAY.dea[i]);lo=Math.min(lo,DAY.macd[i],DAY.dif[i],DAY.dea[i])}
+ const top=14,bot=h-6,bw=pw/(info.en-info.st),cw=Math.max(1,bw*.6);
+ const y=v=>bot-(v-lo)/(hi-lo)*(bot-top);
+ T(ctx,'MACD(12,26,9)',padL,11,'#9aa4b0',false,10);
+ L(ctx,padL,y(0),w-padR,y(0),'rgba(255,255,255,.12)',1);
+ for(let i=info.st;i<info.en;i++){const x=padL+(i-info.st)*bw+bw/2,bh=y(DAY.macd[i]);
+  ctx.globalAlpha=.55;ctx.fillStyle=DAY.macd[i]>=0?UP:DOWN;ctx.fillRect(x-cw/2,Math.min(bh,y(0)),cw,Math.abs(y(0)-bh));ctx.globalAlpha=1}
+ const line=(arr,col)=>{ctx.strokeStyle=col;ctx.lineWidth=1;ctx.beginPath();let s=false;
+  for(let i=info.st;i<info.en;i++){const x=padL+(i-info.st)*bw+bw/2;s?(ctx.lineTo(x,y(arr[i]))):(ctx.moveTo(x,y(arr[i])));s=true}ctx.stroke()};
+ line(DAY.dif,'#e6ebf0');line(DAY.dea,'#f6c86b');
+ drawCross(ctx,S2.canvas,info,h);
+}
+
+/* ================= 自动布局 分时 ================= */
+function drawMinuteAuto(M){
+ const {w,h,ctx}=M;const padR=58,padL=44,padT=10,padB=4;
+ const pw=w-padR-padL,ph=h-padT-padB,pts=MIN.pts,prev=MIN.prev;
+ let hi=prev,lo=prev;pts.forEach(z=>{hi=Math.max(hi,z.p);lo=Math.min(lo,z.p)});
+ const dev=Math.max(hi-prev,prev-lo)*1.12;hi=prev+dev;lo=prev-dev;
+ const y=v=>padT+(hi-v)/(hi-lo)*ph,x=i=>padL+i/(pts.length-1)*pw;
+ ctx.font='10px Segoe UI';
+ for(let g=0;g<=4;g++){const yy=padT+ph*g/4,v=hi-(hi-lo)*g/4;L(ctx,padL,yy,w-padR,yy,'rgba(255,255,255,.05)');
+  const pc=(v-prev)/prev*100,col=pc>0?UP:pc<0?DOWN:'#8b95a3';
+  ctx.fillStyle=col;ctx.textAlign='right';ctx.fillText(pc.toFixed(2)+'%',padL-5,yy+3);
+  ctx.fillStyle=col;ctx.textAlign='left';ctx.fillText(v.toFixed(2),w-padR+5,yy+3)}
+ L(ctx,padL,y(prev),w-padR,y(prev),'rgba(255,255,255,.28)',1);
+ const pricePath=()=>{ctx.beginPath();pts.forEach((z,i)=>i?ctx.lineTo(x(i),y(z.p)):ctx.moveTo(x(0),y(z.p)))};
+ // 填充（上红下绿）
+ const fillBand=(clipTop,clipH,col)=>{ctx.save();ctx.beginPath();ctx.rect(padL,clipTop,pw,clipH);ctx.clip();
+  pricePath();ctx.lineTo(x(pts.length-1),y(prev));ctx.lineTo(x(0),y(prev));ctx.closePath();ctx.fillStyle=col;ctx.fill();ctx.restore()};
+ fillBand(padT,Math.max(0,y(prev)-padT),'rgba(242,54,69,.09)');
+ fillBand(y(prev),padT+ph-y(prev),'rgba(8,219,148,.09)');
+ // 均价
+ ctx.beginPath();pts.forEach((z,i)=>i?ctx.lineTo(x(i),y(z.av)):ctx.moveTo(x(0),y(z.av)));ctx.strokeStyle='#f6c86b';ctx.lineWidth=1;ctx.stroke();
+ // 分时白线
+ pricePath();ctx.strokeStyle='#fff';ctx.lineWidth=1.4;ctx.stroke();
+ const lp=pts[pts.length-1],yl=y(lp.p);ctx.fillStyle=lp.p>=prev?UP:DOWN;ctx.fillRect(w-padR,yl-7,padR,14);
+ ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='600 10px Segoe UI';ctx.fillText(lp.p.toFixed(2),w-padR/2,yl+3);
+ const info={st:0,en:pts.length,bw:pw/pts.length,padL,padR,pw,padT,ph,xOf:i=>x(i),y,day:false};
+ drawCross(ctx,M.canvas,info,h);
+ return info;
+}
+function drawMinuteVol(S,info){
+ const {w,h,ctx}=S;const padR=info.padR,padL=8,pw=w-padR-padL,pts=MIN.pts;
+ let mx=0;pts.forEach(z=>mx=Math.max(mx,z.v));
+ const top=14,bot=h-15,bw=pw/pts.length,cw=Math.max(1,bw*.6);
+ T(ctx,'VOL',padL,11,'#9aa4b0',false,10);
+ for(let i=0;i<pts.length;i++){const x=info.xOf(i),bh=bot-(pts[i].v/mx)*(bot-top);
+  ctx.globalAlpha=.5;ctx.fillStyle=pts[i].p>=MIN.prev?UP:DOWN;ctx.fillRect(x-cw/2,bh,cw,bot-bh);ctx.globalAlpha=1}
+ ctx.fillStyle='#7c8794';ctx.font='10px Segoe UI';ctx.textAlign='center';
+ [0,60,120,182,241].forEach(i=>ctx.fillText(minTime(i),info.xOf(i),h-4));
+ drawCross(ctx,S.canvas,info,h);
+}
+
+/* ================= TradingView（款B） ================= */
+function plotMALine(ctx,arr,st,en,bw,padL,y,col){ctx.strokeStyle=col;ctx.lineWidth=1;ctx.beginPath();let s=false;
+ for(let i=st;i<en;i++){const v=arr[i];if(v==null)continue;const x=padL+(i-st)*bw+bw/2;s?ctx.lineTo(x,y(v)):ctx.moveTo(x,y(v));s=true}ctx.stroke()}
+function tvCross(cv,info,mainBottom){
+ if(state.cx===null)return null;
+ const r=cv.getBoundingClientRect(),ctx=cv.getContext('2d');
+ const mx=state.cx-r.left,my=state.cy-r.top;
+ if(mx<info.padL||mx>r.width-info.padR)return null;
+ let idx=Math.round((mx-info.padL-info.bw/2)/info.bw)+info.st;
+ idx=Math.max(info.st,Math.min(info.en-1,idx));
+ const x=info.xOf(idx),H=r.height;
+ L(ctx,x,info.padT,x,H-18,'rgba(255,255,255,.45)',1);
+ if(my>=info.padT&&my<=mainBottom){
+  L(ctx,info.padL,my,r.width-info.padR,my,'rgba(255,255,255,.45)',1);
+  const v=info.hi-(my-info.padT)/info.ph*(info.hi-info.lo);
+  ctx.fillStyle='#2a6cf0';ctx.fillRect(r.width-info.padR,my-8,info.padR,16);
+  ctx.fillStyle='#fff';ctx.font='600 10px Segoe UI';ctx.textAlign='center';ctx.fillText(v.toFixed(2),r.width-info.padR/2,my+3);
+ }
+ return idx;
+}
+function drawTV(cv){
+ const {w,h,ctx}=fit(cv);
+ const padR=60,padL=8,padT=14,padB=20;
+ const pw=w-padR-padL,totalH=h-padT-padB;let info;
+ if(state.tf==='day'){
+  const mainH=totalH*.74,volTop=padT+mainH+8,volH=totalH*.16;
+  const n=Math.max(20,Math.floor(pw/9)),st=Math.max(0,DAY.length-n),en=DAY.length;
+  let hi=-1e9,lo=1e9;for(let i=st;i<en;i++){hi=Math.max(hi,DAY[i].h);lo=Math.min(lo,DAY[i].l)}
+  const pad=(hi-lo)*.08;hi+=pad;lo-=pad;
+  const y=v=>padT+(hi-v)/(hi-lo)*mainH,bw=pw/n,cw=Math.max(1,bw*.62);
+  ctx.font='10px Segoe UI';
+  for(let g=0;g<=4;g++){const yy=padT+mainH*g/4;L(ctx,padL,yy,w-padR,yy,'#1e242f');
+   ctx.fillStyle='#8a93a2';ctx.textAlign='left';ctx.fillText((hi-(hi-lo)*g/4).toFixed(2),w-padR+5,yy+3)}
+  L(ctx,padL,volTop,w-padR,volTop,'#262c38');
+  let mx=0;for(let i=st;i<en;i++)mx=Math.max(mx,DAY[i].v);
+  for(let i=st;i<en;i++){const k=DAY[i],x=padL+(i-st)*bw+bw/2,up=k.c>=k.o,col=up?UP:DOWN;
+   L(ctx,x,y(k.h),x,y(k.l),col,1);ctx.fillStyle=col;const yo=y(k.o),yc=y(k.c);ctx.fillRect(x-cw/2,Math.min(yo,yc),cw,Math.max(1,Math.abs(yc-yo)));
+   const bh=volTop+volH-(k.v/mx)*volH;ctx.globalAlpha=.45;ctx.fillRect(x-cw/2,bh,cw,volTop+volH-bh);ctx.globalAlpha=1}
+  plotMALine(ctx,DAY.ma5,st,en,bw,padL,y,'#f6c86b');plotMALine(ctx,DAY.ma10,st,en,bw,padL,y,'#5fb7e8');plotMALine(ctx,DAY.ma20,st,en,bw,padL,y,'#c07be0');
+  ctx.fillStyle='#8a93a2';ctx.textAlign='center';const step=Math.ceil((en-st)/7);
+  for(let i=st;i<en;i+=step)ctx.fillText(fmtD(DAY[i].t),padL+(i-st)*bw+bw/2,h-6);
+  const last=DAY[en-1],yl=y(last.c);ctx.fillStyle=UP;ctx.fillRect(w-padR,yl-8,padR,16);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='600 10px Segoe UI';ctx.fillText(last.c.toFixed(2),w-padR/2,yl+3);
+  info={st,en,bw,padL,padR,pw,padT,ph:mainH,hi,lo,xOf:i=>padL+(i-st)*bw+bw/2,y,day:true};
+  tvCross(cv,info,volTop);
+  document.getElementById('tvLegend').innerHTML=`<span style="color:#e0e4e9;font-weight:700">浦发银行 SH600000</span> · 日K<br><span class="ma5">MA5:${DAY.ma5[en-1].toFixed(2)}</span> <span class="ma10">MA10:${DAY.ma10[en-1].toFixed(2)}</span> <span class="ma20">MA20:${DAY.ma20[en-1].toFixed(2)}</span>`;
+ }else{
+  const mainH=totalH*.8,volTop=padT+mainH+6,volH=totalH*.14;
+  const pts=MIN.pts,prev=MIN.prev;let hi=prev,lo=prev;pts.forEach(z=>{hi=Math.max(hi,z.p);lo=Math.min(lo,z.p)});
+  const dev=Math.max(hi-prev,prev-lo)*1.12;hi=prev+dev;lo=prev-dev;
+  const y=v=>padT+(hi-v)/(hi-lo)*mainH,x=i=>padL+i/(pts.length-1)*pw,bw=pw/pts.length;
+  for(let g=0;g<=4;g++){const yy=padT+mainH*g/4;L(ctx,padL,yy,w-padR,yy,'#1e242f')}
+  L(ctx,padL,volTop,w-padR,volTop,'#262c38');L(ctx,padL,y(prev),w-padR,y(prev),'rgba(255,255,255,.3)',1);
+  const pp=()=>{ctx.beginPath();pts.forEach((z,i)=>i?ctx.lineTo(x(i),y(z.p)):ctx.moveTo(x(0),y(z.p)))};
+  const fb=(t,h2,c)=>{ctx.save();ctx.beginPath();ctx.rect(padL,t,pw,h2);ctx.clip();pp();ctx.lineTo(x(241),y(prev));ctx.lineTo(x(0),y(prev));ctx.closePath();ctx.fillStyle=c;ctx.fill();ctx.restore()};
+  fb(padT,Math.max(0,y(prev)-padT),'rgba(242,54,69,.1)');fb(y(prev),padT+mainH-y(prev),'rgba(8,219,148,.1)');
+  ctx.beginPath();pts.forEach((z,i)=>i?ctx.lineTo(x(i),y(z.av)):ctx.moveTo(x(0),y(z.av)));ctx.strokeStyle='#f6c86b';ctx.stroke();
+  pp();ctx.strokeStyle='#fff';ctx.lineWidth=1.4;ctx.stroke();
+  let mx=0;pts.forEach(z=>mx=Math.max(mx,z.v));
+  pts.forEach((z,i)=>{const bx=x(i),bh=volTop+volH-(z.v/mx)*volH;ctx.globalAlpha=.45;ctx.fillStyle=z.p>=prev?UP:DOWN;ctx.fillRect(bx-.5,bh,1,volTop+volH-bh);ctx.globalAlpha=1});
+  ctx.fillStyle='#8a93a2';ctx.textAlign='center';[0,60,120,182,241].forEach(i=>ctx.fillText(minTime(i),x(i),h-6));
+  info={st:0,en:242,bw,padL,padR,pw,padT,ph:mainH,hi,lo,xOf:i=>x(i),y,day:false};
+  tvCross(cv,info,volTop);
+  const lp=pts[241],chg=lp.p-prev;
+  document.getElementById('tvLegend').innerHTML=`<span style="color:#e0e4e9;font-weight:700">浦发银行 SH600000</span> · 分时<br><span style="color:${chg>=0?UP:DOWN}">${lp.p.toFixed(2)} ${chg>=0?'+':''}${chg.toFixed(2)} ${(chg/prev*100).toFixed(2)}%</span>`;
+ }
+ return info;
+}
+
+/* ================= 三款模板 ================= */
+function htmlA(){
+ return `<div class="kf">
+ <div class="stock-head">
+  <span class="sh-name">浦发银行</span><span class="sh-code">SH600000 · 上证主板 · 银行</span>
+  <span class="sh-price u">9.00</span><span class="sh-chg u">+0.02 &nbsp;+0.22%</span>
+  <div class="sh-fields">
+   <span>最高<b class="u">9.06</b></span><span>最低<b class="d">8.95</b></span><span>今开<b>8.99</b></span><span>昨收<b>8.98</b></span>
+   <span>成交量<b>29.7万手</b></span><span>成交额<b>2.68亿</b></span><span>换手<b>1.06%</b></span>
+   <span>振幅<b>1.23%</b></span><span>量比<b>1.42</b></span><span>市盈(动)<b>5.8</b></span>
+  </div></div>
+ <div class="tf-bar">
+  <button data-tf="minute">分时</button><button data-tf="day" class="on">日K</button><button>周K</button><button>月K</button><button>季K</button><button>年K</button>
+  <span style="width:8px"></span><button>1分</button><button>5分</button><button>15分</button><button>30分</button><button>60分</button>
+  <div class="grow"></div><span class="tool">前复权 ▾</span><span class="tool">指标</span><span class="tool">画线</span><span class="tool">F10</span>
+ </div>
+ <div class="kf-body">
+  <div class="chart-wrap" id="wrapA">
+   <canvas class="cv-main"></canvas><canvas class="cv-sub"></canvas><canvas class="cv-sub2"></canvas><div class="tip"></div>
+  </div>
+  <div class="order-book">${obBook()}</div>
+ </div></div>`;
+}
+function htmlB(){
+ return `<div class="kf kf-tv">
+ <div class="tv-top">
+  <div class="tv-symbol"><span class="s">浦发银行</span><span class="c">SH600000</span></div>
+  <div class="tv-tools">
+   <button data-tf="minute">分时</button><button data-tf="day" style="color:#e0e4e9">日K</button>
+   <span class="sep2"></span><button title="指标">ƒx</button><button title="画线">✎</button><button title="模板">▦</button><button title="预警">◷</button>
+   <span class="sep2"></span><button>⚙</button>
+  </div></div>
+ <div class="tv-body" id="wrapB">
+  <canvas></canvas><div class="tv-watermark"><span>TickGold</span></div>
+  <div class="tv-legend" id="tvLegend"></div><div class="tip"></div>
+  <div class="tv-attr">TickGold · Powered by TradingView Lightweight Charts（外观示意）</div>
+ </div></div>`;
+}
+function fuseObHTML(){
+ return ASKS.map(r=>`<div class="r"><span class="p" style="color:${UP}">${r[1].toFixed(2)}</span><span class="v">${r[2]}</span></div>`).join('')
+ +'<div class="r" style="justify-content:center;color:#e6ebf0;font-weight:700"><span>9.00</span></div>'
+ +BIDS.map(r=>`<div class="r"><span class="p" style="color:${DOWN}">${r[1].toFixed(2)}</span><span class="v">${r[2]}</span></div>`).join('');
+}
+function htmlC(){
+ return `<div class="kf kf-fuse">
+ <div class="fuse-top">
+  <span class="sh-name" style="font-size:14px">浦发银行</span><span class="sh-code">SH600000</span>
+  <span class="sh-price u" style="font-size:17px">9.00</span><span class="sh-chg u">+0.22%</span>
+  <div class="fuse-chips">
+   <span class="chip" data-tf="minute">分时</span><span class="chip on" data-tf="day">日K</span>
+   <span class="chip">盘口</span><span class="chip">VOL</span><span class="chip">MACD</span>
+  </div></div>
+ <div class="fuse-body">
+  <div class="fuse-left">
+   <div class="sec-t">五档盘口</div><div class="fuse-ob">${fuseObHTML()}</div>
+   <div class="sec-t">关键报价</div>
+   <div class="fuse-quote">今开<b>8.99</b>昨收<b>8.98</b>最高<b class="u">9.06</b>最低<b class="d">8.95</b>量比<b>1.42</b>换手<b>1.06%</b>市盈<b>5.8</b></div>
+  </div>
+  <div class="fuse-main" style="position:relative">
+   <div class="fuse-ind"><button class="on">VOL</button><button>MACD</button><button>KDJ</button><button>BOLL</button><button>RSI</button></div>
+   <canvas class="cv-main" style="flex:1;min-height:0"></canvas><canvas class="cv-sub" style="height:88px"></canvas>
+   <div class="tip"></div>
+  </div></div></div>`;
+}
+
+/* ================= 悬浮信息 ================= */
+function updateTip(wrap,cv,info){
+ const tip=wrap.querySelector('.tip');
+ if(state.cx===null){tip.style.display='none';return}
+ const r=cv.getBoundingClientRect(),mx=state.cx-r.left;
+ if(mx<info.padL||mx>r.width-info.padR){tip.style.display='none';return}
+ let idx=Math.round((mx-info.padL-info.bw/2)/info.bw)+info.st;
+ idx=Math.max(info.st,Math.min(info.en-1,idx));let html;
+ if(info.day){const k=DAY[idx],pre=idx>0?DAY[idx-1].c:k.o,chg=k.c-pre,pct=chg/pre*100,c=chg>=0?UP:DOWN;
+  html=`<b>${fmtD(k.t)}</b><br>开 ${k.o.toFixed(2)}　高 <span style="color:${UP}">${k.h.toFixed(2)}</span><br>低 <span style="color:${DOWN}">${k.l.toFixed(2)}</span>　收 <b style="color:${c}">${k.c.toFixed(2)}</b><br>涨跌 <span style="color:${c}">${chg.toFixed(2)} ${pct.toFixed(2)}%</span><br>量 ${fmtV(k.v)}手`;
+ }else{const z=MIN.pts[idx],chg=z.p-MIN.prev,pct=chg/MIN.prev*100,c=chg>=0?UP:DOWN;
+  html=`<b>${minTime(idx)}</b><br>价 <b style="color:${c}">${z.p.toFixed(2)}</b><br>均价 ${z.av.toFixed(2)}<br>涨跌 <span style="color:${c}">${chg.toFixed(2)} ${pct.toFixed(2)}%</span><br>量 ${fmtV(z.v)}手`;
+ }
+ tip.innerHTML=html;tip.style.display='block';
+ const wr=wrap.getBoundingClientRect();
+ let lx=state.cx-wr.left+15,ty=state.cy-wr.top+14;
+ if(lx+150>wr.width)lx=state.cx-wr.left-160;
+ if(ty+120>wr.height)ty=wr.height-126;
+ tip.style.left=lx+'px';tip.style.top=ty+'px';
+}
+
+/* ================= 渲染 / 交互 ================= */
+function bindWrap(wrap){
+ if(!wrap)return;
+ wrap.addEventListener('mousemove',e=>{state.cx=e.clientX;state.cy=e.clientY;redraw()});
+ wrap.addEventListener('mouseleave',()=>{state.cx=null;state.cy=null;redraw()});
+}
+function redraw(){
+ if(state.k==='A'){
+  const wrap=document.getElementById('wrapA');
+  const mc=wrap.querySelector('.cv-main'),sc=wrap.querySelector('.cv-sub'),s2=wrap.querySelector('.cv-sub2');
+  const M=fit(mc),S=fit(sc);let info;
+  if(state.tf==='day'){s2.style.display='block';const S2=fit(s2);info=drawDayAuto(M,{padR:58,bw:8,bodyW:.62,fs:10});drawVol(S,info);drawMACD(S2,info)}
+  else{s2.style.display='none';info=drawMinuteAuto(M);drawMinuteVol(S,info)}
+  updateTip(wrap,mc,info);
+ }else if(state.k==='C'){
+  const wrap=document.querySelector('.fuse-main');
+  const mc=wrap.querySelector('.cv-main'),sc=wrap.querySelector('.cv-sub');
+  const M=fit(mc),S=fit(sc);let info;
+  if(state.tf==='day'){info=drawDayAuto(M,{padR:58,bw:8,bodyW:.62,fs:10});drawVol(S,info)}
+  else{info=drawMinuteAuto(M);drawMinuteVol(S,info)}
+  updateTip(wrap,mc,info);
+ }else{
+  const wrap=document.getElementById('wrapB');const cv=wrap.querySelector('canvas');
+  const info=drawTV(cv);updateTip(wrap,cv,info);
+ }
+}
+function render(){
+ const stage=document.getElementById('stage');
+ stage.innerHTML=state.k==='A'?htmlA():state.k==='B'?htmlB():htmlC();
+ bindWrap(document.getElementById('wrapA')||document.getElementById('wrapB')||document.querySelector('.fuse-main'));
+ stage.querySelectorAll('[data-tf]').forEach(b=>b.addEventListener('click',()=>setTf(b.dataset.tf)));
+ state.cx=null;redraw();
+}
+function setTf(t){state.tf=t;
+ document.querySelectorAll('[data-tf]').forEach(b=>b.classList.toggle('on',b.dataset.tf===t));
+ redraw()}
+document.querySelectorAll('#kindSeg button').forEach(b=>b.addEventListener('click',()=>{
+ state.k=b.dataset.k;document.querySelectorAll('#kindSeg button').forEach(x=>x.classList.toggle('on',x===b));render()}));
+document.querySelectorAll('#tfSeg button').forEach(b=>b.addEventListener('click',()=>setTf(b.dataset.tf)));
+window.addEventListener('resize',()=>redraw());
+render();
+</script>
+</body>
+</html>

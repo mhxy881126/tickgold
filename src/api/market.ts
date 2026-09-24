@@ -1,6 +1,6 @@
 // 行情 API：通过 Tauri command 调 Rust 端（Rust 负责请求东财/新浪公开接口，避免浏览器 CORS 与限频）
 import { invoke } from "@tauri-apps/api/core";
-import type { Quote, KBar, StockItem, FundFlow, Sector, ScreenFilter, ScreenResult, AlertRule } from "./types";
+import type { Quote, KBar, StockItem, FundFlow, Sector, ScreenFilter, ScreenResult, AlertRule, OrderBook } from "./types";
 
 /** 批量拉实时行情 */
 export async function fetchQuotes(codes: string[]): Promise<Quote[]> {
@@ -53,6 +53,11 @@ export async function fetchIndexQuotes(): Promise<Quote[]> {
 /** 当日分时（同花顺式分时图） */
 export async function fetchMinute(code: string): Promise<KBar[]> {
   return await invoke<KBar[]>("get_minute", { code });
+}
+
+/** 五档盘口（卖 1-5 / 买 1-5 + 当日概要） */
+export async function fetchOrderBook(code: string): Promise<OrderBook> {
+  return await invoke<OrderBook>("get_orderbook", { code });
 }
 
 /** 榜单：gainers=涨幅榜 losers=跌幅榜 amount=成交额榜（失败抛出错误供上层展示） */
