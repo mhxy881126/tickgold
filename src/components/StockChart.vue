@@ -26,6 +26,10 @@
         <div class="gi"><label>市盈(动)</label><span>{{ q && q.pe ? q.pe.toFixed(1) : "-" }}</span></div>
         <div class="gi"><label>流通市值</label><span>{{ q ? q.circMv.toFixed(1) + "亿" : "-" }}</span></div>
         <div class="gi"><label>总市值</label><span>{{ q ? q.totalMv.toFixed(1) + "亿" : "-" }}</span></div>
+        <div class="gi"><label>涨停价</label><span class="up">{{ fmtPx(limitUpPrice) }}</span></div>
+        <div class="gi"><label>跌停价</label><span class="down-k">{{ fmtPx(limitDownPrice) }}</span></div>
+        <div class="gi"><label>持仓</label><span>{{ myPos ? myPos.vol + "股" : "--" }}</span></div>
+        <div class="gi"><label>成本价</label><span>{{ myPos ? fmtPx(costPrice) : "--" }}</span></div>
       </div>
     </div>
 
@@ -55,6 +59,15 @@
     <div class="sc-body">
       <div class="sc-chart">
         <div ref="host" class="chart-host" @contextmenu.prevent="onContextMenu"></div>
+        <div v-if="tabs[active].minute" class="pct-axis">
+          <span
+            v-for="(it, i) in rightAxisItems"
+            :key="i"
+            class="pct-tick"
+            :class="axTone(it.pct)"
+            :style="{ top: it.coord + 'px' }"
+          >{{ it.pct > 0 ? "+" : "" }}{{ it.pct.toFixed(2) }}%</span>
+        </div>
 
         <!-- 画线工具条（竖排，可收起） -->
         <div v-if="drawBar" class="draw-bar" @contextmenu.stop.prevent>
@@ -307,6 +320,78 @@ const line = (color: string, size = 1) => ({
   dashedValue: [2, 2] as [number, number],
 });
 
+// ===== 分时右侧涨跌幅百分比轴（左侧价格走 KLineChart 默认轴；右侧 HTML 由 thsLevels 每帧 draw 驱动）=====
+const rightAxisItems = ref<{ coord: number; pct: number }[]>([]);
+let rafId = 0;
+let pendingItems: { coord: number; pct: number }[] = [];
+function scheduleRightAxis(items: { coord: number; pct: number }[]) {
+  pendingItems = items;
+  if (rafId) return;
+  rafId = requestAnimationFrame(() => {
+    rafId = 0;
+    rightAxisItems.value = pendingItems;
+  });
+}
+
+// 板块涨跌停幅度
+function limitRateOf(code: string, name?: string): number {
+  const nm = name || "";
+  if (nm.includes("ST")) return 0.05;
+  if (/^(300|301)/.test(code)) return 0.2;  // 创业板
+  if (/^(688|689)/.test(code)) return 0.2;  // 科创板
+  if (/^(8|4|920)/.test(code)) return 0.3;  // 北交所
+  return 0.1;                               // 主板
+}
+const round2 = (v: number) => Math.round(v * 100) / 100;
+
+// ===== 分时水平参考线 + 右侧百分比刻度（指标 draw 每帧执行，convertToPixel 精确映射）=====
+registerIndicator({
+  name: "thsLevels",
+  shortName: "",
+  series: "price" as any,
+  calcParams: [],
+  figures: [],
+  calc: (dl: KLineData[]) => dl.map(() => ({})),
+  draw: (params: any) => {
+    const { ctx, yAxis, bounding } = params;
+    const pc = prevClose.value;
+    if (!ctx || !(pc > 0)) return;
+    const r = limitRateOf(props.code, headName.value);
+    const lu = round2(pc * (1 + r)), ld = round2(pc * (1 - r));
+    const W = bounding.width, H = bounding.height;
+    const hline = (price: number, color: string, dash: boolean) => {
+      const y = yAxis.convertToPixel(price);
+      if (y == null) return;
+      ctx.strokeStyle = color; ctx.lineWidth = 1;
+      ctx.setLineDash(dash ? [4, 3] : []);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      ctx.setLineDash([]);
+    };
+    hline(pc, "rgba(225,230,245,.55)", false);
+    hline(lu, "rgba(255,50,50,.5)", true);
+    hline(ld, "rgba(29,190,125,.5)", true);
+
+    // 右侧百分比刻度：按可视价格范围选一个均匀 step，只显示其整数倍（含 0）
+    const items: { coord: number; pct: number }[] = [];
+    const pTop = yAxis.convertFromPixel(2), pBot = yAxis.convertFromPixel(H - 2);
+    if (pTop != null && pBot != null) {
+      const upPct = (pTop - pc) / pc * 100, dnPct = (pc - pBot) / pc * 100;
+      const span = Math.max(Math.abs(upPct), Math.abs(dnPct));
+      const cands = [0.1,0.2,0.25,0.3,0.4,0.5,0.6,0.8,1,1.5,2,3,4,5,6,8,10];
+      let step = cands[cands.length - 1];
+      for (const x of cands) { if (span / x <= 6) { step = x; break; } }
+      const nHi = Math.ceil(upPct / step), nLo = Math.floor(-dnPct / step);
+      for (let n = nLo; n <= nHi; n++) {
+        const pct = Math.round(n * step * 100) / 100;
+        const y = yAxis.convertToPixel(pc * (1 + pct / 100));
+        if (y == null || y < 2 || y > H - 2) continue;
+        items.push({ coord: y, pct });
+      }
+    }
+    scheduleRightAxis(items);
+  },
+} as any);
+
 // ===== 自定义指标①：分时均价 =====
 registerIndicator({
   name: "AVG",
@@ -475,6 +560,8 @@ function buildStyles(minute: boolean) {
       tickText: { show: true, color: axisText },
     },
     yAxis: {
+      type: "normal",
+      position: minute ? "left" : "right",
       axisLine: { show: true, color: gridLine },
       tickLine: { show: true, color: gridLine },
       tickText: { show: true, color: axisText },
@@ -582,6 +669,14 @@ function clearDrawings() {
   activeDraw.value = "";
 }
 
+// 涨跌停价 / 模拟持仓
+const limitRate = computed(() => limitRateOf(props.code, headName.value));
+const limitUpPrice = computed(() => (prevClose.value > 0 ? round2(prevClose.value * (1 + limitRate.value)) : null));
+const limitDownPrice = computed(() => (prevClose.value > 0 ? round2(prevClose.value * (1 - limitRate.value)) : null));
+const myPos = computed(() => paper.positions.find((p) => p.code === props.code));
+const costPrice = computed(() => (myPos.value ? myPos.value.costAmount / myPos.value.vol : 0));
+const axTone = (p: number) => (p > 0.05 ? "up" : p < -0.05 ? "dn" : "zero");
+
 // ---- 渲染图表（每次切换整体重建，避免指标残留）----
 function renderChart(bars: KBar[], minute: boolean) {
   if (!host.value) return;
@@ -600,7 +695,11 @@ function renderChart(bars: KBar[], minute: boolean) {
 
   if (minute) {
     chart.createIndicator({ name: "AVG", styles: { lines: [line(AVG_Y)] } } as any, false, { id: "candle_pane" });
-    chart.createIndicator("VOL", false, { height: 84 });
+    chart.createIndicator(
+      { name: "VOL", styles: { tooltip: { showName: false, showParams: false }, lines: [{ color: "rgba(0,0,0,0)" }, { color: "rgba(0,0,0,0)" }, { color: "rgba(0,0,0,0)" }] } } as any,
+      false, { height: 84 }
+    );
+    chart.createIndicator("thsLevels", true, { id: "candle_pane" });
   } else {
     chart.createIndicator({
       name: "MA",
@@ -679,7 +778,7 @@ function toggleBoll() {
   showBoll.value = !showBoll.value;
   if (chart) {
     if (showBoll.value) chart.createIndicator("BOLL", true, { id: "candle_pane" });
-    else chart.removeIndicator("BOLL");
+    else chart.removeIndicator("candle_pane", "BOLL");
   }
 }
 // 副图震荡指标切换（移除旧副图 pane，新建新指标 pane）
@@ -687,8 +786,8 @@ function switchSub(name: SubInd) {
   if (subInd.value === name) return;
   subInd.value = name;
   if (!chart) return;
-  if (subPaneId) chart.removeIndicator({ paneId: subPaneId } as any);
-  subPaneId = chart.createIndicator(name, false, { height: 84 }) as string | null;
+  if (subPaneId) chart.removeIndicator(subPaneId);
+  subPaneId = chart.createIndicator(name, false, { height: 84}) as string | null;
 }
 
 // ===== 跟随鼠标浮窗 =====
@@ -921,7 +1020,7 @@ function toggleTradePts() {
   showTradePts.value = !showTradePts.value;
   if (chart) {
     if (showTradePts.value) addTradePointsToChart();
-    else chart.removeIndicator("tradePoints");
+    else chart.removeIndicator("candle_pane", "tradePoints");
   }
   closeMenu();
 }
@@ -929,7 +1028,7 @@ function toggleTd() {
   showTd.value = !showTd.value;
   if (chart) {
     if (showTd.value) chart.createIndicator("td9", true, { id: "candle_pane" });
-    else chart.removeIndicator("td9");
+    else chart.removeIndicator("candle_pane", "td9");
   }
   closeMenu();
 }
@@ -992,6 +1091,7 @@ async function refreshChart() {
 }
 
 onMounted(async () => {
+  if (!paper.loaded) paper.load();
   await loadHead();
   await load();
   ro = new ResizeObserver(() => {
@@ -1070,6 +1170,11 @@ watch(() => props.code, async () => {
 .sc-body { flex: 1; min-height: 0; display: flex; }
 .sc-chart { flex: 1; min-width: 0; position: relative; }
 .chart-host { position: absolute; inset: 0; }
+.pct-axis { position: absolute; top: 0; right: 0; bottom: 0; width: 58px; z-index: 6; pointer-events: none; }
+.pct-tick { position: absolute; right: 6px; transform: translateY(-50%); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pct-tick.up { color: #FF3232; }
+.pct-tick.dn { color: #1DBE7D; }
+.pct-tick.zero { color: #dfe5f2; }
 
 /* 画线工具条 */
 .draw-bar {
