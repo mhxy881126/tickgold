@@ -1,6 +1,6 @@
 [package]
 name = "tickgold"
-version = "0.63.0"
+version = "0.64.0"
 description = "TickGold - 专业交易者跨平台 A 股盯盘终端"
 authors = ["tickgold"]
 edition = "2021"
@@ -32,6 +32,7 @@ cbc = { version = "0.1", features = ["alloc"] }
 base64 = "0.22"
 rfd = "0.17.2"
 log = "0.4.22"
+tauri-plugin-autostart = "2.5.1"
 
 # macOS 透明窗口（灵动岛毛玻璃）需要私有 API
 [target.'cfg(target_os = "macos")'.dependencies]

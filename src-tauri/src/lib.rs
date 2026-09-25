@@ -311,6 +311,112 @@ async fn save_export_file(default_name: String, content: String) -> Result<bool,
     Ok(true)
 }
 
+// ===== E2：更新前数据库备份 / 启动损坏自动恢复（失败回滚）=====
+const DB_NAME: &str = "stock-dock.db";
+const KEEP_BACKUPS: usize = 5;
+
+fn now_millis() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
+
+/// 是否为备份文件（stock-dock-*.db）
+fn is_backup(p: &std::path::Path) -> bool {
+    p.file_name()
+        .map(|n| n.to_string_lossy().starts_with("stock-dock-"))
+        .unwrap_or(false)
+        && p.extension().and_then(|x| x.to_str()) == Some("db")
+}
+
+/// 仅保留最近 KEEP_BACKUPS 个备份（按修改时间，新→旧）
+async fn prune_backups(bdir: &std::path::Path) {
+    let Ok(mut rd) = tokio::fs::read_dir(bdir).await else { return };
+    let mut items: Vec<(std::time::SystemTime, std::path::PathBuf)> = Vec::new();
+    while let Ok(Some(ent)) = rd.next_entry().await {
+        let p = ent.path();
+        if is_backup(&p) {
+            if let Ok(md) = ent.metadata().await {
+                if let Ok(modified) = md.modified() {
+                    items.push((modified, p));
+                }
+            }
+        }
+    }
+    items.sort_by(|a, b| b.0.cmp(&a.0));
+    for (_, p) in items.iter().skip(KEEP_BACKUPS) {
+        let _ = tokio::fs::remove_file(p).await;
+    }
+}
+
+/// 更新前备份当前数据库；tag 通常为当前版本号。返回备份文件名。
+#[tauri::command]
+async fn backup_database(app: tauri::AppHandle, tag: String) -> Result<String, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let src = dir.join(DB_NAME);
+    if !src.exists() {
+        return Err("数据库文件不存在".to_string());
+    }
+    let bdir = dir.join("backups");
+    tokio::fs::create_dir_all(&bdir)
+        .await
+        .map_err(|e| e.to_string())?;
+    let safe_tag: String = tag
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let fname = format!("stock-dock-{}-{}.db", safe_tag, now_millis());
+    let dst = bdir.join(&fname);
+    tokio::fs::copy(&src, &dst)
+        .await
+        .map_err(|e| e.to_string())?;
+    prune_backups(&bdir).await;
+    Ok(fname)
+}
+
+/// 启动时数据库损坏：损坏库重命名留证，再把最近备份恢复为 stock-dock.db。
+/// 返回 true=已恢复（前端应 relaunch）；false=无备份。
+#[tauri::command]
+async fn restore_latest_backup(app: tauri::AppHandle) -> Result<bool, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let bdir = dir.join("backups");
+    let Ok(mut rd) = tokio::fs::read_dir(&bdir).await else {
+        return Ok(false);
+    };
+    let mut newest: Option<(std::time::SystemTime, std::path::PathBuf)> = None;
+    while let Ok(Some(ent)) = rd.next_entry().await {
+        let p = ent.path();
+        if is_backup(&p) {
+            if let Ok(md) = ent.metadata().await {
+                if let Ok(modified) = md.modified() {
+                    if newest.as_ref().map(|(t, _)| modified > *t).unwrap_or(true) {
+                        newest = Some((modified, p));
+                    }
+                }
+            }
+        }
+    }
+    let Some((_, backup)) = newest else {
+        return Ok(false);
+    };
+    let cur = dir.join(DB_NAME);
+    if cur.exists() {
+        let corrupt = dir.join(format!("stock-dock.corrupt-{}.db", now_millis()));
+        // NTFS 允许重命名已被 SQLite 打开的文件；旧连接随 relaunch 释放
+        let _ = tokio::fs::rename(&cur, &corrupt).await;
+    }
+    tokio::fs::copy(&backup, &cur)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(true)
+}
 // ===== Rust 分级日志：读取 / 清空 / 动态调级（前端可合并前后端日志导出）=====
 #[tauri::command]
 fn rust_logs(min_level: Option<String>) -> Result<Vec<logging::LogItem>, String> {
@@ -374,6 +480,10 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations(
@@ -878,7 +988,9 @@ pub fn run() {
             save_export_file,
             rust_logs,
             rust_clear_logs,
-            rust_set_log_level
+            rust_set_log_level,
+            backup_database,
+            restore_latest_backup
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

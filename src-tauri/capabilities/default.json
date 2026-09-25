@@ -25,6 +25,7 @@
     "updater:default",
     "process:default",
     "shell:default",
-    "opener:default"
+    "opener:default",
+    "autostart:default"
   ]
 }

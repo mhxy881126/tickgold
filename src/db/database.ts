@@ -1,6 +1,8 @@
 // SQLite 数据访问单例（tauri-plugin-sql）
 // 建表迁移在 Rust 端（lib.rs）配置；这里负责连接、默认数据与一次 localStorage 迁移。
 import Database from "@tauri-apps/plugin-sql";
+import { invoke } from "@tauri-apps/api/core";
+import { relaunch } from "@tauri-apps/plugin-process";
 import type { AlertRule } from "../api/types";
 
 let instance: Database | null = null;
@@ -28,19 +30,35 @@ export function ensureDb(): Promise<Database> {
 }
 
 async function init(): Promise<Database> {
-  const d = await Database.load("sqlite:stock-dock.db");
-  await seedGroups(d);
-  await seedStocks(d);
-  await seedAlerts(d);
-  // 迁移完成后清理旧的 localStorage
   try {
-    localStorage.removeItem("sd_watchlist_v1");
-    localStorage.removeItem("sd_alerts_v1");
-  } catch {
-    /* ignore */
+    const d = await Database.load("sqlite:stock-dock.db");
+    await seedGroups(d);
+    await seedStocks(d);
+    await seedAlerts(d);
+    // 迁移完成后清理旧的 localStorage
+    try {
+      localStorage.removeItem("sd_watchlist_v1");
+      localStorage.removeItem("sd_alerts_v1");
+    } catch {
+      /* ignore */
+    }
+    instance = d;
+    return d;
+  } catch (e) {
+    // 数据库可能损坏：自动恢复最近备份后重启（无备份则抛原错）
+    try {
+      const restored = await invoke<boolean>("restore_latest_backup");
+      if (restored) {
+        await relaunch();
+        return new Promise<Database>(() => {
+          /* 即将重启，挂起此 Promise */
+        });
+      }
+    } catch (re) {
+      console.error("[db] auto-restore failed", re);
+    }
+    throw e;
   }
-  instance = d;
-  return d;
 }
 
 async function seedGroups(d: Database) {

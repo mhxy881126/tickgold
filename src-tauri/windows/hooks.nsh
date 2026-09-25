@@ -29,3 +29,12 @@
   Pop $0
   Sleep 400
 !macroend
+
+!macro NSIS_HOOK_POSTUNINSTALL
+  ; 卸载完成后询问是否同时删除个人数据（自选/布局/预警/数据库/缓存）。
+  ; /SD IDNO：静默卸载默认「否」，保留数据，避免自动化流程误删。
+  ; 选「否」跳过下面两条 RMDir（IDNO +3），选「是」顺序执行清理。
+  MessageBox MB_YESNO|MB_ICONQUESTION "是否同时删除 TickGold 的个人数据？$\r$\n$\r$\n选择「是」将永久删除自选股、布局、预警、本地数据库与缓存，此操作不可恢复。" /SD IDNO IDNO +3
+    RMDir /r "$APPDATA\com.stockdock.desktop"
+    RMDir /r "$LOCALAPPDATA\com.stockdock.desktop"
+!macroend

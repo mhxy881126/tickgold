@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useTheme, type ThemeId } from "../composables/useTheme";
 import { tsStatus } from "../composables/useTimeSeries";
 import { logger, type LogLevel } from "../utils/logger";
+import { isEnabled as autoStartEnabled, enable as enableAutoStart, disable as disableAutoStart } from "@tauri-apps/plugin-autostart";
 
 defineProps<{ open: boolean }>();
 const emit = defineEmits<{ "update:open": [boolean] }>();
@@ -12,6 +13,25 @@ function close() {
 }
 
 const { theme, setTheme, THEMES } = useTheme();
+
+// ===== 开机自动启动 =====
+const autoStart = ref(false);
+const autoStartBusy = ref(false);
+async function loadAutoStart() {
+  try { autoStart.value = await autoStartEnabled(); } catch { /* ignore */ }
+}
+async function toggleAutoStart(v: boolean) {
+  autoStartBusy.value = true;
+  try {
+    if (v) await enableAutoStart(); else await disableAutoStart();
+    autoStart.value = v;
+  } catch (e) {
+    console.warn("[autostart]", e);
+  } finally {
+    autoStartBusy.value = false;
+  }
+}
+void loadAutoStart();
 
 type Tab = "appearance" | "data" | "logs" | "about";
 const tab = ref<Tab>("appearance");
@@ -119,7 +139,21 @@ function pickTab(id: Tab) {
           <div class="set-content">
             <!-- 外观 / 配色 -->
             <div v-if="tab === 'appearance'">
-              <div class="section-title">配色主题</div>
+              <div class="section-title">启动设置</div>
+              <div class="startup-row">
+                <div class="startup-info">
+                  <div class="startup-name">开机自动启动 TickGold</div>
+                  <div class="section-sub" style="margin:3px 0 0">登录系统后自动运行，便于开盘前自动盯盘</div>
+                </div>
+                <button
+                  type="button"
+                  class="switch"
+                  :class="{ on: autoStart }"
+                  :disabled="autoStartBusy"
+                  @click="toggleAutoStart(!autoStart)"
+                ><span class="knob"></span></button>
+              </div>
+              <div class="section-title" style="margin-top:22px">配色主题</div>
               <div class="section-sub">选择后立即生效，并自动记住你的选择</div>
               <div class="theme-grid">
                 <button
@@ -276,6 +310,24 @@ function pickTab(id: Tab) {
 
 .ph { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-dim); gap: 10px; font-size: 12px; }
 .ph2 { opacity: 0.6; font-size: 11px; }
+
+.startup-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: 11px; background: var(--bg-card);
+}
+.startup-info { min-width: 0; }
+.startup-name { font-size: 12.5px; font-weight: 700; color: var(--text); }
+.switch {
+  flex: none; width: 42px; height: 24px; border-radius: 13px; border: none; cursor: pointer;
+  background: #3a434f; padding: 2px; transition: background .18s;
+}
+.switch.on { background: #2f6fed; }
+.switch:disabled { opacity: .6; cursor: default; }
+.knob {
+  display: block; width: 20px; height: 20px; border-radius: 50%; background: #fff;
+  transition: transform .18s; transform: translateX(0);
+}
+.switch.on .knob { transform: translateX(18px); }
 
 /* 数据中心 */
 .data-center { display: flex; flex-direction: column; gap: 10px; }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -161,6 +162,12 @@ async function doUpdate() {
         pct.value = 100;
       }
     });
+    // 安装前备份当前数据库（失败不阻断更新）
+    try {
+      await invoke("backup_database", { tag: curVersion.value });
+    } catch (be) {
+      console.warn("[updater] backup failed:", be);
+    }
     phase.value = "installing";
     await u.install();
     await relaunch();
@@ -216,6 +223,7 @@ watch(
               <div class="vv new">v{{ latestVersion }}</div>
             </div>
           </div>
+          <div class="tip">安装包经 minisign 签名校验，更新前自动备份本地数据。</div>
           <div v-if="fallback" class="tip">自动检查通道不稳定，已通过备用镜像获取到新版本，可尝试自动更新或手动下载。</div>
           <div v-if="notes" class="notes">
             <div class="notes-title">更新内容</div>
@@ -237,8 +245,10 @@ watch(
         </template>
 
         <!-- 安装中 -->
-        <div v-else-if="phase === 'installing'" class="center">
-          <span class="spin"></span> 下载完成，即将退出并启动安装…
+        <div v-else-if="phase === 'installing'" class="center col">
+          <span class="spin"></span>
+          <span>安装包签名校验通过，正在安装…</span>
+          <span class="ver-line">安装完成后将自动重启</span>
         </div>
 
         <!-- 错误 -->
