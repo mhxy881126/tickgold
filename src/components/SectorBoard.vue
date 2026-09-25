@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from "vue";
+import { ref, computed } from "vue";
 import { fetchSectors } from "../api/market";
 import type { Sector } from "../api/types";
+import { useSmartPolling } from "../composables/useSmartPolling";
 
 const emit = defineEmits<{ (e: "select", code: string): void }>();
 
 type Kind = "industry" | "concept";
 const kind = ref<Kind>("industry");
-const loading = ref(false);
+const loading = ref(true);
 const error = ref("");
 const cache = ref<Record<Kind, Sector[]>>({ industry: [], concept: [] });
 
@@ -65,14 +66,8 @@ function arrow(k: "changePct" | "netAmount"): string {
   return sortAsc.value ? "▲" : "▼";
 }
 
-let timer: number | null = null;
-onMounted(() => {
-  load();
-  timer = window.setInterval(() => load(false), 10000);
-});
-onBeforeUnmount(() => {
-  if (timer) clearInterval(timer);
-});
+// 智能轮询：仅在卡片可见 / 在线 / 非聚焦后台时静默刷新，断网、最小化自动暂停，恢复即刷新
+useSmartPolling(() => load(false), { interval: 10000, cardId: "sector" });
 </script>
 
 <template>

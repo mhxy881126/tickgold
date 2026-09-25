@@ -1,6 +1,6 @@
 // 东方财富数据源：批量实时行情 + 股票搜索
 use super::{
-    http, now_millis, secid_prefix, OrderBook, OrderLevel, Quote, StockItem, TradeTick,
+    http, http_permit, now_millis, secid_prefix, OrderBook, OrderLevel, Quote, StockItem, TradeTick,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -527,6 +527,8 @@ const CLIST_HOSTS: &[&str] = &[
 /// clist 单页实际请求（pz=100，服务端单页硬上限 100），返回 (全市场总数, 本页行情)。
 /// 依次尝试多个 push2 节点，任一返回可解析 JSON 即成功；全部失败才报错。
 async fn clist_page_once(fs: &str, pn: i32) -> Result<(i64, Vec<EmQuote>), String> {
+    // 全局并发闸门：无论上层几个引擎同时全市场翻页，clist 在途请求总数被统一限制（防请求雪崩）
+    let _permit = http_permit().await;
     let mut last = String::new();
     for host in CLIST_HOSTS {
         let url = format!(
@@ -571,10 +573,14 @@ async fn clist_page(fs: &str, pn: i32) -> Result<(i64, Vec<EmQuote>), String> {
             Err(e) => {
                 last = e;
                 if attempt < 2 {
-                    tokio::time::sleep(std::time::Duration::from_millis(
-                        600 * (attempt as u64 + 1),
-                    ))
-                    .await;
+                    // 指数退避（500ms / 1000ms）+ 随页码与时间变化的随机抖动，
+                    // 避免一批被限流的请求在固定间隔同时重试、再次撞上限流
+                    let base = 500u64 * 2u64.pow(attempt);
+                    let jitter = (now_millis().unsigned_abs() / 10)
+                        .wrapping_add(pn as u64 * 7919)
+                        .wrapping_add(attempt as u64 * 104729)
+                        % 200;
+                    tokio::time::sleep(std::time::Duration::from_millis(base + jitter)).await;
                 }
             }
         }

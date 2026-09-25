@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { fetchSectors } from "../api/market";
 import type { Sector } from "../api/types";
+import { useSmartPolling } from "../composables/useSmartPolling";
 
 const emit = defineEmits<{ select: [code: string] }>();
 
@@ -26,7 +27,6 @@ const updated = ref("");
 const nowTrading = ref(true);
 
 let prev: Map<string, Sector> | null = null;
-let timer: number | null = null;
 
 const DPCT = 0.3; // 板块涨跌幅变化阈值（个百分点）
 const DNET = 0.3 * 1e8; // 板块净流入变化阈值（元，0.3 亿）
@@ -152,13 +152,8 @@ const shown = computed<SEvent[]>(() => {
 });
 
 function togglePause() {
+  // 仅切换手动暂停信号，启停交给智能轮询（同时保留可见 / 在线 / 聚焦感知）
   paused.value = !paused.value;
-  if (paused) {
-    if (timer) clearInterval(timer);
-    timer = null;
-  } else {
-    timer = window.setInterval(tick, 15000);
-  }
 }
 function clearAll() {
   // 清空实时异动，保留基线快照
@@ -168,14 +163,9 @@ function pick(e: SEvent) {
   if (e.lead) emit("select", e.lead);
 }
 
-onMounted(async () => {
-  calcTrading();
-  await tick();
-  timer = window.setInterval(tick, 15000);
-});
-onBeforeUnmount(() => {
-  if (timer) clearInterval(timer);
-});
+onMounted(() => calcTrading());
+// 智能轮询：可见 / 在线 / 非聚焦后台时每 15s 检测板块异动；手动暂停、断网、最小化自动停，恢复即刷新
+useSmartPolling(tick, { interval: 15000, cardId: "sectorevents", paused });
 </script>
 
 <template>

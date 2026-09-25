@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, computed } from "vue";
+import { ref, watch, computed } from "vue";
 import { fetchFundFlow } from "../api/market";
 import type { FundFlow } from "../api/types";
+import { useSmartPolling } from "../composables/useSmartPolling";
 
 const props = defineProps<{ code: string | null }>();
 
 const data = ref<FundFlow | null>(null);
-let timer: number | null = null;
 
 function money(n: number): string {
   const a = Math.abs(n);
@@ -46,13 +46,8 @@ async function load() {
 }
 
 watch(() => props.code, load);
-onMounted(() => {
-  load();
-  timer = window.setInterval(load, 8000);
-});
-onBeforeUnmount(() => {
-  if (timer) clearInterval(timer);
-});
+// 智能轮询：仅在卡片可见 / 在线 / 非聚焦后台时刷新，断网、最小化自动暂停，恢复即刷新
+useSmartPolling(load, { interval: 8000, cardId: "fundflow" });
 </script>
 
 <template>

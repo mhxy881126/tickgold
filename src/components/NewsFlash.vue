@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { ref } from "vue";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { fetchNewsFlash, type NewsItem } from "../api/market";
+import { useSmartPolling } from "../composables/useSmartPolling";
 
 const items = ref<NewsItem[]>([]);
 const loading = ref(false);
@@ -68,12 +69,8 @@ async function open(n: NewsItem) {
   }
 }
 
-let timer = 0;
-onMounted(() => {
-  load(1);
-  timer = window.setInterval(() => load(1), 45000);
-});
-onBeforeUnmount(() => window.clearInterval(timer));
+// 智能轮询：仅在卡片可见 / 在线 / 非聚焦后台时刷新，断网、最小化自动暂停，恢复即刷新
+useSmartPolling(() => load(1), { interval: 45000, cardId: "news" });
 </script>
 
 <template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { fetchRankPage } from "../api/market";
 import { useWatchlistStore } from "../stores/watchlist";
 import type { Quote } from "../api/types";
@@ -15,6 +15,31 @@ const loading = ref(false);
 const hasMore = ref(true);
 const errorMsg = ref("");
 const wl = useWatchlistStore();
+
+// ===== 虚拟滚动（固定行高，仅渲染可视区 + 上下缓冲，5000+ 行也只挂约 30 个 DOM）=====
+const ROW_H = 30;
+const BUFFER = 8;
+const scrollEl = ref<HTMLElement | null>(null);
+const scrollTop = ref(0);
+const viewH = ref(400);
+
+const startIdx = computed(() =>
+  Math.max(0, Math.floor(scrollTop.value / ROW_H) - BUFFER)
+);
+const endIdx = computed(() =>
+  Math.min(
+    list.value.length,
+    Math.ceil((scrollTop.value + viewH.value) / ROW_H) + BUFFER
+  )
+);
+const visibleRows = computed(() =>
+  list.value.slice(startIdx.value, endIdx.value).map((q, k) => ({
+    q,
+    i: startIdx.value + k,
+  }))
+);
+const totalH = computed(() => list.value.length * ROW_H);
+const offsetY = computed(() => startIdx.value * ROW_H);
 
 const tabs: { k: Tab; label: string }[] = [
   { k: "gainers", label: "涨幅" },
@@ -48,14 +73,21 @@ function reset() {
   hasMore.value = true;
   errorMsg.value = "";
   loading.value = false;
+  scrollTop.value = 0;
+  if (scrollEl.value) scrollEl.value.scrollTop = 0;
   loadMore();
 }
 watch(tab, reset);
-onMounted(reset);
+onMounted(() => {
+  viewH.value = scrollEl.value?.clientHeight ?? 400;
+  reset();
+});
 
 function onScroll(e: Event) {
   const el = e.target as HTMLElement;
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) loadMore();
+  scrollTop.value = el.scrollTop;
+  viewH.value = el.clientHeight;
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) loadMore();
 }
 
 function isWatched(code: string) {
@@ -89,7 +121,8 @@ function addOne(q: Quote) {
       </button>
     </div>
 
-    <div class="scroll" @scroll="onScroll">
+    <!-- 固定表头（不参与虚拟滚动） -->
+    <div class="thead-bar">
       <table>
         <colgroup>
           <col style="width: 8%">
@@ -102,45 +135,63 @@ function addOne(q: Quote) {
         <thead>
           <tr><th>#</th><th>名称</th><th class="r">最新</th><th class="r">涨跌幅</th><th class="r">成交额</th><th class="c">自选</th></tr>
         </thead>
-        <tbody>
-          <tr
-            v-for="(q, i) in list"
-            :key="q.code"
-            @click="emit('select', q.code)"
-          >
-            <td class="idx">{{ i + 1 }}</td>
-            <td class="stock-cell">
-              <span class="nm">{{ q.name }}</span>
-              <span class="cd">{{ q.code }}</span>
-            </td>
-            <td class="r" :class="cls(q.pct)">{{ fmt(q.price) }}</td>
-            <td class="r" :class="cls(q.pct)">{{ q.pct > 0 ? "+" : "" }}{{ fmt(q.pct) }}%</td>
-            <td class="r dim">{{ amtSmart(q.amount) }}</td>
-            <td class="c act">
-              <button
-                v-if="!isWatched(q.code)"
-                class="add-btn"
-                title="加入自选"
-                @click.stop="addOne(q)"
-              >+</button>
-              <span v-else class="added" title="已在自选">✓</span>
-            </td>
-          </tr>
-
-          <tr v-if="loading">
-            <td colspan="6" class="status"><span class="spin"></span>正在加载更多…</td>
-          </tr>
-          <tr v-else-if="!hasMore && list.length > 0">
-            <td colspan="6" class="status dim">已加载全部 {{ list.length }} 只股票</td>
-          </tr>
-          <tr v-if="errorMsg && list.length === 0">
-            <td colspan="6" class="empty err">{{ errorMsg }}</td>
-          </tr>
-          <tr v-if="!loading && list.length === 0 && !errorMsg">
-            <td colspan="6" class="empty">暂无数据</td>
-          </tr>
-        </tbody>
       </table>
+    </div>
+
+    <div class="scroll" ref="scrollEl" @scroll="onScroll">
+      <!-- 空 / 错误占位 -->
+      <div v-if="list.length === 0 && (errorMsg || !loading)" class="empty-state">
+        <span v-if="errorMsg" class="err">{{ errorMsg }}</span>
+        <span v-else>暂无数据</span>
+      </div>
+
+      <!-- 虚拟滚动主体 -->
+      <div class="vholder" :style="{ height: totalH + 'px' }">
+        <div class="vwindow" :style="{ transform: `translateY(${offsetY}px)` }">
+          <table>
+            <colgroup>
+              <col style="width: 8%">
+              <col style="width: 33%">
+              <col style="width: 17%">
+              <col style="width: 16%">
+              <col style="width: 15%">
+              <col style="width: 11%">
+            </colgroup>
+            <tbody>
+              <tr
+                v-for="{ q, i } in visibleRows"
+                :key="q.code"
+                :style="{ height: ROW_H + 'px' }"
+                @click="emit('select', q.code)"
+              >
+                <td class="idx">{{ i + 1 }}</td>
+                <td class="stock-cell">
+                  <span class="nm">{{ q.name }}</span>
+                  <span class="cd">{{ q.code }}</span>
+                </td>
+                <td class="r" :class="cls(q.pct)">{{ fmt(q.price) }}</td>
+                <td class="r" :class="cls(q.pct)">{{ q.pct > 0 ? "+" : "" }}{{ fmt(q.pct) }}%</td>
+                <td class="r dim">{{ amtSmart(q.amount) }}</td>
+                <td class="c act">
+                  <button
+                    v-if="!isWatched(q.code)"
+                    class="add-btn"
+                    title="加入自选"
+                    @click.stop="addOne(q)"
+                  >+</button>
+                  <span v-else class="added" title="已在自选">✓</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 底部状态行 -->
+      <div class="foot-row">
+        <span v-if="loading"><span class="spin"></span>正在加载更多…</span>
+        <span v-else-if="!hasMore && list.length > 0" class="dim">已加载全部 {{ list.length }} 只股票</span>
+      </div>
     </div>
   </div>
 </template>
@@ -154,23 +205,33 @@ function addOne(q: Quote) {
 }
 .tab.active { color: #e6edf3; border-color: #2f6fed; background: #16233a; }
 
-.scroll { flex: 1; overflow-y: auto; min-height: 0; }
-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-thead th {
+.thead-bar { flex-shrink: 0; border-bottom: 1px solid var(--border); }
+.thead-bar table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.thead-bar th {
   text-align: left; color: var(--text-dim); font-weight: 500;
-  padding: 5px 8px; border-bottom: 1px solid var(--border);
-  position: sticky; top: 0; background: var(--bg-panel); z-index: 1;
-  font-size: 11px;
+  padding: 0 8px; height: 30px;
+  font-size: 11px; background: var(--bg-panel);
 }
+.thead-bar th.r { text-align: right; }
+.thead-bar th.c { text-align: center; }
+
+.scroll { flex: 1; overflow-y: auto; min-height: 0; position: relative; }
+.vholder { position: relative; width: 100%; }
+.vwindow { position: absolute; top: 0; left: 0; right: 0; will-change: transform; }
+.vwindow table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+
 th.r, td.r { text-align: right; }
-tbody tr { cursor: pointer; }
+tbody tr { cursor: pointer; height: 30px; }
 tbody tr:hover { background: var(--bg-hover); }
-td { padding: 5px 8px; border-bottom: 1px solid #1b2129; font-size: 12px; white-space: nowrap; overflow: hidden; }
+td {
+  padding: 0 8px; height: 30px; border-bottom: 1px solid #1b2129;
+  font-size: 12px; white-space: nowrap; overflow: hidden;
+}
 .idx { color: var(--text-dim); width: 22px; font-size: 11px; }
-.stock-cell { display: flex; align-items: baseline; gap: 5px; overflow: hidden; }
+.stock-cell { display: flex; align-items: center; gap: 5px; overflow: hidden; }
 .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
-.dim { color: var(--text-dim); position: relative; }
+.dim { color: var(--text-dim); }
 th.c, td.c { text-align: center; }
 .act { padding-left: 4px; padding-right: 4px; }
 .add-btn {
@@ -182,13 +243,19 @@ th.c, td.c { text-align: center; }
 .add-btn:hover { background: #d4af37; border-color: #d4af37; color: #1a1a1a; }
 .added { color: #3ba776; font-size: 12px; font-weight: 700; }
 
-.status { text-align: center; color: var(--text-dim); padding: 12px; font-size: 11px; }
-.status .spin {
+.empty-state {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 160px; color: var(--text-dim); font-size: 12px; text-align: center; padding: 0 20px;
+}
+.empty-state .err { color: #f23645; font-size: 11px; }
+.foot-row {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 34px; font-size: 11px; color: var(--text-dim);
+}
+.foot-row .spin {
   display: inline-block; width: 11px; height: 11px; margin-right: 6px;
   border: 2px solid #333; border-top-color: #d4af37; border-radius: 50%;
   vertical-align: -1px; animation: r .8s linear infinite;
 }
 @keyframes r { to { transform: rotate(360deg); } }
-.empty { text-align: center; color: var(--text-dim); padding: 30px; font-size: 12px; }
-.err { color: #f23645; font-size: 11px; padding: 0 16px; }
 </style>

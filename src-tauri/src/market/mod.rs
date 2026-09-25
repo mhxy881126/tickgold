@@ -229,6 +229,21 @@ pub fn http() -> Client {
         .unwrap_or_default()
 }
 
+/// 全局 HTTP 并发闸门：限制「同时在途」的全市场批量请求总数。
+/// 集合竞价 / 涨停雷达 / 热力图 / 榜单等若同时全市场翻页，单靠各调用方的局部信号量仍会叠加；
+/// 此处统一兜底，避免瞬时几十上百个请求打向同一数据源而触发限流（请求雪崩）。
+static HTTP_GATE: OnceLock<tokio::sync::Semaphore> = OnceLock::new();
+fn http_gate() -> &'static tokio::sync::Semaphore {
+    HTTP_GATE.get_or_init(|| tokio::sync::Semaphore::new(6))
+}
+/// 获取一个全局 HTTP 请求许可（持有到作用域结束即释放）。并发达上限时在此等待。
+pub async fn http_permit() -> tokio::sync::SemaphorePermit<'static> {
+    http_gate()
+        .acquire()
+        .await
+        .expect("global http semaphore closed")
+}
+
 /// 东财 secid 前缀：6/9/5 开头沪市=1，其余=0
 pub fn secid_prefix(code: &str) -> &'static str {
     match code.chars().next().unwrap_or('0') {
