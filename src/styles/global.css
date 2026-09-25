@@ -215,3 +215,30 @@ input {
   padding: 6px 8px; outline: none;
 }
 input:focus { border-color: var(--accent); }
+
+/* ===== 键盘可达：明显的焦点指示（仅键盘 Tab 导航时出现，鼠标点击不显示） ===== */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 6px;
+}
+button:focus:not(:focus-visible) { outline: none; }
+
+/* ===== 高对比模式：提亮文字、强化边框（深色主题通用） ===== */
+html[data-hc="true"] {
+  --border: rgba(255, 255, 255, 0.55);
+  --border-light: rgba(255, 255, 255, 0.9);
+  --text: #ffffff;
+  --text-dim: #d8dde5;
+}
+/* 亮色主题（同花顺经典白）开启高对比：改用深色文字 / 边框保证对比 */
+html[data-theme="ths-white"][data-hc="true"] {
+  --border: #2a3340;
+  --border-light: #000000;
+  --text: #000000;
+  --text-dim: #2a3340;
+}
+html[data-hc="true"] :focus-visible {
+  outline-width: 3px;
+  outline-offset: 2px;
+}

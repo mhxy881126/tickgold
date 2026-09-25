@@ -8,6 +8,8 @@ import CardShell from "./components/CardShell.vue";
 import CardContent from "./components/CardContent.vue";
 import UpdateDialog from "./components/UpdateDialog.vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
+import ShortcutDialog from "./components/ShortcutDialog.vue";
+import OnboardingDialog from "./components/OnboardingDialog.vue";
 import LayoutMenu from "./components/LayoutMenu.vue";
 import ShortTermSpider from "./components/ShortTermSpider.vue";
 import LimitRadar from "./components/LimitRadar.vue";
@@ -39,8 +41,9 @@ import { useQuotesStore } from "./stores/quotes";
 import { useAlertStore } from "./stores/alert";
 import { useWorkbench, CARD_META, MODES, currentTimeSlot, type CardId } from "./composables/useWorkbench";
 import { useTheme } from "./composables/useTheme";
+import { useAccessibility } from "./composables/useAccessibility";
 import type { AlertEvent } from "./api/market";
-import { ensureDb } from "./db/database";
+import { ensureDb, db } from "./db/database";
 import { startTimeSeries } from "./composables/useTimeSeries";
 import { playAlert } from "./utils/sound";
 
@@ -49,6 +52,7 @@ const quotes = useQuotesStore();
 const alerts = useAlertStore();
 const bench = useWorkbench();
 const theme = useTheme();
+const a11y = useAccessibility();
 provide("workbench", bench);
 
 const selected = ref<string | null>(null);
@@ -256,6 +260,30 @@ function onGlobalKey(e: KeyboardEvent) {
     paletteOpen.value ? closePalette() : openPalette();
     return;
   }
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key === ",") {
+    e.preventDefault();
+    showSettings.value = true;
+    return;
+  }
+  if (mod && e.key.toLowerCase() === "u") {
+    e.preventDefault();
+    showUpdate.value = true;
+    return;
+  }
+  if (mod && e.key === "/") {
+    e.preventDefault();
+    showShortcuts.value = true;
+    return;
+  }
+  // 单按 ?（焦点不在输入框时）打开快捷键速查
+  const tel = e.target as HTMLElement | null;
+  const typing = !!tel && (tel.tagName === "INPUT" || tel.tagName === "TEXTAREA" || tel.isContentEditable);
+  if (!mod && e.key === "?" && !typing) {
+    e.preventDefault();
+    showShortcuts.value = true;
+    return;
+  }
   if (!paletteOpen.value) return;
   const n = pFiltered.value.length;
   if (e.key === "Escape") {
@@ -442,6 +470,8 @@ function onSearchSelect(code: string, name: string) {
 const curVersion = ref("");
 const showUpdate = ref(false);
 const showSettings = ref(false);
+const showShortcuts = ref(false);
+const showOnboarding = ref(false);
 
 // ===== 自绘标题栏窗口控制（Windows；macOS 用原生红绿灯）=====
 const isMac = ref(false);
@@ -515,6 +545,11 @@ onMounted(async () => {
   // —— 本地时序采集（情绪/指数/板块，盘中分时+收盘日级，常驻后台）——
   try { await startTimeSeries(); } catch (e) { console.error("[app] timeseries", e); }
   try { await theme.load(); } catch (e) { console.error("[app] theme", e); }
+  try { await a11y.load(); } catch (e) { console.error("[app] a11y", e); }
+  try {
+    const obRows = await db().select<{ value: string }[]>("SELECT value FROM meta WHERE key=?", ["onboarding_done"]);
+    if (obRows[0]?.value !== "1") showOnboarding.value = true;
+  } catch (e) { console.error("[app] onboarding", e); }
   try { await wl.load(); } catch (e) { console.error("[app] watchlist", e); }
   try { await alerts.load(); } catch (e) { console.error("[app] alerts", e); }
 
@@ -853,7 +888,9 @@ onBeforeUnmount(() => {
     <!-- 软件更新对话框 -->
     <UpdateDialog v-model:open="showUpdate" />
     <!-- 设置对话框 -->
-    <SettingsDialog v-model:open="showSettings" />
+    <SettingsDialog v-model:open="showSettings" @replay-onboarding="showOnboarding = true" />
+    <ShortcutDialog v-model:open="showShortcuts" />
+    <OnboardingDialog v-model:open="showOnboarding" />
 
     <!-- 命令面板（Ctrl / ⌘ + K） -->
     <Transition name="palette">

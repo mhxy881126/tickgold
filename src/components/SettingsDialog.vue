@@ -2,17 +2,20 @@
 import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { useTheme, type ThemeId } from "../composables/useTheme";
+import { useAccessibility } from "../composables/useAccessibility";
 import { tsStatus } from "../composables/useTimeSeries";
 import { logger, type LogLevel } from "../utils/logger";
 import { isEnabled as autoStartEnabled, enable as enableAutoStart, disable as disableAutoStart } from "@tauri-apps/plugin-autostart";
 
 defineProps<{ open: boolean }>();
-const emit = defineEmits<{ "update:open": [boolean] }>();
+const emit = defineEmits<{ "update:open": [boolean]; "replay-onboarding": [] }>();
 function close() {
   emit("update:open", false);
 }
 
 const { theme, setTheme, THEMES } = useTheme();
+const { zoom, highContrast, setZoom, setHighContrast, ZOOM_LEVELS } = useAccessibility();
+function replayOnboarding() { close(); emit("replay-onboarding"); }
 
 // ===== 开机自动启动 =====
 const autoStart = ref(false);
@@ -178,6 +181,25 @@ function pickTab(id: Tab) {
                   </span>
                 </button>
               </div>
+
+              <div class="section-title" style="margin-top:22px">显示与可访问性</div>
+              <div class="section-sub">界面缩放与高对比，选择后立即生效并记住</div>
+              <div class="startup-row">
+                <div class="startup-info">
+                  <div class="startup-name">界面缩放</div>
+                  <div class="section-sub" style="margin:3px 0 0">整体放大或缩小文字与控件</div>
+                </div>
+                <div class="seg">
+                  <button v-for="z in ZOOM_LEVELS" :key="z.value" type="button" class="seg-btn" :class="{ on: zoom === z.value }" @click="setZoom(z.value)">{{ z.label }}</button>
+                </div>
+              </div>
+              <div class="startup-row">
+                <div class="startup-info">
+                  <div class="startup-name">高对比模式</div>
+                  <div class="section-sub" style="margin:3px 0 0">增强文字与边框对比，更易辨识</div>
+                </div>
+                <button type="button" class="switch" :class="{ on: highContrast }" @click="setHighContrast(!highContrast)"><span class="knob"></span></button>
+              </div>
             </div>
 
             <!-- 数据中心：本地时序采集状态 -->
@@ -244,6 +266,7 @@ function pickTab(id: Tab) {
               <div class="ab-desc">开源跨平台 A 股盯盘终端</div>
               <div class="ab-tech">Tauri 2.0 · Rust · Vue 3 · TypeScript · ECharts</div>
               <div class="ab-desc">一套代码，图形化发布 Windows / macOS</div>
+              <button type="button" class="ab-replay" @click="replayOnboarding">重新查看新手引导</button>
             </div>
           </div>
         </div>
@@ -412,4 +435,10 @@ function pickTab(id: Tab) {
 .dlg-enter-active .set-dialog, .dlg-leave-active .set-dialog { transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.22s; }
 .dlg-enter-from, .dlg-leave-to { opacity: 0; }
 .dlg-enter-from .set-dialog, .dlg-leave-to .set-dialog { transform: scale(0.94); opacity: 0; }
+.seg { display: inline-flex; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg-btn { background: transparent; color: var(--text-dim); border: none; padding: 6px 14px; cursor: pointer; font-size: 12.5px; font-family: inherit; }
+.seg-btn.on { background: var(--accent); color: #1a1407; font-weight: 700; }
+.seg-btn + .seg-btn { border-left: 1px solid var(--border); }
+.ab-replay { margin-top: 16px; background: transparent; color: var(--accent); border: 1px solid var(--border-light); border-radius: 8px; padding: 8px 20px; cursor: pointer; font-size: 13px; font-family: inherit; }
+.ab-replay:hover { background: var(--bg-hover); }
 </style>
