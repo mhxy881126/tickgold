@@ -1,3 +1,4 @@
+mod logging;
 mod market;
 
 use std::sync::Arc;
@@ -183,12 +184,14 @@ async fn start_spider(
     tauri::async_runtime::spawn(async move {
         market::spider::run_loop(app, c).await;
     });
+    log::info!("短线精灵引擎已启动");
     Ok("started".to_string())
 }
 
 #[tauri::command]
 fn stop_spider(ctl: tauri::State<'_, Arc<market::spider::SpiderCtl>>) -> Result<String, String> {
     ctl.running.store(false, Ordering::Release);
+    log::info!("短线精灵引擎已停止");
     Ok("stopped".to_string())
 }
 
@@ -205,12 +208,14 @@ async fn start_radar(
     tauri::async_runtime::spawn(async move {
         market::limitup::run_loop(app, c).await;
     });
+    log::info!("涨停雷达引擎已启动");
     Ok("started".to_string())
 }
 
 #[tauri::command]
 fn stop_radar(ctl: tauri::State<'_, Arc<market::limitup::LimitRadar>>) -> Result<String, String> {
     ctl.running.store(false, Ordering::Release);
+    log::info!("涨停雷达引擎已停止");
     Ok("stopped".to_string())
 }
 
@@ -230,6 +235,7 @@ async fn start_alert_engine(
     tauri::async_runtime::spawn(async move {
         market::alert::run_loop(app, e).await;
     });
+    log::info!("预警引擎已启动");
     Ok("started".to_string())
 }
 
@@ -238,6 +244,7 @@ fn stop_alert_engine(
     engine: tauri::State<'_, Arc<market::alert::AlertEngine>>,
 ) -> Result<String, String> {
     engine.running.store(false, Ordering::Release);
+    log::info!("预警引擎已停止");
     Ok("stopped".to_string())
 }
 
@@ -296,6 +303,23 @@ async fn save_export_file(default_name: String, content: String) -> Result<bool,
     Ok(true)
 }
 
+// ===== Rust 分级日志：读取 / 清空 / 动态调级（前端可合并前后端日志导出）=====
+#[tauri::command]
+fn rust_logs(min_level: Option<String>) -> Result<Vec<logging::LogItem>, String> {
+    Ok(logging::records(min_level))
+}
+
+#[tauri::command]
+fn rust_clear_logs() -> Result<(), String> {
+    logging::clear();
+    Ok(())
+}
+
+#[tauri::command]
+fn rust_set_log_level(level: String) -> Result<bool, String> {
+    Ok(logging::set_level(&level))
+}
+
 /// 老板键：切换所有窗口显隐
 fn boss_toggle(app: &tauri::AppHandle) {
     let state = app.state::<BossHidden>();
@@ -335,6 +359,7 @@ fn toggle_window<R: tauri::Runtime>(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    logging::init();
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
@@ -778,7 +803,10 @@ pub fn run() {
             win_toggle_maximize,
             win_close,
             win_is_maximized,
-            save_export_file
+            save_export_file,
+            rust_logs,
+            rust_clear_logs,
+            rust_set_log_level
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

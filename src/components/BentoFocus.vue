@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as echarts from "echarts";
 import { useMarketFeeds } from "../composables/useMarketFeeds";
 
@@ -97,6 +97,13 @@ onMounted(async () => {
   if (heatEl.value) heat = echarts.init(heatEl.value);
   if (distEl.value) dist = echarts.init(distEl.value);
   renderGauge(); renderHeat(); renderDist();
+});
+
+onBeforeUnmount(() => {
+  gauge?.dispose();
+  heat?.dispose();
+  dist?.dispose();
+  gauge = heat = dist = null;
 });
 </script>
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as echarts from "echarts";
 import { useMarketFeeds } from "../composables/useMarketFeeds";
 import { fetchNewsFlash } from "../api/market";
@@ -52,6 +52,12 @@ onMounted(async () => {
   renderGauge();
   loadNews();
   newsTimer = window.setInterval(loadNews, 60000);
+});
+
+onBeforeUnmount(() => {
+  window.clearInterval(newsTimer);
+  gauge?.dispose();
+  gauge = null;
 });
 </script>
 

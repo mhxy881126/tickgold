@@ -284,7 +284,10 @@ fn health_store() -> &'static Mutex<HashMap<String, Health>> {
 fn is_open(src: &str) -> bool {
     let m = health_store().lock().unwrap();
     match m.get(src) {
-        Some(h) if h.fails >= 2 && h.since.elapsed() < Duration::from_secs(30) => false,
+        Some(h) if h.fails >= 2 && h.since.elapsed() < Duration::from_secs(30) => {
+            log::debug!("数据源 {src} 熔断中，跳过");
+            false
+        }
         _ => true,
     }
 }
@@ -296,6 +299,9 @@ fn record_fail(src: &str) {
     });
     e.fails += 1;
     e.since = Instant::now();
+    if e.fails >= 2 {
+        log::warn!("数据源 {src} 连续失败 {} 次，熔断 30s", e.fails);
+    }
 }
 fn record_ok(src: &str) {
     let mut m = health_store().lock().unwrap();
@@ -356,7 +362,12 @@ pub async fn get_quotes(codes: Vec<String>) -> Result<Vec<Quote>, String> {
         }
     }
 
-    match tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), tencent::quotes(&codes)).await {
+    let result = match tokio::time::timeout(
+        Duration::from_secs(QUOTE_TIMEOUT),
+        tencent::quotes(&codes),
+    )
+    .await
+    {
         Ok(Ok(v)) if valid_quotes(&v) => {
             record_ok("tencent");
             Ok(v)
@@ -364,7 +375,11 @@ pub async fn get_quotes(codes: Vec<String>) -> Result<Vec<Quote>, String> {
         Ok(Ok(_)) => Err("腾讯: 返回空".to_string()),
         Ok(Err(e)) => Err(format!("全部失败 → {last_err}; 腾讯: {e}")),
         Err(_) => Err(format!("全部失败 → {last_err}; 腾讯: 超时")),
+    };
+    if let Err(e) = &result {
+        log::error!("批量行情全部源失败（{} 只）: {e}", codes.len());
     }
+    result
 }
 
 /// K线：腾讯（日 kline/kline、分钟 mkline，周月为自然周/月）→ 新浪兜底

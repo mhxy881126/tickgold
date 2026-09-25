@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as echarts from "echarts";
 import { useMarketFeeds } from "../composables/useMarketFeeds";
 import type { SpiderEvent } from "../api/market";
@@ -72,6 +72,11 @@ onMounted(async () => {
   renderCurve(radar.value?.hist ?? []);
 });
 watch(() => radar.value?.hist, (h) => renderCurve(h ?? []));
+
+onBeforeUnmount(() => {
+  chart?.dispose();
+  chart = null;
+});
 </script>
 
 <template>

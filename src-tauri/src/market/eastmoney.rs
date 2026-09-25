@@ -573,6 +573,10 @@ async fn clist_page(fs: &str, pn: i32) -> Result<(i64, Vec<EmQuote>), String> {
             Err(e) => {
                 last = e;
                 if attempt < 2 {
+                    log::warn!(
+                        "clist 第 {pn} 页第 {} 次尝试失败: {last}；指数退避后重试",
+                        attempt + 1
+                    );
                     // 指数退避（500ms / 1000ms）+ 随页码与时间变化的随机抖动，
                     // 避免一批被限流的请求在固定间隔同时重试、再次撞上限流
                     let base = 500u64 * 2u64.pow(attempt);
@@ -585,6 +589,7 @@ async fn clist_page(fs: &str, pn: i32) -> Result<(i64, Vec<EmQuote>), String> {
             }
         }
     }
+    log::error!("clist 第 {pn} 页 3 次尝试均失败: {last}");
     Err(last)
 }
 

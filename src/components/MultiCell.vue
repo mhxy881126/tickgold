@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as echarts from "echarts";
 import { invoke } from "@tauri-apps/api/core";
 import { fetchMinute, fetchKLine } from "../api/market";
@@ -164,6 +164,12 @@ onMounted(async () => {
   await nextTick();
   if (miniEl.value) mini = echarts.init(miniEl.value);
   apply();
+});
+
+onBeforeUnmount(() => {
+  mini?.dispose();
+  big?.dispose();
+  mini = big = null;
 });
 </script>
 

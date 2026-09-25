@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as echarts from "echarts";
 import { fetchSectors } from "../api/market";
 import { useMarketFeeds } from "../composables/useMarketFeeds";
@@ -70,6 +70,12 @@ onMounted(async () => {
   if (treeEl.value) chart = echarts.init(treeEl.value);
   load();
   timer = window.setInterval(load, 15000);
+});
+
+onBeforeUnmount(() => {
+  window.clearInterval(timer);
+  chart?.dispose();
+  chart = null;
 });
 </script>
 
