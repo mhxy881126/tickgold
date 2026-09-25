@@ -212,7 +212,7 @@ async fn check_once(app: &AppHandle, engine: &AlertEngine) {
                 .get(&r.code)
                 .and_then(|h| {
                     h.iter()
-                        .filter(|(ts, _)| **ts <= now - win * 1000)
+                        .filter(|(ts, _)| *ts <= now - win * 1000)
                         .map(|(_, p)| *p)
                         .last()
                 });
@@ -235,7 +235,7 @@ async fn check_once(app: &AppHandle, engine: &AlertEngine) {
                 .get(&r.code)
                 .and_then(|h| {
                     h.iter()
-                        .filter(|(ts, _)| **ts <= now - win * 1000)
+                        .filter(|(ts, _)| *ts <= now - win * 1000)
                         .map(|(_, p)| *p)
                         .last()
                 });
