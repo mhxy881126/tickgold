@@ -188,6 +188,39 @@ pub async fn hist_minute(code: &str, date: &str) -> Result<Vec<KBar>, String> {
     parse_minute_rows(date_str, arr)
 }
 
+/// 多日历史分时（最近 5 个交易日，day/query）：返回前 n 天（最新交易日在前）的 date + bars
+pub async fn hist_minute_days(code: &str, n: usize) -> Result<Vec<super::HistDayMinute>, String> {
+    let sym = cnc_symbol(code);
+    let url = format!("https://web.ifzq.gtimg.cn/appstock/app/day/query?code={sym}");
+    let v: Value = http()
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let days = v["data"][sym]["data"]
+        .as_array()
+        .ok_or("历史分时为空")?;
+    let mut out = Vec::new();
+    for target in days.iter().take(n.max(1)) {
+        let date_str = target["date"].as_str().unwrap_or("");
+        let Some(arr) = target["data"].as_array() else { continue };
+        match parse_minute_rows(date_str, arr) {
+            Ok(bars) => out.push(super::HistDayMinute {
+                date: date_str.to_string(),
+                bars,
+            }),
+            Err(_) => continue,
+        }
+    }
+    if out.is_empty() {
+        return Err("历史分时为空".to_string());
+    }
+    Ok(out)
+}
+
 /// 腾讯行：[date, open, close, high, low, volume, ...]
 fn parse_rows(rows: &[Value], period: i64) -> Vec<KBar> {
     rows.iter()

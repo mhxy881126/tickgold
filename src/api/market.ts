@@ -60,6 +60,18 @@ export async function fetchHistMinute(code: string, date: string): Promise<KBar[
   return await invoke<KBar[]>("get_hist_minute", { code, date });
 }
 
+/** 多日历史分时（最近 5 个交易日，最新交易日在前）；days=返回天数 */
+export interface HistDayMinute {
+  date: string; // YYYYMMDD
+  bars: KBar[];
+}
+export async function fetchHistMinuteDays(
+  code: string,
+  days: number
+): Promise<HistDayMinute[]> {
+  return await invoke<HistDayMinute[]>("get_hist_minute_days", { code, days });
+}
+
 /** 五档盘口（卖 1-5 / 买 1-5 + 当日概要） */
 export async function fetchOrderBook(code: string): Promise<OrderBook> {
   return await invoke<OrderBook>("get_orderbook", { code });

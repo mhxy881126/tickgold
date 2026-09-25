@@ -54,6 +54,14 @@ pub struct KBar {
     pub volume: f64,
 }
 
+/// 多日历史分时：日期（YYYYMMDD）+ 当日分钟 bars
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HistDayMinute {
+    pub date: String,
+    pub bars: Vec<KBar>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StockItem {
     pub code: String,
@@ -523,6 +531,16 @@ pub async fn get_hist_minute(code: String, date: String) -> Result<Vec<KBar>, St
     tokio::time::timeout(
         Duration::from_secs(KLINE_TIMEOUT),
         tencent::hist_minute(&code, &date),
+    )
+    .await
+    .map_err(|_| "历史分时: 超时".to_string())?
+}
+
+/// 多日历史分时（最近 5 个交易日）：n=返回天数（最新交易日在前）
+pub async fn get_hist_minute_days(code: String, n: i64) -> Result<Vec<HistDayMinute>, String> {
+    tokio::time::timeout(
+        Duration::from_secs(KLINE_TIMEOUT),
+        tencent::hist_minute_days(&code, n.max(1) as usize),
     )
     .await
     .map_err(|_| "历史分时: 超时".to_string())?

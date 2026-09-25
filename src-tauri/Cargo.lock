@@ -5447,12 +5447,13 @@ dependencies = [
 
 [[package]]
 name = "tickgold"
-version = "0.61.0"
+version = "0.63.0"
 dependencies = [
  "aes",
  "base64 0.22.1",
  "cbc",
  "encoding_rs",
+ "log",
  "reqwest 0.12.28",
  "rfd",
  "scraper",

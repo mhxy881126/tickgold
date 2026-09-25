@@ -197,7 +197,7 @@
       </div>
     </Teleport>
 
-    <!-- ===== 双击蜡烛：历史分时弹窗（可拖拽 / 最大化 / 关闭） ===== -->
+    <!-- ===== 双击蜡烛：历史分时复盘弹窗（可拖拽 / 最大化 / 关闭；回放 + 多日叠加） ===== -->
     <Teleport to="body">
       <div
         v-if="popup.visible"
@@ -206,15 +206,73 @@
         :style="!popup.max ? { left: popup.box.left + 'px', top: popup.box.top + 'px', width: popup.box.width + 'px', height: popup.box.height + 'px' } : {}"
       >
         <div class="mp-title" @mousedown="popTitleDown">
-          <span class="mp-tname">{{ popup.name }} · {{ popup.date }} 分时</span>
+          <span class="mp-tname">{{ popup.name }} · 历史分时复盘</span>
           <div class="mp-tbtns" @mousedown.stop>
             <button class="mp-btn" @click="popup.max = !popup.max" :title="popup.max ? '还原' : '最大化'">{{ popup.max ? "❐" : "▢" }}</button>
             <button class="mp-btn x" @click="closePopup">×</button>
           </div>
         </div>
+
+        <!-- 工具行 -->
+        <div class="mp-toolbar" @mousedown.stop>
+          <button class="tb-btn" @click="shiftDay(-1)" title="上一交易日">◀</button>
+          <span class="tb-date">{{ popup.date }}</span>
+          <button class="tb-btn" @click="shiftDay(1)" title="下一交易日">▶</button>
+          <span class="tb-sep"></span>
+          <span class="tb-glabel">多日</span>
+          <button
+            v-for="n in [1,2,3,5]"
+            :key="n"
+            class="tb-btn chip"
+            :class="{ on: overlayN === n }"
+            @click="setOverlay(n)"
+          >{{ n }}日</button>
+          <span class="tb-sep"></span>
+          <span class="tb-glabel">副图</span>
+          <button class="tb-btn chip" :class="{ on: popSub === 'vol' }" @click="setPopSub('vol')">量能</button>
+          <button class="tb-btn chip" :class="{ on: popSub === 'vr' }" @click="setPopSub('vr')">量比</button>
+        </div>
+
         <div class="mp-hostwrap">
           <div ref="popupHost" class="mp-host"></div>
+          <div v-if="overlayN > 1" class="mp-legend">
+            <div v-for="it in legendItems" :key="it.date" class="lg-item">
+              <i class="lg-dot" :style="{ background: it.color }"></i>
+              <span>{{ it.date }}</span>
+              <span :style="{ color: it.color }">{{ it.pct >= 0 ? "+" : "" }}{{ it.pct.toFixed(2) }}%</span>
+            </div>
+          </div>
           <div v-if="popupErr" class="mp-err">{{ popupErr }}</div>
+        </div>
+
+        <!-- 回放控制条（仅单日模式） -->
+        <div v-if="overlayN === 1" class="mp-replay" @mousedown.stop>
+          <button class="rp-btn" title="回到开盘" @click="replayTo(0)">⏮</button>
+          <button class="rp-btn rp-play" @click="togglePlay">{{ playing ? "❚❚" : "▶" }}</button>
+          <input
+            class="rp-range"
+            type="range"
+            min="0"
+            :max="rpMax"
+            step="1"
+            v-model.number="rpIndex"
+            @input="onSeek"
+          />
+          <div class="rp-stats">
+            <span class="rp-time">{{ rpTime }}</span>
+            <span class="rp-px" :style="{ color: rpTone }">{{ rpPxText }}</span>
+            <span class="rp-pct" :style="{ color: rpTone }">{{ rpPctText }}</span>
+          </div>
+          <div class="rp-speeds">
+            <button
+              v-for="s in [1,2,4,8]"
+              :key="s"
+              class="rp-btn chip"
+              :class="{ on: playSpeed === s }"
+              @click="playSpeed = s"
+            >{{ s }}x</button>
+          </div>
+          <button class="rp-btn" title="跳到收盘" @click="replayTo(rpMax)">⏭</button>
         </div>
       </div>
     </Teleport>
@@ -255,7 +313,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
 import { init, dispose, registerIndicator, ActionType, OverlayMode } from "klinecharts";
 import type { Chart, KLineData } from "klinecharts";
 import {
-  fetchQuotes, fetchKLine, fetchMinute, fetchHistMinute, fetchOrderBook,
+  fetchQuotes, fetchKLine, fetchMinute, fetchHistMinuteDays, fetchOrderBook,
 } from "../api/market";
 import type { Quote, OrderBook, KBar } from "../api/types";
 import { db } from "../db/database";
@@ -436,6 +494,7 @@ function limitRateOf(code: string, name?: string): number {
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
 // ===== 分时水平参考线 + 右侧百分比刻度（指标 draw 每帧执行，convertToPixel 精确映射）=====
+// 昨收由各 chart 实例通过 extendData.prevClose 传入（主图 / 复盘弹窗互不干扰）
 registerIndicator({
   name: "thsLevels",
   shortName: "",
@@ -444,8 +503,8 @@ registerIndicator({
   figures: [],
   calc: (dl: KLineData[]) => dl.map(() => ({})),
   draw: (params: any) => {
-    const { ctx, yAxis, bounding } = params;
-    const pc = prevClose.value;
+    const { ctx, yAxis, bounding, indicator } = params;
+    const pc = indicator?.extendData?.prevClose || prevClose.value;
     if (!ctx || !(pc > 0)) return;
     const r = limitRateOf(props.code, headName.value);
     const lu = round2(pc * (1 + r)), ld = round2(pc * (1 - r));
@@ -480,6 +539,185 @@ registerIndicator({
       }
     }
     scheduleRightAxis(items);
+  },
+} as any);
+// 仅用于把"昨收"纳入 Y 轴可见范围（线透明不显示）；extendData={prevClose}
+registerIndicator({
+  name: "yAnchor",
+  shortName: "",
+  series: "price" as any,
+  calcParams: [],
+  figures: [{ key: "lo", type: "line" }, { key: "hi", type: "line" }],
+  styles: { lines: [{ color: "transparent", size: 1 }, { color: "transparent", size: 1 }] } as any,
+  calc: (dl: KLineData[], indicator: any) => {
+    const ed = indicator?.extendData ?? {};
+    const lo = ed.lo ?? ed.prevClose ?? 0;
+    const hi = ed.hi ?? ed.prevClose ?? lo;
+    return dl.map(() => ({ lo, hi }));
+  },
+} as any);
+
+// ===== 交易时段背景：集合竞价窄区 + 上午/下午分段着色 + 午休分隔 =====
+registerIndicator({
+  name: "sessionBg",
+  shortName: "",
+  series: "price" as any,
+  calcParams: [],
+  figures: [],
+  calc: (dl: KLineData[]) => dl.map(() => ({})),
+  draw: (params: any) => {
+    const { ctx, kLineDataList, xAxis, yAxis, bounding, indicator } = params;
+    if (!ctx || !xAxis || kLineDataList.length < 2) return;
+    const H = bounding.height;
+    let iAm = -1, iPm = -1;
+    for (let i = 0; i < kLineDataList.length; i++) {
+      const hm = hhmmUTC(kLineDataList[i].timestamp);
+      if (hm === "11:30") iAm = i;
+      else if (hm === "13:00") iPm = i;
+    }
+    const last = kLineDataList.length - 1;
+    const x0 = xAxis.convertToPixel(0);
+    const xLast = xAxis.convertToPixel(last);
+    const xAm = iAm >= 0 ? xAxis.convertToPixel(iAm) : x0;
+    const xPm = iPm >= 0 ? xAxis.convertToPixel(iPm) : xLast;
+
+    // 上午 / 下午分段底色
+    ctx.fillStyle = "rgba(255,72,72,.045)";
+    ctx.fillRect(x0, 0, xAm - x0, H);
+    ctx.fillStyle = "rgba(70,140,255,.05)";
+    ctx.fillRect(xPm, 0, xLast - xPm, H);
+
+    // 集合竞价窄区（第一根左侧）
+    if (x0 > 22) {
+      ctx.fillStyle = "rgba(245,208,32,.16)";
+      ctx.fillRect(x0 - 16, 0, 16, H);
+      ctx.save();
+      ctx.translate(x0 - 8, H / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.font = "10px sans-serif";
+      ctx.fillStyle = "rgba(245,208,32,.85)";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("集合竞价", 0, 0);
+      ctx.restore();
+    }
+
+    // 午休分隔虚线（11:30 与 13:00 相邻 bar 之间）
+    if (iAm >= 0 && iPm >= 0) {
+      const xb = (xAm + xPm) / 2;
+      ctx.strokeStyle = "rgba(200,208,228,.35)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(xb, 0); ctx.lineTo(xb, H); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // 时段文字
+    ctx.font = "11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "rgba(255,120,120,.5)";
+    ctx.fillText("上午 连续竞价", (x0 + xAm) / 2, 4);
+    ctx.fillStyle = "rgba(120,170,255,.55)";
+    ctx.fillText("下午 连续竞价", (xPm + xLast) / 2, 4);
+
+    // 多日叠加线（renderPopup 通过 extendData.lines 注入）
+    const oLines = indicator?.extendData?.lines as OverlayLine[] | undefined;
+    if (oLines?.length) {
+      for (const ln of oLines) {
+        ctx.strokeStyle = ln.color; ctx.lineWidth = ln.bold ? 1.7 : 1.1;
+        ctx.beginPath(); let pen = false;
+        kLineDataList.forEach((d: KLineData, i: number) => {
+          const p = ln.map[hhmmUTC(d.timestamp)];
+          if (p == null || !(p > 0)) { pen = false; return; }
+          const x = xAxis.convertToPixel(i);
+          const y = yAxis.convertToPixel(p);
+          if (!pen) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        if (ln.prevClose > 0) {
+          const y = yAxis.convertToPixel(ln.prevClose);
+          if (y != null && y >= 0 && y <= bounding.height) {
+            ctx.strokeStyle = ln.color; ctx.globalAlpha = .45; ctx.setLineDash([3, 3]);
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(bounding.width, y); ctx.stroke();
+            ctx.setLineDash([]); ctx.globalAlpha = 1;
+          }
+        }
+      }
+    }
+  },
+} as any);
+
+// ===== 分时量比（副图）：当分钟量 / 多日同时段均量；extendData = { "HH:MM": baseVol } =====
+registerIndicator({
+  name: "minuteVR",
+  shortName: "量比",
+  calcParams: [],
+  figures: [{ key: "vr", title: "量比: ", type: "line" }],
+  calc: (dataList: KLineData[], ind: any) => {
+    const base = (ind?.extendData ?? {}) as Record<string, number>;
+    return dataList.map((d) => {
+      const b = base[hhmmUTC(d.timestamp)];
+      return { vr: b && b > 0 ? (d.volume || 0) / b : 0 };
+    });
+  },
+  draw: (params: any) => {
+    const { ctx, yAxis, bounding } = params;
+    const y = yAxis.convertToPixel(1);
+    if (y != null && y >= 0 && y <= bounding.height) {
+      ctx.strokeStyle = "rgba(245,208,32,.5)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(bounding.width, y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  },
+} as any);
+
+// ===== 多日分时叠加（主图）：extendData = OverlayLine[] =====
+interface OverlayLine {
+  color: string;
+  bold: boolean;
+  prevClose: number;
+  map: Record<string, number>;
+}
+registerIndicator({
+  name: "multiMinute",
+  shortName: "",
+  series: "price" as any,
+  calcParams: [],
+  figures: [],
+  calc: (dl: KLineData[]) => dl.map(() => ({})),
+  draw: (params: any) => {
+    const lines = params.indicator?.extendData as OverlayLine[] | undefined;
+    if (!lines?.length) return;
+    const { ctx, kLineDataList, xAxis, yAxis, bounding } = params;
+    for (const ln of lines) {
+      ctx.strokeStyle = ln.color;
+      ctx.lineWidth = ln.bold ? 1.7 : 1.1;
+      ctx.beginPath();
+      let pen = false;
+      kLineDataList.forEach((d: KLineData, i: number) => {
+        const p = ln.map[hhmmUTC(d.timestamp)];
+        if (p == null || !(p > 0)) { pen = false; return; }
+        const x = xAxis.convertToPixel(i);
+        const y = yAxis.convertToPixel(p);
+        if (!pen) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      // 该日昨收参考线
+      if (ln.prevClose > 0) {
+        const y = yAxis.convertToPixel(ln.prevClose);
+        if (y != null && y >= 0 && y <= bounding.height) {
+          ctx.strokeStyle = ln.color;
+          ctx.globalAlpha = .45;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(bounding.width, y); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
   },
 } as any);
 
@@ -640,7 +878,8 @@ function dateLabel(ts: number) {
 }
 
 // ---- 同花顺风格样式（关闭库自带 tooltip，改用自建浮窗）----
-function buildStyles(minute: boolean) {
+// overlay=true（多日叠加）时隐藏主 area 白线，由 multiMinute 统一绘制
+function buildStyles(minute: boolean, overlay = false) {
   const axisText = "#8b93a7";
   const gridLine = "rgba(255,70,70,.16)";
   const base: any = {
@@ -657,7 +896,7 @@ function buildStyles(minute: boolean) {
         upWickColor: UP, downWickColor: DOWN_K, noChangeWickColor: FLAT,
       },
       area: {
-        lineSize: 1, lineColor: "#ffffff", value: "close", smooth: false,
+        lineSize: 1, lineColor: overlay ? "rgba(0,0,0,0)" : "#ffffff", value: "close", smooth: false,
         backgroundColor: [
           { offset: 0, color: "rgba(0,0,0,0)" },
           { offset: 1, color: "rgba(0,0,0,0)" },
@@ -963,12 +1202,13 @@ function renderChart(bars: KBar[], minute: boolean) {
   chart.applyNewData(toKData(bars));
 
   if (minute) {
+    chart.createIndicator("sessionBg", true, { id: "candle_pane" });
     chart.createIndicator({ name: "AVG", styles: { lines: [line(AVG_Y)] } } as any, false, { id: "candle_pane" });
     chart.createIndicator(
       { name: "VOL", styles: { tooltip: { showName: false, showParams: false }, lines: [{ color: "rgba(0,0,0,0)" }, { color: "rgba(0,0,0,0)" }, { color: "rgba(0,0,0,0)" }] } } as any,
       false, { height: 84 }
     );
-    chart.createIndicator("thsLevels", true, { id: "candle_pane" });
+    chart.createIndicator({ name: "thsLevels", extendData: { prevClose: prevClose.value } } as any, true, { id: "candle_pane" });
   } else {
     chart.createIndicator({
       name: "MA",
@@ -1222,7 +1462,8 @@ function minuteFloatRows(data: any) {
   ];
 }
 
-// ===== 双击蜡烛 → 历史分时弹窗 =====
+// ===== 双击蜡烛 → 历史分时复盘弹窗 =====
+interface HistDay { date: string; bars: KBar[]; prevClose: number }
 let lastClick: { ts: number; t: number } | null = null;
 function onBarClick(data: any) {
   const kd: KLineData | undefined = data?.data;
@@ -1238,38 +1479,219 @@ function onBarClick(data: any) {
 
 const popup = ref({
   visible: false, name: "", date: "", max: false,
-  box: { left: 200, top: 110, width: 780, height: 480 },
+  box: { left: 150, top: 80, width: 880, height: 580 },
 });
 const popupHost = ref<HTMLElement | null>(null);
 let popupChart: Chart | null = null;
 const popupErr = ref("");
+const histDays = ref<HistDay[]>([]);
+const dayIndex = ref(0);
+const overlayN = ref(1);
+const popSub = ref<"vol" | "vr">("vol");
+const OVERLAY_COLORS = ["#ff7a3d", "#c060ff", "#19c3ff", "#ffd028"];
+
+const dayKey = (ts: number) => {
+  const d = new Date(ts);
+  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
+};
 
 async function openPopup(kd: KLineData) {
-  const d = new Date(kd.timestamp);
-  const date = `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
   popupErr.value = "";
   popup.value.visible = true;
   popup.value.name = headName.value;
-  popup.value.date = date;
+  histDays.value = []; dayIndex.value = 0; overlayN.value = 1; popSub.value = "vol";
   await nextTick();
+  try {
+    const [days, kbars] = await Promise.all([
+      fetchHistMinuteDays(props.code, 5),
+      fetchKLine(props.code, 101, 10),
+    ]);
+    // 日 K 升序；每日昨收 = 前一交易日收盘
+    const ks = [...kbars].sort((a, b) => a.timestamp - b.timestamp);
+    const prevMap = new Map<string, number>();
+    ks.forEach((b, i) => prevMap.set(dayKey(b.timestamp), i > 0 ? ks[i - 1].close : b.open));
+    histDays.value = days.map((d) => ({
+      date: d.date,
+      bars: d.bars,
+      prevClose: prevMap.get(d.date) ?? d.bars[0]?.close ?? 0,
+    }));
+    const di = histDays.value.findIndex((d) => d.date === dayKey(kd.timestamp));
+    dayIndex.value = di >= 0 ? di : 0;
+  } catch (e: any) {
+    popupErr.value = e?.message || String(e);
+  }
+  popup.value.date = histDays.value[dayIndex.value]?.date ?? "";
+  renderPopup();
+}
+
+const curDay = computed(() => histDays.value[dayIndex.value]);
+
+const barsMap = (bars: KBar[]) => {
+  const m: Record<string, number> = {};
+  bars.forEach((b) => { m[hhmmUTC(b.timestamp)] = b.close; });
+  return m;
+};
+
+// 弹窗副图：量能 VOL / 分时量比 minuteVR
+function addPopupSub(pc: Chart, day: HistDay) {
+  if (popSub.value === "vol") {
+    pc.createIndicator("VOL", false, { height: 80 });
+    return;
+  }
+  // 量比基准：除当日外其他交易日（最多 4 个）同时段均量
+  const refs = histDays.value.filter((_, i) => i !== dayIndex.value).slice(0, 4);
+  if (!refs.length) { pc.createIndicator("VOL", false, { height: 80 }); return; }
+  const sums: Record<string, { s: number; n: number }> = {};
+  refs.forEach((d) => d.bars.forEach((b) => {
+    const k = hhmmUTC(b.timestamp);
+    sums[k] = sums[k] || { s: 0, n: 0 };
+    sums[k].s += b.volume; sums[k].n += 1;
+  }));
+  const base: Record<string, number> = {};
+  Object.keys(sums).forEach((k) => { base[k] = sums[k].s / sums[k].n; });
+  pc.createIndicator({ name: "minuteVR", extendData: base } as any, false, { height: 80 });
+}
+
+function renderPopup() {
   if (!popupHost.value) return;
+  stopPlay();
   if (popupChart) { dispose(popupChart); popupChart = null; }
+  const day = histDays.value[dayIndex.value];
+  if (!day) return;
   popupChart = init(popupHost.value);
   if (!popupChart) return;
   const pc: Chart = popupChart;
   pc.setTimezone("UTC");
   pc.setPriceVolumePrecision(2, 0);
-  pc.setStyles(buildStyles(true));
-  try {
-    const hist = await fetchHistMinute(props.code, date);
-    pc.applyNewData(toKData(hist));
+  pc.setStyles(buildStyles(true, overlayN.value > 1));
+  pc.createIndicator("sessionBg", true, { id: "candle_pane" });
+  pc.applyNewData(toKData(day.bars));
+  // 全天分时铺满：每根 bar 空间按容器宽/根数自适应（回放截断时数据从左向右增长）
+  const popW = popupHost.value.clientWidth;
+  pc.setBarSpace(Math.max(1.2, popW / (day.bars.length + 2)));
+  pc.scrollToRealTime();
+
+  if (overlayN.value === 1) {
     pc.createIndicator({ name: "AVG", styles: { lines: [line(AVG_Y)] } } as any, false, { id: "candle_pane" });
-    pc.createIndicator("VOL", false, { height: 70 });
-  } catch (e: any) {
-    popupErr.value = e?.message || String(e);
+    pc.createIndicator({ name: "yAnchor", extendData: { prevClose: day.prevClose } } as any, true, { id: "candle_pane" });
+    pc.createIndicator({ name: "thsLevels", extendData: { prevClose: day.prevClose } } as any, true, { id: "candle_pane" });
+    addPopupSub(pc, day);
+    rpMax.value = day.bars.length - 1;
+    rpIndex.value = rpMax.value;
+  } else {
+    let start = dayIndex.value;
+    if (start + overlayN.value > histDays.value.length) start = Math.max(0, histDays.value.length - overlayN.value);
+    const part: HistDay[] = histDays.value.slice(start, start + overlayN.value);
+    const lines: OverlayLine[] = part.map((d, i) => ({
+      color: i === 0 ? "#ffffff" : OVERLAY_COLORS[i - 1],
+      bold: i === 0,
+      prevClose: d.prevClose,
+      map: barsMap(d.bars),
+    }));
+    let lo = Infinity, hi = -Infinity;
+    part.forEach((d) => d.bars.forEach((b) => {
+      lo = Math.min(lo, b.low, d.prevClose);
+      hi = Math.max(hi, b.high, d.prevClose);
+    }));
+    pc.createIndicator({ name: "yAnchor", extendData: { lo, hi } } as any, true, { id: "candle_pane" });
+    pc.overrideIndicator({ name: "sessionBg", extendData: { lines } } as any, "candle_pane");
+    pc.createIndicator({ name: "thsLevels", extendData: { prevClose: day.prevClose } } as any, true, { id: "candle_pane" });
+    addPopupSub(pc, day);
   }
   pc.resize();
 }
+
+// 工具行动作
+function shiftDay(delta: number) {
+  const ni = dayIndex.value + delta;
+  if (ni < 0 || ni >= histDays.value.length) return;
+  dayIndex.value = ni;
+  popup.value.date = histDays.value[ni].date;
+  renderPopup();
+}
+function setOverlay(n: number) {
+  if (overlayN.value === n) return;
+  overlayN.value = n;
+  renderPopup();
+}
+function setPopSub(m: "vol" | "vr") {
+  if (popSub.value === m) return;
+  popSub.value = m;
+  renderPopup();
+}
+
+// 图例（叠加模式）
+const legendItems = computed(() => {
+  const day = curDay.value;
+  if (!day) return [];
+  const endPct = (d: HistDay) =>
+    d.prevClose > 0 ? (d.bars[d.bars.length - 1].close - d.prevClose) / d.prevClose * 100 : 0;
+  const items: { date: string; color: string; pct: number }[] = [
+    { date: day.date, color: "#ffffff", pct: endPct(day) },
+  ];
+  for (let k = 0; k < overlayN.value - 1; k++) {
+    const d2 = histDays.value[dayIndex.value + 1 + k];
+    if (d2) items.push({ date: d2.date, color: OVERLAY_COLORS[k], pct: endPct(d2) });
+  }
+  return items;
+});
+
+// ===== 回放控制 =====
+const playing = ref(false);
+const rpIndex = ref(0);
+const rpMax = ref(0);
+const playSpeed = ref(1);
+let playTimer = 0;
+
+const rpTime = computed(() => {
+  const b = curDay.value?.bars[rpIndex.value];
+  return b ? hhmmUTC(b.timestamp) : "--:--";
+});
+const rpPxText = computed(() => curDay.value?.bars[rpIndex.value]?.close.toFixed(2) ?? "--");
+const rpPctText = computed(() => {
+  const day = curDay.value, b = day?.bars[rpIndex.value];
+  if (!day || !b || !(day.prevClose > 0)) return "--";
+  const p = (b.close - day.prevClose) / day.prevClose * 100;
+  return (p >= 0 ? "+" : "") + p.toFixed(2) + "%";
+});
+const rpTone = computed(() => {
+  const day = curDay.value, b = day?.bars[rpIndex.value];
+  if (!day || !b) return FLAT;
+  const c = b.close - day.prevClose;
+  return c > 0 ? UP : c < 0 ? DOWN_K : FLAT;
+});
+
+// 定位：只渲染到第 i 根（指标自动重算）
+function onSeek() {
+  if (!popupChart || !curDay.value) return;
+  const i = Math.max(0, Math.min(rpIndex.value, rpMax.value));
+  popupChart.applyNewData(toKData(curDay.value.bars.slice(0, i + 1)));
+}
+function togglePlay() {
+  if (playing.value) { stopPlay(); return; }
+  playing.value = true;
+  if (rpIndex.value >= rpMax.value) { rpIndex.value = -1; onSeek(); }
+  playTimer = window.setInterval(() => {
+    const i = rpIndex.value + 1;
+    if (i >= rpMax.value) {
+      rpIndex.value = rpMax.value; onSeek(); stopPlay(); return;
+    }
+    rpIndex.value = i; onSeek();
+  }, Math.max(15, Math.round(120 / playSpeed.value)));
+}
+function stopPlay() {
+  playing.value = false;
+  if (playTimer) { window.clearInterval(playTimer); playTimer = 0; }
+}
+function replayTo(i: number) {
+  stopPlay();
+  rpIndex.value = Math.max(0, Math.min(i, rpMax.value));
+  onSeek();
+}
+// 倍速在播放中切换时重启定时器
+watch(playSpeed, () => {
+  if (playing.value) { stopPlay(); togglePlay(); }
+});
 
 // 弹窗拖拽
 let dragData: { dx: number; dy: number } | null = null;
@@ -1290,6 +1712,7 @@ function popUp() {
   window.removeEventListener("mouseup", popUp);
 }
 function closePopup() {
+  stopPlay();
   popup.value.visible = false;
   if (popupChart) { dispose(popupChart); popupChart = null; }
 }
@@ -1734,6 +2157,60 @@ watch(() => props.code, async () => {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   color: #ff8080; font-size: 12px; padding: 20px; text-align: center; background: #0d0f14;
 }
+
+/* 工具行 */
+.mp-toolbar {
+  display: flex; align-items: center; gap: 3px;
+  padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.02);
+}
+.tb-btn {
+  border: none; background: transparent; color: #aab1c0;
+  height: 24px; min-width: 26px; padding: 0 8px; border-radius: 5px;
+  cursor: pointer; font-size: 11px;
+}
+.tb-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
+.tb-btn.chip.on { background: rgba(255,50,50,.18); color: #ff8a8a; }
+.tb-date {
+  font-size: 11px; color: #d6dae3; min-width: 76px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.tb-sep { width: 1px; height: 14px; background: rgba(255,255,255,.12); margin: 0 6px; }
+.tb-glabel { font-size: 10px; color: #7b8294; margin-right: 2px; }
+
+/* 叠加图例 */
+.mp-legend {
+  position: absolute; right: 8px; top: 8px; z-index: 5;
+  display: flex; flex-direction: column; gap: 3px;
+  background: rgba(12,14,20,.72); border: 1px solid rgba(255,255,255,.1);
+  border-radius: 7px; padding: 6px 8px; font-size: 10px;
+}
+.lg-item { display: flex; align-items: center; gap: 6px; color: #c7ccd8; font-variant-numeric: tabular-nums; }
+.lg-dot { width: 9px; height: 2px; display: inline-block; }
+
+/* 回放控制条 */
+.mp-replay {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px; border-top: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.02);
+}
+.rp-btn {
+  border: none; background: transparent; color: #aab1c0;
+  height: 26px; min-width: 30px; padding: 0 8px; border-radius: 5px;
+  cursor: pointer; font-size: 12px;
+}
+.rp-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
+.rp-btn.chip.on { background: rgba(255,50,50,.18); color: #ff8a8a; }
+.rp-play { font-size: 14px; }
+.rp-range { flex: 1; accent-color: #ff5050; cursor: pointer; }
+.rp-stats {
+  display: flex; gap: 10px; min-width: 200px; justify-content: flex-end;
+  font-variant-numeric: tabular-nums; font-size: 11px;
+}
+.rp-time { color: #d6dae3; min-width: 44px; text-align: right; }
+.rp-px { min-width: 56px; text-align: right; }
+.rp-pct { min-width: 64px; text-align: right; }
+.rp-speeds { display: flex; gap: 2px; }
 
 /* 均线设置弹窗 */
 .ma-overlay {
