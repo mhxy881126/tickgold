@@ -602,6 +602,26 @@ pub fn run() {
                             );",
                             kind: MigrationKind::Up,
                         },
+                        // ===== v0.52 画线工具：按 股票+周期 作用域持久化 =====
+                        Migration {
+                            version: 20,
+                            description: "create drawing (chart drawings persisted per scope)",
+                            sql: "CREATE TABLE IF NOT EXISTS drawing (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                scope TEXT NOT NULL,
+                                name TEXT NOT NULL,
+                                points TEXT NOT NULL,
+                                sort INTEGER NOT NULL DEFAULT 0,
+                                updated_at INTEGER NOT NULL
+                            );",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 21,
+                            description: "create index idx_drawing_scope",
+                            sql: "CREATE INDEX IF NOT EXISTS idx_drawing_scope ON drawing(scope);",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),
