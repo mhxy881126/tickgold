@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useTheme, type ThemeId } from "../composables/useTheme";
+import { tsStatus } from "../composables/useTimeSeries";
 
 defineProps<{ open: boolean }>();
 const emit = defineEmits<{ "update:open": [boolean] }>();
@@ -10,10 +11,13 @@ function close() {
 
 const { theme, setTheme, THEMES } = useTheme();
 
-type Tab = "appearance" | "general" | "about";
+type Tab = "appearance" | "data" | "about";
 const tab = ref<Tab>("appearance");
 function pick(id: ThemeId) {
   setTheme(id);
+}
+function fmtTime(ts: number) {
+  return ts ? new Date(ts).toLocaleString() : "尚未采集";
 }
 </script>
 
@@ -38,9 +42,9 @@ function pick(id: ThemeId) {
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 3a9 9 0 100 18 9 9 0 000-18zm0 2v14a7 7 0 000-14zm0 0a7 7 0 010 14z" /></svg>
               外观
             </button>
-            <button class="nav-item" :class="{ on: tab === 'general' }" @click="tab = 'general'">
-              <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M19.4 13a7.8 7.8 0 000-2l2-1.5-2-3.4-2.4 1a7.6 7.6 0 00-1.7-1L15 3.5H9l-.3 2.6a7.6 7.6 0 00-1.7 1l-2.4-1-2 3.4L4.6 11a7.8 7.8 0 000 2l-2 1.5 2 3.4 2.4-1a7.6 7.6 0 001.7 1l.3 2.6h6l.3-2.6a7.6 7.6 0 001.7-1l2.4 1 2-3.4zM12 15.5A3.5 3.5 0 1112 8.5a3.5 3.5 0 010 7z" /></svg>
-              通用
+            <button class="nav-item" :class="{ on: tab === 'data' }" @click="tab = 'data'">
+              <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 3C7.6 3 4 4.8 4 7v10c0 2.2 3.6 4 8 4s8-1.8 8-4V7c0-2.2-3.6-4-8-4zm6 14c0 .6-2.2 1.7-6 1.7S6 17.6 6 17v-2.6c1.3 1 3.4 1.6 6 1.6s4.7-.6 6-1.6zm0-5c0 .6-2.2 1.7-6 1.7S6 12.6 6 12V9.4c1.3 1 3.4 1.6 6 1.6s4.7-.6 6-1.6zm0-5c0 .6-2.2 1.7-6 1.7S6 7.6 6 7s2.2-1.7 6-1.7S18 6.4 18 7z" /></svg>
+              数据中心
             </button>
             <button class="nav-item" :class="{ on: tab === 'about' }" @click="tab = 'about'">
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-6h2zm0-8h-2V7h2z" /></svg>
@@ -79,11 +83,36 @@ function pick(id: ThemeId) {
               </div>
             </div>
 
-            <!-- 通用（占位） -->
-            <div v-else-if="tab === 'general'" class="ph">
-              <svg viewBox="0 0 24 24" width="34" height="34"><path fill="currentColor" d="M19.4 13a7.8 7.8 0 000-2l2-1.5-2-3.4-2.4 1a7.6 7.6 0 00-1.7-1L15 3.5H9l-.3 2.6a7.6 7.6 0 00-1.7 1l-2.4-1-2 3.4L4.6 11a7.8 7.8 0 000 2l-2 1.5 2 3.4 2.4-1a7.6 7.6 0 001.7 1l.3 2.6h6l.3-2.6a7.6 7.6 0 001.7-1l2.4 1 2-3.4zM12 15.5A3.5 3.5 0 1112 8.5a3.5 3.5 0 010 7z" /></svg>
-              <p>通用偏好（开机启动、刷新频率、数据默认源等）</p>
-              <p class="ph2">即将推出，敬请期待</p>
+            <!-- 数据中心：本地时序采集状态 -->
+            <div v-else-if="tab === 'data'" class="data-center">
+              <div class="dc-banner">
+                <span class="dc-dot" :class="{ on: tsStatus.running }"></span>
+                <div class="dc-bt">
+                  <div class="dc-title">本地时序采集引擎</div>
+                  <div class="dc-sub">{{ tsStatus.running ? "运行中 · 盘中自动采集，收盘自动归档" : "未运行" }}</div>
+                </div>
+                <span class="dc-daily" :class="{ ok: tsStatus.todayDaily }">
+                  {{ tsStatus.todayDaily ? "今日已收盘归档" : "今日未归档" }}
+                </span>
+              </div>
+
+              <div class="section-title">最近采集</div>
+              <div class="dc-rows">
+                <div class="dc-row"><span class="dr-k">市场情绪</span><span class="dr-v">{{ fmtTime(tsStatus.lastMarketTs) }}</span></div>
+                <div class="dc-row"><span class="dr-k">指数</span><span class="dr-v">{{ fmtTime(tsStatus.lastIndexTs) }}</span></div>
+                <div class="dc-row"><span class="dr-k">板块</span><span class="dr-v">{{ fmtTime(tsStatus.lastSectorTs) }}</span></div>
+              </div>
+
+              <div class="section-title">本地数据量</div>
+              <div class="dc-stats">
+                <div class="dc-stat"><b>{{ tsStatus.marketRows }}</b><span>情绪分时</span></div>
+                <div class="dc-stat"><b>{{ tsStatus.indexRows }}</b><span>指数分时</span></div>
+                <div class="dc-stat"><b>{{ tsStatus.sectorRows }}</b><span>板块分时</span></div>
+                <div class="dc-stat"><b>{{ tsStatus.dayRows }}</b><span>交易日(日级)</span></div>
+              </div>
+
+              <div class="dc-note">分时明细保留最近 60 天；收盘日级长期保留，用于情绪周期与题材轮动分析。</div>
+              <div v-if="tsStatus.lastError" class="dc-err">采集异常：{{ tsStatus.lastError }}</div>
             </div>
 
             <!-- 关于 -->
@@ -159,6 +188,37 @@ function pick(id: ThemeId) {
 
 .ph { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-dim); gap: 10px; font-size: 12px; }
 .ph2 { opacity: 0.6; font-size: 11px; }
+
+/* 数据中心 */
+.data-center { display: flex; flex-direction: column; gap: 10px; }
+.dc-banner {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 15px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card);
+}
+.dc-dot { width: 10px; height: 10px; border-radius: 50%; background: #555; flex: none; }
+.dc-dot.on { background: #26d07c; box-shadow: 0 0 0 4px rgba(38, 208, 124, 0.15); }
+.dc-bt { flex: 1; min-width: 0; }
+.dc-title { font-size: 13px; font-weight: 700; color: var(--text); }
+.dc-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.dc-daily {
+  flex: none; font-size: 11px; padding: 5px 11px; border-radius: 20px;
+  border: 1px solid var(--border); color: var(--text-dim); white-space: nowrap;
+}
+.dc-daily.ok { color: #26d07c; border-color: rgba(38, 208, 124, 0.5); background: rgba(38, 208, 124, 0.1); }
+.dc-rows { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 11px; overflow: hidden; }
+.dc-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; font-size: 12px; background: var(--bg-card); }
+.dc-row + .dc-row { border-top: 1px solid var(--border); }
+.dr-k { color: var(--text-dim); }
+.dr-v { color: var(--text); }
+.dc-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.dc-stat {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 13px 6px; border: 1px solid var(--border); border-radius: 11px; background: var(--bg-card);
+}
+.dc-stat b { font-size: 19px; font-weight: 800; color: var(--accent-2); }
+.dc-stat span { font-size: 10.5px; color: var(--text-dim); }
+.dc-note { font-size: 11px; color: var(--text-dim); line-height: 1.6; }
+.dc-err { font-size: 11px; color: #f23645; background: rgba(242, 54, 69, 0.1); border-radius: 8px; padding: 8px 11px; }
 
 .about { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
 .ab-logo {

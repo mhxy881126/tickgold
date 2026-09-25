@@ -41,6 +41,7 @@ import { useWorkbench, CARD_META, MODES, currentTimeSlot, type CardId } from "./
 import { useTheme } from "./composables/useTheme";
 import type { AlertEvent } from "./api/market";
 import { ensureDb } from "./db/database";
+import { startTimeSeries } from "./composables/useTimeSeries";
 
 const wl = useWatchlistStore();
 const quotes = useQuotesStore();
@@ -510,6 +511,8 @@ onMounted(async () => {
   }
   // —— 基础数据（各自独立容错，互不影响）——
   try { await ensureDb(); } catch (e) { console.error("[app] db", e); }
+  // —— 本地时序采集（情绪/指数/板块，盘中分时+收盘日级，常驻后台）——
+  try { await startTimeSeries(); } catch (e) { console.error("[app] timeseries", e); }
   try { await theme.load(); } catch (e) { console.error("[app] theme", e); }
   try { await wl.load(); } catch (e) { console.error("[app] watchlist", e); }
   try { await alerts.load(); } catch (e) { console.error("[app] alerts", e); }

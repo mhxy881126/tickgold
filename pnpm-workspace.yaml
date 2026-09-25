@@ -1,0 +1,7 @@
+onlyBuiltDependencies:
+  - esbuild
+  - vue-demi
+allowBuilds:
+  core-js: false
+  esbuild: true
+  vue-demi: true
