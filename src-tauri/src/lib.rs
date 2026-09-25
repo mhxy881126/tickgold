@@ -659,6 +659,69 @@ pub fn run() {
                             );",
                             kind: MigrationKind::Up,
                         },
+                        // ===== v0.61 预警增强：alerts 新增条件列 =====
+                        Migration {
+                            version: 23,
+                            description: "add down_speed to alerts",
+                            sql: "ALTER TABLE alerts ADD COLUMN down_speed REAL;",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 24,
+                            description: "add min_turnover to alerts",
+                            sql: "ALTER TABLE alerts ADD COLUMN min_turnover REAL;",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 25,
+                            description: "add min_amount to alerts",
+                            sql: "ALTER TABLE alerts ADD COLUMN min_amount REAL;",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 26,
+                            description: "add seal_limit_up to alerts",
+                            sql: "ALTER TABLE alerts ADD COLUMN seal_limit_up INTEGER;",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 27,
+                            description: "add seal_limit_down to alerts",
+                            sql: "ALTER TABLE alerts ADD COLUMN seal_limit_down INTEGER;",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 28,
+                            description: "add broken_limit to alerts",
+                            sql: "ALTER TABLE alerts ADD COLUMN broken_limit INTEGER;",
+                            kind: MigrationKind::Up,
+                        },
+                        // ===== 触发历史持久化（前端写入，便于复盘）=====
+                        Migration {
+                            version: 29,
+                            description: "create alert_event (alert trigger history)",
+                            sql: "CREATE TABLE IF NOT EXISTS alert_event (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                rule_id TEXT,
+                                code TEXT,
+                                name TEXT,
+                                kind TEXT,
+                                label TEXT,
+                                message TEXT,
+                                price REAL,
+                                pct REAL,
+                                target REAL,
+                                tone TEXT,
+                                triggered_at INTEGER
+                            );",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 30,
+                            description: "create index idx_alert_event_time",
+                            sql: "CREATE INDEX IF NOT EXISTS idx_alert_event_time ON alert_event(triggered_at);",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),

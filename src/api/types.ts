@@ -153,7 +153,13 @@ export interface AlertRule {
   downPct?: number;
   minVolumeRatio?: number; // 量比 ≥
   riseSpeed?: number;      // 涨速 ≥ %（窗口内涨幅）
-  speedWindowSec?: number; // 涨速窗口（秒），默认 300
+  downSpeed?: number;      // 跳水 ≥ %（窗口内跌幅，正数）
+  speedWindowSec?: number; // 涨速 / 跳水窗口（秒），默认 300
+  minTurnover?: number;    // 换手率 ≥ %
+  minAmount?: number;      // 成交额 ≥ 亿元
+  sealLimitUp?: boolean;   // 涨停封板
+  sealLimitDown?: boolean; // 跌停封板
+  brokenLimit?: boolean;   // 涨停炸板（封板后打开）
   cooldownSec: number;   // 触发冷却
   enabled: boolean;
   lastFiredAt?: number;

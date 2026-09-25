@@ -42,6 +42,7 @@ import { useTheme } from "./composables/useTheme";
 import type { AlertEvent } from "./api/market";
 import { ensureDb } from "./db/database";
 import { startTimeSeries } from "./composables/useTimeSeries";
+import { playAlert } from "./utils/sound";
 
 const wl = useWatchlistStore();
 const quotes = useQuotesStore();
@@ -557,14 +558,22 @@ onMounted(async () => {
         pickStock(c);
       })
     );
-    // 预警触发：系统通知 + 记录触发时间
+    // 预警触发：写历史 + 系统通知 + 声音 + 记录触发时间
     unlistenFns.push(
       await listen<AlertEvent>("alert:triggered", (e) => {
         const ev = e.payload;
         alerts.markFired(ev.id, ev.time);
+        void alerts.addEvent(ev);
         try {
           if ("Notification" in window && Notification.permission === "granted") {
             new Notification(`预警 · ${ev.label}`, { body: ev.message });
+          }
+        } catch {
+          /* ignore */
+        }
+        try {
+          if (localStorage.getItem("tickgold_alert_sound") !== "0") {
+            playAlert(ev.tone);
           }
         } catch {
           /* ignore */
