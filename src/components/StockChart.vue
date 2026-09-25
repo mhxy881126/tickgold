@@ -46,11 +46,29 @@
         <button class="sc-tab ghost" :class="{ on: drawBar }" @click="toggleDraw">画线工具</button>
         <template v-if="!tabs[active].minute">
           <button class="sc-tab ghost" @click="openMaDlg">均线设置</button>
-          <button class="sc-tab ghost" :class="{ on: showBoll }" @click="toggleBoll">BOLL</button>
+          <button class="sc-tab ghost" :class="{ on: showBoll }" @click="toggleMainOverlay('BOLL')">BOLL</button>
+          <button class="sc-tab ghost" :class="{ on: showSar }" @click="toggleMainOverlay('SAR')">SAR</button>
+          <button class="sc-tab ghost" :class="{ on: showEne }" @click="toggleMainOverlay('ENE')">ENE</button>
           <span class="sc-sep"></span>
-          <button class="sc-tab ghost" :class="{ on: subInd==='MACD' }" @click="switchSub('MACD')">MACD</button>
-          <button class="sc-tab ghost" :class="{ on: subInd==='KDJ' }" @click="switchSub('KDJ')">KDJ</button>
-          <button class="sc-tab ghost" :class="{ on: subInd==='RSI' }" @click="switchSub('RSI')">RSI</button>
+          <div ref="subPickerEl" class="sub-picker">
+            <button class="sc-tab ghost" :class="{ on: subMenu }" @click.stop="subMenu=!subMenu">副图 {{ subInd }} ▾</button>
+            <div v-if="subMenu" class="sub-menu" @click.stop>
+              <div v-for="g in subGroups" :key="g.group" class="sm-group">
+                <div class="sm-gtitle">{{ g.group }}</div>
+                <div
+                  v-for="it in g.items"
+                  :key="it.name"
+                  class="sm-item"
+                  :class="{ on: subInd===it.name }"
+                  @click="switchSub(it.name)"
+                >
+                  <span class="sm-label">{{ it.label }}</span>
+                  <i v-if="subInd===it.name" class="sm-check">✓</i>
+                </div>
+              </div>
+            </div>
+          </div>
+          <button class="sc-tab ghost" @click="openIndSettings">指标设置</button>
         </template>
       </div>
     </div>
@@ -220,6 +238,15 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- ===== 指标设置 / 模板管理弹窗 ===== -->
+    <IndicatorSettings
+      v-model:open="indDlg"
+      :chart="chart"
+      :targets="indTargets"
+      :snapshot-fn="buildTemplatePayload"
+      @apply-template="applyTemplatePayload"
+    />
   </div>
 </template>
 
@@ -234,6 +261,7 @@ import type { Quote, OrderBook, KBar } from "../api/types";
 import { db } from "../db/database";
 import { usePaperStore } from "../stores/paper";
 import { useWatchlistStore } from "../stores/watchlist";
+import IndicatorSettings from "./IndicatorSettings.vue";
 
 const props = defineProps<{ code: string }>();
 
@@ -279,9 +307,62 @@ const showCostLine = ref(false);
 const showTradePts = ref(false);
 const showTd = ref(true); // 神奇九转默认开启（K线 / 分时均显示）
 const showBoll = ref(false); // BOLL 主图叠加
-type SubInd = "MACD" | "KDJ" | "RSI";
-const subInd = ref<SubInd>("MACD"); // 副图震荡指标
+const showSar = ref(false);  // SAR 主图叠加
+const showEne = ref(false);  // ENE 主图叠加
+
+// ===== 副图指标（KLineChart 内置，按类分组）=====
+const subGroups: { group: string; items: { name: string; label: string }[] }[] = [
+  {
+    group: "常用",
+    items: [
+      { name: "MACD", label: "MACD 指数平滑异同" },
+      { name: "KDJ", label: "KDJ 随机指标" },
+      { name: "RSI", label: "RSI 相对强弱" },
+      { name: "WR", label: "WR 威廉指标" },
+      { name: "CCI", label: "CCI 顺势指标" },
+    ],
+  },
+  {
+    group: "趋势",
+    items: [
+      { name: "DMI", label: "DMI 趋向指标" },
+      { name: "DMA", label: "DMA 平均差" },
+      { name: "TRIX", label: "TRIX 三重平滑" },
+      { name: "MTM", label: "MTM 动量指标" },
+      { name: "ROC", label: "ROC 变动率" },
+      { name: "BIAS", label: "BIAS 乖离率" },
+    ],
+  },
+  {
+    group: "量能 / 资金",
+    items: [
+      { name: "OBV", label: "OBV 能量潮" },
+      { name: "VR", label: "VR 容量比率" },
+      { name: "EMV", label: "EMV 简易波动" },
+      { name: "PVT", label: "PVT 量价趋势" },
+      { name: "AO", label: "AO 动量震荡" },
+      { name: "AVP", label: "AVP 量价指标" },
+    ],
+  },
+  {
+    group: "其他",
+    items: [
+      { name: "BRAR", label: "BRAR 情绪指标" },
+      { name: "CR", label: "CR 能量指标" },
+      { name: "PSY", label: "PSY 心理线" },
+    ],
+  },
+];
+const subInd = ref("MACD"); // 当前副图指标
 let subPaneId: string | null = null;
+const subMenu = ref(false);
+const subPickerEl = ref<HTMLElement | null>(null);
+// 点击选择器外部时收起菜单
+function onDocMousedown(e: MouseEvent) {
+  if (subMenu.value && subPickerEl.value && !subPickerEl.value.contains(e.target as Node)) {
+    subMenu.value = false;
+  }
+}
 
 // ---- 头部合并字段（Quote 为主，OrderBook 兜底）----
 const headName = computed(() => q.value?.name ?? ob.value?.name ?? "-");
@@ -495,6 +576,37 @@ registerIndicator({
         ctx.fillText("S", x, yAxis.convertToPixel(d.high) - size - 7);
       }
     }
+  },
+} as any);
+
+// ===== 自定义指标④：ENE 轨道线（同花顺口径：中轨 MA(N)，上/下轨 ±M%，默认 10,11,11）=====
+registerIndicator({
+  name: "ENE",
+  shortName: "ENE",
+  series: "price" as any,
+  precision: 2,
+  calcParams: [10, 11, 11],
+  figures: [
+    { key: "upper", title: "UP: ", type: "line" },
+    { key: "ene", title: "ENE: ", type: "line" },
+    { key: "lower", title: "LOW: ", type: "line" },
+  ],
+  calc: (dataList: KLineData[], ind: any) => {
+    const [n, m1, m2] = (ind.calcParams as number[]).map((x) => Number(x) || 1);
+    const out: any[] = [];
+    let sum = 0;
+    for (let i = 0; i < dataList.length; i++) {
+      sum += dataList[i].close;
+      if (i >= n) sum -= dataList[i - n].close;
+      if (i < n - 1) { out.push({}); continue; }
+      const mid = sum / n;
+      out.push({
+        upper: mid * (1 + m1 / 100),
+        ene: mid,
+        lower: mid * (1 - m2 / 100),
+      });
+    }
+    return out;
   },
 } as any);
 
@@ -869,6 +981,8 @@ function renderChart(bars: KBar[], minute: boolean) {
 
   // 叠加层恢复（同 pane 叠加必须 isStack=true，否则会清空 MA/AVG）
   if (showBoll.value) chart.createIndicator("BOLL", true, { id: "candle_pane" });
+  if (showSar.value) chart.createIndicator("SAR", true, { id: "candle_pane" });
+  if (showEne.value) chart.createIndicator("ENE", true, { id: "candle_pane" });
   if (showTd.value) chart.createIndicator("td9", true, { id: "candle_pane" });
   if (showTradePts.value) addTradePointsToChart();
   if (showCostLine.value) addCostLineToChart();
@@ -930,21 +1044,113 @@ async function switchTab(i: number) {
   await load();
 }
 
-// BOLL 主图叠加开关
-function toggleBoll() {
-  showBoll.value = !showBoll.value;
-  if (chart) {
-    if (showBoll.value) chart.createIndicator("BOLL", true, { id: "candle_pane" });
-    else chart.removeIndicator("candle_pane", "BOLL");
-  }
+// 主图叠加开关（BOLL / SAR / ENE）
+function toggleMainOverlay(key: "BOLL" | "SAR" | "ENE") {
+  const st = key === "BOLL" ? showBoll : key === "SAR" ? showSar : showEne;
+  st.value = !st.value;
+  if (!chart) return;
+  if (st.value) chart.createIndicator(key, true, { id: "candle_pane" });
+  else chart.removeIndicator("candle_pane", key);
 }
-// 副图震荡指标切换（移除旧副图 pane，新建新指标 pane）
-function switchSub(name: SubInd) {
-  if (subInd.value === name) return;
+// 副图指标切换（移除旧副图 pane，新建新指标 pane）
+function switchSub(name: string) {
+  if (subInd.value === name) { subMenu.value = false; return; }
   subInd.value = name;
+  subMenu.value = false;
   if (!chart) return;
   if (subPaneId) chart.removeIndicator(subPaneId);
-  subPaneId = chart.createIndicator(name, false, { height: 84}) as string | null;
+  subPaneId = chart.createIndicator(name, false, { height: 84 }) as string | null;
+}
+
+// ===== 指标设置弹窗 =====
+const indDlg = ref(false);
+interface IndTarget { name: string; paneId: string; label: string }
+const indTargets = computed<IndTarget[]>(() => {
+  const t: IndTarget[] = [];
+  if (tabs[active.value].minute) return t; // 分时不提供参数设置
+  t.push({ name: "MA", paneId: "candle_pane", label: "MA 均线" });
+  if (showBoll.value) t.push({ name: "BOLL", paneId: "candle_pane", label: "BOLL 布林" });
+  if (showSar.value) t.push({ name: "SAR", paneId: "candle_pane", label: "SAR 抛物线" });
+  if (showEne.value) t.push({ name: "ENE", paneId: "candle_pane", label: "ENE 轨道" });
+  if (subPaneId) t.push({ name: subInd.value, paneId: subPaneId, label: "副图 · " + subInd.value });
+  return t;
+});
+function openIndSettings() { indDlg.value = true; }
+
+// 读取某指标的 calcParams 与每条输出线颜色
+function readIndicatorSnapshot(name: string, paneId: string) {
+  if (!chart) return null;
+  const ind = chart.getIndicatorByPaneId(paneId, name) as any;
+  if (!ind) return null;
+  const lines: string[] = [];
+  for (const f of ind.figures ?? []) {
+    if (f.type === "line") lines.push(ind.styles?.lines?.[lines.length]?.color ?? "#ffffff");
+  }
+  return { calcParams: ((ind.calcParams as any[]) ?? []).slice(), lines };
+}
+
+// 生成当前完整指标配置快照（用于保存模板 / 导出）
+function buildTemplatePayload() {
+  const params: Record<string, any[]> = {};
+  const lines: Record<string, string[]> = {};
+  const grab = (name: string, paneId: string) => {
+    const s = readIndicatorSnapshot(name, paneId);
+    if (s) { params[name] = s.calcParams; lines[name] = s.lines; }
+  };
+  if (!tabs[active.value].minute) {
+    grab("MA", "candle_pane");
+    if (showBoll.value) grab("BOLL", "candle_pane");
+    if (showSar.value) grab("SAR", "candle_pane");
+    if (showEne.value) grab("ENE", "candle_pane");
+    if (subPaneId) grab(subInd.value, subPaneId);
+  }
+  return {
+    v: 1,
+    minute: tabs[active.value].minute,
+    ma: { periods: maCfg.value.periods.slice(), colors: maCfg.value.colors.slice() },
+    main: { BOLL: showBoll.value, SAR: showSar.value, ENE: showEne.value },
+    sub: subInd.value,
+    params,
+    lines,
+  };
+}
+
+// 应用模板：恢复开关 / 副图 / 参数 / 线色
+async function applyTemplatePayload(p: any) {
+  if (!chart || !p) return;
+  if (p.ma?.periods?.length) {
+    maCfg.value = { periods: p.ma.periods.slice(), colors: p.ma.colors.slice() };
+  }
+  const syncMain = (key: "BOLL" | "SAR" | "ENE", want: boolean, cur: { value: boolean }) => {
+    if (cur.value === want) return;
+    cur.value = want;
+    if (want) chart!.createIndicator(key, true, { id: "candle_pane" });
+    else chart!.removeIndicator("candle_pane", key);
+  };
+  syncMain("BOLL", !!p.main?.BOLL, showBoll);
+  syncMain("SAR", !!p.main?.SAR, showSar);
+  syncMain("ENE", !!p.main?.ENE, showEne);
+  if (p.sub && p.sub !== subInd.value && subPaneId) {
+    chart.removeIndicator(subPaneId);
+    subInd.value = p.sub;
+    subPaneId = chart.createIndicator(p.sub, false, { height: 84 }) as string | null;
+  }
+  await nextTick();
+  for (const name of ["MA", "BOLL", "SAR", "ENE"]) {
+    if (!p.params?.[name]) continue;
+    const ln: string[] = p.lines?.[name] ?? [];
+    chart.overrideIndicator(
+      { name, calcParams: p.params[name], styles: { lines: ln.map((c) => line(c)) } } as any,
+      "candle_pane"
+    );
+  }
+  if (subPaneId && p.params?.[subInd.value]) {
+    const ln: string[] = p.lines?.[subInd.value] ?? [];
+    chart.overrideIndicator(
+      { name: subInd.value, calcParams: p.params[subInd.value], styles: { lines: ln.map((c) => line(c)) } } as any,
+      subPaneId
+    );
+  }
 }
 
 // ===== 跟随鼠标浮窗 =====
@@ -1263,6 +1469,7 @@ onMounted(async () => {
   chartTimer = window.setInterval(refreshChart, 10000);
   drawTimer = window.setInterval(() => saveDrawings(false), 3000);
   window.addEventListener("keydown", onDrawKey);
+  window.addEventListener("mousedown", onDocMousedown);
 });
 
 onUnmounted(() => {
@@ -1273,6 +1480,7 @@ onUnmounted(() => {
   window.removeEventListener("mousemove", popMove);
   window.removeEventListener("mouseup", popUp);
   window.removeEventListener("keydown", onDrawKey);
+  window.removeEventListener("mousedown", onDocMousedown);
   ro?.disconnect();
   if (chart) dispose(chart);
   if (popupChart) dispose(popupChart);
@@ -1326,6 +1534,26 @@ watch(() => props.code, async () => {
 .sc-tab.ghost { color: #b9c0cf; }
 .sc-tabs-right { margin-left: auto; display: flex; align-items: center; }
 .sc-sep { width: 1px; height: 14px; background: rgba(255,255,255,.12); margin: 0 4px; }
+
+/* 副图指标选择器 */
+.sub-picker { position: relative; z-index: 30; display: flex; }
+.sub-menu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 31;
+  width: 236px; max-height: 380px; overflow-y: auto;
+  background: rgba(18, 20, 26, .98); border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 10px; padding: 6px;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, .6);
+}
+.sm-group { margin-bottom: 3px; }
+.sm-gtitle { font-size: 10px; color: #7b8294; padding: 5px 8px 3px; letter-spacing: .5px; }
+.sm-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 9px; border-radius: 6px; cursor: pointer; color: #c7ccd8;
+}
+.sm-item:hover { background: rgba(255, 255, 255, .07); color: #fff; }
+.sm-item.on { color: #ff8a8a; }
+.sm-label { font-size: 11px; }
+.sm-check { font-style: normal; color: #ff6b6b; font-size: 11px; }
 
 /* 主体 */
 .sc-body { flex: 1; min-height: 0; display: flex; }

@@ -622,6 +622,18 @@ pub fn run() {
                             sql: "CREATE INDEX IF NOT EXISTS idx_drawing_scope ON drawing(scope);",
                             kind: MigrationKind::Up,
                         },
+                        // ===== v0.53 指标模板：保存 / 复用指标参数与配色 =====
+                        Migration {
+                            version: 22,
+                            description: "create ind_template (named indicator templates)",
+                            sql: "CREATE TABLE IF NOT EXISTS ind_template (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                name TEXT NOT NULL UNIQUE,
+                                payload TEXT NOT NULL,
+                                created_at INTEGER NOT NULL
+                            );",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),
