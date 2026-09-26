@@ -157,6 +157,93 @@ const GAP = 12;
 const COLS = 12;
 const ROWS = 6;
 
+// ===== 卡片个性化（V1 单卡设置 / V3 场景模板）=====
+export interface CardCustom {
+  span?: number;       // 用户覆盖的列跨度（1..12）
+  rspan?: number;      // 用户覆盖的行跨度（逻辑行）
+  collapsed?: boolean; // 折叠为标题栏
+  color?: string;      // 强调色覆盖
+  refresh?: number;    // 刷新频率（秒，0=跟随全局）
+}
+// 卡片在 Bento 网格中的默认尺寸（12 列 × 6 逻辑行）
+const DEFAULT_SIZE: Partial<Record<CardId, { w: number; h: number }>> = {
+  chart: { w: 6, h: 3 }, sectorheat: { w: 6, h: 3 }, heatmatrix: { w: 8, h: 3 },
+  multigrid: { w: 6, h: 3 }, dragon: { w: 6, h: 3 }, reviewtimeline: { w: 6, h: 3 },
+  bentofocus: { w: 6, h: 3 },
+  radar: { w: 4, h: 2 }, radarsweep: { w: 4, h: 2 }, breadth: { w: 4, h: 2 },
+  sector: { w: 4, h: 2 }, screener: { w: 4, h: 2 }, f10: { w: 4, h: 2 },
+  trade: { w: 4, h: 2 }, theme: { w: 4, h: 2 }, calendar: { w: 4, h: 2 },
+  ipo: { w: 4, h: 2 }, journal: { w: 4, h: 2 }, auction: { w: 4, h: 2 },
+  limitpool: { w: 4, h: 2 }, telegraph: { w: 4, h: 2 },
+};
+function defaultSizeOf(id: CardId): { w: number; h: number } {
+  return DEFAULT_SIZE[id] ?? { w: 3, h: 2 };
+}
+
+// ===== V3 场景模板：一键切换卡片集 + 预设尺寸（每个场景精确铺满 12×6）=====
+export interface Scene {
+  id: string;
+  label: string;
+  icon: string;
+  cards: CardId[];
+  size?: Partial<Record<CardId, { w: number; h: number }>>;
+}
+export const SCENES: Scene[] = [
+  { id: "pan", label: "盘中盯盘", icon: "M12 8a4 4 0 100 8 4 4 0 000-8zm0-4C7 4 3 12 3 12s4 8 9 8 9-8 9-8-4-8-9-8z",
+    cards: ["chart", "order", "radar", "fundflow", "breadth", "watch", "spider", "sectorevent"],
+    size: { chart: { w: 6, h: 3 }, order: { w: 6, h: 3 }, radar: { w: 3, h: 2 }, fundflow: { w: 3, h: 2 }, breadth: { w: 3, h: 2 }, watch: { w: 3, h: 2 }, spider: { w: 6, h: 1 }, sectorevent: { w: 6, h: 1 } } },
+  { id: "auction", label: "开盘竞价", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm1 10.5V6h-2v8h8v-2h-6z",
+    cards: ["auction", "order", "radar", "breadth", "watch", "spider", "sectorevent"],
+    size: { auction: { w: 6, h: 3 }, order: { w: 6, h: 3 }, radar: { w: 4, h: 2 }, breadth: { w: 4, h: 2 }, watch: { w: 4, h: 2 }, spider: { w: 6, h: 1 }, sectorevent: { w: 6, h: 1 } } },
+  { id: "review", label: "盘后复盘", icon: "M12 4a8 8 0 108 8h-2a6 6 0 11-6-6v3l4-4-4-4v3z",
+    cards: ["reviewtimeline", "dragon", "chart", "sectorheat", "breadth", "fundflow", "news"],
+    size: { reviewtimeline: { w: 8, h: 3 }, dragon: { w: 4, h: 3 }, chart: { w: 6, h: 2 }, sectorheat: { w: 6, h: 2 }, breadth: { w: 4, h: 1 }, fundflow: { w: 4, h: 1 }, news: { w: 4, h: 1 } } },
+  { id: "screen", label: "条件选股", icon: "M3 4h18l-7 8v6l-4 2v-8z",
+    cards: ["screener", "sectorheat", "sector", "rank", "watch"],
+    size: { screener: { w: 8, h: 3 }, sectorheat: { w: 4, h: 3 }, sector: { w: 6, h: 2 }, rank: { w: 6, h: 2 }, watch: { w: 12, h: 1 } } },
+  { id: "mini", label: "极简看盘", icon: "M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z",
+    cards: ["chart", "order", "watch"],
+    size: { chart: { w: 8, h: 4 }, order: { w: 4, h: 4 }, watch: { w: 12, h: 2 } } },
+];
+
+// ===== Bento 自动排布：12 列 first-fit，动态行，输出每卡网格线坐标 =====
+interface BentoPack { pos: Record<string, BentoPos>; rows: number }
+function packBento(
+  cards: CardId[],
+  getSize: (id: CardId) => { w: number; h: number }
+): BentoPack {
+  const MAXR = 60;
+  const occ: boolean[][] = Array.from({ length: MAXR }, () => Array(12).fill(false));
+  const pos = {} as Record<string, BentoPos>;
+  let maxRowEnd = 0;
+  for (const id of cards) {
+    const s = getSize(id);
+    const cw = Math.max(1, Math.min(12, s.w));
+    const ch = Math.max(1, s.h);
+    let placed = false;
+    for (let y = 0; y <= MAXR - ch && !placed; y++) {
+      for (let x = 0; x + cw <= 12; x++) {
+        let ok = true;
+        for (let dy = 0; dy < ch && ok; dy++)
+          for (let dx = 0; dx < cw; dx++) if (occ[y + dy][x + dx]) { ok = false; break; }
+        if (!ok) continue;
+        for (let dy = 0; dy < ch; dy++)
+          for (let dx = 0; dx < cw; dx++) occ[y + dy][x + dx] = true;
+        pos[id] = { col: x + 1, colEnd: x + 1 + cw, row: y + 1, rowEnd: y + 1 + ch };
+        if (y + ch > maxRowEnd) maxRowEnd = y + ch;
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      const y = maxRowEnd;
+      pos[id] = { col: 1, colEnd: 1 + cw, row: y + 1, rowEnd: y + 1 + ch };
+      maxRowEnd = y + ch;
+    }
+  }
+  return { pos, rows: Math.max(1, maxRowEnd) };
+}
+
 // ===== 自由布局（卡片可随意拖拽摆放）=====
 export interface FreeRect { x: number; y: number; w: number; h: number }
 const ROW_UNIT = 88; // 自由布局每个逻辑行的像素高度
@@ -250,7 +337,7 @@ function divisors(x: number): number[] {
 
 // 通用装箱：把 cards 均匀铺满一个 Lw 列 × 6 行的逻辑网格（列起点 colStart）。
 // 任意卡片数都保证每卡有整数网格线坐标、不重叠；末行不满则拉伸铺满，无孤卡、无右侧空洞。
-function packZone(
+export function packZone(
   cards: CardId[],
   colStart: number,
   Lw: number,
@@ -323,6 +410,7 @@ interface SnapshotCard {
   id: CardId;
   zone: Zone;
   rect?: FreeRect;
+  cu?: CardCustom;
 }
 
 export interface NamedLayout {
@@ -334,6 +422,7 @@ export interface NamedLayout {
 
 const CURRENT_KEY = "workbench_current";
 const TIME_KEY = "workbench_time_mode";
+const SCENE_KEY = "workbench_scene";
 
 export function useWorkbench() {
   const openCards = ref<CardId[]>([]);
@@ -347,6 +436,27 @@ export function useWorkbench() {
   const freeDrag = ref<(FreeRect & { id: CardId }) | null>(null);
   const freeCanvasRef = ref<HTMLElement | null>(null);
   // 卡片聚焦（主从分屏）：非 null = 该卡放大到主区，其余卡进入右侧快速切换栏
+  // 卡片个性化（尺寸 / 折叠 / 强调色 / 刷新频率）
+  const cardCustom = ref<Partial<Record<CardId, CardCustom>>>({});
+  const sceneId = ref<string | null>(null);
+  function patchCustom(id: CardId, patch: Partial<CardCustom>) {
+    cardCustom.value = { ...cardCustom.value, [id]: { ...cardCustom.value[id], ...patch } };
+  }
+  function cardColorOf(id: CardId): string {
+    return cardCustom.value[id]?.color ?? CARD_META[id].accent;
+  }
+  function cardRefreshOf(id: CardId): number {
+    return cardCustom.value[id]?.refresh ?? 0;
+  }
+  function isCollapsed(id: CardId): boolean {
+    return !!cardCustom.value[id]?.collapsed;
+  }
+  // 当前生效尺寸（用户覆盖优先；折叠不改变返回的原始跨度）
+  function cardSpanOf(id: CardId): { w: number; h: number } {
+    const cu = cardCustom.value[id];
+    const d = defaultSizeOf(id);
+    return { w: cu?.span ?? d.w, h: cu?.rspan ?? d.h };
+  }
   const focusId = ref<CardId | null>(null);
   const isFocused = computed(() => focusId.value !== null);
   function focus(id: CardId) {
@@ -403,6 +513,8 @@ export function useWorkbench() {
     freeMode.value = false;
     freeRects.value = {};
     focusId.value = null;
+    cardCustom.value = {};
+    sceneId.value = null;
     openCards.value = [...cards];
   }
   // 进入时段驾驶舱：套用该时段的卡片集合 + Bento 显式布局
@@ -414,6 +526,8 @@ export function useWorkbench() {
     timeMode.value = id;
     freeMode.value = false;
     freeRects.value = {};
+    cardCustom.value = {};
+    sceneId.value = null;
     openCards.value = [...p.cards];
   }
   function exitTimeMode() {
@@ -428,34 +542,42 @@ export function useWorkbench() {
   const mainCards = computed(() => openCards.value.filter((id) => zoneOf(id) === "main"));
   const sideCards = computed(() => openCards.value.filter((id) => zoneOf(id) === "side"));
 
-  // 布局：返回每个卡片的定位
-  const layout = computed<Record<string, Record<string, string>>>(() => {
-    // 时段驾驶舱：使用预设的显式 Bento 坐标（3 大行）
+  // 统一网格布局：时段 Bento（3 行铺满）或 Bento 自动排布（12×6，可扩展滚动）
+  const gridLayout = computed<{
+    cells: Record<string, Record<string, string>>;
+    rows: number;
+    scroll: boolean;
+    time: boolean;
+  }>(() => {
+    // 时段驾驶舱：预设显式 Bento（3 大行）
     if (timeMode.value) {
       const p = TIME_PRESETS.find((x) => x.id === timeMode.value);
-      if (p) {
-        const st: Record<string, Record<string, string>> = {};
+      const st: Record<string, Record<string, string>> = {};
+      if (p)
         openCards.value.forEach((id) => {
           const b = p.bento[id];
           if (b) st[id] = cell(b.col, b.colEnd, b.row, b.rowEnd, 3);
         });
-        return st;
-      }
+      return { cells: st, rows: 3, scroll: false, time: true };
     }
-    const style: Record<string, Record<string, string>> = {};
-    const wn = mainCards.value.length;
-    const sn = sideCards.value.length;
-    if (wn && sn) {
-      // 两区都有：主干左 6 列、侧栏右 6 列
-      packZone(mainCards.value, 0, 6, style);
-      packZone(sideCards.value, 6, 6, style);
-    } else if (wn) {
-      packZone(mainCards.value, 0, 12, style); // 仅主干，占满整宽
-    } else {
-      packZone(sideCards.value, 0, 12, style); // 仅侧栏，占满整宽
-    }
-    return style;
+    // Bento 自动排布：尺寸取用户覆盖（折叠=1 行），否则默认
+    const getSize = (id: CardId) => {
+      const cu = cardCustom.value[id];
+      const d = defaultSizeOf(id);
+      const w = cu?.span ?? d.w;
+      const h = cu?.collapsed ? 1 : cu?.rspan ?? d.h;
+      return { w, h };
+    };
+    const pk = packBento(openCards.value, getSize);
+    const effRows = Math.max(6, pk.rows);
+    const st: Record<string, Record<string, string>> = {};
+    openCards.value.forEach((id) => {
+      const b = pk.pos[id];
+      if (b) st[id] = cell(b.col, b.colEnd, b.row, b.rowEnd, effRows);
+    });
+    return { cells: st, rows: effRows, scroll: pk.rows > 6, time: false };
   });
+  const layout = computed(() => gridLayout.value.cells);
 
   // ===== 拖拽换位 / 跨区移动 =====
   const dragId = ref<CardId | null>(null);
@@ -656,11 +778,49 @@ export function useWorkbench() {
     return GAP + maxY * (ROW_UNIT + GAP) + GAP;
   });
 
+  // ===== 卡片尺寸 / 折叠 / 外观（V1）=====
+  function resizeCard(id: CardId, w: number, h: number) {
+    patchCustom(id, {
+      span: clampNum(Math.round(w), 1, 12),
+      rspan: clampNum(Math.round(h), 1, 12),
+      collapsed: false,
+    });
+    if (timeMode.value) timeMode.value = null; // 改尺寸 → 退出固定 Bento
+  }
+  function toggleCollapse(id: CardId) {
+    patchCustom(id, { collapsed: !cardCustom.value[id]?.collapsed });
+    if (timeMode.value) timeMode.value = null;
+  }
+  function setCardColor(id: CardId, color: string) { patchCustom(id, { color }); }
+  function setCardRefresh(id: CardId, refresh: number) { patchCustom(id, { refresh }); }
+
+  // ===== V3 场景模板：整组替换 + 预设尺寸 =====
+  function applyScene(scene: Scene) {
+    clearSlotInline();
+    focusId.value = null;
+    timeMode.value = null;
+    freeMode.value = false;
+    freeRects.value = {};
+    sceneId.value = scene.id;
+    const cc: Partial<Record<CardId, CardCustom>> = {};
+    if (scene.size) {
+      (Object.keys(scene.size) as CardId[]).forEach((id) => {
+        const s = scene.size![id]!;
+        cc[id] = { span: s.w, rspan: s.h };
+      });
+    }
+    cardCustom.value = cc;
+    openCards.value = [...scene.cards];
+  }
+  function saveCurrentAsScene() {
+    void saveNamedLayout("我的场景 " + new Date().toLocaleString());
+  }
   // ===== 序列化 / 恢复 =====
   function serialize(): string {
     const cards: SnapshotCard[] = openCards.value.map((id) => {
       const c: SnapshotCard = { id, zone: zoneOf(id) };
       if (freeMode.value && freeRects.value[id]) c.rect = freeRects.value[id];
+      if (cardCustom.value[id]) c.cu = cardCustom.value[id];
       return c;
     });
     return JSON.stringify(cards);
@@ -673,6 +833,7 @@ export function useWorkbench() {
       if (!Array.isArray(arr)) return;
       const ov: Partial<Record<CardId, Zone>> = {};
       const rects: Record<string, FreeRect> = {};
+      const customs: Partial<Record<CardId, CardCustom>> = {};
       const ids: CardId[] = [];
       let hasRect = false;
       for (const c of arr) {
@@ -680,6 +841,7 @@ export function useWorkbench() {
         ids.push(c.id);
         if (c.zone && c.zone !== defaultZone(c.id)) ov[c.id] = c.zone;
         if (c.rect) { rects[c.id] = c.rect; hasRect = true; }
+        if (c.cu) customs[c.id] = c.cu;
       }
       if (hasRect) {
         freeMode.value = true;
@@ -691,6 +853,8 @@ export function useWorkbench() {
         freeRects.value = {};
         zoneOverride.value = ov;
       }
+      cardCustom.value = customs;
+      sceneId.value = null;
       openCards.value = ids;
     } catch {
       /* ignore */
@@ -709,6 +873,9 @@ export function useWorkbench() {
         db()
           .execute("INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)", [TIME_KEY, timeMode.value ?? ""])
           .catch(() => {});
+        db()
+          .execute("INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)", [SCENE_KEY, sceneId.value ?? ""])
+          .catch(() => {});
       } catch {
         /* db 未就绪，忽略 */
       }
@@ -718,17 +885,19 @@ export function useWorkbench() {
   async function restoreCurrent(): Promise<boolean> {
     try {
       const rows = await db().select<{ key: string; value: string }[]>(
-        "SELECT key,value FROM meta WHERE key IN (?,?)",
-        [CURRENT_KEY, TIME_KEY]
+        "SELECT key,value FROM meta WHERE key IN (?,?,?)",
+        [CURRENT_KEY, TIME_KEY, SCENE_KEY]
       );
-      let cardsJson = "", tm = "";
+      let cardsJson = "", tm = "", sc = "";
       rows.forEach((r) => {
         if (r.key === CURRENT_KEY) cardsJson = r.value;
         if (r.key === TIME_KEY) tm = r.value;
+        if (r.key === SCENE_KEY) sc = r.value;
       });
       if (cardsJson) {
         applySnapshot(cardsJson);
         if (tm && TIME_PRESETS.some((p) => p.id === tm)) timeMode.value = tm;
+        if (sc && SCENES.some((x) => x.id === sc)) sceneId.value = sc;
         return openCards.value.length > 0;
       }
     } catch {
@@ -768,10 +937,12 @@ export function useWorkbench() {
     zoneOverride.value = {};
     freeMode.value = false;
     freeRects.value = {};
+    cardCustom.value = {};
+    sceneId.value = null;
     openCards.value = [...openCards.value].sort((a, b) => rankDefault(a) - rankDefault(b));
   }
 
-  watch([openCards, zoneOverride, timeMode, freeMode, freeRects], persistCurrent, {
+  watch([openCards, zoneOverride, timeMode, freeMode, freeRects, cardCustom], persistCurrent, {
     deep: true,
   });
 
@@ -789,7 +960,24 @@ export function useWorkbench() {
     clearSlotInline,
     setMode,
     layout,
+    gridLayout,
+    mainCards,
+    sideCards,
     zoneOf,
+    // 卡片个性化（V1 单卡设置）
+    cardCustom,
+    cardColorOf,
+    cardRefreshOf,
+    isCollapsed,
+    cardSpanOf,
+    resizeCard,
+    toggleCollapse,
+    setCardColor,
+    setCardRefresh,
+    // V3 场景模板
+    sceneId,
+    applyScene,
+    saveCurrentAsScene,
     // 时段驾驶舱
     timeMode,
     enterTimeMode,

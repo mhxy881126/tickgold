@@ -39,7 +39,7 @@ import WelcomeBoard from "./components/WelcomeBoard.vue";
 import { useWatchlistStore } from "./stores/watchlist";
 import { useQuotesStore } from "./stores/quotes";
 import { useAlertStore } from "./stores/alert";
-import { useWorkbench, CARD_META, MODES, currentTimeSlot, type CardId } from "./composables/useWorkbench";
+import { useWorkbench, CARD_META, SCENES, currentTimeSlot, type CardId } from "./composables/useWorkbench";
 import { useTheme } from "./composables/useTheme";
 import { useAccessibility } from "./composables/useAccessibility";
 import type { AlertEvent } from "./api/market";
@@ -180,19 +180,11 @@ const DOCK_GROUPS: DockGroup[] = [
   },
 ];
 
-// ===== 模式预设 =====
-const MODE_NAV: { cards: CardId[]; label: string; icon: string }[] = [
-  { cards: MODES.pro, label: "专业", icon: "M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z" },
-  { cards: MODES.sector, label: "板块", icon: "M3 12h4l3-8 4 16 3-8h4" },
-  { cards: MODES.scanner, label: "选股", icon: "M3 4h18l-7 8v6l-4 2v-8z" },
-  { cards: MODES.full, label: "全屏", icon: "M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z" },
-];
-
-function isMode(cards: CardId[]) {
-  const a = [...bench.openCards.value].sort().join(",");
-  const b = [...cards].sort().join(",");
-  return a === b && a !== "";
-}
+// ===== 网格滚动模式：卡片超过 6 行时改用固定行高 =====
+const cardGridStyle = computed<Record<string, string>>(() => {
+  const gl = bench.gridLayout.value;
+  return { gridTemplateRows: !gl.time && gl.scroll ? `repeat(${gl.rows}, 132px)` : "" };
+});
 
 // ===== Mega 菜单：悬停分类 → 展开多列面板 =====
 const megaKey = ref<string | null>(null);
@@ -709,18 +701,6 @@ onBeforeUnmount(() => {
             <span class="pb-tx">命令</span>
             <kbd class="pb-k">Ctrl K</kbd>
           </button>
-          <span class="mr-sep"></span>
-          <button
-            v-for="(m, i) in MODE_NAV"
-            :key="'m' + i"
-            type="button"
-            class="layout-preset"
-            :class="{ on: isMode(m.cards) }"
-            :title="m.label + '布局'"
-            @click="bench.setMode(m.cards)"
-          >
-            <svg viewBox="0 0 24 24"><path fill="currentColor" :d="m.icon" /></svg>
-          </button>
         </div>
       </div>
 
@@ -760,6 +740,21 @@ onBeforeUnmount(() => {
       <Transition name="welcome">
         <WelcomeBoard v-if="bench.openCards.value.length === 0" />
       </Transition>
+      <!-- 场景模板栏：一键切换盯盘布局（V3 亮点） -->
+      <div class="scene-bar">
+        <span class="scene-label">场景模板</span>
+        <button
+          v-for="sc in SCENES"
+          :key="sc.id"
+          type="button"
+          class="scene-chip"
+          :class="{ on: bench.sceneId.value === sc.id }"
+          @click="bench.applyScene(sc)"
+        >
+          <svg viewBox="0 0 24 24"><path fill="currentColor" :d="sc.icon" /></svg>
+          <span>{{ sc.label }}</span>
+        </button>
+      </div>
       <!-- 时段切换栏（透明沉浸，无浮条边框） -->
       <TimeTabs :active="bench.timeMode.value" @select="bench.enterTimeMode($event)" />
 
@@ -792,10 +787,16 @@ onBeforeUnmount(() => {
               :accent="CARD_META[id].accent"
               free-drag
               :focused="bench.focusId.value === id"
+              :collapsed="bench.isCollapsed(id)"
+              :refresh="bench.cardRefreshOf(id)"
+              :color="bench.cardCustom.value[id]?.color ?? ''"
               @close="bench.close(id)"
               @focus="enterFocus(id)"
               @restore="exitFocus"
               @grab="(e: PointerEvent) => bench.startFreeDrag(e, id)"
+              @collapse="bench.toggleCollapse(id)"
+              @color="(c: string) => bench.setCardColor(id, c)"
+              @refresh="(n: number) => bench.setCardRefresh(id, n)"
             >
               <CardContent
                 :id="id"
@@ -824,7 +825,11 @@ onBeforeUnmount(() => {
       <TransitionGroup
         tag="div"
         class="card-grid"
-        :class="{ 'time-mode': bench.timeMode.value !== null }"
+        :class="{
+          'time-mode': bench.timeMode.value !== null,
+          scroll: bench.gridLayout.value.scroll,
+        }"
+        :style="cardGridStyle"
         enter-active-class="card-enter"
         leave-active-class="card-leave"
         move-class="card-move"
@@ -847,10 +852,20 @@ onBeforeUnmount(() => {
             :accent="CARD_META[id].accent"
             :dragging="bench.dragId.value === id"
             :focused="bench.focusId.value === id"
+            :collapsed="bench.isCollapsed(id)"
+            :resizable="bench.focusId.value === null && !bench.isCollapsed(id)"
+            :span="bench.cardSpanOf(id).w"
+            :rspan="bench.cardSpanOf(id).h"
+            :refresh="bench.cardRefreshOf(id)"
+            :color="bench.cardCustom.value[id]?.color ?? ''"
             @close="bench.close(id)"
             @focus="enterFocus(id)"
             @restore="exitFocus"
             @pdrag="(e: PointerEvent) => bench.pointerDragStart(id, e)"
+            @collapse="bench.toggleCollapse(id)"
+            @color="(c: string) => bench.setCardColor(id, c)"
+            @refresh="(n: number) => bench.setCardRefresh(id, n)"
+            @resize="(w: number, h: number) => bench.resizeCard(id, w, h)"
           >
             <CardContent
               :id="id"
@@ -1036,19 +1051,24 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px;
 }
 .palette-btn:hover { border-color: var(--accent); }
-.mr-sep { width: 1px; height: 20px; background: var(--border); margin: 0 3px; }
-.layout-preset {
-  width: 30px; height: 28px; border: 1px solid transparent; border-radius: 8px;
-  background: transparent; color: var(--text-dim); cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
+/* 场景模板栏（V3 亮点：一键切换盯盘布局） */
+.scene-bar {
+  display: flex; align-items: center; gap: 6px; height: 38px; flex: none;
+  padding: 0 4px; position: relative; z-index: 2;
+}
+.scene-label { font-size: 11px; color: var(--text-dim); margin-right: 4px; letter-spacing: 0.5px; }
+.scene-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+  color: var(--text-dim); background: transparent; border: 1px solid transparent;
+  border-radius: 8px; padding: 5px 12px; cursor: pointer;
   transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
-.layout-preset svg { width: 15px; height: 15px; }
-.layout-preset:hover { color: var(--text); background: var(--bg-hover); }
-.layout-preset.on {
+.scene-chip svg { width: 15px; height: 15px; }
+.scene-chip:hover { color: var(--text); background: var(--bg-hover); }
+.scene-chip.on {
   color: var(--accent-2);
   border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
 }
 
 /* Mega 下拉面板 */
@@ -1197,6 +1217,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   margin-top: 10px;
   z-index: 2;
+  overflow-y: auto;
 }
 /* 空台：去除留白，让沉浸背景铺满、时段栏与空台融为一体 */
 .workspace.bare { padding: 0; }
@@ -1205,10 +1226,15 @@ onBeforeUnmount(() => {
 .card-grid {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  grid-template-rows: repeat(6, 1fr);
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: repeat(6, minmax(0, 1fr));
   gap: 12px;
   height: 100%;
+}
+.card-grid.scroll {
+  height: auto;
+  min-height: 100%;
+  overflow: visible;
 }
 /* 时段驾驶舱：3 大行 Bento */
 .card-grid.time-mode {
