@@ -3,7 +3,7 @@
     ref="rootEl"
     class="card-shell"
     :class="{ focused, dragging, 'free-drag': freeDrag, collapsed, resizing, locked }"
-    :style="[ { '--accent-var': effectiveColor }, look ]"
+    :style="[ { '--accent-var': effectiveColor }, lookVars ]"
   >
     <div class="card-head" @pointerdown="onHeadDown" @dblclick="onDbl">
       <span class="card-bar" :style="{ background: effectiveColor }"></span>
@@ -13,6 +13,13 @@
         <circle cx="9" cy="18" r="1.7" /><circle cx="15" cy="18" r="1.7" />
       </svg>
       <span class="card-title">{{ title }}</span>
+      <span v-if="look.tag" class="card-tag">{{ look.tag }}</span>
+      <span v-if="look.pinned" class="hs-ic" title="已置顶">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M16 9V4l1-1V2H7v1l1 1v5l-2 2v2h5v6l1 1 1-1v-6h5v-2l-2-2z"/></svg>
+      </span>
+      <span v-if="look.locked" class="hs-ic" title="已锁定">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 17a2 2 0 002-2 2 2 0 00-2-2 2 2 0 00-2 2 2 2 0 002 2zm6-9h-1V6a5 5 0 00-10 0v2H6a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1V9a1 1 0 00-1-1zM9 6a3 3 0 016 0v2H9V6z"/></svg>
+      </span>
       <span class="head-spacer"></span>
       <span class="head-tools">
         <button type="button" class="head-btn" :title="collapsed ? '展开' : '折叠'" @click.stop="$emit('collapse')">
@@ -37,38 +44,23 @@
       <slot />
     </div>
 
-    <!-- 单卡设置弹层 -->
-    <div v-if="cfgOpen" class="card-cfg" @pointerdown.stop>
-      <div class="cfg-row">
-        <span class="cfg-k">刷新频率</span>
-        <select class="cfg-sel" :value="refresh" @change="onRefresh($event)">
-          <option :value="0">跟随全局</option>
-          <option :value="3">3 秒</option>
-          <option :value="5">5 秒</option>
-          <option :value="10">10 秒</option>
-          <option :value="30">30 秒</option>
-        </select>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-k">强调色</span>
-        <span class="cfg-sw">
-          <button
-            v-for="c in COLORS"
-            :key="c"
-            type="button"
-            class="sw"
-            :class="{ on: effectiveColor === c }"
-            :style="{ background: c }"
-            @click="onColor(c)"
-          ></button>
-        </span>
-      </div>
-      <button type="button" class="cfg-done" @click="cfgOpen = false">完成</button>
-    </div>
+    <!-- 单卡设置弹层（外观 / 行为 两页签） -->
+    <CardSettingsPopover
+      :open="cfgOpen"
+      :look="look"
+      :refresh="refresh"
+      @close="cfgOpen = false"
+      @look="(p) => emit('look', p)"
+      @refresh="(n) => emit('refresh', n)"
+      @pin="emit('pin')"
+      @lock="emit('lock')"
+      @tag="(t) => emit('tag', t)"
+      @reset="emit('resetlook')"
+    />
 
     <!-- 右下角 resize 手柄 -->
     <button
-      v-if="resizable"
+      v-if="resizable && !locked"
       type="button"
       class="resize-h"
       title="拖拽调整卡片大小"
@@ -81,6 +73,20 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
+import CardSettingsPopover from "./CardSettingsPopover.vue";
+
+type CardLookShape = {
+  color: string;
+  gradientTo: string;
+  gradAngle: number;
+  opacity: number;
+  radius: number;
+  borderWidth: number;
+  headStyle: number;
+  pinned: boolean;
+  locked: boolean;
+  tag: string;
+};
 
 const props = withDefaults(
   defineProps<{
@@ -96,7 +102,8 @@ const props = withDefaults(
     refresh?: number;
     color?: string;
     locked?: boolean;
-    look?: Record<string, string>;
+    lookVars?: Record<string, string>;
+    look?: CardLookShape;
   }>(),
   {
     accent: "#e8c878",
@@ -110,7 +117,11 @@ const props = withDefaults(
     refresh: 0,
     color: "",
     locked: false,
-    look: () => ({}),
+    lookVars: () => ({}),
+    look: () => ({
+      color: "#e8c878", gradientTo: "", gradAngle: 135, opacity: 1, radius: 10,
+      borderWidth: 1, headStyle: 1, pinned: false, locked: false, tag: "",
+    }),
   }
 );
 
@@ -124,18 +135,24 @@ const emit = defineEmits<{
   (e: "color", c: string): void;
   (e: "refresh", n: number): void;
   (e: "resize", w: number, h: number): void;
+  // 鎏金专业版
+  (e: "look", p: Record<string, unknown>): void;
+  (e: "pin"): void;
+  (e: "lock"): void;
+  (e: "tag", t: string): void;
+  (e: "resetlook"): void;
 }>();
 
 const rootEl = ref<HTMLElement | null>(null);
 const cfgOpen = ref(false);
 const resizing = ref(false);
 const GAP = 12;
-const COLORS = ["#e8c878", "#ef5f6b", "#6aa6e8", "#2fbf95", "#b08ce8"];
 const effectiveColor = computed(() => props.color || props.accent);
 
-// 头部按下：排除按钮区，其余触发拖拽（自由 / 网格）
+// 头部按下：排除按钮区，其余触发拖拽（自由 / 网格）；锁定卡不响应
 function onHeadDown(e: PointerEvent) {
   if (e.button !== 0) return;
+  if (props.locked) return;
   const t = e.target as HTMLElement;
   if (t.closest("button,.card-cfg")) return;
   if (props.freeDrag) emit("grab", e);
@@ -143,12 +160,6 @@ function onHeadDown(e: PointerEvent) {
 }
 function onDbl() {
   emit("collapse");
-}
-function onColor(c: string) {
-  emit("color", c);
-}
-function onRefresh(e: Event) {
-  emit("refresh", Number((e.target as HTMLSelectElement).value));
 }
 function clampNum(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
@@ -263,12 +274,35 @@ function startResize(e: PointerEvent) {
   display: flex;
   align-items: center;
   gap: 1px;
-  opacity: 0;
+  opacity: 0.45;
   transition: opacity 0.16s;
 }
 .card-shell:hover .head-tools,
 .card-shell.focused .head-tools {
   opacity: 1;
+}
+.card-tag {
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 6px;
+  color: var(--card-accent, var(--accent-var));
+  background: color-mix(in srgb, var(--card-accent, var(--accent-var)) 16%, transparent);
+  flex: none;
+}
+.hs-ic {
+  width: 13px;
+  height: 13px;
+  color: var(--card-accent, var(--text-dim));
+  flex: none;
+  display: inline-flex;
+}
+.hs-ic svg {
+  width: 13px;
+  height: 13px;
+}
+.card-shell.locked .card-head {
+  cursor: default;
 }
 .head-btn {
   display: inline-flex;

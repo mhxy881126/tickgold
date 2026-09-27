@@ -845,6 +845,31 @@ export function useWorkbench() {
   function setCardColor(id: CardId, color: string) { patchCustom(id, { color }); }
   function setCardRefresh(id: CardId, refresh: number) { patchCustom(id, { refresh }); }
 
+  // ===== 外观/行为 setter（鎏金专业版）=====
+  // 批量改外观，写入前统一 clamp；保留其它字段
+  function setCardLook(id: CardId, patch: Partial<CardCustom>) {
+    const p: Partial<CardCustom> = { ...patch };
+    if (p.gradAngle !== undefined) p.gradAngle = clampN(p.gradAngle, 0, 360, 135);
+    if (p.opacity !== undefined) p.opacity = clampN(p.opacity, 0.6, 1, 1);
+    if (p.radius !== undefined) p.radius = clampN(p.radius, 6, 18, 10);
+    if (p.borderWidth !== undefined) p.borderWidth = clampN(p.borderWidth, 0, 2, 1);
+    if (p.headStyle !== undefined) p.headStyle = clampN(p.headStyle, 1, 5, 1) as 1 | 2 | 3 | 4 | 5;
+    if (p.tag !== undefined) p.tag = p.tag.slice(0, 4);
+    patchCustom(id, p);
+  }
+  function setCardTag(id: CardId, t: string) { patchCustom(id, { tag: t.slice(0, 4) }); }
+  function togglePin(id: CardId) { patchCustom(id, { pinned: !cardCustom.value[id]?.pinned }); }
+  function toggleLock(id: CardId) { patchCustom(id, { locked: !cardCustom.value[id]?.locked }); }
+  // 仅清外观/行为覆盖，保留 span/rspan/collapsed/refresh
+  function resetCardLook(id: CardId) {
+    const cu = cardCustom.value[id];
+    if (!cu) return;
+    cardCustom.value = {
+      ...cardCustom.value,
+      [id]: { span: cu.span, rspan: cu.rspan, collapsed: cu.collapsed, refresh: cu.refresh },
+    };
+  }
+
   // ===== V3 场景模板：整组替换 + 预设尺寸 =====
   function applyScene(scene: Scene) {
     clearSlotInline();
@@ -1027,6 +1052,11 @@ export function useWorkbench() {
     toggleCollapse,
     setCardColor,
     setCardRefresh,
+    setCardLook,
+    setCardTag,
+    togglePin,
+    toggleLock,
+    resetCardLook,
     // V3 场景模板
     sceneId,
     applyScene,
