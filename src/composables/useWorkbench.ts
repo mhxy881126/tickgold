@@ -450,6 +450,8 @@ export function useWorkbench() {
   const freeMode = ref(false);
   const freeRects = ref<Record<string, FreeRect>>({});
   const freeDrag = ref<(FreeRect & { id: CardId }) | null>(null);
+  // 对齐辅助线（画布坐标 px；空数组=不显示）
+  const alignGuides = ref<{ v: number[]; h: number[] }>({ v: [], h: [] });
   const freeCanvasRef = ref<HTMLElement | null>(null);
   // 卡片聚焦（主从分屏）：非 null = 该卡放大到主区，其余卡进入右侧快速切换栏
   // 卡片个性化（尺寸 / 折叠 / 强调色 / 刷新频率）
@@ -818,8 +820,43 @@ export function useWorkbench() {
       const my = lastY - cr.top;
       const col = Math.round((mx - GAP) / (cellW + GAP));
       const row = Math.round((my - GAP) / (ROW_UNIT + GAP));
-      const nx = clampNum(col - Math.round(base.w / 2), 0, COLS - base.w);
-      const ny = clampNum(row - Math.round(base.h / 2), 0, 60);
+      let nx = clampNum(col - Math.round(base.w / 2), 0, COLS - base.w);
+      let ny = clampNum(row - Math.round(base.h / 2), 0, 60);
+
+      // ===== 边缘对齐 + 磁吸（在 nx/ny clamp 之后）=====
+      const SNAP_X = 0.12; // 列单位（约 10px）
+      const SNAP_Y = 10 / (ROW_UNIT + GAP); // 行单位（约 10px）
+      alignGuides.value = { v: [], h: [] };
+      const otherRects = Object.entries(freeRects.value)
+        .filter(([k]) => k !== id)
+        .map(([, r]) => r) as FreeRect[];
+      type Cand = { d: number; axis: "x" | "y"; edge: number; move: number };
+      const cands: Cand[] = [];
+      const push = (d: number, axis: "x" | "y", edge: number, move: number) => {
+        if (d <= (axis === "x" ? SNAP_X : SNAP_Y)) cands.push({ d, axis, edge, move });
+      };
+      for (const r of otherRects) {
+        push(Math.abs(nx - r.x), "x", r.x, r.x - nx);
+        push(Math.abs(nx - (r.x + r.w)), "x", r.x + r.w, r.x + r.w - nx);
+        push(Math.abs(nx + base.w - r.x), "x", r.x, r.x - (nx + base.w));
+        push(Math.abs(nx + base.w - (r.x + r.w)), "x", r.x + r.w, r.x + r.w - (nx + base.w));
+        push(Math.abs(ny - r.y), "y", r.y, r.y - ny);
+        push(Math.abs(ny - (r.y + r.h)), "y", r.y + r.h, r.y + r.h - ny);
+        push(Math.abs(ny + base.h - r.y), "y", r.y, r.y - (ny + base.h));
+        push(Math.abs(ny + base.h - (r.y + r.h)), "y", r.y + r.h, r.y + r.h - (ny + base.h));
+      }
+      if (cands.length) {
+        const best = cands.reduce((a, b) => (a.d <= b.d ? a : b));
+        if (best.axis === "x") {
+          nx = clampNum(nx + best.move, 0, COLS - base.w);
+          // 与 freeCellStyle 同一换算：x 像素 = edge * (画布宽 + GAP) / COLS
+          alignGuides.value.v = [best.edge * ((cr.width + GAP) / COLS)];
+        } else {
+          ny = clampNum(ny + best.move, 0, 60);
+          alignGuides.value.h = [GAP + best.edge * (ROW_UNIT + GAP)];
+        }
+      }
+
       freeDrag.value = { id, x: nx, y: ny, w: base.w, h: base.h };
     };
     const move = (ev: PointerEvent) => {
@@ -836,10 +873,27 @@ export function useWorkbench() {
         freeRects.value[id] = { x: g.x, y: g.y, w: g.w, h: g.h };
         settleFreeRects(freeRects.value);
       }
+      alignGuides.value = { v: [], h: [] };
       freeDrag.value = null;
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+  }
+
+  // 一键整理：以默认尺寸 shelf 装箱得到整齐坐标，保留用户当前尺寸，再碰撞收敛
+  function tidyFree() {
+    if (!freeMode.value) return;
+    const ids = openCards.value;
+    const packed = packFree(ids);
+    const cur = freeRects.value;
+    const next: Record<string, FreeRect> = {};
+    ids.forEach((id) => {
+      const p = packed[id];
+      const keep = cur[id] ?? freeSizeOf(id);
+      next[id] = { x: p.x, y: p.y, w: keep.w, h: keep.h };
+    });
+    settleFreeRects(next);
+    freeRects.value = next;
   }
   // 自由卡定位样式（宽用百分比、高用固定像素）
   function freeCellStyle(id: CardId): Record<string, string> {
@@ -1112,10 +1166,12 @@ export function useWorkbench() {
     freeMode,
     freeRects,
     freeDrag,
+    alignGuides,
     freeCanvasRef,
     enableFree,
     disableFree,
     startFreeDrag,
+    tidyFree,
     freeCellStyle,
     freeHeight,
     // 持久化 / 布局

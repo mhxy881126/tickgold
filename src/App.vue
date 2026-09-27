@@ -763,7 +763,8 @@ onBeforeUnmount(() => {
       <!-- ===== 自由布局：卡片绝对定位、可随意拖拽 ===== -->
       <template v-if="bench.freeMode.value">
         <div class="free-toolbar">
-          <span class="ft-hint">自由布局：按住卡片标题栏拖动，自动避让不重叠；布局已自动保存</span>
+          <span class="ft-hint">自由布局：按住卡片标题栏拖动，靠近其它卡边缘自动磁吸对齐；布局已自动保存</span>
+          <button class="ft-btn" @click="bench.tidyFree()">一键整理</button>
           <button class="ft-btn" @click="bench.disableFree()">恢复自动布局</button>
         </div>
         <TransitionGroup
@@ -774,6 +775,18 @@ onBeforeUnmount(() => {
           leave-active-class="free-leave"
           :style="{ height: bench.freeHeight.value + 'px' }"
         >
+          <div
+            v-for="(x, i) in bench.alignGuides.value.v"
+            :key="'av' + i"
+            class="align-v"
+            :style="{ left: x + 'px' }"
+          ></div>
+          <div
+            v-for="(y, i) in bench.alignGuides.value.h"
+            :key="'ah' + i"
+            class="align-h"
+            :style="{ top: y + 'px' }"
+          ></div>
           <div
             v-for="id in bench.openCards.value"
             :key="id"
@@ -1282,6 +1295,15 @@ onBeforeUnmount(() => {
 }
 .ft-btn:hover { border-color: #d4af37; color: #e8c96a; }
 .free-canvas { position: relative; width: 100%; }
+.align-v, .align-h {
+  position: absolute;
+  background: #2de1ff;
+  opacity: 0.8;
+  z-index: 30;
+  pointer-events: none;
+}
+.align-v { width: 1px; top: 0; bottom: 0; }
+.align-h { height: 1px; left: 0; right: 0; }
 .free-cell {
   transition: left 0.32s cubic-bezier(0.2, 0.8, 0.2, 1),
     top 0.32s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.32s, height 0.32s;
