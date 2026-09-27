@@ -108,6 +108,22 @@ function onCtxAction(a: string) {
   ctxMenu.value = null;
 }
 
+// ===== 关闭卡片 toast（5s 自动消失）=====
+const undoToast = ref(false);
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
+watch(
+  () => bench.lastClosed.value,
+  (v) => {
+    if (!v) return;
+    undoToast.value = true;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      undoToast.value = false;
+      bench.lastClosed.value = null;
+    }, 5000);
+  }
+);
+
 // 在网格空白区拖动：按列位置归到主干 / 侧栏分区末尾
 function onGridDragOver(e: DragEvent) {
   e.preventDefault();
@@ -278,6 +294,17 @@ function onGlobalKey(e: KeyboardEvent) {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
     e.preventDefault();
     paletteOpen.value ? closePalette() : openPalette();
+    return;
+  }
+  // 撤销结构操作（焦点在输入框/文本域时交给浏览器原生撤销，不拦截）
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+    const t = e.target as HTMLElement | null;
+    const editing = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+    if (!editing) {
+      e.preventDefault();
+      bench.undo();
+      undoToast.value = false;
+    }
     return;
   }
   const mod = e.metaKey || e.ctrlKey;
@@ -963,6 +990,18 @@ onBeforeUnmount(() => {
       </div>
     </main>
 
+    <!-- 关闭卡片撤销 toast -->
+    <Transition name="toast">
+      <button
+        v-if="undoToast"
+        type="button"
+        class="undo-toast"
+        @click="bench.undo(); undoToast = false"
+      >
+        卡片已关闭 · 撤销
+      </button>
+    </Transition>
+
     <!-- 卡片右键菜单 -->
     <CardContextMenu
       v-if="ctxMenu"
@@ -1330,6 +1369,26 @@ onBeforeUnmount(() => {
   pointer-events: none;
   z-index: 1;
 }
+.undo-toast {
+  position: fixed;
+  top: 124px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+.undo-toast:hover { border-color: #d4af37; color: #e8c96a; }
+.toast-enter-active,
+.toast-leave-active { transition: opacity 0.2s, transform 0.2s; }
+.toast-enter-from,
+.toast-leave-to { opacity: 0; transform: translateX(-50%) translateY(-6px); }
 
 /* ===== 自由布局 ===== */
 .ws-body.free { overflow-y: auto; }

@@ -540,6 +540,7 @@ export function useWorkbench() {
   function open(id: CardId) {
     if (timeMode.value) timeMode.value = null; // 手动加卡 → 退出固定 Bento，回到自由网格
     if (!openCards.value.includes(id)) {
+      pushUndo();
       openCards.value.push(id);
       if (freeMode.value) placeNewFree(id);
     }
@@ -551,6 +552,8 @@ export function useWorkbench() {
       clearSlotInline();
       focusId.value = null;
     }
+    pushUndo();
+    lastClosed.value = { id };
     openCards.value = openCards.value.filter((c) => c !== id);
     if (freeMode.value) delete freeRects.value[id];
   }
@@ -562,6 +565,7 @@ export function useWorkbench() {
   }
   // 模式：整组替换，并恢复默认分区
   function setMode(cards: CardId[]) {
+    pushUndo();
     clearSlotInline(); // 切换整组模式前清掉聚焦内联样式
     zoneOverride.value = {};
     timeMode.value = null;
@@ -576,6 +580,7 @@ export function useWorkbench() {
   function enterTimeMode(id: string) {
     const p = TIME_PRESETS.find((x) => x.id === id);
     if (!p) return;
+    pushUndo();
     clearSlotInline(); // 从聚焦 / 其他模式进入时段：清内联定位
     zoneOverride.value = {};
     timeMode.value = id;
@@ -716,6 +721,7 @@ export function useWorkbench() {
         dragId.value = id;
         st.beforeOrder = [...openCards.value];
         st.beforeZone = { ...zoneOverride.value };
+        pushUndo(); // 拖拽真正开始时只记一次（实时换位不再重复入栈）
       }
       lastX = ev.clientX;
       lastY = ev.clientY;
@@ -732,6 +738,9 @@ export function useWorkbench() {
       if (st.esc && st.active) {
         openCards.value = [...st.beforeOrder];
         zoneOverride.value = { ...st.beforeZone };
+        // 状态已整体回滚，撤销栈里拖拽前的快照作废
+        undoStack.pop();
+        canUndo.value = undoStack.length > 0;
       }
       dragEnd();
     };
@@ -785,10 +794,14 @@ export function useWorkbench() {
   // ===== 自由布局：开关 / 拖拽 =====
   function enableFree() {
     if (timeMode.value) timeMode.value = null;
-    if (!freeMode.value) freeRects.value = packFree(openCards.value);
+    if (!freeMode.value) {
+      pushUndo();
+      freeRects.value = packFree(openCards.value);
+    }
     freeMode.value = true;
   }
   function disableFree() {
+    if (freeMode.value) pushUndo();
     freeMode.value = false;
     freeRects.value = {};
     freeDrag.value = null;
@@ -885,6 +898,7 @@ export function useWorkbench() {
   // 一键整理：以默认尺寸 shelf 装箱得到整齐坐标，保留用户当前尺寸，再碰撞收敛
   function tidyFree() {
     if (!freeMode.value) return;
+    pushUndo();
     const ids = openCards.value;
     const packed = packFree(ids);
     const cur = freeRects.value;
@@ -976,6 +990,7 @@ export function useWorkbench() {
 
   // ===== V3 场景模板：整组替换 + 预设尺寸 =====
   function applyScene(scene: Scene) {
+    pushUndo();
     clearSlotInline();
     focusId.value = null;
     timeMode.value = null;
@@ -1039,6 +1054,25 @@ export function useWorkbench() {
     } catch {
       /* ignore */
     }
+  }
+
+  // ===== 撤销栈（仅会话内，结构操作；外观实时调整不进栈）=====
+  const undoStack: string[] = [];
+  const UNDO_MAX = 20;
+  const canUndo = ref(false);
+  const lastClosed = ref<{ id: CardId } | null>(null);
+  function pushUndo() {
+    undoStack.push(serialize());
+    if (undoStack.length > UNDO_MAX) undoStack.shift();
+    canUndo.value = undoStack.length > 0;
+  }
+  function undo(): boolean {
+    const snap = undoStack.pop();
+    canUndo.value = undoStack.length > 0;
+    if (!snap) return false;
+    clearSlotInline();
+    applySnapshot(snap);
+    return true;
   }
 
   // 当前布局：debounce 自动写入 meta
@@ -1112,6 +1146,7 @@ export function useWorkbench() {
   }
   // 重置：恢复默认分区 + 默认顺序
   function resetLayout() {
+    pushUndo();
     clearSlotInline();
     focusId.value = null;
     zoneOverride.value = {};
@@ -1165,6 +1200,9 @@ export function useWorkbench() {
     copyLook,
     pasteLook,
     openCfgId,
+    undo,
+    canUndo,
+    lastClosed,
     // V3 场景模板
     sceneId,
     applyScene,
