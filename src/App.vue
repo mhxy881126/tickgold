@@ -377,7 +377,7 @@ function freezeSlots() {
   });
 }
 const FTRANS =
-  "left .44s cubic-bezier(.32,.78,.3,1),top .44s cubic-bezier(.32,.78,.3,1),width .44s cubic-bezier(.32,.78,.3,1),height .44s cubic-bezier(.32,.78,.3,1)";
+  "left .46s cubic-bezier(.34,1.25,.5,1),top .46s cubic-bezier(.34,1.25,.5,1),width .46s cubic-bezier(.34,1.25,.5,1),height .46s cubic-bezier(.34,1.25,.5,1)";
 function placeAt(el: HTMLElement, r: { left: number; top: number; width: number; height: number }) {
   el.style.transition = FTRANS;
   el.style.left = r.left + "px";
@@ -924,7 +924,7 @@ onBeforeUnmount(() => {
             'drop-after': dropPos(id) === 'after',
             'live-src': bench.dragId.value === id,
           }"
-          :style="bench.layout.value[id]"
+          :style="[ bench.layout.value[id], { '--i': String(Math.min(bench.openCards.value.indexOf(id), 6)) } ]"
         >
           <div v-if="bench.dragId.value === id" class="drag-ghost"></div>
           <CardShell
@@ -1474,7 +1474,10 @@ onBeforeUnmount(() => {
 }
 
 /* 卡片进出场 + FLIP */
-.card-enter { animation: cardIn 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.card-enter {
+  animation: cardIn 0.42s cubic-bezier(.34,1.25,.5,1) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
 .card-leave {
   position: absolute;
   left: var(--x);
@@ -1484,7 +1487,7 @@ onBeforeUnmount(() => {
   animation: cardOut 0.28s cubic-bezier(0.4, 0, 0.6, 1) both;
   z-index: 20;
 }
-.card-move { transition: transform 0.38s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.card-move { transition: transform 0.42s cubic-bezier(.34,1.25,.5,1); }
 
 @keyframes cardIn {
   from { opacity: 0; transform: scale(0.9); filter: blur(6px); }
