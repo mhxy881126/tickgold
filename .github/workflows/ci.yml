@@ -1,0 +1,81 @@
+name: ci
+
+# 每次推送到 main 或提交 PR 时，做前端质量门禁：类型检查 + 构建 + 单元测试。
+# 发布构建（含 Rust / 签名 / 打包）见 release.yml，仅在打 v* 标签时触发。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check & build
+        run: pnpm build
+
+      - name: Unit tests
+        run: pnpm test
+
+  e2e:
+    needs: frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Playwright 自动以 e2e mode 启动 Vite（@tauri-apps/* 为假实现），无需 Rust
+      - name: Run E2E
+        run: pnpm e2e
+
+      - name: Upload view screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: view-screenshots
+          path: screenshots
+          retention-days: 14
+        continue-on-error: true
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
+        continue-on-error: true
