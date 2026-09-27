@@ -164,7 +164,23 @@ export interface CardCustom {
   collapsed?: boolean; // 折叠为标题栏
   color?: string;      // 强调色覆盖
   refresh?: number;    // 刷新频率（秒，0=跟随全局）
+  // 外观（鎏金专业版）
+  gradientTo?: string; // 渐变第二色（空=纯色）
+  gradAngle?: number;  // 渐变角度 0..360
+  opacity?: number;    // 背景不透明度 0.6..1
+  radius?: number;     // 圆角 6..18
+  borderWidth?: number;// 边框宽度 0..2
+  headStyle?: 1 | 2 | 3 | 4 | 5; // 标题栏样式
+  // 行为
+  pinned?: boolean;    // 置顶
+  locked?: boolean;    // 锁定（禁止拖拽/resize）
+  tag?: string;        // 文字标签（最多4字）
 }
+// 设置弹层的预设色板
+export const CARD_SWATCHES = [
+  "#e8c878", "#ef5f6b", "#6aa6e8", "#2fbf95",
+  "#b08ce8", "#ff9f43", "#2de1ff", "#d4af37",
+];
 // 卡片在 Bento 网格中的默认尺寸（12 列 × 6 逻辑行）
 const DEFAULT_SIZE: Partial<Record<CardId, { w: number; h: number }>> = {
   chart: { w: 6, h: 3 }, sectorheat: { w: 6, h: 3 }, heatmatrix: { w: 8, h: 3 },
@@ -441,6 +457,41 @@ export function useWorkbench() {
   const sceneId = ref<string | null>(null);
   function patchCustom(id: CardId, patch: Partial<CardCustom>) {
     cardCustom.value = { ...cardCustom.value, [id]: { ...cardCustom.value[id], ...patch } };
+  }
+  // 数值归一：undefined / NaN 用默认值，其余 clamp 到区间
+  function clampN(v: number | undefined, lo: number, hi: number, d: number) {
+    return v === undefined || Number.isNaN(v) ? d : Math.max(lo, Math.min(hi, v));
+  }
+  // 单卡当前外观（全部字段解析为确定值，供组件渲染与设置弹层回显）
+  function cardLook(id: CardId) {
+    const cu = cardCustom.value[id] ?? {};
+    return {
+      color: cu.color ?? CARD_META[id].accent,
+      gradientTo: cu.gradientTo ?? "",
+      gradAngle: clampN(cu.gradAngle, 0, 360, 135),
+      opacity: clampN(cu.opacity, 0.6, 1, 1),
+      radius: clampN(cu.radius, 6, 18, 10),
+      borderWidth: clampN(cu.borderWidth, 0, 2, 1),
+      headStyle: clampN(cu.headStyle, 1, 5, 1) as 1 | 2 | 3 | 4 | 5,
+      pinned: !!cu.pinned,
+      locked: !!cu.locked,
+      tag: (cu.tag ?? "").slice(0, 4),
+    };
+  }
+  // 注入卡片根元素的 CSS 变量（仅作用于卡片外观，不触碰内部图表配色）
+  function cardStyleVars(id: CardId): Record<string, string> {
+    const L = cardLook(id);
+    const grad = L.gradientTo
+      ? `linear-gradient(${L.gradAngle}deg, ${L.color} 0%, ${L.gradientTo} 100%)`
+      : L.color;
+    return {
+      "--card-accent": L.color,
+      "--card-accent2": L.gradientTo || L.color,
+      "--card-grad": grad,
+      "--card-opacity": String(L.opacity),
+      "--card-radius": `${L.radius}px`,
+      "--card-border": `${L.borderWidth}px`,
+    };
   }
   function cardColorOf(id: CardId): string {
     return cardCustom.value[id]?.color ?? CARD_META[id].accent;
@@ -966,6 +1017,8 @@ export function useWorkbench() {
     zoneOf,
     // 卡片个性化（V1 单卡设置）
     cardCustom,
+    cardLook,
+    cardStyleVars,
     cardColorOf,
     cardRefreshOf,
     isCollapsed,

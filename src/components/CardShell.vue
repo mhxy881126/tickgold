@@ -2,8 +2,8 @@
   <div
     ref="rootEl"
     class="card-shell"
-    :class="{ focused, dragging, 'free-drag': freeDrag, collapsed, resizing }"
-    :style="{ '--accent-var': effectiveColor }"
+    :class="{ focused, dragging, 'free-drag': freeDrag, collapsed, resizing, locked }"
+    :style="[ { '--accent-var': effectiveColor }, look ]"
   >
     <div class="card-head" @pointerdown="onHeadDown" @dblclick="onDbl">
       <span class="card-bar" :style="{ background: effectiveColor }"></span>
@@ -95,6 +95,8 @@ const props = withDefaults(
     rspan?: number;
     refresh?: number;
     color?: string;
+    locked?: boolean;
+    look?: Record<string, string>;
   }>(),
   {
     accent: "#e8c878",
@@ -107,6 +109,8 @@ const props = withDefaults(
     rspan: 2,
     refresh: 0,
     color: "",
+    locked: false,
+    look: () => ({}),
   }
 );
 
@@ -187,9 +191,11 @@ function startResize(e: PointerEvent) {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: linear-gradient(180deg, var(--bg-card), var(--bg-card2));
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg-card) calc(var(--card-opacity, 1) * 100%), transparent),
+    color-mix(in srgb, var(--bg-card2) calc(var(--card-opacity, 1) * 100%), transparent));
+  border: var(--card-border, 1px) solid var(--border);
+  border-radius: var(--card-radius, 10px);
   overflow: hidden;
   transition: border-color 0.18s, box-shadow 0.18s;
 }
@@ -216,7 +222,7 @@ function startResize(e: PointerEvent) {
   bottom: 8px;
   width: 3px;
   border-radius: 2px;
-  background: var(--accent-var);
+  background: var(--card-grad, var(--accent-var));
 }
 .card-head {
   display: flex;
