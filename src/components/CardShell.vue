@@ -290,6 +290,8 @@ function startResize(e: PointerEvent) {
   min-height: 0;
   padding: 8px 10px 10px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .card-body.collapsed {
   display: none;

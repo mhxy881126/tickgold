@@ -1380,8 +1380,14 @@ onBeforeUnmount(() => {
 }
 .focus-rail {
   position: fixed; top: 124px; right: 12px; bottom: 12px; width: 282px; z-index: 80;
-  display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding: 4px;
+  display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding: 8px;
   pointer-events: none;
+  background: color-mix(in srgb, var(--bg-panel) 92%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45);
   animation: rIn 0.45s cubic-bezier(0.2, 0.8, 0.3, 1) both;
 }
 .focus-rail.closing { animation: rOut 0.28s ease both; }
