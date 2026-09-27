@@ -26,8 +26,12 @@ class FakeDb {
   groups: Row[] = [];
   stocks: Row[] = [];
   meta: Row[] = [];
+  alertRules: Row[] = [];
+  alertEvents: Row[] = [];
   constructor() { this.reset(); }
   reset() {
+    this.alertRules = [];
+    this.alertEvents = [];
     this.groups = [{ id: 1, name: "我的自选", sort_order: 0, created_at: Date.now() }];
     this.stocks = [
       { code: "600519", name: "贵州茅台", group_id: 1, sort_order: 0, created_at: Date.now() },
@@ -59,6 +63,16 @@ class FakeDb {
         .sort((a, b) => (a.group_id as number) - (b.group_id as number) || (a.sort_order as number) - (b.sort_order as number))
         .map((x) => ({ code: x.code, name: x.name, groupId: x.group_id, sortOrder: x.sort_order }));
     }
+    if (/COUNT\(\*\)/i.test(s) && /FROM alert_rule_v2/i.test(s))
+      return [{ c: this.alertRules.length }];
+    if (/FROM alert_rule_v2/i.test(s))
+      return [...this.alertRules].sort(
+        (a, b) => (b.created_at as number) - (a.created_at as number)
+      );
+    if (/FROM alert_event/i.test(s))
+      return [...this.alertEvents].sort(
+        (a, b) => (b.triggered_at as number) - (a.triggered_at as number)
+      );
     return [];
   }
 
@@ -69,14 +83,22 @@ class FakeDb {
     const upd = /^UPDATE (\w+) SET (.+?) WHERE (\w+)=(\??|'[^']*')\s*$/i.exec(s);
     if (upd) {
       const table = this.table(upd[1]);
-      const target = readValue(upd[4], params);
+      // 参数按 token 顺序消费：先 SET 列表、后 WHERE
+      let pi = 0;
+      const take = (tok: string): unknown => {
+        const t = tok.trim();
+        if (t === "?") return params[pi++];
+        if (/^'.*'$/.test(t)) return t.slice(1, -1);
+        return t;
+      };
+      const target = take(upd[4]);
       const sets = splitCsv(upd[2]);
       for (const row of table) {
         if (row[upd[3]] !== target) continue;
         for (const assign of sets) {
           const m = /^(\w+)\s*=\s*(\?|'[^']*'|[\w.]+)$/.exec(assign.trim());
           if (!m) continue;
-          row[m[1]] = m[2] === "?" ? params[setP(s)] : m[2];
+          row[m[1]] = take(m[2]);
         }
       }
       return { rowsAffected: 1 };
@@ -115,6 +137,8 @@ class FakeDb {
     if (name === "groups") return this.groups;
     if (name === "stocks") return this.stocks;
     if (name === "meta") return this.meta;
+    if (name === "alert_rule_v2") return this.alertRules;
+    if (name === "alert_event") return this.alertEvents;
     return [];
   }
 }
@@ -152,10 +176,35 @@ function matchMetaKey(s: string, params: unknown[]): string | undefined {
 
 export const fakeDb = new FakeDb();
 
+// e2e 模式下把注入工具挂到 window，供 Playwright page.evaluate 调用
+if (import.meta.env.MODE === "e2e") {
+  (globalThis as unknown as {
+    __e2e: {
+      setQuoteOverride: typeof setQuoteOverride;
+      clearQuoteOverrides: typeof clearQuoteOverrides;
+    };
+  }).__e2e = { setQuoteOverride, clearQuoteOverrides };
+}
+
+// —— 测试可注入的行情覆盖（触发预警用）——
+const quoteOverrides = new Map<string, Quote>();
+export function setQuoteOverride(code: string, q: Partial<Quote>): void {
+  const base = quote(code, 20, 0.5);
+  quoteOverrides.set(code, { ...base, ...q, code });
+}
+export function clearQuoteOverrides(): void {
+  quoteOverrides.clear();
+}
+
 // —— invoke 命令注册表 ——
 type Handler = (args: Record<string, unknown> | undefined) => unknown;
 const handlers: Record<string, Handler> = {
-  get_quotes: (a) => (a?.codes as string[]).map((c, i) => quote(c, [1680, 12.3, 189, 48][i] ?? 20, [1.2, -0.5, 2.1, 0.3][i] ?? 0.5)),
+  get_quotes: (a) =>
+    (a?.codes as string[]).map((c, i) =>
+      quoteOverrides.has(c)
+        ? quoteOverrides.get(c)!
+        : quote(c, [1680, 12.3, 189, 48][i] ?? 20, [1.2, -0.5, 2.1, 0.3][i] ?? 0.5)
+    ),
   get_index_quotes: () => [quote("000001", 3200, 0.4, "上证指数"), quote("399001", 10200, -0.2, "深证成指"), quote("399006", 2010, 1.1, "创业板指")],
   get_kline: () => Array.from({ length: 60 }, (_, i) => bar(i)),
   get_minute: () => Array.from({ length: 30 }, (_, i) => bar(i)),
