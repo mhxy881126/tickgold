@@ -4,6 +4,7 @@ import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
 import type { AlertRule } from "../api/types";
+import { ensureAlertV2 } from "../alert/repo";
 
 let instance: Database | null = null;
 let pending: Promise<Database> | null = null;
@@ -35,6 +36,7 @@ async function init(): Promise<Database> {
     await seedGroups(d);
     await seedStocks(d);
     await seedAlerts(d);
+    await ensureAlertV2(d);
     // 迁移完成后清理旧的 localStorage
     try {
       localStorage.removeItem("sd_watchlist_v1");

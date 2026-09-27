@@ -15,6 +15,7 @@ export default defineConfig({
       // v0.69.0 覆盖率口径：核心 TS 模块（数据解析/指标/布局/状态/API/工具）。
       // SFC（.vue）UI 由 E2E 与视觉回归覆盖，不计入单测覆盖率门槛。
       include: [
+        "src/alert/**/*.ts",
         "src/lib/**/*.ts",
         "src/stores/**/*.ts",
         "src/api/**/*.ts",
