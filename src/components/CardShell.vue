@@ -4,6 +4,7 @@
     class="card-shell"
     :class="{ focused, dragging, 'free-drag': freeDrag, collapsed, resizing, locked }"
     :style="[ { '--accent-var': effectiveColor }, lookVars ]"
+    @contextmenu.prevent="onCtx"
   >
     <div class="card-head" @pointerdown="onHeadDown" @dblclick="onDbl">
       <span class="card-bar" :style="{ background: effectiveColor }"></span>
@@ -72,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import CardSettingsPopover from "./CardSettingsPopover.vue";
 
 type CardLookShape = {
@@ -104,6 +105,7 @@ const props = withDefaults(
     locked?: boolean;
     lookVars?: Record<string, string>;
     look?: CardLookShape;
+    cfgOpenSignal?: boolean;
   }>(),
   {
     accent: "#e8c878",
@@ -118,6 +120,7 @@ const props = withDefaults(
     color: "",
     locked: false,
     lookVars: () => ({}),
+    cfgOpenSignal: false,
     look: () => ({
       color: "#e8c878", gradientTo: "", gradAngle: 135, opacity: 1, radius: 10,
       borderWidth: 1, headStyle: 1, pinned: false, locked: false, tag: "",
@@ -141,6 +144,8 @@ const emit = defineEmits<{
   (e: "lock"): void;
   (e: "tag", t: string): void;
   (e: "resetlook"): void;
+  (e: "menu", ev: { x: number; y: number }): void;
+  (e: "cfg-consumed"): void;
 }>();
 
 const rootEl = ref<HTMLElement | null>(null);
@@ -161,6 +166,20 @@ function onHeadDown(e: PointerEvent) {
 function onDbl() {
   emit("collapse");
 }
+// 右键：上报客户端坐标，由父组件挂载菜单
+function onCtx(e: MouseEvent) {
+  emit("menu", { x: e.clientX, y: e.clientY });
+}
+// 收到右键菜单「改色」信号 → 打开本卡设置弹层并回消费
+watch(
+  () => props.cfgOpenSignal,
+  (v) => {
+    if (v) {
+      cfgOpen.value = true;
+      emit("cfg-consumed");
+    }
+  }
+);
 function clampNum(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }

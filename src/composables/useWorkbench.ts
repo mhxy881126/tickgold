@@ -512,6 +512,8 @@ export function useWorkbench() {
   }
   const focusId = ref<CardId | null>(null);
   const isFocused = computed(() => focusId.value !== null);
+  // 右键菜单「改色」请求打开某卡设置弹层的瞬态信号（CardShell watch 后消费）
+  const openCfgId = ref<CardId | null>(null);
   function focus(id: CardId) {
     focusId.value = id;
   }
@@ -947,6 +949,21 @@ export function useWorkbench() {
   function setCardTag(id: CardId, t: string) { patchCustom(id, { tag: t.slice(0, 4) }); }
   function togglePin(id: CardId) { patchCustom(id, { pinned: !cardCustom.value[id]?.pinned }); }
   function toggleLock(id: CardId) { patchCustom(id, { locked: !cardCustom.value[id]?.locked }); }
+
+  // 样式剪贴板（仅会话内存，不持久化）：复制/粘贴纯外观字段
+  const LOOK_KEYS = ["color", "gradientTo", "gradAngle", "opacity", "radius", "borderWidth", "headStyle"] as const;
+  const copiedLook = ref<Partial<CardCustom> | null>(null);
+  function copyLook(id: CardId) {
+    const cu = cardCustom.value[id] ?? {};
+    const out: Partial<CardCustom> = {};
+    LOOK_KEYS.forEach((k) => {
+      if (cu[k] !== undefined) (out as Record<string, unknown>)[k] = cu[k];
+    });
+    copiedLook.value = out;
+  }
+  function pasteLook(id: CardId) {
+    if (copiedLook.value) setCardLook(id, copiedLook.value);
+  }
   // 仅清外观/行为覆盖，保留 span/rspan/collapsed/refresh
   function resetCardLook(id: CardId) {
     const cu = cardCustom.value[id];
@@ -1144,6 +1161,10 @@ export function useWorkbench() {
     togglePin,
     toggleLock,
     resetCardLook,
+    copiedLook,
+    copyLook,
+    pasteLook,
+    openCfgId,
     // V3 场景模板
     sceneId,
     applyScene,

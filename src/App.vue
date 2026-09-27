@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import CardShell from "./components/CardShell.vue";
+import CardContextMenu from "./components/CardContextMenu.vue";
 import CardContent from "./components/CardContent.vue";
 import UpdateDialog from "./components/UpdateDialog.vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
@@ -80,6 +81,33 @@ function dropPos(id: CardId): "before" | "after" | null {
   if (h.index === list.length && list[list.length - 1] === id) return "after";
   return null;
 }
+// ===== 卡片右键菜单 =====
+const ctxMenu = ref<{ id: CardId; x: number; y: number } | null>(null);
+function onCardMenu(id: CardId, p: { x: number; y: number }) {
+  const W = 170, H = 280;
+  ctxMenu.value = {
+    id,
+    x: Math.min(p.x, window.innerWidth - W - 8),
+    y: Math.min(p.y, window.innerHeight - H - 8),
+  };
+}
+function onCtxAction(a: string) {
+  const id = ctxMenu.value?.id;
+  if (!id) return;
+  if (a === "focus") { bench.focusId.value === id ? exitFocus() : enterFocus(id); }
+  else if (a === "collapse") bench.toggleCollapse(id);
+  else if (a === "pin") bench.togglePin(id);
+  else if (a === "lock") bench.toggleLock(id);
+  else if (a === "copy") bench.copyLook(id);
+  else if (a === "paste") bench.pasteLook(id);
+  else if (a === "color") bench.openCfgId.value = id;
+  else if (a === "tag") {
+    const t = prompt("标签（最多4字）", bench.cardLook(id).tag);
+    if (t !== null) bench.setCardTag(id, t);
+  } else if (a === "close") bench.close(id);
+  ctxMenu.value = null;
+}
+
 // 在网格空白区拖动：按列位置归到主干 / 侧栏分区末尾
 function onGridDragOver(e: DragEvent) {
   e.preventDefault();
@@ -805,10 +833,13 @@ onBeforeUnmount(() => {
               :color="bench.cardCustom.value[id]?.color ?? ''"
               :look-vars="bench.cardStyleVars(id)"
               :look="bench.cardLook(id)"
+              :cfg-open-signal="bench.openCfgId.value === id"
               @close="bench.close(id)"
               @focus="enterFocus(id)"
               @restore="exitFocus"
               @grab="(e: PointerEvent) => bench.startFreeDrag(e, id)"
+              @menu="(p) => onCardMenu(id, p)"
+              @cfg-consumed="bench.openCfgId.value = null"
               @collapse="bench.toggleCollapse(id)"
               @color="(c: string) => bench.setCardColor(id, c)"
               @refresh="(n: number) => bench.setCardRefresh(id, n)"
@@ -882,10 +913,13 @@ onBeforeUnmount(() => {
             :color="bench.cardCustom.value[id]?.color ?? ''"
             :look-vars="bench.cardStyleVars(id)"
             :look="bench.cardLook(id)"
+            :cfg-open-signal="bench.openCfgId.value === id"
             @close="bench.close(id)"
             @focus="enterFocus(id)"
             @restore="exitFocus"
             @pdrag="(e: PointerEvent) => bench.pointerDragStart(id, e)"
+            @menu="(p) => onCardMenu(id, p)"
+            @cfg-consumed="bench.openCfgId.value = null"
             @collapse="bench.toggleCollapse(id)"
             @color="(c: string) => bench.setCardColor(id, c)"
             @refresh="(n: number) => bench.setCardRefresh(id, n)"
@@ -928,6 +962,19 @@ onBeforeUnmount(() => {
       </template>
       </div>
     </main>
+
+    <!-- 卡片右键菜单 -->
+    <CardContextMenu
+      v-if="ctxMenu"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :locked="bench.cardLook(ctxMenu.id).locked"
+      :pinned="bench.cardLook(ctxMenu.id).pinned"
+      :collapsed="bench.isCollapsed(ctxMenu.id)"
+      :can-paste="!!bench.copiedLook.value"
+      @action="onCtxAction"
+      @close="ctxMenu = null"
+    />
 
     <!-- 软件更新对话框 -->
     <UpdateDialog v-model:open="showUpdate" />
