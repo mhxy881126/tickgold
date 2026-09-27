@@ -1,5 +1,6 @@
 node_modules/
 dist/
+coverage/
 src-tauri/target/
 src-tauri/gen/
 src-tauri/keys/*.key
@@ -10,3 +11,9 @@ src-tauri/keys/*.key
 _*.txt
 _*.py
 _*.rs
+
+# Playwright E2E 产物
+/test-results/
+/playwright-report/
+/playwright/.cache/
+/screenshots/
