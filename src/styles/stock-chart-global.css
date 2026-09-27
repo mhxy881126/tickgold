@@ -1,0 +1,151 @@
+/* Teleport 到 body 的元素（非 scoped） */
+.cm-mask { position: fixed; inset: 0; z-index: 9000; }
+.cm {
+  position: fixed; z-index: 9001; min-width: 188px;
+  background: rgba(20,22,28,.98); border: 1px solid rgba(255,255,255,.12);
+  border-radius: 9px; padding: 5px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.6);
+  font-size: 12px; color: #d6dae3; user-select: none;
+}
+.cm-item {
+  position: relative; display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 10px; border-radius: 6px; cursor: pointer; white-space: nowrap;
+}
+.cm-item:hover { background: rgba(255,255,255,.08); }
+.cm-item.on { color: #ff8080; }
+.cm-check { color: #ff6b6b; font-style: normal; font-size: 12px; }
+.cm-arrow { color: #7b8294; margin-left: 18px; }
+.cm-sep { height: 1px; background: rgba(255,255,255,.1); margin: 4px 6px; }
+.cm-sub {
+  position: absolute; left: 100%; top: -6px; margin-left: 2px;
+  min-width: 150px; display: none;
+  background: rgba(20,22,28,.98); border: 1px solid rgba(255,255,255,.12);
+  border-radius: 9px; padding: 5px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.6);
+}
+.cm-parent:hover .cm-sub { display: block; }
+.cm-new { color: #9fd0ff; }
+
+/* 双击弹窗 */
+.mp-box {
+  position: fixed; z-index: 8500;
+  background: #0d0f14; border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px; overflow: hidden;
+  box-shadow: 0 18px 60px rgba(0,0,0,.7);
+  display: flex; flex-direction: column;
+}
+.mp-box.max { left: 10px !important; top: 10px !important; width: calc(100vw - 20px) !important; height: calc(100vh - 20px) !important; }
+.mp-title {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 38px; padding: 0 8px 0 14px; cursor: move;
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.01));
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.mp-tname { font-size: 12px; color: #d6dae3; font-weight: 600; }
+.mp-tbtns { display: flex; gap: 4px; }
+.mp-btn {
+  border: none; background: transparent; color: #9aa1b1;
+  width: 30px; height: 26px; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+.mp-btn:hover { background: rgba(255,255,255,.1); color: #fff; }
+.mp-btn.x:hover { background: rgba(255,60,60,.3); color: #ff8080; }
+.mp-hostwrap { flex: 1; min-height: 0; position: relative; }
+.mp-host { position: absolute; inset: 0; }
+.mp-err {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: #ff8080; font-size: 12px; padding: 20px; text-align: center; background: #0d0f14;
+}
+
+/* 工具行 */
+.mp-toolbar {
+  display: flex; align-items: center; gap: 3px;
+  padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.02);
+}
+.tb-btn {
+  border: none; background: transparent; color: #aab1c0;
+  height: 24px; min-width: 26px; padding: 0 8px; border-radius: 5px;
+  cursor: pointer; font-size: 11px;
+}
+.tb-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
+.tb-btn.chip.on { background: rgba(255,50,50,.18); color: #ff8a8a; }
+.tb-date {
+  font-size: 11px; color: #d6dae3; min-width: 76px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.tb-sep { width: 1px; height: 14px; background: rgba(255,255,255,.12); margin: 0 6px; }
+.tb-glabel { font-size: 10px; color: #7b8294; margin-right: 2px; }
+
+/* 叠加图例 */
+.mp-legend {
+  position: absolute; right: 8px; top: 8px; z-index: 5;
+  display: flex; flex-direction: column; gap: 3px;
+  background: rgba(12,14,20,.72); border: 1px solid rgba(255,255,255,.1);
+  border-radius: 7px; padding: 6px 8px; font-size: 10px;
+}
+.lg-item { display: flex; align-items: center; gap: 6px; color: #c7ccd8; font-variant-numeric: tabular-nums; }
+.lg-dot { width: 9px; height: 2px; display: inline-block; }
+
+/* 回放控制条 */
+.mp-replay {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px; border-top: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.02);
+}
+.rp-btn {
+  border: none; background: transparent; color: #aab1c0;
+  height: 26px; min-width: 30px; padding: 0 8px; border-radius: 5px;
+  cursor: pointer; font-size: 12px;
+}
+.rp-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
+.rp-btn.chip.on { background: rgba(255,50,50,.18); color: #ff8a8a; }
+.rp-play { font-size: 14px; }
+.rp-range { flex: 1; accent-color: #ff5050; cursor: pointer; }
+.rp-stats {
+  display: flex; gap: 10px; min-width: 200px; justify-content: flex-end;
+  font-variant-numeric: tabular-nums; font-size: 11px;
+}
+.rp-time { color: #d6dae3; min-width: 44px; text-align: right; }
+.rp-px { min-width: 56px; text-align: right; }
+.rp-pct { min-width: 64px; text-align: right; }
+.rp-speeds { display: flex; gap: 2px; }
+
+/* 均线设置弹窗 */
+.ma-overlay {
+  position: fixed; inset: 0; z-index: 9200;
+  background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center;
+}
+.ma-box {
+  width: 320px; background: #14161d; border: 1px solid rgba(255,255,255,.12);
+  border-radius: 12px; padding: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.6);
+}
+.ma-title { font-size: 14px; font-weight: 700; color: #eef1f6; margin-bottom: 12px; }
+.ma-head, .ma-line {
+  display: grid; grid-template-columns: 1fr 60px 34px; gap: 8px; align-items: center;
+}
+.ma-head { padding: 0 2px 6px; color: #7b8294; font-size: 11px; }
+.ma-line { margin-bottom: 8px; }
+.ma-input {
+  height: 30px; border: 1px solid rgba(255,255,255,.12); border-radius: 6px;
+  background: #0d0f14; color: #e6e9f0; padding: 0 10px; font-size: 12px; width: 100%;
+  box-sizing: border-box;
+}
+.ma-color { height: 30px; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; background: #0d0f14; padding: 2px; cursor: pointer; }
+.ma-del {
+  height: 30px; border: none; border-radius: 6px; background: rgba(255,80,80,.15);
+  color: #ff8080; cursor: pointer; font-size: 14px;
+}
+.ma-del:hover { background: rgba(255,80,80,.28); }
+.ma-add {
+  width: 100%; height: 32px; border: 1px dashed rgba(255,255,255,.2); border-radius: 7px;
+  background: transparent; color: #9fd0ff; cursor: pointer; font-size: 12px; margin: 4px 0 14px;
+}
+.ma-add:hover { background: rgba(255,255,255,.05); }
+.ma-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.ma-cancel, .ma-apply {
+  height: 32px; padding: 0 18px; border-radius: 7px; cursor: pointer; font-size: 12px;
+}
+.ma-cancel { border: 1px solid rgba(255,255,255,.15); background: transparent; color: #c7ccd8; }
+.ma-apply { border: none; background: #ff3232; color: #fff; font-weight: 600; }
+.ma-apply:hover { background: #ff4d4d; }

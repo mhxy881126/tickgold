@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted } from "vue";
 import { fetchRankPage } from "../api/market";
 import { useWatchlistStore } from "../stores/watchlist";
+import { useVirtualList } from "../composables/useVirtualList";
 import type { Quote } from "../api/types";
 
 const emit = defineEmits<{ select: [code: string]; add: [code: string, name: string] }>();
@@ -18,28 +19,11 @@ const wl = useWatchlistStore();
 
 // ===== 虚拟滚动（固定行高，仅渲染可视区 + 上下缓冲，5000+ 行也只挂约 30 个 DOM）=====
 const ROW_H = 30;
-const BUFFER = 8;
-const scrollEl = ref<HTMLElement | null>(null);
-const scrollTop = ref(0);
-const viewH = ref(400);
+const {
+  totalHeight: totalH, visibleItems: visibleRows, startOffset: offsetY,
+  onScroll: onVirtualScroll, measure: measureScroll,
+} = useVirtualList({ itemCount: computed(() => list.value.length), itemHeight: ROW_H, overscan: 8 });
 
-const startIdx = computed(() =>
-  Math.max(0, Math.floor(scrollTop.value / ROW_H) - BUFFER)
-);
-const endIdx = computed(() =>
-  Math.min(
-    list.value.length,
-    Math.ceil((scrollTop.value + viewH.value) / ROW_H) + BUFFER
-  )
-);
-const visibleRows = computed(() =>
-  list.value.slice(startIdx.value, endIdx.value).map((q, k) => ({
-    q,
-    i: startIdx.value + k,
-  }))
-);
-const totalH = computed(() => list.value.length * ROW_H);
-const offsetY = computed(() => startIdx.value * ROW_H);
 
 const tabs: { k: Tab; label: string }[] = [
   { k: "gainers", label: "涨幅" },
@@ -67,26 +51,26 @@ async function loadMore() {
   }
 }
 
+const scrollEl = ref<HTMLElement | null>(null);
+
 function reset() {
   list.value = [];
   page.value = 0;
   hasMore.value = true;
   errorMsg.value = "";
   loading.value = false;
-  scrollTop.value = 0;
   if (scrollEl.value) scrollEl.value.scrollTop = 0;
   loadMore();
 }
 watch(tab, reset);
 onMounted(() => {
-  viewH.value = scrollEl.value?.clientHeight ?? 400;
+  measureScroll(scrollEl.value);
   reset();
 });
 
 function onScroll(e: Event) {
   const el = e.target as HTMLElement;
-  scrollTop.value = el.scrollTop;
-  viewH.value = el.clientHeight;
+  onVirtualScroll.call(el);
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) loadMore();
 }
 
@@ -159,25 +143,25 @@ function addOne(q: Quote) {
             </colgroup>
             <tbody>
               <tr
-                v-for="{ q, i } in visibleRows"
-                :key="q.code"
+                v-for="{ index } in visibleRows"
+                :key="list[index]?.code"
                 :style="{ height: ROW_H + 'px' }"
-                @click="emit('select', q.code)"
+                @click="emit('select', list[index]!.code)"
               >
-                <td class="idx">{{ i + 1 }}</td>
+                <td class="idx">{{ index + 1 }}</td>
                 <td class="stock-cell">
-                  <span class="nm">{{ q.name }}</span>
-                  <span class="cd">{{ q.code }}</span>
+                  <span class="nm">{{ list[index]!.name }}</span>
+                  <span class="cd">{{ list[index]!.code }}</span>
                 </td>
-                <td class="r" :class="cls(q.pct)">{{ fmt(q.price) }}</td>
-                <td class="r" :class="cls(q.pct)">{{ q.pct > 0 ? "+" : "" }}{{ fmt(q.pct) }}%</td>
-                <td class="r dim">{{ amtSmart(q.amount) }}</td>
+                <td class="r" :class="cls(list[index]!.pct)">{{ fmt(list[index]!.price) }}</td>
+                <td class="r" :class="cls(list[index]!.pct)">{{ list[index]!.pct > 0 ? "+" : "" }}{{ fmt(list[index]!.pct) }}%</td>
+                <td class="r dim">{{ amtSmart(list[index]!.amount) }}</td>
                 <td class="c act">
                   <button
-                    v-if="!isWatched(q.code)"
+                    v-if="!isWatched(list[index]!.code)"
                     class="add-btn"
                     title="加入自选"
-                    @click.stop="addOne(q)"
+                    @click.stop="addOne(list[index]!)"
                   >+</button>
                   <span v-else class="added" title="已在自选">✓</span>
                 </td>
