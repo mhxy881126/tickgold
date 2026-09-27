@@ -1,199 +1,83 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { searchStocks } from "../api/market";
-import { useAlertStore, newAlertId } from "../stores/alert";
-import type { AlertRule, StockItem } from "../api/types";
+import { useAlertV2Store } from "../stores/alertV2";
+import { useWatchlistStore } from "../stores/watchlist";
+import type { AlertRuleV2 } from "../alert/types";
+import { scopeText, countLeaves, treeSummary } from "../alert/describe";
+import { navOpenScreener } from "../alert/bus";
+import { ALERT_TEMPLATES } from "../lib/alertTemplates";
+import AlertRuleDialog from "./alert/AlertRuleDialog.vue";
 
-const store = useAlertStore();
-
+const store = useAlertV2Store();
+const wl = useWatchlistStore();
 const tab = ref<"rules" | "history">("rules");
-const editing = ref(false);
-const form = ref<AlertRule>(blank());
-const err = ref("");
+const dialogOpen = ref(false);
+const editing = ref<AlertRuleV2 | null>(null);
 
-// 提示音开关（全局，localStorage）
-const soundOn = ref(localStorage.getItem("tickgold_alert_sound") !== "0");
+const soundOn = ref(true);
+try {
+  soundOn.value = localStorage.getItem("tickgold_alert_sound") !== "0";
+} catch { /* ignore */ }
 function toggleSound() {
   soundOn.value = !soundOn.value;
-  localStorage.setItem("tickgold_alert_sound", soundOn.value ? "1" : "0");
-}
-
-// 股票搜索
-const kw = ref("");
-const results = ref<StockItem[]>([]);
-const showResults = ref(false);
-let searchTimer: number | null = null;
-
-function blank(): AlertRule {
-  return {
-    id: newAlertId(),
-    code: "",
-    name: "",
-    upPrice: undefined,
-    downPrice: undefined,
-    upPct: undefined,
-    downPct: undefined,
-    minVolumeRatio: undefined,
-    riseSpeed: undefined,
-    downSpeed: undefined,
-    speedWindowSec: 300,
-    minTurnover: undefined,
-    minAmount: undefined,
-    sealLimitUp: false,
-    sealLimitDown: false,
-    brokenLimit: false,
-    cooldownSec: 300,
-    enabled: true,
-  };
-}
-
-// 涨速 / 跳水窗口（分钟，与秒互转）
-const speedMin = computed(() =>
-  Math.max(1, Math.round((form.value.speedWindowSec ?? 300) / 60))
-);
-function onSpeedWin(e: Event) {
-  const v = Number((e.target as HTMLInputElement).value);
-  if (v > 0) form.value.speedWindowSec = Math.round(v * 60);
-}
-
-function onSearchInput() {
-  if (searchTimer) clearTimeout(searchTimer);
-  searchTimer = window.setTimeout(async () => {
-    if (!kw.value.trim()) {
-      results.value = [];
-      showResults.value = false;
-      return;
-    }
-    results.value = await searchStocks(kw.value);
-    showResults.value = true;
-  }, 250);
-}
-
-function pickStock(s: StockItem) {
-  form.value.code = s.code;
-  form.value.name = s.name;
-  kw.value = `${s.code} ${s.name}`;
-  showResults.value = false;
+  try {
+    localStorage.setItem("tickgold_alert_sound", soundOn.value ? "1" : "0");
+  } catch { /* ignore */ }
 }
 
 function startNew() {
-  form.value = blank();
-  kw.value = "";
-  results.value = [];
-  err.value = "";
-  editing.value = true;
+  editing.value = null;
+  dialogOpen.value = true;
 }
-
-function startEdit(r: AlertRule) {
-  form.value = { ...r };
-  kw.value = `${r.code} ${r.name}`;
-  err.value = "";
-  if (form.value.downPct != null)
-    form.value.downPct = Math.abs(form.value.downPct);
-  editing.value = true;
+function startEdit(r: AlertRuleV2) {
+  editing.value = r;
+  dialogOpen.value = true;
 }
-
-function cancel() {
-  editing.value = false;
+async function onSave(r: AlertRuleV2) {
+  await store.save(r);
 }
-
-async function save() {
-  err.value = "";
-  if (!form.value.code) {
-    err.value = "请选择一只股票";
-    return;
-  }
-  const pos = (v: number | undefined) =>
-    v != null && v > 0 ? Math.abs(v) : undefined;
-  const payload: AlertRule = {
-    ...form.value,
-    downPct:
-      form.value.downPct != null && form.value.downPct !== 0
-        ? -Math.abs(form.value.downPct)
-        : undefined,
-    upPct: pos(form.value.upPct),
-    minVolumeRatio: pos(form.value.minVolumeRatio),
-    riseSpeed: pos(form.value.riseSpeed),
-    downSpeed: pos(form.value.downSpeed),
-    speedWindowSec: form.value.speedWindowSec ?? 300,
-    minTurnover: pos(form.value.minTurnover),
-    minAmount: pos(form.value.minAmount),
-    sealLimitUp: form.value.sealLimitUp || undefined,
-    sealLimitDown: form.value.sealLimitDown || undefined,
-    brokenLimit: form.value.brokenLimit || undefined,
-  };
-  const hasCond =
-    payload.upPrice != null ||
-    payload.downPrice != null ||
-    payload.upPct != null ||
-    payload.downPct != null ||
-    payload.minVolumeRatio != null ||
-    payload.riseSpeed != null ||
-    payload.downSpeed != null ||
-    payload.minTurnover != null ||
-    payload.minAmount != null ||
-    payload.sealLimitUp === true ||
-    payload.sealLimitDown === true ||
-    payload.brokenLimit === true;
-  if (!hasCond) {
-    err.value = "请至少设置一个触发条件";
-    return;
-  }
-  await store.save(payload);
-  editing.value = false;
+async function applyTemplate(key: string) {
+  const t = ALERT_TEMPLATES.find((x) => x.key === key);
+  if (t) await store.save(t.build());
 }
-
-async function remove(r: AlertRule) {
+async function remove(r: AlertRuleV2) {
   await store.remove(r.id);
 }
-
-function condText(r: AlertRule): string {
-  const win = Math.round((r.speedWindowSec ?? 300) / 60);
-  const parts: string[] = [];
-  if (r.upPrice != null) parts.push(`上穿 ${r.upPrice.toFixed(2)}`);
-  if (r.downPrice != null) parts.push(`跌破 ${r.downPrice.toFixed(2)}`);
-  if (r.upPct != null) parts.push(`涨≥${r.upPct.toFixed(1)}%`);
-  if (r.downPct != null) parts.push(`跌≥${Math.abs(r.downPct).toFixed(1)}%`);
-  if (r.minVolumeRatio != null) parts.push(`量比≥${r.minVolumeRatio.toFixed(1)}`);
-  if (r.minTurnover != null) parts.push(`换手≥${r.minTurnover.toFixed(1)}%`);
-  if (r.minAmount != null) parts.push(`成交额≥${r.minAmount.toFixed(1)}亿`);
-  if (r.riseSpeed != null) parts.push(`涨速≥${r.riseSpeed.toFixed(1)}%/${win}分`);
-  if (r.downSpeed != null) parts.push(`跳水≥${r.downSpeed.toFixed(1)}%/${win}分`);
-  if (r.sealLimitUp) parts.push("涨停封板");
-  if (r.sealLimitDown) parts.push("跌停封板");
-  if (r.brokenLimit) parts.push("炸板");
-  return parts.join(" · ") || "无条件";
+async function switchTab(t: "rules" | "history") {
+  tab.value = t;
+  if (t === "history" && !store.historyLoaded) await store.loadHistory();
 }
+async function clearHistory() {
+  await store.clearHistory();
+}
+
+function groupName(id: number): string {
+  return wl.groups.find((g) => g.id === id)?.name ?? `分组#${id}`;
+}
+function toScreener() {
+  navOpenScreener();
+}
+function toOrder() {
+  // 本地条件单在 v1.4.0 提供，本版占位
+  window.alert("本地条件单将在 v1.4.0 提供，当前可先转「条件选股」。");
+}
+
+const enabledCount = computed(() =>
+  store.rules.filter((r) => r.enabled).length
+);
 
 function fmtTime(t?: number): string {
   if (!t) return "—";
   return new Date(t).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
+    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
   });
 }
 function fmtFull(t?: number | null): string {
   if (!t) return "—";
   return new Date(t).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
+    month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
-}
-
-const enabledCount = computed(() => store.rules.filter((r) => r.enabled).length);
-
-async function switchTab(t: "rules" | "history") {
-  tab.value = t;
-  if (t === "history") await store.loadHistory();
-}
-
-async function clearHistory() {
-  await store.clearHistory();
 }
 
 onMounted(async () => {
@@ -203,7 +87,6 @@ onMounted(async () => {
 
 <template>
   <div class="alert-center">
-    <!-- 操作条 -->
     <div class="toolbar">
       <div class="tabs">
         <button class="tab" :class="{ on: tab === 'rules' }" @click="switchTab('rules')">预警规则</button>
@@ -222,126 +105,38 @@ onMounted(async () => {
       </label>
     </div>
 
-    <!-- ============ 规则视图 ============ -->
+    <!-- ===== 规则视图 ===== -->
     <template v-if="tab === 'rules'">
-      <!-- 表单 -->
-      <div v-if="editing" class="form">
-        <div class="f-title">预警设置</div>
-
-        <!-- 选股票 -->
-        <div class="f-row">
-          <label>股票</label>
-          <div class="search-box">
-            <input
-              v-model="kw"
-              class="inp"
-              placeholder="代码 / 名称 / 拼音"
-              @input="onSearchInput"
-              @focus="onSearchInput"
-            />
-            <div v-if="showResults && results.length" class="sresults">
-              <div
-                v-for="s in results"
-                :key="s.market + s.code"
-                class="sitem"
-                @mousedown.prevent="pickStock(s)"
-              >
-                <span class="sic">{{ s.code }}</span>
-                <span class="sin">{{ s.name }}</span>
-                <span class="sim">{{ s.market }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="grp">价格 / 涨跌幅</div>
-        <div class="f-row">
-          <label>价格上穿</label>
-          <input v-model.number="form.upPrice" class="inp sm" type="number" step="0.01" placeholder="留空不启用" />
-          <label class="lab2">价格跌破</label>
-          <input v-model.number="form.downPrice" class="inp sm" type="number" step="0.01" placeholder="留空" />
-        </div>
-        <div class="f-row">
-          <label>涨幅 ≥</label>
-          <input v-model.number="form.upPct" class="inp sm" type="number" step="0.1" placeholder="%" />
-          <span class="unit">%</span>
-          <label class="lab2">跌幅 ≥</label>
-          <input v-model.number="form.downPct" class="inp sm" type="number" step="0.1" placeholder="%" />
-          <span class="unit">%</span>
-        </div>
-
-        <div class="grp">量能</div>
-        <div class="f-row">
-          <label>量比 ≥</label>
-          <input v-model.number="form.minVolumeRatio" class="inp sm" type="number" step="0.1" placeholder="倍" />
-          <span class="unit">倍</span>
-          <label class="lab2">换手率 ≥</label>
-          <input v-model.number="form.minTurnover" class="inp sm" type="number" step="0.1" placeholder="%" />
-          <span class="unit">%</span>
-        </div>
-        <div class="f-row">
-          <label>成交额 ≥</label>
-          <input v-model.number="form.minAmount" class="inp sm" type="number" step="0.1" placeholder="亿元" />
-          <span class="unit">亿元</span>
-        </div>
-
-        <div class="grp">盘中异动（涨速 / 跳水）</div>
-        <div class="f-row">
-          <label>涨速 ≥</label>
-          <input v-model.number="form.riseSpeed" class="inp sm" type="number" step="0.1" placeholder="%" />
-          <span class="unit">%</span>
-          <label class="lab2">跳水 ≥</label>
-          <input v-model.number="form.downSpeed" class="inp sm" type="number" step="0.1" placeholder="%" />
-          <span class="unit">%</span>
-        </div>
-        <div class="f-row">
-          <label>统计窗口</label>
-          <input :value="speedMin" class="inp sm" type="number" min="1" step="1" @input="onSpeedWin" />
-          <span class="unit">分钟（涨速 / 跳水共用）</span>
-        </div>
-
-        <div class="grp">涨跌停（封板 / 炸板）</div>
-        <div class="f-row checks">
-          <label class="chk"><input type="checkbox" v-model="form.sealLimitUp" /> 涨停封板</label>
-          <label class="chk"><input type="checkbox" v-model="form.sealLimitDown" /> 跌停封板</label>
-          <label class="chk"><input type="checkbox" v-model="form.brokenLimit" /> 涨停炸板</label>
-        </div>
-
-        <div class="f-row last">
-          <label>冷却</label>
-          <input v-model.number="form.cooldownSec" class="inp sm" type="number" min="10" step="10" />
-          <span class="unit">秒</span>
-          <label class="en-lab">
-            <input v-model="form.enabled" type="checkbox" /> 启用
-          </label>
-        </div>
-
-        <div v-if="err" class="ferr">{{ err }}</div>
-        <div class="f-actions">
-          <button class="btn-save" @click="save">保存</button>
-          <button class="btn-cancel" @click="cancel">取消</button>
-        </div>
+      <div class="tpl-bar">
+        <span class="tpl-lab">模板：</span>
+        <button
+          v-for="t in ALERT_TEMPLATES"
+          :key="t.key"
+          class="tpl-btn"
+          :title="t.desc"
+          @click="applyTemplate(t.key)"
+        >{{ t.name }}</button>
       </div>
-
-      <!-- 规则表格 -->
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th style="width:24%">股票</th>
-              <th style="width:38%">触发条件</th>
-              <th style="width:16%">最近触发</th>
-              <th style="width:9%">状态</th>
-              <th style="width:13%">操作</th>
+              <th style="width:22%">名称</th>
+              <th style="width:13%">作用范围</th>
+              <th style="width:37%">触发条件</th>
+              <th style="width:12%">最近触发</th>
+              <th style="width:7%">状态</th>
+              <th style="width:9%">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="r in store.rules" :key="r.id" :class="{ off: !r.enabled }">
-              <td class="stk">
+              <td class="nm-cell">
                 <div class="stk-nm">{{ r.name }}</div>
-                <div class="stk-cd">{{ r.code }}</div>
+                <div class="leaf-cnt">{{ countLeaves(r.tree) }} 个条件</div>
               </td>
-              <td class="cond">{{ condText(r) }}</td>
+              <td class="scope">{{ scopeText(r.scope, groupName) }}</td>
+              <td class="cond">{{ treeSummary(r.tree) }}</td>
               <td class="time">{{ fmtTime(r.lastFiredAt) }}</td>
               <td>
                 <button class="sw" :class="{ on: r.enabled }" @click="store.toggle(r)">
@@ -356,23 +151,24 @@ onMounted(async () => {
               </td>
             </tr>
             <tr v-if="store.rules.length === 0">
-              <td colspan="5" class="empty">暂无预警，点击「新建预警」添加</td>
+              <td colspan="6" class="empty">暂无预警，点击「新建预警」添加</td>
             </tr>
           </tbody>
         </table>
       </div>
     </template>
 
-    <!-- ============ 历史视图 ============ -->
+    <!-- ===== 历史视图 ===== -->
     <template v-else>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th style="width:18%">时间</th>
-              <th style="width:20%">股票</th>
-              <th style="width:14%">类型</th>
-              <th style="width:48%">内容</th>
+              <th style="width:17%">时间</th>
+              <th style="width:15%">股票</th>
+              <th style="width:13%">规则</th>
+              <th style="width:37%">内容</th>
+              <th style="width:18%">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -384,14 +180,22 @@ onMounted(async () => {
               </td>
               <td class="kind">{{ h.label }}</td>
               <td class="msg">{{ h.message }}</td>
+              <td>
+                <div class="h-ops">
+                  <button class="mini-btn" @click="toScreener">转选股</button>
+                  <button class="mini-btn ghost" @click="toOrder">条件单</button>
+                </div>
+              </td>
             </tr>
             <tr v-if="store.history.length === 0">
-              <td colspan="4" class="empty">暂无触发记录</td>
+              <td colspan="5" class="empty">暂无触发记录</td>
             </tr>
           </tbody>
         </table>
       </div>
     </template>
+
+    <AlertRuleDialog v-model:open="dialogOpen" :rule="editing" @save="onSave" />
   </div>
 </template>
 
@@ -403,12 +207,12 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--text);
 }
-
 .toolbar {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
+  flex: none;
 }
 .tabs { display: flex; gap: 4px; }
 .tab {
@@ -421,15 +225,13 @@ onMounted(async () => {
 }
 .btn-new {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #14110a;
-  border: none;
-  font-weight: 700;
-  font-size: 12px;
-  padding: 6px 14px;
-  border-radius: 8px;
-  cursor: pointer;
+  color: #14110a; border: none; font-weight: 700; font-size: 12px;
+  padding: 6px 14px; border-radius: 8px; cursor: pointer;
 }
-.btn-new.ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+.btn-new.ghost {
+  background: transparent; color: var(--text-dim);
+  border: 1px solid var(--border);
+}
 .btn-new:hover { filter: brightness(1.08); }
 .stat { color: var(--text-dim); font-size: 11px; }
 .sound-lab {
@@ -437,92 +239,18 @@ onMounted(async () => {
   color: var(--text-dim); font-size: 11px; cursor: pointer;
 }
 
-/* 表单 */
-.form {
-  margin: 4px 12px 10px;
-  padding: 12px;
-  background: color-mix(in srgb, var(--accent) 6%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
-  border-radius: 12px;
+.tpl-bar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 2px 12px 8px; flex: none;
 }
-.f-title { color: var(--accent-2); font-weight: 700; font-size: 12px; margin-bottom: 8px; }
-.grp {
-  color: var(--accent-2); font-size: 10.5px; font-weight: 700;
-  margin: 9px 0 6px; padding-bottom: 3px;
-  border-bottom: 1px dashed color-mix(in srgb, var(--accent) 25%, transparent);
-}
-.f-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 7px;
-  position: relative;
-}
-.f-row.last { margin-top: 9px; }
-.f-row label { width: 60px; color: var(--text-dim); font-size: 11px; flex-shrink: 0; }
-.f-row label.lab2 { width: auto; margin-left: 6px; }
-.inp {
-  flex: 1;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 7px;
-  padding: 6px 9px;
-  font-size: 12px;
-  outline: none;
-}
-.inp:focus { border-color: var(--accent); }
-.inp.sm { flex: 0 0 118px; }
-.unit { color: var(--text-dim); font-size: 10.5px; }
-.en-lab {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--text-dim);
-  font-size: 11px;
-}
-.f-row.checks { gap: 22px; }
-.chk { display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 11.5px; cursor: pointer; }
-
-/* 搜索结果 */
-.search-box { flex: 1; position: relative; }
-.sresults {
-  position: absolute;
-  top: calc(100% + 3px);
-  left: 0; right: 0;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  max-height: 200px;
-  overflow-y: auto;
-  z-index: 30;
-}
-.sitem {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  cursor: pointer;
-}
-.sitem:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.sic { color: var(--accent-2); font-variant-numeric: tabular-nums; width: 60px; }
-.sin { flex: 1; }
-.sim { color: var(--text-dim); font-size: 10px; }
-
-.ferr { color: #ff7a86; font-size: 11px; margin: 4px 0; }
-.f-actions { display: flex; gap: 8px; margin-top: 8px; }
-.btn-save {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #14110a; border: none; font-weight: 700;
-  padding: 6px 18px; border-radius: 8px; cursor: pointer;
-}
-.btn-cancel {
+.tpl-lab { font-size: 11px; color: var(--text-dim); }
+.tpl-btn {
   background: transparent; color: var(--text-dim);
-  border: 1px solid var(--border); padding: 6px 18px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 14px;
+  font-size: 11px; padding: 3px 11px; cursor: pointer;
 }
+.tpl-btn:hover { color: var(--accent-2); border-color: var(--accent); }
 
-/* 表格 */
 .table-wrap { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
 table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 th {
@@ -532,14 +260,18 @@ th {
 }
 td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 tr.off { opacity: 0.5; }
-.stk-nm { font-weight: 600; color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.stk-nm {
+  font-weight: 600; color: var(--text); overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis;
+}
 .stk-cd { color: var(--text-dim); font-size: 10px; font-variant-numeric: tabular-nums; }
-.cond { color: var(--text); font-size: 10.5px; line-height: 1.55; }
+.leaf-cnt { color: var(--text-dim); font-size: 10px; margin-top: 2px; }
+.scope { color: var(--text-dim); font-size: 11px; }
+.cond { color: var(--text); font-size: 10.5px; line-height: 1.5; }
 .time { color: var(--text-dim); font-size: 10.5px; white-space: nowrap; }
 .kind { font-size: 11px; font-weight: 600; }
 .msg { color: var(--text); font-size: 11px; line-height: 1.45; }
 
-/* 历史 tone 着色 */
 tr.tone-up .kind { color: var(--up, #ff3232); }
 tr.tone-down .kind { color: var(--down-g, #1dbe7d); }
 
@@ -554,10 +286,19 @@ tr.tone-down .kind { color: var(--down-g, #1dbe7d); }
 .ops { display: flex; gap: 4px; }
 .op-btn {
   background: transparent; border: 1px solid var(--border); color: var(--text-dim);
-  border-radius: 6px; width: 22px; height: 22px; cursor: pointer; font-size: 11px;
-  line-height: 1; padding: 0;
+  border-radius: 6px; width: 22px; height: 22px; cursor: pointer;
+  font-size: 11px; line-height: 1; padding: 0;
 }
 .op-btn:hover { color: var(--accent-2); border-color: var(--accent); }
 .op-btn.del:hover { color: #ff7a86; border-color: #ff7a86; }
+.h-ops { display: flex; gap: 5px; }
+.mini-btn {
+  background: var(--accent); color: #14110a; border: none;
+  border-radius: 6px; font-size: 10.5px; padding: 3px 8px; cursor: pointer;
+}
+.mini-btn.ghost {
+  background: transparent; color: var(--text-dim);
+  border: 1px solid var(--border);
+}
 .empty { text-align: center; color: var(--text-dim); padding: 24px 0; }
 </style>

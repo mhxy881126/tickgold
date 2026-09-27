@@ -45,7 +45,9 @@ import { useCardFocus } from "./composables/useCardFocus";
 import { useCardMount } from "./composables/useCardMount";
 import { useCommandPalette } from "./composables/useCommandPalette";
 import type { AlertEvent } from "./api/market";
+import { bootstrapAlerts } from "./composables/useAlertBootstrap";
 import { ensureDb, db } from "./db/database";
+import AlertToast from "./components/alert/AlertToast.vue";
 import { startTimeSeries } from "./composables/useTimeSeries";
 import { playAlert } from "./utils/sound";
 import { DOCK_GROUPS } from "./lib/dock";
@@ -339,12 +341,13 @@ onMounted(async () => {
     selected.value = wl.codes[0];
   }
 
-  // —— 预警引擎（容错，失败不影响行情）——
-  try {
-    await alerts.syncEngine();
-  } catch (e) {
-    console.error("[app] alert engine", e);
-  }
+  // —— 预警引擎：停用旧 Rust 引擎，启动 v0.71 TypeScript 条件树引擎 ——
+  await bootstrapAlerts({
+    pickStock,
+    openScreener: () => {
+      if (!bench.isOpen("screener")) bench.open("screener");
+    },
+  });
 
   // —— 全局快捷键（命令面板 Ctrl/⌘ + K 等）——
   window.addEventListener("keydown", onGlobalKey);
@@ -739,6 +742,7 @@ onBeforeUnmount(() => {
     <!-- 软件更新对话框 -->
     <UpdateDialog v-model:open="showUpdate" />
     <!-- 设置对话框 -->
+    <AlertToast />
     <SettingsDialog v-model:open="showSettings" @replay-onboarding="showOnboarding = true" />
     <ShortcutDialog v-model:open="showShortcuts" />
     <OnboardingDialog v-model:open="showOnboarding" />
