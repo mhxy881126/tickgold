@@ -851,9 +851,11 @@ onBeforeUnmount(() => {
           :class="{
             'drop-before': dropPos(id) === 'before',
             'drop-after': dropPos(id) === 'after',
+            'live-src': bench.dragId.value === id,
           }"
           :style="bench.layout.value[id]"
         >
+          <div v-if="bench.dragId.value === id" class="drag-ghost"></div>
           <CardShell
             :title="CARD_META[id].title"
             :accent="CARD_META[id].accent"
@@ -1258,6 +1260,15 @@ onBeforeUnmount(() => {
   position: relative;
   min-width: 0;
   min-height: 0;
+}
+.card-slot.live-src { opacity: 0.4; }
+.drag-ghost {
+  position: absolute;
+  inset: 4px;
+  border: 1.5px dashed var(--accent, #e8c878);
+  border-radius: 10px;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* ===== 自由布局 ===== */
