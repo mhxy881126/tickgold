@@ -20,3 +20,5 @@ _*.rs
 
 # oh-my-claudecode 本地工具状态
 /.omc/
+# agent-teams 本地工具状态
+/.agent-teams/
