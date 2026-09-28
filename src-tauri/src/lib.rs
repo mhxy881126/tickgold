@@ -305,44 +305,26 @@ fn win_is_maximized(app: tauri::AppHandle) -> Result<bool, String> {
     w.is_maximized().map_err(|e| e.to_string())
 }
 
-// ===== 卡片独立窗口（多屏）：每张卡片一个子窗，label = card-<id> =====
-#[tauri::command]
-fn open_card_window(
-    app: tauri::AppHandle,
-    card_id: String,
-    title: String,
-    width: f64,
-    height: f64,
-    x: Option<f64>,
-    y: Option<f64>,
-) -> Result<(), String> {
-    let label = format!("card-{}", card_id);
-    // 已存在则聚焦，避免重复开窗
-    if let Some(w) = app.get_webview_window(&label) {
-        let _ = w.unminimize();
-        let _ = w.set_focus();
-        return Ok(());
+#[allow(dead_code)]
+fn diag_log(msg: &str) {
+    use std::io::Write;
+    let path = std::env::temp_dir().join("card_win_diag.log");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = writeln!(
+            f,
+            "{} {}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0),
+            msg
+        );
     }
-    let mut builder =
-        WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
-            .title(title)
-            .inner_size(width, height);
-    if let (Some(px), Some(py)) = (x, y) {
-        builder = builder.position(px, py);
-    }
-    let _win = builder.build().map_err(|e| e.to_string())?;
-    Ok(())
 }
-
-#[tauri::command]
-fn close_card_window(app: tauri::AppHandle, card_id: String) -> Result<(), String> {
-    let label = format!("card-{}", card_id);
-    if let Some(w) = app.get_webview_window(&label) {
-        w.close().map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
 
 // ===== 数据导出：rfd 原生保存对话框选路径，再写入文件（无需 dialog/fs 插件）=====
 #[tauri::command]
@@ -522,6 +504,7 @@ fn toggle_window<R: tauri::Runtime>(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logging::init();
+    diag_log(&format!("BOOT cfg(dev)={} profile_compiled", cfg!(dev)));
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
@@ -938,6 +921,9 @@ pub fn run() {
                 .shadow(false)
                 .transparent(true)
                 .inner_size(300.0, 52.0)
+                .on_page_load(|_w, payload| {
+                    diag_log(&format!("[island] page-load event={:?} url={}", payload.event(), payload.url()));
+                })
                 .build()?;
 
             // 定位到右上角
@@ -992,6 +978,7 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
             Ok(())
         })
                 .invoke_handler(tauri::generate_handler![
@@ -1034,8 +1021,6 @@ pub fn run() {
             win_toggle_maximize,
             win_close,
             win_is_maximized,
-            open_card_window,
-            close_card_window,
             save_export_file,
             rust_logs,
             rust_clear_logs,

@@ -46,8 +46,6 @@ import { useCardMount } from "./composables/useCardMount";
 import { useCommandPalette } from "./composables/useCommandPalette";
 import { useActions } from "./composables/useActions";
 import { useBuiltinActions } from "./composables/useBuiltinActions";
-import { openCardWindow } from "./api/market";
-import { loadGeometry } from "./lib/cardWindowGeometry";
 import type { AlertEvent } from "./api/market";
 import { bootstrapAlerts } from "./composables/useAlertBootstrap";
 import { ensureDb, db } from "./db/database";
@@ -211,15 +209,6 @@ function toggleCard(id: CardId) {
   }
   if (bench.isFocused.value) addAndFocus(id);
   else bench.open(id);
-}
-
-// 弹出卡片为独立窗口（多屏）
-async function popoutCard(id: CardId) {
-  try {
-    await openCardWindow(id, CARD_META[id].title, loadGeometry(id));
-  } catch (e) {
-    console.error("open_card_window failed", e);
-  }
 }
 
 // ===== 命令面板（Ctrl / ⌘ + K）=====
@@ -585,7 +574,6 @@ onBeforeUnmount(() => {
               :title="CARD_META[id].title"
               :accent="CARD_META[id].accent"
               free-drag
-              popoutable
               :focused="bench.focusId.value === id"
               :collapsed="bench.isCollapsed(id)"
               :refresh="bench.cardRefreshOf(id)"
@@ -597,7 +585,6 @@ onBeforeUnmount(() => {
               @focus="enterFocus(id)"
               @restore="exitFocus"
               @grab="(e: PointerEvent) => bench.startFreeDrag(e, id)"
-              @popout="popoutCard(id)"
               @menu="(p) => onCardMenu(id, p)"
               @cfg-consumed="bench.openCfgId.value = null"
               @collapse="bench.toggleCollapse(id)"
@@ -671,7 +658,6 @@ onBeforeUnmount(() => {
             :resizable="bench.focusId.value === null && !bench.isCollapsed(id)"
             :span="bench.cardSpanOf(id).w"
             :rspan="bench.cardSpanOf(id).h"
-            popoutable
             :refresh="bench.cardRefreshOf(id)"
             :color="bench.cardCustom.value[id]?.color ?? ''"
             :look-vars="bench.cardStyleVars(id)"
@@ -687,7 +673,6 @@ onBeforeUnmount(() => {
             @color="(c: string) => bench.setCardColor(id, c)"
             @refresh="(n: number) => bench.setCardRefresh(id, n)"
             @resize="(w: number, h: number) => bench.resizeCard(id, w, h)"
-            @popout="popoutCard(id)"
             @look="(p) => bench.setCardLook(id, p)"
             @pin="bench.togglePin(id)"
             @lock="bench.toggleLock(id)"

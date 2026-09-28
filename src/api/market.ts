@@ -519,29 +519,3 @@ export async function fetchSeatTrades(
 ): Promise<SeatTrades> {
   return await invoke<SeatTrades>("get_seat_trades", { code, size, page });
 }
-// ===== 卡片独立窗口（多屏）=====
-export interface CardWindowGeometry {
-  width: number;
-  height: number;
-  x?: number;
-  y?: number;
-}
-/** 弹出（或聚焦）卡片独立窗口 */
-export async function openCardWindow(
-  cardId: string,
-  title: string,
-  g: CardWindowGeometry
-): Promise<void> {
-  await invoke("open_card_window", {
-    cardId,
-    title,
-    width: g.width,
-    height: g.height,
-    x: g.x ?? null,
-    y: g.y ?? null,
-  });
-}
-/** 关闭卡片独立窗口 */
-export async function closeCardWindow(cardId: string): Promise<void> {
-  await invoke("close_card_window", { cardId });
-}

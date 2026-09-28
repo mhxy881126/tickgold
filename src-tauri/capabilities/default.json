@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "主窗口、灵动岛与卡片独立窗口权限",
-  "windows": ["main", "island", "news-web", "card-*"],
+  "description": "主窗口与灵动岛窗口权限",
+  "windows": ["main", "island", "news-web"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
