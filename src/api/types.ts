@@ -24,6 +24,20 @@ export interface Quote {
   totalMv: number;     // 总市值（亿元）
 }
 
+/** 增强榜单行（东方财富：换手/量比/5分钟涨速/主力净流入/大单净流入） */
+export interface RankRow {
+  code: string;
+  name: string;
+  price: number;
+  pct: number;
+  amount: number;       // 成交额（元）
+  turnover: number;     // 换手率 %
+  volumeRatio: number;  // 量比
+  speed5: number;       // 5分钟涨速 %
+  mainNet: number;      // 主力净流入（元）
+  bigNet: number;       // 大单净流入（元）
+}
+
 /** K线单根 */
 export interface KBar {
   timestamp: number;   // ms

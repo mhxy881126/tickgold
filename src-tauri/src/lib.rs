@@ -89,6 +89,15 @@ async fn get_rank_page(
 }
 
 #[tauri::command]
+async fn get_rank_board(
+    sort: String,
+    page: i64,
+    num: i64,
+) -> Result<Vec<market::RankRow>, String> {
+    market::get_rank_board(sort, page, num).await
+}
+
+#[tauri::command]
 async fn get_news_flash(page: i64, size: i64) -> Result<Vec<market::NewsItem>, String> {
     market::get_news_flash(page, size).await
 }
@@ -295,6 +304,45 @@ fn win_is_maximized(app: tauri::AppHandle) -> Result<bool, String> {
         .ok_or_else(|| "main window not found".to_string())?;
     w.is_maximized().map_err(|e| e.to_string())
 }
+
+// ===== 卡片独立窗口（多屏）：每张卡片一个子窗，label = card-<id> =====
+#[tauri::command]
+fn open_card_window(
+    app: tauri::AppHandle,
+    card_id: String,
+    title: String,
+    width: f64,
+    height: f64,
+    x: Option<f64>,
+    y: Option<f64>,
+) -> Result<(), String> {
+    let label = format!("card-{}", card_id);
+    // 已存在则聚焦，避免重复开窗
+    if let Some(w) = app.get_webview_window(&label) {
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    let mut builder =
+        WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
+            .title(title)
+            .inner_size(width, height);
+    if let (Some(px), Some(py)) = (x, y) {
+        builder = builder.position(px, py);
+    }
+    let _win = builder.build().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn close_card_window(app: tauri::AppHandle, card_id: String) -> Result<(), String> {
+    let label = format!("card-{}", card_id);
+    if let Some(w) = app.get_webview_window(&label) {
+        w.close().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 
 // ===== 数据导出：rfd 原生保存对话框选路径，再写入文件（无需 dialog/fs 插件）=====
 #[tauri::command]
@@ -960,6 +1008,7 @@ pub fn run() {
             search_stocks,
             get_index_quotes,
             get_rank_page,
+            get_rank_board,
             get_news_flash,
             check_latest,
             get_f10_profile,
@@ -985,6 +1034,8 @@ pub fn run() {
             win_toggle_maximize,
             win_close,
             win_is_maximized,
+            open_card_window,
+            close_card_window,
             save_export_file,
             rust_logs,
             rust_clear_logs,

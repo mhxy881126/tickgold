@@ -32,6 +32,9 @@
         <button v-else type="button" class="head-btn" title="还原布局" @click.stop="$emit('restore')">
           <svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" /></svg>
         </button>
+        <button v-if="popoutable" type="button" class="head-btn" title="弹出为独立窗口（多屏）" @click.stop="$emit('popout')">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3zM5 5h6v2H7v10h10v-4h2v6H5V5z" /></svg>
+        </button>
         <button type="button" class="head-btn" title="卡片设置" @click.stop="cfgOpen = !cfgOpen">
           <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0,.59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z" /></svg>
         </button>
@@ -106,6 +109,7 @@ const props = withDefaults(
     lookVars?: Record<string, string>;
     look?: CardLookShape;
     cfgOpenSignal?: boolean;
+    popoutable?: boolean;
   }>(),
   {
     accent: "#e8c878",
@@ -121,6 +125,7 @@ const props = withDefaults(
     locked: false,
     lookVars: () => ({}),
     cfgOpenSignal: false,
+    popoutable: false,
     look: () => ({
       color: "#e8c878", gradientTo: "", gradAngle: 135, opacity: 1, radius: 10,
       borderWidth: 1, headStyle: 1, pinned: false, locked: false, tag: "",
@@ -146,6 +151,7 @@ const emit = defineEmits<{
   (e: "resetlook"): void;
   (e: "menu", ev: { x: number; y: number }): void;
   (e: "cfg-consumed"): void;
+  (e: "popout"): void;
 }>();
 
 const rootEl = ref<HTMLElement | null>(null);

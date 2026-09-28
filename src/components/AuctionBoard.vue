@@ -27,10 +27,18 @@ const list = computed<AuctionStock[]>(() => {
   return tab.value === "high" ? data.value.highOpen : data.value.lowOpen;
 });
 
-function money(v: number): string {
-  if (v >= 1e8) return (v / 1e8).toFixed(2) + "亿";
-  if (v >= 1e4) return (v / 1e4).toFixed(0) + "万";
-  return v.toFixed(0);
+/** 数值兜底：后端字段缺失/为 null 时按 0 处理，避免 toFixed 崩溃整卡 */
+function num(v: number | null | undefined): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+function fx(v: number | null | undefined, d = 2): string {
+  return num(v).toFixed(d);
+}
+function money(v: number | null | undefined): string {
+  const n = num(v);
+  if (n >= 1e8) return (n / 1e8).toFixed(2) + "亿";
+  if (n >= 1e4) return (n / 1e4).toFixed(0) + "万";
+  return n.toFixed(0);
 }
 function hhmmss(ts: number): string {
   const d = new Date(ts);
@@ -108,14 +116,14 @@ onUnmounted(() => {
           @click="emit('select', s.code)"
         >
           <span class="nm">{{ s.name }} <i>{{ s.code }}</i></span>
-          <span class="num">{{ s.open.toFixed(2) }}</span>
-          <span class="num" :class="s.gap >= 0 ? 'up' : 'down'">
-            {{ s.gap >= 0 ? "+" : "" }}{{ s.gap.toFixed(2) }}%
+          <span class="num">{{ fx(s.open) }}</span>
+          <span class="num" :class="num(s.gap) >= 0 ? 'up' : 'down'">
+            {{ num(s.gap) >= 0 ? "+" : "" }}{{ fx(s.gap) }}%
           </span>
           <span class="num dim">{{ money(s.amount) }}</span>
-          <span class="num">{{ s.price.toFixed(2) }}</span>
-          <span class="num" :class="s.pct >= 0 ? 'up' : 'down'">
-            {{ s.pct >= 0 ? "+" : "" }}{{ s.pct.toFixed(2) }}%
+          <span class="num">{{ fx(s.price) }}</span>
+          <span class="num" :class="num(s.pct) >= 0 ? 'up' : 'down'">
+            {{ num(s.pct) >= 0 ? "+" : "" }}{{ fx(s.pct) }}%
           </span>
         </div>
       </template>

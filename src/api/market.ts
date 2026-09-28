@@ -1,6 +1,6 @@
 // 行情 API：通过 Tauri command 调 Rust 端（Rust 负责请求东财/新浪公开接口，避免浏览器 CORS 与限频）
 import { invoke } from "@tauri-apps/api/core";
-import type { Quote, KBar, StockItem, FundFlow, Sector, ScreenFilter, ScreenResult, AlertRule, OrderBook } from "./types";
+import type { Quote, RankRow, KBar, StockItem, FundFlow, Sector, ScreenFilter, ScreenResult, AlertRule, OrderBook } from "./types";
 
 /** 批量拉实时行情 */
 export async function fetchQuotes(codes: string[]): Promise<Quote[]> {
@@ -84,6 +84,19 @@ export async function fetchRankPage(
   num = 50,
 ): Promise<Quote[]> {
   return await invoke<Quote[]>("get_rank_page", { sort, page, num });
+}
+
+/**
+ * 增强榜单（东方财富真实数据）。
+ * sort: gainers 涨幅 / losers 跌幅 / amount 成交额 / speed 快速涨幅(5分钟涨速)
+ *       big 大单净量(大单净流入额) / vr 量比榜 / turnover 换手率 / main 主力净流入
+ */
+export async function fetchRankBoard(
+  sort: "gainers" | "losers" | "amount" | "speed" | "big" | "vr" | "turnover" | "main",
+  page: number,
+  num = 50,
+): Promise<RankRow[]> {
+  return await invoke<RankRow[]>("get_rank_board", { sort, page, num });
 }
 
 /** 个股资金流向（主力 / 散户 + 四档分布） */
@@ -505,4 +518,30 @@ export async function fetchSeatTrades(
   page = 1
 ): Promise<SeatTrades> {
   return await invoke<SeatTrades>("get_seat_trades", { code, size, page });
+}
+// ===== 卡片独立窗口（多屏）=====
+export interface CardWindowGeometry {
+  width: number;
+  height: number;
+  x?: number;
+  y?: number;
+}
+/** 弹出（或聚焦）卡片独立窗口 */
+export async function openCardWindow(
+  cardId: string,
+  title: string,
+  g: CardWindowGeometry
+): Promise<void> {
+  await invoke("open_card_window", {
+    cardId,
+    title,
+    width: g.width,
+    height: g.height,
+    x: g.x ?? null,
+    y: g.y ?? null,
+  });
+}
+/** 关闭卡片独立窗口 */
+export async function closeCardWindow(cardId: string): Promise<void> {
+  await invoke("close_card_window", { cardId });
 }

@@ -292,6 +292,106 @@ pub async fn rank_page(sort: &str, page: i64, num: i64) -> Result<Vec<Quote>, St
     Ok(out)
 }
 
+// ===== 集合竞价回退源：东财 push2 clist 被限流时，改走新浪全市场榜单 =====
+// 复用东财的返回类型，前端无需感知数据源差异；新浪不支持按「开盘缺口」服务端排序，
+// 故分页拉全 A，本地由 open/settlement 现算 gap 再排序。
+use super::eastmoney::{AuctionData, AuctionStock};
+
+async fn sina_hs_a_count() -> Result<i64, String> {
+    let url = "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeStockCount?node=hs_a";
+    let txt = http()
+        .get(url)
+        .header("Referer", "https://finance.sina.com.cn/")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .text()
+        .await
+        .map_err(|e| e.to_string())?;
+    txt.trim()
+        .trim_matches('"')
+        .parse::<i64>()
+        .map_err(|e| format!("竞价总数解析失败: {e}"))
+}
+
+async fn sina_hs_a_page(page: i64) -> Result<Vec<Value>, String> {
+    let url = format!(
+        "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page={page}&num=100&sort=symbol&asc=1&node=hs_a&symbol=&_s_r_a=page"
+    );
+    http()
+        .get(&url)
+        .header("Referer", "https://finance.sina.com.cn/")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| format!("竞价第 {page} 页解析失败: {e}"))
+}
+
+pub async fn auction() -> Result<AuctionData, String> {
+    let total = sina_hs_a_count().await?;
+    let pages = (total.max(0) + 99) / 100;
+    // 每批 5 页并发，避免一次性约 56 并发；带重试提高整段成功率
+    let mut rows: Vec<AuctionStock> = Vec::new();
+    let mut pn = 1i64;
+    while pn <= pages {
+        let batch_end = (pn + 4).min(pages);
+        let mut handles = Vec::new();
+        for p in pn..=batch_end {
+            handles.push(tokio::spawn(async move {
+                let mut last = String::new();
+                for _ in 0..2 {
+                    match sina_hs_a_page(p).await {
+                        Ok(v) => return Ok(v),
+                        Err(e) => last = e,
+                    }
+                }
+                Err(last)
+            }));
+        }
+        for h in handles {
+            let page = h.await.map_err(|e| e.to_string())??;
+            // 新浪数值字段多为字符串，但 amount/volume/changepercent 等也可能直接给数字，两者兼容
+            let f = |v: &Value, k: &str| match &v[k] {
+                Value::String(s) => s.parse::<f64>().unwrap_or(0.0),
+                Value::Number(n) => n.as_f64().unwrap_or(0.0),
+                _ => 0.0,
+            };
+            for v in &page {
+                let prev_close = f(v, "settlement");
+                let open = f(v, "open");
+                if prev_close <= 0.0 || open <= 0.0 {
+                    continue;
+                }
+                rows.push(AuctionStock {
+                    code: v["code"].as_str().unwrap_or("").to_string(),
+                    name: v["name"].as_str().unwrap_or("").to_string(),
+                    open,
+                    prev_close,
+                    gap: (open - prev_close) / prev_close * 100.0,
+                    amount: f(v, "amount"),
+                    price: f(v, "trade"),
+                    pct: f(v, "changepercent"),
+                });
+            }
+        }
+        pn = batch_end + 1;
+    }
+
+    let count = rows.len();
+    let mut high: Vec<AuctionStock> = rows.iter().filter(|r| r.gap > 0.0).cloned().collect();
+    high.sort_by(|a, b| b.gap.partial_cmp(&a.gap).unwrap());
+    let mut low: Vec<AuctionStock> = rows.iter().filter(|r| r.gap < 0.0).cloned().collect();
+    low.sort_by(|a, b| a.gap.partial_cmp(&b.gap).unwrap());
+    Ok(AuctionData {
+        updated: now_millis(),
+        total: count,
+        high_open: high,
+        low_open: low,
+    })
+}
+
 // ===== 盘中快讯（新浪财经 7x24 全球直播，UTF-8 JSON；24 小时有内容） =====
 pub async fn news_flash(page: i64, size: i64) -> Result<Vec<NewsItem>, String> {
     let url = format!(
@@ -363,4 +463,3 @@ fn strip_html(s: &str) -> String {
     }
     out
 }
-

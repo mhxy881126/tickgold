@@ -3,6 +3,8 @@ import { createPinia } from "pinia";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App.vue";
 import Island from "./components/Island.vue";
+import CardWindow from "./components/CardWindow.vue";
+import type { CardId } from "./lib/cards";
 import { logger } from "./utils/logger";
 import "./styles/global.css";
 
@@ -37,12 +39,32 @@ try {
 } catch {
   /* ignore */
 }
+// web 预览：?card=xxx 直接以独立卡片窗模式渲染（便于调试多窗）
+const cardParam = new URLSearchParams(location.search).get("card");
 
 const pinia = createPinia();
 if (label === "island") {
   const app = createApp(Island);
   app.config.errorHandler = vueErrorHandler;
   app.use(pinia).mount("#app");
+} else if (cardParam || label.startsWith("card-")) {
+  const cardId = (cardParam ?? label.slice(5)) as CardId;
+  try {
+    const app = createApp(CardWindow, { cardId });
+    app.config.errorHandler = vueErrorHandler;
+    app.use(pinia).mount("#app");
+  } catch (err) {
+    // 挂载前/挂载期致命错误（错误边界捕获不到）：显式渲染，避免整窗白屏无从排查
+    const e = err instanceof Error ? err : new Error(String(err));
+    logger.error(e.message, "card-window:mount", { cardId, stack: e.stack });
+    const root = document.getElementById("app");
+    if (root) {
+      root.style.cssText =
+        "background:#1a0d0d;color:#ff9aa8;padding:16px;font:12px/1.6 system-ui;overflow:auto;";
+      root.textContent = `卡片窗口挂载失败 [${cardId}]\n${e.message}\n${e.stack ?? ""}`;
+      root.style.whiteSpace = "pre-wrap";
+    }
+  }
 } else {
   const app = createApp(App);
   app.config.errorHandler = vueErrorHandler;

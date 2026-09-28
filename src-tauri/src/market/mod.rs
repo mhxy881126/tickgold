@@ -570,6 +570,19 @@ pub async fn get_rank_page(sort: String, page: i64, num: i64) -> Result<Vec<Quot
     .map_err(|_| "榜单: 超时".to_string())?
 }
 
+pub use eastmoney::RankRow;
+
+/// 增强榜单（东方财富，含换手/量比/5分钟涨速/主力净流入/大单净流入）。
+/// sort = gainers/losers/amount/speed/big/vr/turnover/main，page 从 1 开始
+pub async fn get_rank_board(sort: String, page: i64, num: i64) -> Result<Vec<RankRow>, String> {
+    tokio::time::timeout(
+        Duration::from_secs(KLINE_TIMEOUT),
+        eastmoney::rank_board(&sort, page, num),
+    )
+    .await
+    .map_err(|_| "增强榜单: 超时".to_string())?
+}
+
 /// 今日日期 YYYYMMDD（北京时间，纯 SystemTime 实现，无 chrono 依赖）
 pub fn today_yyyymmdd() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -616,11 +629,25 @@ pub async fn get_zb_pool(date: String) -> Result<eastmoney::ZtPool, String> {
         .map_err(|_| "炸板池: 超时".to_string())?
 }
 
-/// 集合竞价（全市场开盘缺口排名，分页拉取，给足超时）
+/// 集合竞价（全市场开盘缺口排名，分页拉取）。
+/// 首选东方财富；东财 push2 被限流 / 超时 / 失败时自动降级新浪全市场榜单，返回结构一致。
 pub async fn get_auction() -> Result<eastmoney::AuctionData, String> {
-    tokio::time::timeout(Duration::from_secs(15), eastmoney::auction())
-        .await
-        .map_err(|_| "集合竞价: 超时".to_string())?
+    let em = tokio::time::timeout(Duration::from_secs(12), eastmoney::auction()).await;
+    match em {
+        Ok(Ok(data)) => Ok(data),
+        Ok(Err(e)) => {
+            log::warn!("集合竞价东财源失败，降级新浪: {e}");
+            tokio::time::timeout(Duration::from_secs(30), sina::auction())
+                .await
+                .map_err(|_| "集合竞价新浪回退: 超时".to_string())?
+        }
+        Err(_) => {
+            log::warn!("集合竞价东财源超时(12s)，降级新浪");
+            tokio::time::timeout(Duration::from_secs(30), sina::auction())
+                .await
+                .map_err(|_| "集合竞价新浪回退: 超时".to_string())?
+        }
+    }
 }
 
 /// 最新版本信息（更新检查兜底，走与行情同款的 HTTP 客户端 + 多镜像）

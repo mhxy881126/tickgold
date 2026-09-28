@@ -44,6 +44,10 @@ import { useWindowControls } from "./composables/useWindowControls";
 import { useCardFocus } from "./composables/useCardFocus";
 import { useCardMount } from "./composables/useCardMount";
 import { useCommandPalette } from "./composables/useCommandPalette";
+import { useActions } from "./composables/useActions";
+import { useBuiltinActions } from "./composables/useBuiltinActions";
+import { openCardWindow } from "./api/market";
+import { loadGeometry } from "./lib/cardWindowGeometry";
 import type { AlertEvent } from "./api/market";
 import { bootstrapAlerts } from "./composables/useAlertBootstrap";
 import { ensureDb, db } from "./db/database";
@@ -209,6 +213,15 @@ function toggleCard(id: CardId) {
   else bench.open(id);
 }
 
+// 弹出卡片为独立窗口（多屏）
+async function popoutCard(id: CardId) {
+  try {
+    await openCardWindow(id, CARD_META[id].title, loadGeometry(id));
+  } catch (e) {
+    console.error("open_card_window failed", e);
+  }
+}
+
 // ===== 命令面板（Ctrl / ⌘ + K）=====
 const {
   paletteOpen,
@@ -219,54 +232,50 @@ const {
   openPalette,
   closePalette,
   runPalette,
-} = useCommandPalette(bench, toggleCard);
+} = useCommandPalette();
 
-function onGlobalKey(e: KeyboardEvent) {
-  if (bench.isFocused.value && e.key === "Escape") {
-    e.preventDefault();
-    exitFocus();
-    return;
-  }
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-    e.preventDefault();
-    paletteOpen.value ? closePalette() : openPalette();
-    return;
-  }
-  // 撤销结构操作（焦点在输入框/文本域时交给浏览器原生撤销，不拦截）
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
-    const t = e.target as HTMLElement | null;
-    const editing = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
-    if (!editing) {
-      e.preventDefault();
-      bench.undo();
-      undoToast.value = false;
-    }
-    return;
-  }
-  const mod = e.metaKey || e.ctrlKey;
-  if (mod && e.key === ",") {
-    e.preventDefault();
-    showSettings.value = true;
-    return;
-  }
-  if (mod && e.key.toLowerCase() === "u") {
-    e.preventDefault();
-    showUpdate.value = true;
-    return;
-  }
-  if (mod && e.key === "/") {
-    e.preventDefault();
-    showShortcuts.value = true;
-    return;
-  }
-  // 单按 ?（焦点不在输入框时）打开快捷键速查
-  const tel = e.target as HTMLElement | null;
-  const typing = !!tel && (tel.tagName === "INPUT" || tel.tagName === "TEXTAREA" || tel.isContentEditable);
-  if (!mod && e.key === "?" && !typing) {
-    e.preventDefault();
-    showShortcuts.value = true;
-    return;
-  }
+// 注册内置动作（开卡 / 场景 / 窗口），命令面板与快捷键共用
+useBuiltinActions({
+  toggleCard,
+  applyScene: bench.applyScene,
+  winMinimize,
+  winToggleMax,
+  winClose,
+});
+
+// 全局动作注册：快捷键派发由 useActions 统一处理（支持自定义绑定与编辑态过滤）
+const { register: registerAction } = useActions();
+registerAction({
+  id: "app.palette", title: "命令面板", category: "应用", defaultKeys: "Ctrl+K", editingSafe: true,
+  run: () => (paletteOpen.value ? closePalette() : openPalette()),
+});
+registerAction({
+  id: "app.settings", title: "设置", category: "应用", defaultKeys: "Ctrl+,", editingSafe: true,
+  run: () => (showSettings.value = true),
+});
+registerAction({
+  id: "app.update", title: "检查更新", category: "应用", defaultKeys: "Ctrl+U", editingSafe: true,
+  run: () => (showUpdate.value = true),
+});
+registerAction({
+  id: "app.shortcuts", title: "快捷键速查", category: "应用", defaultKeys: "Ctrl+/", editingSafe: true,
+  run: () => (showShortcuts.value = true),
+});
+registerAction({
+  id: "app.shortcuts-qm", title: "快捷键速查", category: "应用", defaultKeys: "?", hidden: true,
+  run: () => (showShortcuts.value = true),
+});
+registerAction({
+  id: "bench.undo", title: "撤销结构操作", category: "工作台", defaultKeys: "Ctrl+Z",
+  run: () => { bench.undo(); undoToast.value = false; },
+});
+registerAction({
+  id: "focus.exit", title: "退出聚焦", category: "盯盘", defaultKeys: "Escape", editingSafe: true,
+  hidden: true, when: () => bench.isFocused.value, run: exitFocus,
+});
+
+// 命令面板内部导航（仅面板打开时生效）
+function onPaletteKey(e: KeyboardEvent) {
   if (!paletteOpen.value) return;
   const n = pFiltered.value.length;
   if (e.key === "Escape") {
@@ -349,8 +358,8 @@ onMounted(async () => {
     },
   });
 
-  // —— 全局快捷键（命令面板 Ctrl/⌘ + K 等）——
-  window.addEventListener("keydown", onGlobalKey);
+  // —— 命令面板内部导航（全局快捷键由 useActions 派发）——
+  window.addEventListener("keydown", onPaletteKey);
 
   // —— 事件监听 ——
   try {
@@ -389,7 +398,7 @@ onMounted(async () => {
 });
 onBeforeUnmount(() => {
   unlistenFns.forEach((f) => f());
-  window.removeEventListener("keydown", onGlobalKey);
+  window.removeEventListener("keydown", onPaletteKey);
 });
 </script>
 
@@ -576,6 +585,7 @@ onBeforeUnmount(() => {
               :title="CARD_META[id].title"
               :accent="CARD_META[id].accent"
               free-drag
+              popoutable
               :focused="bench.focusId.value === id"
               :collapsed="bench.isCollapsed(id)"
               :refresh="bench.cardRefreshOf(id)"
@@ -587,6 +597,7 @@ onBeforeUnmount(() => {
               @focus="enterFocus(id)"
               @restore="exitFocus"
               @grab="(e: PointerEvent) => bench.startFreeDrag(e, id)"
+              @popout="popoutCard(id)"
               @menu="(p) => onCardMenu(id, p)"
               @cfg-consumed="bench.openCfgId.value = null"
               @collapse="bench.toggleCollapse(id)"
@@ -660,6 +671,7 @@ onBeforeUnmount(() => {
             :resizable="bench.focusId.value === null && !bench.isCollapsed(id)"
             :span="bench.cardSpanOf(id).w"
             :rspan="bench.cardSpanOf(id).h"
+            popoutable
             :refresh="bench.cardRefreshOf(id)"
             :color="bench.cardCustom.value[id]?.color ?? ''"
             :look-vars="bench.cardStyleVars(id)"
@@ -675,6 +687,7 @@ onBeforeUnmount(() => {
             @color="(c: string) => bench.setCardColor(id, c)"
             @refresh="(n: number) => bench.setCardRefresh(id, n)"
             @resize="(w: number, h: number) => bench.resizeCard(id, w, h)"
+            @popout="popoutCard(id)"
             @look="(p) => bench.setCardLook(id, p)"
             @pin="bench.togglePin(id)"
             @lock="bench.toggleLock(id)"

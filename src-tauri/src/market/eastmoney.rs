@@ -194,6 +194,78 @@ pub async fn rank(sort: &str, pz: i64) -> Result<Vec<Quote>, String> {
     Ok(out)
 }
 
+// ===== 增强榜单：专用 RankRow（含换手/量比/5分钟涨速/主力净流入/大单净流入）=====
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RankRow {
+    pub code: String,
+    pub name: String,
+    pub price: f64,
+    pub pct: f64,
+    pub amount: f64,       // 成交额（元）
+    pub turnover: f64,     // 换手率 %
+    pub volume_ratio: f64, // 量比
+    pub speed5: f64,       // 5分钟涨速 %
+    pub main_net: f64,     // 主力净流入（元）
+    pub big_net: f64,      // 大单净流入（元）
+}
+
+#[derive(Deserialize)]
+struct RankBoardResp {
+    data: Option<RankBoardData>,
+}
+#[derive(Deserialize)]
+struct RankBoardData {
+    #[serde(default)]
+    diff: Vec<Value>,
+}
+
+/// 增强榜单。sort 支持：
+/// gainers=涨幅 losers=跌幅 amount=成交额 speed=快速涨幅(5分钟涨速)
+/// big=大单净量(大单净流入额) vr=量比榜 turnover=换手率 main=主力净流入
+pub async fn rank_board(sort: &str, page: i64, num: i64) -> Result<Vec<RankRow>, String> {
+    // (排序字段 fid, 排序方向 po：1=降序 0=升序)
+    let (fid, po) = match sort {
+        "losers" => ("f3", 0),
+        "amount" => ("f6", 1),
+        "speed" => ("f22", 1),
+        "big" => ("f72", 1),
+        "vr" => ("f10", 1),
+        "turnover" => ("f8", 1),
+        "main" => ("f62", 1),
+        _ => ("f3", 1), // gainers 默认
+    };
+    let pn = page.max(1);
+    let url = format!(
+        "https://push2.eastmoney.com/api/qt/clist/get?pn={pn}&pz={num}&po={po}&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid={fid}&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f12,f14,f2,f3,f6,f8,f10,f22,f62,f72"
+    );
+    let resp = http()
+        .get(&url)
+        .header("Referer", "https://quote.eastmoney.com/")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let json: RankBoardResp = resp.json().await.map_err(|e| e.to_string())?;
+    let rows = json.data.map(|d| d.diff).unwrap_or_default();
+    let g = |v: &Value, key: &str| -> f64 { v.get(key).map(nf).unwrap_or(0.0) };
+    let out = rows
+        .iter()
+        .map(|v| RankRow {
+            code: v.get("f12").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+            name: v.get("f14").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+            price: g(v, "f2"),
+            pct: g(v, "f3"),
+            amount: g(v, "f6"),
+            turnover: g(v, "f8"),
+            volume_ratio: g(v, "f10"),
+            speed5: g(v, "f22"),
+            main_net: g(v, "f62"),
+            big_net: g(v, "f72"),
+        })
+        .collect();
+    Ok(out)
+}
+
 fn urlencode(s: &str) -> String {
     let mut out = String::new();
     for b in s.as_bytes() {
