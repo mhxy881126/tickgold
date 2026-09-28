@@ -236,17 +236,44 @@ pub async fn rank_board(sort: &str, page: i64, num: i64) -> Result<Vec<RankRow>,
         _ => ("f3", 1), // gainers 默认
     };
     let pn = page.max(1);
-    let url = format!(
-        "https://push2.eastmoney.com/api/qt/clist/get?pn={pn}&pz={num}&po={po}&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid={fid}&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f12,f14,f2,f3,f6,f8,f10,f22,f62,f72"
-    );
-    let resp = http()
-        .get(&url)
-        .header("Referer", "https://quote.eastmoney.com/")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    let json: RankBoardResp = resp.json().await.map_err(|e| e.to_string())?;
-    let rows = json.data.map(|d| d.diff).unwrap_or_default();
+    // 多个 push2 节点并发竞速：任一先返回可解析 JSON 即采用，其余请求丢弃。
+    // 主域被网络阻断时无需逐节点串行等超时（最坏 40s），整体只受单请求 8s 超时约束。
+    let mut set = tokio::task::JoinSet::new();
+    for &host in CLIST_HOSTS {
+        let url = format!(
+            "https://{host}/api/qt/clist/get?pn={pn}&pz={num}&po={po}&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid={fid}&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f12,f14,f2,f3,f6,f8,f10,f22,f62,f72"
+        );
+        set.spawn(async move {
+            let resp = http()
+                .get(&url)
+                .header("Referer", "https://quote.eastmoney.com/")
+                .timeout(std::time::Duration::from_secs(8))
+                .send()
+                .await
+                .map_err(|e| format!("{host}: {e}"))?;
+            let json: RankBoardResp =
+                resp.json().await.map_err(|e| format!("{host}: decode {e}"))?;
+            Ok::<Vec<Value>, String>(json.data.map(|d| d.diff).unwrap_or_default())
+        });
+    }
+    let mut last = String::from("所有 clist 节点均失败");
+    let mut rows: Vec<Value> = Vec::new();
+    let mut ok = false;
+    while let Some(res) = set.join_next().await {
+        match res {
+            Ok(Ok(v)) => {
+                set.abort_all();
+                rows = v;
+                ok = true;
+                break;
+            }
+            Ok(Err(e)) => last = e,
+            Err(e) => last = format!("join: {e}"),
+        }
+    }
+    if !ok {
+        return Err(last);
+    }
     let g = |v: &Value, key: &str| -> f64 { v.get(key).map(nf).unwrap_or(0.0) };
     let out = rows
         .iter()

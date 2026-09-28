@@ -295,7 +295,7 @@ pub async fn rank_page(sort: &str, page: i64, num: i64) -> Result<Vec<Quote>, St
 // ===== 集合竞价回退源：东财 push2 clist 被限流时，改走新浪全市场榜单 =====
 // 复用东财的返回类型，前端无需感知数据源差异；新浪不支持按「开盘缺口」服务端排序，
 // 故分页拉全 A，本地由 open/settlement 现算 gap 再排序。
-use super::eastmoney::{AuctionData, AuctionStock};
+use super::eastmoney::{AuctionData, AuctionStock, RankRow};
 
 async fn sina_hs_a_count() -> Result<i64, String> {
     let url = "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeStockCount?node=hs_a";
@@ -390,6 +390,53 @@ pub async fn auction() -> Result<AuctionData, String> {
         high_open: high,
         low_open: low,
     })
+}
+
+// ===== 增强榜单回退源：push2 clist 全节点失败时改走新浪 =====
+// 新浪可提供 最新价/涨跌幅/成交额/换手率；量比(f10)、5分钟涨速(f22)、
+// 主力/大单净流入(f62/f72) 无对应字段，置 0。
+// speed/big/vr/main 四类专用排序新浪不支持，回退按涨跌幅排序（基础列仍有数据）。
+pub async fn rank_board(sort: &str, page: i64, num: i64) -> Result<Vec<RankRow>, String> {
+    let (sort_key, asc) = match sort {
+        "losers" => ("changepercent", 1),
+        "amount" => ("amount", 0),
+        "turnover" => ("turnoverratio", 0),
+        _ => ("changepercent", 0), // gainers 及专用榜单默认
+    };
+    let pn = page.max(1);
+    let url = format!(
+        "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page={pn}&num={num}&sort={sort_key}&asc={asc}&node=hs_a&symbol=&_s_r_a=page"
+    );
+    let arr: Vec<Value> = http()
+        .get(&url)
+        .header("Referer", "https://finance.sina.com.cn/")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| format!("榜单解析失败: {e}"))?;
+    let f = |v: &Value, k: &str| match &v[k] {
+        Value::String(s) => s.parse::<f64>().unwrap_or(0.0),
+        Value::Number(n) => n.as_f64().unwrap_or(0.0),
+        _ => 0.0,
+    };
+    let out = arr
+        .iter()
+        .map(|v| RankRow {
+            code: v["code"].as_str().unwrap_or("").to_string(),
+            name: v["name"].as_str().unwrap_or("").to_string(),
+            price: f(v, "trade"),
+            pct: f(v, "changepercent"),
+            amount: f(v, "amount"),
+            turnover: f(v, "turnoverratio"),
+            volume_ratio: 0.0,
+            speed5: 0.0,
+            main_net: 0.0,
+            big_net: 0.0,
+        })
+        .collect();
+    Ok(out)
 }
 
 // ===== 盘中快讯（新浪财经 7x24 全球直播，UTF-8 JSON；24 小时有内容） =====

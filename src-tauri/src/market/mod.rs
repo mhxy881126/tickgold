@@ -575,12 +575,42 @@ pub use eastmoney::RankRow;
 /// 增强榜单（东方财富，含换手/量比/5分钟涨速/主力净流入/大单净流入）。
 /// sort = gainers/losers/amount/speed/big/vr/turnover/main，page 从 1 开始
 pub async fn get_rank_board(sort: String, page: i64, num: i64) -> Result<Vec<RankRow>, String> {
-    tokio::time::timeout(
-        Duration::from_secs(KLINE_TIMEOUT),
+    // 东财多节点故障转移；整体失败/超时则降级新浪（push2 在部分网络被阻断时新浪仍可达）
+    let em = tokio::time::timeout(
+        Duration::from_secs(12),
         eastmoney::rank_board(&sort, page, num),
     )
-    .await
-    .map_err(|_| "增强榜单: 超时".to_string())?
+    .await;
+    match em {
+        Ok(Ok(rows)) if !rows.is_empty() => Ok(rows),
+        Ok(Ok(_)) => {
+            log::warn!("增强榜单东财返回空，降级新浪");
+            tokio::time::timeout(
+                Duration::from_secs(10),
+                sina::rank_board(&sort, page, num),
+            )
+            .await
+            .map_err(|_| "增强榜单新浪回退: 超时".to_string())?
+        }
+        Ok(Err(e)) => {
+            log::warn!("增强榜单东财源失败，降级新浪: {e}");
+            tokio::time::timeout(
+                Duration::from_secs(10),
+                sina::rank_board(&sort, page, num),
+            )
+            .await
+            .map_err(|_| "增强榜单新浪回退: 超时".to_string())?
+        }
+        Err(_) => {
+            log::warn!("增强榜单东财源超时(12s)，降级新浪");
+            tokio::time::timeout(
+                Duration::from_secs(10),
+                sina::rank_board(&sort, page, num),
+            )
+            .await
+            .map_err(|_| "增强榜单新浪回退: 超时".to_string())?
+        }
+    }
 }
 
 /// 今日日期 YYYYMMDD（北京时间，纯 SystemTime 实现，无 chrono 依赖）
