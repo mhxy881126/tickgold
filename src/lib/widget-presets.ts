@@ -29,8 +29,7 @@ export function buildItems(defIds: string[]): WidgetInstance[] {
 }
 
 const PRESET_DEFS: Partial<Record<CardId, string[]>> = {
-  // K线图：报价头 + 五档盘口 + 分时大图
-  chart: ["quote-head", "orderbook-mini", "minute-chart"],
+  // K线图卡恢复为经典完整组件（StockChart：全周期/指标/画线），不再出厂微件化
   watch: ["quote-list"],
   rank: ["quote-list"],
   fundflow: ["fund-flow-bar"],

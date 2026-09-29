@@ -72,11 +72,29 @@ function widgetsEqual(a: CardWidgets, b: CardWidgets): boolean {
   });
 }
 
+// 旧版本曾把 K线卡出厂微件化为「报价头+盘口+分时缩略图」，丢失完整
+// StockChart。检测到该卡仍是这份未改动的旧出厂模板时，一次性还原为经典
+// 完整组件；用户若自行编排过（增删/改绑定）则尊重其自定义，不还原。
+const LEGACY_FACTORY_CHART_DEFS = ["quote-head", "orderbook-mini", "minute-chart"];
+function isLegacyFactoryChart(c: SnapshotCard, w: CardWidgets): boolean {
+  if (c.id !== "chart") return false;
+  const defs = w.items.map((i) => i.def);
+  return (
+    defs.length === LEGACY_FACTORY_CHART_DEFS.length &&
+    defs.every((d, i) => d === LEGACY_FACTORY_CHART_DEFS[i])
+  );
+}
+
 // 迁移单卡；返回新卡与是否发生变化
 export function migrateCard(c: SnapshotCard): { card: SnapshotCard; changed: boolean } {
   // 已是 v1：清洗后保持；内容未变即幂等（changed=false）
   if (c.v === WIDGET_V && c.widgets) {
     const clean = sanitizeWidgets(c.widgets);
+    // 旧出厂微件化的 K线卡 → 还原经典完整 StockChart
+    if (clean && isLegacyFactoryChart(c, clean)) {
+      const { v: _v, widgets: _w, ...rest } = c;
+      return { card: rest, changed: true };
+    }
     if (!clean) {
       // widgets 全无效：回落出厂模板或移除 widgets
       const preset = presetOf(c.id);

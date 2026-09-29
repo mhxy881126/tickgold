@@ -20,6 +20,12 @@ function pickPrimary(code: string, _name: string) {
 function followGlobal() {
   bench.setCardPrimary(props.id, null);
 }
+// 切回经典完整组件（K线卡 → StockChart：全部周期/指标/画线）；
+// 再次「编排」时 ensureWidgets 会以出厂微件模板重新初始化，可逆。
+function useClassic() {
+  bench.setWidgets(props.id, undefined);
+  emit("close");
+}
 </script>
 
 <template>
@@ -34,6 +40,7 @@ function followGlobal() {
         <button type="button" class="we-follow" @click="followGlobal">跟随全局</button>
       </div>
       <span class="we-spacer"></span>
+      <button type="button" class="we-reset" title="切回本卡的完整经典组件（K线卡含全部周期/指标/画线），可再次编排恢复" @click="useClassic">经典视图</button>
       <button type="button" class="we-reset" @click="bench.resetCardWidgets(id)">恢复出厂模板</button>
       <button type="button" class="we-done" @click="emit('close')">完成</button>
     </div>
