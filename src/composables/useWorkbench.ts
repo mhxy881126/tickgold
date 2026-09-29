@@ -701,7 +701,17 @@ function createWorkbench() {
           /* 自保失败不阻断恢复 */
         }
         applySnapshot(cardsJson);
-        if (tm && TIME_PRESETS.some((p) => p.id === tm)) timeMode.value = tm;
+        // 恢复时段模式前校验一致性：旧版本（9-23 防护前）可能持久化出
+        // 「timeMode 与卡片集不配套」的混合态，其卡片在预设 bento 中无坐标 →
+        // 布局崩溃/菜单看似失效。不配套则放弃时段标记，回落自动网格（卡片不丢）。
+        if (tm) {
+          const tp = TIME_PRESETS.find((p) => p.id === tm);
+          const matched =
+            !!tp &&
+            tp.cards.length === openCards.value.length &&
+            tp.cards.every((c) => openCards.value.includes(c));
+          if (matched) timeMode.value = tm;
+        }
         if (sc && SCENES.some((x) => x.id === sc)) sceneId.value = sc;
         return openCards.value.length > 0;
       }
