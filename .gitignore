@@ -11,6 +11,11 @@ src-tauri/keys/*.key
 _*.txt
 _*.py
 _*.rs
+_*.bat
+card_check_tmp.mjs
+
+# 工具本地状态（src-tauri 下）
+src-tauri/.omc/
 
 # Playwright E2E 产物
 /test-results/

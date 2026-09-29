@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>TickGold 卡片终端 · 方案效果图</title>
+<style>
+/* ============ 全局 ============ */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --up:#ff4d5e; --down:#19c37d;
+  --gold:#e8c878;
+}
+body{
+  background:#0b0d12;
+  color:#dfe5ef;
+  font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  padding:40px 48px 80px;
+  width:1440px;
+}
+.page-head h1{font-size:26px;letter-spacing:1px}
+.page-head h1 b{color:var(--gold)}
+.page-head p{margin-top:8px;color:#8b94a7;font-size:13px;line-height:1.7}
+.legend{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+.legend span{font-size:11px;padding:4px 10px;border:1px solid #262d3d;border-radius:20px;color:#9aa4b8}
+
+.section{margin-top:56px}
+.sec-tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:2px;padding:3px 10px;border-radius:4px;background:#1d2433;color:var(--gold)}
+.sec-title{font-size:20px;margin:12px 0 4px}
+.sec-desc{font-size:12.5px;color:#8b94a7;margin-bottom:20px;line-height:1.7}
+
+/* ============ 通用迷你卡片构件 ============ */
+.mini-ws{position:relative;border-radius:14px;padding:14px;overflow:hidden;height:340px;
+  display:grid;grid-template-columns:repeat(12,1fr);grid-auto-rows:1fr;gap:10px}
+.m-card{position:relative;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+.m-head{display:flex;align-items:center;gap:6px;padding:8px 10px;flex:none}
+.m-head .bar{width:3px;height:12px;border-radius:2px}
+.m-head .t{font-size:11px;font-weight:600;letter-spacing:.5px}
+.m-head .tools{margin-left:auto;display:flex;gap:4px;opacity:.5}
+.m-head .tools i{width:14px;height:14px;border-radius:3px;display:block;background:currentColor;opacity:.5}
+.m-body{flex:1;padding:4px 10px 10px;min-height:0}
+
+/* 迷你K线 */
+.mkline{position:relative;height:100%;width:100%}
+.mkline svg{width:100%;height:100%;display:block}
+
+/* 报价数字 */
+.quote{display:flex;flex-direction:column;gap:2px}
+.quote .px{font-size:24px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
+.quote .chg{font-size:11px;font-weight:600}
+.flash-up{animation:flashUp 1.6s infinite}
+.flash-down{animation:flashDown 1.6s infinite}
+@keyframes flashUp{0%,100%{color:var(--up);text-shadow:none}50%{color:#ff7a86;text-shadow:0 0 14px rgba(255,77,94,.75)}}
+@keyframes flashDown{0%,100%{color:var(--down);text-shadow:none}50%{color:#5fe0a8;text-shadow:0 0 14px rgba(25,195,125,.7)}}
+
+/* 列表行 */
+.rows{display:flex;flex-direction:column}
+.rrow{display:flex;align-items:center;gap:8px;font-size:11px;padding:5px 2px;border-bottom:1px solid rgba(255,255,255,.05)}
+.rrow:last-child{border:none}
+.rrow .nm{flex:1;white-space:nowrap;overflow:hidden}
+.rrow .p{font-variant-numeric:tabular-nums;font-weight:600}
+.up{color:var(--up)}.down{color:var(--down)}
+
+/* 五档 */
+.l5{display:grid;grid-template-columns:1fr 1fr;gap:2px 14px;font-size:11px;font-variant-numeric:tabular-nums}
+.l5 .lv{display:flex;justify-content:space-between;color:#9aa4b8;padding:2px 0}
+.l5 .ask .q{color:var(--up)}.l5 .bid .q{color:var(--down)}
+.l5 .barA,.l5 .barB{position:relative}
+.l5 .barA::after{content:"";position:absolute;right:0;top:2px;bottom:2px;background:rgba(255,77,94,.14);border-radius:2px;z-index:0}
+
+/* ============================================================
+   方案 B：五套皮肤
+   ============================================================ */
+.skins{display:grid;grid-template-columns:repeat(2,1fr);gap:22px}
+.skin-card{border:1px solid #202635;border-radius:16px;overflow:hidden;background:#0e1118}
+.skin-card.wide{grid-column:1/-1}
+.skin-label{display:flex;align-items:baseline;gap:10px;padding:14px 18px 0}
+.skin-label b{font-size:15px}
+.skin-label em{font-size:11.5px;color:#8b94a7;font-style:normal}
+.skin-label .pick{margin-left:auto;font-size:10.5px;color:#6b7488}
+
+/* ---- 皮肤1：鎏金专业版（现状升级版） ---- */
+.skin-gold .mini-ws{background:radial-gradient(120% 100% at 50% 0%,#161a23,#0e1016)}
+.skin-gold .m-card{background:linear-gradient(180deg,#171b24,#12151d);border:1px solid #262d3d}
+.skin-gold .m-card.glow{border-color:rgba(232,200,120,.55);box-shadow:0 0 0 1px rgba(232,200,120,.25),0 14px 34px rgba(0,0,0,.5)}
+.skin-gold .m-head{color:#cfd6e4;border-bottom:1px solid rgba(255,255,255,.04)}
+.skin-gold .bar{background:linear-gradient(180deg,#f3dd9e,#b98f3e)}
+.skin-gold .m-head .t{color:#e9e2cd}
+
+/* ---- 皮肤2：赛博霓虹 ---- */
+.skin-neon .mini-ws{background:#070a14;position:relative}
+.skin-neon .mini-ws::before{content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(0deg,rgba(45,225,255,.05) 0 1px,transparent 1px 3px);pointer-events:none}
+.skin-neon .m-card{background:rgba(10,16,30,.72);border:1px solid rgba(45,225,255,.35);
+  box-shadow:0 0 0 0 rgba(45,225,255,0),inset 0 0 24px rgba(45,225,255,.06);backdrop-filter:blur(4px)}
+.skin-neon .m-card.glow{border-color:#2de1ff;box-shadow:0 0 18px rgba(45,225,255,.55),inset 0 0 30px rgba(45,225,255,.12)}
+.skin-neon .m-head .t{color:#9ff3ff;text-shadow:0 0 8px rgba(45,225,255,.8)}
+.skin-neon .bar{background:#2de1ff;box-shadow:0 0 10px #2de1ff}
+.skin-neon .corner{position:absolute;width:10px;height:10px;border:1px solid #2de1ff}
+.skin-neon .corner.tl{left:4px;top:4px;border-right:none;border-bottom:none}
+.skin-neon .corner.br{right:4px;bottom:4px;border-left:none;border-top:none}
+.scanline{position:absolute;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,#2de1ff,transparent);
+  box-shadow:0 0 12px #2de1ff;animation:scan 3.2s linear infinite;z-index:5}
+@keyframes scan{0%{top:0}100%{top:100%}}
+.skin-neon .rrow{border-color:rgba(45,225,255,.08)}
+
+/* ---- 皮肤3：毛玻璃极简 ---- */
+.skin-glass .mini-ws{background:
+  radial-gradient(80% 60% at 20% 10%,#3a4a7a 0%,transparent 60%),
+  radial-gradient(70% 60% at 85% 30%,#6a3f6b 0%,transparent 55%),
+  radial-gradient(90% 70% at 50% 100%,#274a5c 0%,transparent 60%),#1a2030}
+.skin-glass .m-card{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);
+  backdrop-filter:blur(18px) saturate(1.3);box-shadow:0 8px 28px rgba(0,0,0,.25)}
+.skin-glass .m-card.glow{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.4)}
+.skin-glass .m-head .t{color:#f2f5fa;font-weight:600}
+.skin-glass .bar{background:rgba(255,255,255,.85)}
+.skin-glass .rrow{border-color:rgba(255,255,255,.09)}
+
+/* ---- 皮肤4：彭博终端 ---- */
+.skin-bloom .mini-ws{background:#000;grid-auto-rows:1fr}
+.skin-bloom .m-card{background:#0a0a0a;border:1px solid #3a3a30}
+.skin-bloom .m-card.glow{border-color:#ff9f1c;background:#141006}
+.skin-bloom .m-head{border-bottom:1px solid #2c2c22}
+.skin-bloom .m-head .t{font-family:Consolas,monospace;font-size:10.5px;color:#ffb02e;letter-spacing:1px}
+.skin-bloom .bar{background:#ff9f1c}
+.skin-bloom .m-body,.skin-bloom .rrow,.skin-bloom .l5{font-family:Consolas,monospace}
+.skin-bloom .rrow{border-color:#1e1e16;font-size:10.5px;padding:3px 2px}
+.skin-bloom .quote .px{font-family:Consolas,monospace;font-size:21px}
+
+/* ---- 皮肤5：HUD 全息 ---- */
+.skin-hud .mini-ws{background:radial-gradient(100% 80% at 50% 0%,#0d1f1c,#08110f)}
+.skin-hud .m-card{background:rgba(16,38,33,.55);border:1px solid rgba(64,255,196,.28);clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px))}
+.skin-hud .m-card.glow{border-color:#40ffc4;box-shadow:0 0 22px rgba(64,255,196,.35),inset 0 0 26px rgba(64,255,196,.08)}
+.skin-hud .m-head .t{color:#aaffdd;font-family:Consolas,monospace;letter-spacing:1.5px;font-size:10.5px}
+.skin-hud .bar{background:#40ffc4;box-shadow:0 0 8px #40ffc4}
+.skin-hud .rrow{border-color:rgba(64,255,196,.08)}
+
+/* ============================================================
+   方案 A：动效态展示
+   ============================================================ */
+.fx-row{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.fx{height:230px;border:1px solid #202635;border-radius:14px;background:linear-gradient(180deg,#141823,#0f121a);
+  display:flex;flex-direction:column;padding:14px;position:relative;overflow:hidden}
+.fx .fx-k{font-size:12px;color:var(--gold);font-weight:700;margin-bottom:2px}
+.fx .fx-d{font-size:10.5px;color:#7d879a;margin-bottom:10px;line-height:1.5}
+.fx-stage{flex:1;display:flex;align-items:center;justify-content:center;border-radius:10px;background:rgba(0,0,0,.25);position:relative;overflow:hidden}
+
+/* hover 抬升 */
+.fx-lift{width:120px;height:74px;border-radius:10px;background:linear-gradient(180deg,#1d2433,#151a26);
+  border:1px solid #333d52;display:flex;align-items:center;justify-content:center;font-size:11px;color:#aeb8cc;
+  animation:lift 2.6s ease-in-out infinite}
+@keyframes lift{0%,100%{transform:translateY(6px);box-shadow:0 4px 10px rgba(0,0,0,.4);border-color:#333d52}
+  50%{transform:translateY(-6px);box-shadow:0 22px 40px rgba(232,200,120,.22);border-color:rgba(232,200,120,.7)}}
+
+/* 数字翻滚 */
+.odo{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;animation:odo 2s infinite}
+@keyframes odo{0%{color:var(--up);transform:translateY(6px);opacity:.2}15%{transform:translateY(0);opacity:1}
+  85%{color:var(--up);text-shadow:0 0 18px rgba(255,77,94,.8)}100%{color:var(--down);transform:translateY(-6px);opacity:.2}}
+
+/* shimmer 加载 */
+.shimmer{width:80%;height:78px;border-radius:8px;background:linear-gradient(100deg,#181d29 30%,#232b3d 50%,#181d29 70%);
+  background-size:220% 100%;animation:shimmer 1.5s infinite}
+@keyframes shimmer{0%{background-position:120% 0}100%{background-position:-80% 0}}
+
+/* 弹簧磁吸 */
+.spring-demo{position:relative;width:150px;height:80px}
+.snap-line{position:absolute;left:50%;top:0;bottom:0;width:1px;background:#2de1ff;box-shadow:0 0 8px #2de1ff}
+.snap-card{position:absolute;left:8px;top:14px;width:52px;height:52px;border-radius:9px;
+  background:linear-gradient(180deg,#232c40,#181f2e);border:1px solid #3b4660;
+  animation:snap 2.4s cubic-bezier(.34,1.56,.64,1) infinite}
+@keyframes snap{0%,100%{transform:translateX(0) rotate(0)}60%{transform:translateX(86px)}
+  72%{transform:translateX(78px)}84%{transform:translateX(86px)}94%{transform:translateX(84px)}}
+
+/* ============================================================
+   方案 C：微件编排器
+   ============================================================ */
+.editor{border:1px solid #202635;border-radius:16px;overflow:hidden;background:#0d1017;display:grid;grid-template-columns:200px 1fr}
+.widget-tray{background:#10141d;border-right:1px solid #1e2432;padding:16px}
+.widget-tray h4{font-size:12px;color:#8b94a7;letter-spacing:1px;margin-bottom:12px}
+.wtray-item{display:flex;align-items:center;gap:9px;padding:9px 10px;border:1px dashed #2e374a;border-radius:9px;margin-bottom:8px;font-size:11.5px;color:#c2cadb;cursor:grab}
+.wtray-item i{width:20px;height:20px;border-radius:5px;background:#1c2738;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:11px;color:var(--gold)}
+.editor-canvas{padding:20px;background:
+  linear-gradient(#1a2231 1px,transparent 1px),
+  linear-gradient(90deg,#1a2231 1px,transparent 1px);
+  background-size:24px 24px;background-position:-1px -1px}
+.ec-toolbar{display:flex;gap:8px;margin-bottom:14px}
+.ec-toolbar .tb{font-size:11px;padding:6px 12px;border:1px solid #2c3547;border-radius:7px;color:#aeb8cc;background:#12161f}
+.ec-toolbar .tb.on{border-color:var(--gold);color:var(--gold)}
+.big-card{background:linear-gradient(180deg,#141926,#10141d);border:1px solid #2b3446;border-radius:12px;padding:14px;
+  display:grid;grid-template-columns:repeat(12,1fr);grid-auto-rows:64px;gap:10px}
+.widget{border:1px solid #35405a;border-radius:9px;background:rgba(22,29,44,.85);overflow:hidden;position:relative;display:flex;flex-direction:column}
+.widget.sel{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold),0 0 18px rgba(232,200,120,.25)}
+.widget .w-title{font-size:9.5px;color:#74809a;padding:5px 8px;display:flex;gap:5px;align-items:center;background:rgba(255,255,255,.02)}
+.widget .w-title i{width:6px;height:6px;border-radius:50%;background:var(--gold);font-style:normal}
+.widget .w-body{flex:1;padding:2px 8px 6px;min-height:0}
+.widget.add{border:1px dashed #3a4660;background:transparent;align-items:center;justify-content:center;color:#5c6880;font-size:20px}
+.w-px{font-size:26px;font-weight:800;line-height:1.2}
+.w-mini{font-size:9px;color:#74809a}
+.data-bind{position:absolute;right:6px;top:5px;font-size:8.5px;color:#2de1ff;border:1px solid rgba(45,225,255,.4);padding:1px 5px;border-radius:4px;opacity:.85}
+
+/* ============================================================
+   方案 D：卡片形态
+   ============================================================ */
+.forms{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.form-box{height:260px;border:1px solid #202635;border-radius:14px;background:linear-gradient(180deg,#12161f,#0d1017);padding:16px;display:flex;flex-direction:column}
+.form-box .f-k{font-size:12.5px;font-weight:700;color:#dfe5ef}
+.form-box .f-d{font-size:10.5px;color:#7d879a;margin:3px 0 12px}
+.form-stage{flex:1;border-radius:10px;background:rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;padding:12px}
+
+/* 紧凑条 */
+.f-bar{width:100%;height:40px;border-radius:8px;background:linear-gradient(90deg,#171d2b,#12161f);border:1px solid #2b3446;
+  display:flex;align-items:center;gap:10px;padding:0 12px;font-size:11px}
+.f-bar .nm{font-weight:600}.f-bar .px{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums}
+.f-bar .spark{width:60px;height:20px}
+
+/* 标准块 */
+.f-block{width:100%;height:100%;border-radius:10px;background:linear-gradient(180deg,#171d2b,#12161f);border:1px solid #2b3446;padding:10px}
+.f-block .ft{font-size:11px;font-weight:600;margin-bottom:8px;display:flex;gap:6px;align-items:center}
+.f-block .ft::before{content:"";width:3px;height:11px;background:var(--gold);border-radius:2px}
+
+/* 沉浸大屏 */
+.f-focus{width:100%;height:100%;border-radius:10px;background:linear-gradient(180deg,#1a2233,#11151f);
+  border:1px solid rgba(232,200,120,.6);box-shadow:0 0 0 1px rgba(232,200,120,.3),0 0 40px rgba(232,200,120,.12);padding:12px;position:relative}
+.f-focus .ft{font-size:13px;font-weight:700;color:#f0e2b8;margin-bottom:8px}
+.f-focus::after{content:"";position:absolute;inset:0;border-radius:10px;pointer-events:none;
+  background:radial-gradient(60% 40% at 50% 0%,rgba(232,200,120,.1),transparent)}
+
+/* 画中岛 */
+.f-pip-wrap{position:relative;width:100%;height:100%;display:flex;align-items:flex-end;justify-content:flex-end}
+.f-pip{width:150px;border-radius:14px;background:linear-gradient(180deg,#1c2434,#141925);
+  border:1px solid rgba(45,225,255,.5);box-shadow:0 14px 36px rgba(0,0,0,.6),0 0 22px rgba(45,225,255,.18);overflow:hidden}
+.f-pip .ph{display:flex;align-items:center;gap:5px;padding:6px 9px;font-size:9.5px;color:#9ff3ff;background:rgba(45,225,255,.07)}
+.f-pip .ph .pin{margin-left:auto;color:#2de1ff}
+.f-pip .pb{padding:8px 10px}
+.f-pip .pb .p{font-size:17px;font-weight:800}
+.pip-ring{position:absolute;right:150px;bottom:14px;width:8px;height:8px;border-radius:50%;background:#2de1ff;
+  box-shadow:0 0 0 0 rgba(45,225,255,.6);animation:ring 2s infinite}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(45,225,255,.5)}100%{box-shadow:0 0 0 14px rgba(45,225,255,0)}}
+
+.footer-note{margin-top:48px;padding:18px 22px;border:1px dashed #2c3547;border-radius:12px;color:#8b94a7;font-size:12px;line-height:1.8}
+.footer-note b{color:var(--gold)}
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>TickGold <b>卡片看盘终端</b> · 高保真方案效果图</h1>
+  <p>同一套行情内容，下面分别演示：① 五套皮肤风格　② 动效引擎的四种关键状态　③ 微件自由编排　④ 卡片四种形态。<br/>
+  所有光效 / 扫描 / 数字闪烁均为真实 CSS 动效，可直接在浏览器中观看，非静态贴图。</p>
+  <div class="legend">
+    <span>方案 B 皮肤包</span><span>方案 A 动效引擎</span><span>方案 C 微件编排</span><span>方案 D 卡片形态</span>
+  </div>
+</div>
+
+<!-- ================= 方案 B：五套皮肤 ================= -->
+<div class="section">
+  <span class="sec-tag">方案 B</span>
+  <div class="sec-title">皮肤包系统 · 同一布局五种气质</div>
+  <div class="sec-desc">皮肤 = 颜色/描边/光效/字体/质感的 Token 包，支持全局、场景、单卡三级作用域，可导出 JSON 分享。以下每张工作台展示相同的四张卡（K线 · 五档 · 自选 · 雷达）。</div>
+
+  <div class="skins">
+
+    <!-- 鎏金专业 -->
+    <div class="skin-card skin-gold">
+      <div class="skin-label"><b>鎏金专业版</b><em>沉稳 · 高级 · 现有风格升级</em><span class="pick">金色辉光 + 渐变左条</span></div>
+      <div class="mini-ws">
+        <div class="m-card glow" style="grid-column:1/9;grid-row:1/3">
+          <div class="m-head"><span class="bar"></span><span class="t">K线图 · 贵州茅台</span><span class="tools"><i></i><i></i></span></div>
+          <div class="m-body"><div class="mkline">
+            <svg viewBox="0 0 300 120" preserveAspectRatio="none">
+              <polyline fill="none" stroke="#e8c878" stroke-width="1.6" points="0,80 30,70 60,75 90,55 120,60 150,40 180,48 210,30 240,42 270,25 300,35"/>
+              <polyline fill="none" stroke="#e8c87855" stroke-width="1" points="0,95 30,90 60,92 90,80 120,82 150,70 180,72 210,60 240,66 270,55 300,60"/>
+            </svg>
+          </div></div>
+        </div>
+        <div class="m-card" style="grid-column:9/13;grid-row:1/2">
+          <div class="m-head"><span class="bar"></span><span class="t">五档盘口</span></div>
+          <div class="m-body"><div class="l5">
+            <div class="lv ask"><span>卖⑤</span><span class="q">1688.0</span></div><div class="lv ask"><span>卖④</span><span class="q">1687.5</span></div>
+            <div class="lv ask"><span>卖③</span><span class="q">1687.0</span></div><div class="lv ask"><span>卖②</span><span class="q">1686.5</span></div>
+            <div class="lv ask"><span>卖①</span><span class="q">1686.0</span></div><div class="lv bid"><span>买①</span><span class="q">1685.0</span></div>
+            <div class="lv bid"><span>买②</span><span class="q">1684.5</span></div><div class="lv bid"><span>买③</span><span class="q">1684.0</span></div>
+          </div></div>
+        </div>
+        <div class="m-card" style="grid-column:9/13;grid-row:2/3">
+          <div class="m-head"><span class="bar"></span><span class="t">自选股</span></div>
+          <div class="m-body"><div class="rows">
+            <div class="rrow"><span class="nm">贵州茅台</span><span class="p up">+1.82%</span></div>
+            <div class="rrow"><span class="nm">宁德时代</span><span class="p up">+3.47%</span></div>
+            <div class="rrow"><span class="nm">东方财富</span><span class="p down">-0.64%</span></div>
+            <div class="rrow"><span class="nm">中际旭创</span><span class="p up">+5.21%</span></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 赛博霓虹 -->
+    <div class="skin-card skin-neon">
+      <div class="skin-label"><b>赛博霓虹</b><em>炫酷 · 带电 · 夜盘战斗感</em><span class="pick">扫描线 + 霓虹辉光</span></div>
+      <div class="mini-ws">
+        <div class="scanline"></div>
+        <div class="m-card glow" style="grid-column:1/9;grid-row:1/3"><span class="corner tl"></span><span class="corner br"></span>
+          <div class="m-head"><span class="bar"></span><span class="t">K线图 · 贵州茅台</span><span class="tools"><i></i><i></i></span></div>
+          <div class="m-body"><div class="mkline">
+            <svg viewBox="0 0 300 120" preserveAspectRatio="none">
+              <polyline fill="none" stroke="#2de1ff" stroke-width="1.6" points="0,80 30,70 60,75 90,55 120,60 150,40 180,48 210,30 240,42 270,25 300,35" style="filter:drop-shadow(0 0 4px #2de1ff)"/>
+            </svg>
+          </div></div>
+        </div>
+        <div class="m-card" style="grid-column:9/13;grid-row:1/2"><span class="corner tl"></span>
+          <div class="m-head"><span class="bar"></span><span class="t">五档盘口</span></div>
+          <div class="m-body"><div class="l5">
+            <div class="lv ask"><span>卖⑤</span><span class="q">1688.0</span></div><div class="lv ask"><span>卖④</span><span class="q">1687.5</span></div>
+            <div class="lv ask"><span>卖③</span><span class="q">1687.0</span></div><div class="lv ask"><span>卖②</span><span class="q">1686.5</span></div>
+            <div class="lv ask"><span>卖①</span><span class="q">1686.0</span></div><div class="lv bid"><span>买①</span><span class="q">1685.0</span></div>
+          </div></div>
+        </div>
+        <div class="m-card" style="grid-column:9/13;grid-row:2/3"><span class="corner tl"></span><span class="corner br"></span>
+          <div class="m-head"><span class="bar"></span><span class="t">自选股</span></div>
+          <div class="m-body"><div class="rows">
+            <div class="rrow"><span class="nm">贵州茅台</span><span class="p up">+1.82%</span></div>
+            <div class="rrow"><span class="nm">宁德时代</span><span class="p up">+3.47%</span></div>
+            <div class="rrow"><span class="nm">东方财富</span><span class="p down">-0.64%</span></div>
+            <div class="rrow"><span class="nm">中际旭创</span><span class="p up">+5.21%</span></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 毛玻璃 -->
+    <div class="skin-card skin-glass">
+      <div class="skin-label"><b>毛玻璃极简</b><em>通透 · 轻盈 · 留白之美</em><span class="pick">高斯模糊 + 彩色光晕</span></div>
+      <div class="mini-ws">
+        <div class="m-card glow" style="grid-column:1/9;grid-row:1/3">
+          <div class="m-head"><span class="bar"></span><span class="t">K线图 · 贵州茅台</span></div>
+          <div class="m-body"><div class="mkline">
+            <svg viewBox="0 0 300 120" preserveAspectRatio="none">
+              <polyline fill="none" stroke="#f2f5fa" stroke-width="1.8" points="0,80 30,70 60,75 90,55 120,60 150,40 180,48 210,30 240,42 270,25 300,35"/>
+            </svg>
+          </div></div>
+        </div>
+        <div class="m-card" style="grid-column:9/13;grid-row:1/2">
+          <div class="m-head"><span class="bar"></span><span class="t">五档盘口</span></div>
+          <div class="m-body"><div class="l5">
+            <div class="lv ask"><span>卖⑤</span><span class="q">1688</span></div><div class="lv ask"><span>卖①</span><span class="q">1686</span></div>
+            <div class="lv bid"><span>买①</span><span class="q">1685</span></div><div class="lv bid"><span>买③</span><span class="q">1684</span></div>
+          </div></div>
+        </div>
+        <div class="m-card" style="grid-column:9/13;grid-row:2/3">
+          <div class="m-head"><span class="bar"></span><span class="t">自选股</span></div>
+          <div class="m-body"><div class="rows">
+            <div class="rrow"><span class="nm">贵州茅台</span><span class="p up">+1.82%</span></div>
+            <div class="rrow"><span class="nm">宁德时代</span><span class="p up">+3.47%</span></div>
+            <div class="rrow"><span class="nm">东方财富</span><span class="p down">-0.64%</span></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 彭博 -->
+    <div class="skin-card skin-bloom">
+      <div class="skin-label"><b>彭博终端</b><em>高密度 · 等宽字 · 专业交易员</em><span class="pick">琥珀单色 + 信息密度↑</span></div>
+      <div class="mini-ws">
+        <div class="m-card glow" style="grid-column:1/9;grid-row:1/3">
+          <div class="m-head"><span class="bar"></span><span class="t">600519 CH KWEICHOW MOUTAI</span></div>
+          <div class="m-body"><div class="mkline">
+            <svg viewBox="0 0 300 120" preserveAspectRatio="none">
+              <polyline fill="none" stroke="#ffb02e" stroke-width="1.4" points="0,80 30,70 60,75 90,55 120,60 150,40 180,48 210,30 240,42 270,25 300,35"/>
+            </svg>
+          </div></div>
+        </div>
+        <div class="m-card" style="grid-column:9/13;grid-row:1/2">
+          <div class="m-head"><span class="bar"></span><span class="t">ASKS / BIDS</span></div>
+          <div class="m-body"><div class="l5">
+            <div class="lv ask"><span>S5</span><span class="q">1688.0</span></div><div class="lv ask"><span>S4</span><span class="q">1687.5</span></div>
+            <div class="lv ask"><span>S3</span><span class="q">1687.0</span></div><div class="lv ask"><span>S2</span><span class="q">1686.5</span></div>
+            <div class="lv ask"><span>S1</span><span class="q">1686.0</span></div><div class="lv bid"><span>B1</span><span class="q">1685.0</span></div>
+          </div></div>
+        </div>
+        <div class="m-card" style="grid-column:9/13;grid-row:2/3">
+          <div class="m-head"><span class="bar"></span><span class="t">WATCHLIST</span></div>
+          <div class="m-body"><div class="rows">
+            <div class="rrow"><span class="nm">600519 茅台</span><span class="p up">+1.82%</span></div>
+            <div class="rrow"><span class="nm">300750 宁德</span><span class="p up">+3.47%</span></div>
+            <div class="rrow"><span class="nm">300059 东财</span><span class="p down">-0.64%</span></div>
+            <div class="rrow"><span class="nm">300308 旭创</span><span class="p up">+5.21%</span></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HUD 全息（宽幅独占） -->
+    <div class="skin-card wide skin-hud">
+      <div class="skin-label"><b>HUD 全息</b><em>未来感 · 切角框 · 战场指挥屏</em><span class="pick">切角卡片 + 青绿全息光</span></div>
+      <div class="mini-ws" style="height:300px">
+        <div class="m-card glow" style="grid-column:1/8;grid-row:1/3">
+          <div class="m-head"><span class="bar"></span><span class="t">CHART // 600519</span></div>
+          <div class="m-body"><div class="mkline">
+            <svg viewBox="0 0 300 120" preserveAspectRatio="none">
+              <polyline fill="none" stroke="#40ffc4" stroke-width="1.6" points="0,80 30,70 60,75 90,55 120,60 150,40 180,48 210,30 240,42 270,25 300,35" style="filter:drop-shadow(0 0 5px #40ffc4)"/>
+            </svg>
+          </div></div>
+        </div>
+        <div class="m-card" style="grid-column:8/13;grid-row:1/2">
+          <div class="m-head"><span class="bar"></span><span class="t">ORDER L5</span></div>
+          <div class="m-body"><div class="l5">
+            <div class="lv ask"><span>A5</span><span class="q">1688</span></div><div class="lv ask"><span>A1</span><span class="q">1686</span></div>
+            <div class="lv bid"><span>B1</span><span class="q">1685</span></div><div class="lv bid"><span>B3</span><span class="q">1684</span></div>
+          </div></div>
+        </div>
+        <div class="m-card" style="grid-column:8/13;grid-row:2/3">
+          <div class="m-head"><span class="bar"></span><span class="t">WATCH // 04</span></div>
+          <div class="m-body"><div class="rows">
+            <div class="rrow"><span class="nm">贵州茅台</span><span class="p up">+1.82%</span></div>
+            <div class="rrow"><span class="nm">宁德时代</span><span class="p up">+3.47%</span></div>
+            <div class="rrow"><span class="nm">东方财富</span><span class="p down">-0.64%</span></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ================= 方案 A：动效 ================= -->
+<div class="section">
+  <span class="sec-tag">方案 A</span>
+  <div class="sec-title">动效引擎 · 四个关键状态</div>
+  <div class="sec-desc">弹簧物理取代手算步进：拖拽有惯性与回弹、行情数字翻滚带辉光、加载有微光、磁吸对齐有 Q 弹吸附。提供"省电模式"一键关闭重型光效。</div>
+  <div class="fx-row">
+    <div class="fx">
+      <div class="fx-k">悬停抬升</div><div class="fx-d">鼠标靠近卡片，浮起 + 环境光投影</div>
+      <div class="fx-stage"><div class="fx-lift">CARD</div></div>
+    </div>
+    <div class="fx">
+      <div class="fx-k">数字翻滚</div><div class="fx-d">价格 tick 时滚动切换，红涨绿跌辉光</div>
+      <div class="fx-stage"><span class="odo">1686.00</span></div>
+    </div>
+    <div class="fx">
+      <div class="fx-k">微光加载</div><div class="fx-d">数据未到达时骨架屏流光，不再空白</div>
+      <div class="fx-stage"><div class="shimmer"></div></div>
+    </div>
+    <div class="fx">
+      <div class="fx-k">弹簧磁吸</div><div class="fx-d">靠近对齐线，卡片 Q 弹吸附</div>
+      <div class="fx-stage"><div class="spring-demo"><div class="snap-line"></div><div class="snap-card"></div></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 方案 C：微件编排 ================= -->
+<div class="section">
+  <span class="sec-tag">方案 C</span>
+  <div class="sec-title">微件编排器 · 卡片内容自己拼（终极自定义）</div>
+  <div class="sec-desc">卡片 = 容器 + 微件网格。左侧拖入微件，卡内自由布局；每个微件绑定数据源（个股 / 板块 / 全市场），一张卡内可同屏多标的。现有 30 张卡将重配为出厂模板，老布局自动迁移。</div>
+  <div class="editor">
+    <div class="widget-tray">
+      <h4>微件库（拖入卡片）</h4>
+      <div class="wtray-item"><i>¥</i>行情报价块</div>
+      <div class="wtray-item"><i>📈</i>分时 / K线</div>
+      <div class="wtray-item"><i>五</i>五档盘口</div>
+      <div class="wtray-item"><i>资</i>资金流向条</div>
+      <div class="wtray-item"><i>雷</i>雷达标记</div>
+      <div class="wtray-item"><i>讯</i>资讯快讯</div>
+      <div class="wtray-item"><i>表</i>行情列表</div>
+      <div class="wtray-item"><i>T</i>文字 / 分隔线</div>
+    </div>
+    <div class="editor-canvas">
+      <div class="ec-toolbar">
+        <span class="tb on">编辑布局</span>
+        <span class="tb">绑定数据：贵州茅台 600519 ▾</span>
+        <span class="tb">存为我的卡片模板</span>
+        <span class="tb">预览</span>
+      </div>
+      <div class="big-card">
+        <div class="widget sel" style="grid-column:1/4;grid-row:1/2">
+          <div class="w-title"><i></i>行情报价<span class="data-bind">600519</span></div>
+          <div class="w-body"><div class="w-px up flash-up">1686.00</div><div class="w-mini up">+30.20  +1.82%</div></div>
+        </div>
+        <div class="widget" style="grid-column:4/9;grid-row:1/3">
+          <div class="w-title"><i></i>分时走势<span class="data-bind">600519</span></div>
+          <div class="w-body"><div class="mkline">
+            <svg viewBox="0 0 300 120" preserveAspectRatio="none">
+              <polyline fill="none" stroke="#e8c878" stroke-width="1.5" points="0,90 30,85 60,88 90,70 120,75 150,55 180,60 210,45 240,52 270,38 300,45"/>
+            </svg>
+          </div></div>
+        </div>
+        <div class="widget" style="grid-column:9/13;grid-row:1/3">
+          <div class="w-title"><i></i>五档盘口<span class="data-bind">跟随主标的</span></div>
+          <div class="w-body"><div class="l5" style="font-size:10px">
+            <div class="lv ask"><span>卖⑤</span><span class="q">1688</span></div><div class="lv ask"><span>卖④</span><span class="q">1687</span></div>
+            <div class="lv ask"><span>卖③</span><span class="q">1687</span></div><div class="lv ask"><span>卖②</span><span class="q">1686</span></div>
+            <div class="lv ask"><span>卖①</span><span class="q">1686</span></div><div class="lv bid"><span>买①</span><span class="q">1685</span></div>
+            <div class="lv bid"><span>买②</span><span class="q">1684</span></div><div class="lv bid"><span>买③</span><span class="q">1684</span></div>
+            <div class="lv bid"><span>买④</span><span class="q">1683</span></div><div class="lv bid"><span>买⑤</span><span class="q">1683</span></div>
+          </div></div>
+        </div>
+        <div class="widget" style="grid-column:1/4;grid-row:2/3">
+          <div class="w-title"><i></i>主力资金<span class="data-bind">600519</span></div>
+          <div class="w-body" style="display:flex;flex-direction:column;justify-content:center;gap:6px">
+            <div style="font-size:15px;font-weight:800" class="up">+2.41亿</div>
+            <div style="height:5px;border-radius:3px;background:#262d3d;overflow:hidden"><div style="width:68%;height:100%;background:linear-gradient(90deg,#ff4d5e,#ff9f43)"></div></div>
+            <div class="w-mini">净流入占比 6.8%</div>
+          </div>
+        </div>
+        <div class="widget add" style="grid-column:1/4;grid-row:3/4">+</div>
+        <div class="widget add" style="grid-column:4/9;grid-row:3/4">+</div>
+        <div class="widget add" style="grid-column:9/13;grid-row:3/4">+</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 方案 D：形态 ================= -->
+<div class="section">
+  <span class="sec-tag">方案 D</span>
+  <div class="sec-title">卡片四种形态 · 一块内容，随场景变形</div>
+  <div class="sec-desc">同一张卡在不同空间需求下一键切换：省地方的紧凑条、常规标准块、聚焦沉浸大屏、钉在最前的悬浮画中岛。配合全键盘驾驶（数字键跳卡、Tab 联动）。</div>
+  <div class="forms">
+    <div class="form-box">
+      <div class="f-k">紧凑条</div><div class="f-d">高度 40px，多行堆叠做行情条</div>
+      <div class="form-stage" style="align-items:center">
+        <div class="f-bar"><span class="nm">贵州茅台</span>
+          <svg class="spark" viewBox="0 0 60 20"><polyline fill="none" stroke="#ff4d5e" stroke-width="1.2" points="0,15 10,12 20,14 30,8 40,10 50,5 60,7"/></svg>
+          <span class="px up">1686.0</span><span class="up" style="font-size:10px">+1.82%</span>
+        </div>
+      </div>
+    </div>
+    <div class="form-box">
+      <div class="f-k">标准块</div><div class="f-d">默认形态，Bento 网格中排布</div>
+      <div class="form-stage">
+        <div class="f-block">
+          <div class="ft">K线图</div>
+          <svg viewBox="0 0 200 90" style="width:100%;height:calc(100% - 24px)"><polyline fill="none" stroke="#e8c878" stroke-width="1.5" points="0,70 25,60 50,65 75,45 100,52 125,35 150,42 175,25 200,32"/></svg>
+        </div>
+      </div>
+    </div>
+    <div class="form-box">
+      <div class="f-k">沉浸大屏</div><div class="f-d">聚焦模式，金色描边铺满视野</div>
+      <div class="form-stage">
+        <div class="f-focus">
+          <div class="ft">贵州茅台 600519 · 1686.00 <span class="up" style="font-size:11px">+1.82%</span></div>
+          <svg viewBox="0 0 200 80" style="width:100%;height:calc(100% - 30px)"><polyline fill="none" stroke="#f0d89a" stroke-width="1.8" points="0,65 25,55 50,60 75,40 100,48 125,30 150,38 175,20 200,28"/></svg>
+        </div>
+      </div>
+    </div>
+    <div class="form-box">
+      <div class="f-k">悬浮画中岛</div><div class="f-d">迷你报价钉在最前，带在线指示</div>
+      <div class="form-stage">
+        <div class="f-pip-wrap">
+          <div class="pip-ring"></div>
+          <div class="f-pip">
+            <div class="ph">贵州茅台<span class="pin">📌置顶</span></div>
+            <div class="pb"><div class="p up flash-up">1686.00</div><div class="w-mini up">+1.82% · 实时</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer-note">
+  <b>建议路线：</b>A（动效引擎）→ B（皮肤包，先落地你最中意的 1~2 套）→ C（微件编排旗舰），D 的形态切换按需穿插。<br/>
+  请在五套皮肤与四个方向中选出你喜欢的组合，我据此输出详细实施计划并开始编码。
+</div>
+
+</body>
+</html>
