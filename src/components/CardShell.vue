@@ -7,7 +7,7 @@
     @contextmenu.prevent="onCtx"
   >
     <div class="card-head" @pointerdown="onHeadDown" @dblclick="onDbl">
-      <span class="card-bar" :style="{ background: effectiveColor }"></span>
+      <span class="card-bar"></span>
       <svg class="head-ic grip" viewBox="0 0 24 24">
         <circle cx="9" cy="6" r="1.7" /><circle cx="15" cy="6" r="1.7" />
         <circle cx="9" cy="12" r="1.7" /><circle cx="15" cy="12" r="1.7" />
@@ -32,6 +32,19 @@
         <button v-else type="button" class="head-btn" title="还原布局" @click.stop="$emit('restore')">
           <svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" /></svg>
         </button>
+        <button type="button" class="head-btn" title="编排卡内微件" @click.stop="editing = !editing">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 5h8v6H3V5zm10 8h8v6h-8v-6zM3 17h8v4H3v-4zM13 5h8v4h-8V5z"/></svg>
+        </button>
+        <button
+          v-if="popoutable"
+          type="button"
+          class="head-btn"
+          :class="{ 'pop-on': popoutOn }"
+          :title="popoutOn ? '画中岛已打开（点击聚焦）' : '弹出为画中岛'"
+          @click.stop="$emit('popout')"
+        >
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+        </button>
         <button type="button" class="head-btn" title="卡片设置" @click.stop="cfgOpen = !cfgOpen">
           <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0,.59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z" /></svg>
         </button>
@@ -41,8 +54,9 @@
       </span>
     </div>
 
-    <div class="card-body" :class="{ collapsed }">
-      <slot />
+    <div class="card-body" :class="{ collapsed: collapsed && !editing }">
+      <slot v-if="!editing" />
+      <WidgetEditor v-else :id="cardId" @close="editing = false" />
     </div>
 
     <!-- 单卡设置弹层（外观 / 行为 两页签） -->
@@ -57,6 +71,7 @@
       @lock="emit('lock')"
       @tag="(t) => emit('tag', t)"
       @reset="emit('resetlook')"
+      @resetwidgets="emit('resetwidgets')"
     />
 
     <!-- 右下角 resize 手柄 -->
@@ -75,6 +90,8 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import CardSettingsPopover from "./CardSettingsPopover.vue";
+import WidgetEditor from "./widgets/WidgetEditor.vue";
+import type { CardId } from "../lib/cards";
 
 type CardLookShape = {
   color: string;
@@ -91,6 +108,7 @@ type CardLookShape = {
 
 const props = withDefaults(
   defineProps<{
+    cardId: CardId;
     title: string;
     accent?: string;
     dragging?: boolean;
@@ -106,6 +124,8 @@ const props = withDefaults(
     lookVars?: Record<string, string>;
     look?: CardLookShape;
     cfgOpenSignal?: boolean;
+    popoutable?: boolean;
+    popoutOn?: boolean;
   }>(),
   {
     accent: "#e8c878",
@@ -121,6 +141,8 @@ const props = withDefaults(
     locked: false,
     lookVars: () => ({}),
     cfgOpenSignal: false,
+    popoutable: false,
+    popoutOn: false,
     look: () => ({
       color: "#e8c878", gradientTo: "", gradAngle: 135, opacity: 1, radius: 10,
       borderWidth: 1, headStyle: 1, pinned: false, locked: false, tag: "",
@@ -144,12 +166,15 @@ const emit = defineEmits<{
   (e: "lock"): void;
   (e: "tag", t: string): void;
   (e: "resetlook"): void;
+  (e: "resetwidgets"): void;
+  (e: "popout"): void;
   (e: "menu", ev: { x: number; y: number }): void;
   (e: "cfg-consumed"): void;
 }>();
 
 const rootEl = ref<HTMLElement | null>(null);
 const cfgOpen = ref(false);
+const editing = ref(false);
 const resizing = ref(false);
 const GAP = 12;
 const effectiveColor = computed(() => props.color || props.accent);
@@ -221,20 +246,42 @@ function startResize(e: PointerEvent) {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--bg-card) calc(var(--card-opacity, 1) * 100%), transparent),
-    color-mix(in srgb, var(--bg-card2) calc(var(--card-opacity, 1) * 100%), transparent));
-  border: var(--card-border, 1px) solid var(--border);
-  border-radius: var(--card-radius, 10px);
+  /* 表面：皮肤 --card-bg/bg2 优先；顶部 1px 内高光（--inner-shine=1）*/
+  background:
+    linear-gradient(180deg, rgba(255,255,255,calc(var(--inner-shine,0) * .07)), rgba(255,255,255,0) 22%),
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--card-bg, var(--bg-card)) calc(var(--card-surface-opacity, var(--card-opacity, 1)) * 100%), transparent),
+      color-mix(in srgb, var(--card-bg2, var(--bg-card2, var(--bg-card))) calc(var(--card-surface-opacity, var(--card-opacity, 1)) * 100%), transparent));
+  border: var(--card-skin-border, var(--card-border, 1px)) solid var(--card-border-color, var(--border));
+  border-radius: var(--card-skin-radius, var(--card-radius, 10px));
   overflow: hidden;
   transition: border-color 0.18s, box-shadow 0.18s;
+  /* 常驻外发光（静态；强度 0 时无可视化）*/
+  box-shadow:
+    0 0 12px color-mix(in srgb, var(--card-glow, transparent) calc(var(--card-glow-strength, 0) * 100%), transparent);
+}
+/* 内层金色呼吸：opacity 动画（不动画 box-shadow）；无皮肤时 --card-glow 未定义→背景无效不可见 */
+.card-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% -10%,
+    color-mix(in srgb, var(--card-glow, transparent) 60%, transparent), transparent 60%);
+  opacity: 0;
+  /* 仅皮肤显式启用呼吸时挂载动画（无皮肤不耗 CPU）*/
+  animation: var(--card-breathe-name, none) var(--card-breathe-sec, 4.5s) ease-in-out infinite;
 }
 .card-shell:hover {
-  border-color: color-mix(in srgb, var(--accent-var) 45%, var(--border));
+  border-color: var(--card-hover-color, color-mix(in srgb, var(--accent-var) 45%, var(--border)));
 }
 .card-shell.focused {
-  border-color: var(--accent-var);
-  box-shadow: 0 0 0 1px var(--accent-var), 0 18px 44px rgba(0, 0, 0, 0.5);
+  border-color: var(--card-focus-glow, var(--accent-var));
+  box-shadow:
+    0 0 0 1px var(--card-focus-glow, var(--accent-var)),
+    0 0 22px color-mix(in srgb, var(--card-focus-glow, var(--accent-var)) calc(var(--card-focus-strength, 1) * 100%), transparent),
+    0 18px 44px rgba(0, 0, 0, 0.5);
 }
 .card-shell.resizing {
   border-color: var(--accent-var);
@@ -250,9 +297,14 @@ function startResize(e: PointerEvent) {
   left: 0;
   top: 8px;
   bottom: 8px;
-  width: 3px;
+  width: var(--bar-width, 3px);
   border-radius: 2px;
-  background: var(--card-grad, var(--accent-var));
+  /* 渐变左条：皮肤 --bar-from/to 优先，否则回退纯色 */
+  background: linear-gradient(180deg,
+    var(--bar-from, var(--card-grad, var(--accent-var))),
+    var(--bar-to, var(--bar-from, var(--accent-var))));
+  /* 左条辉光：仅皮肤显式 --bar-glow=1 */
+  box-shadow: 0 0 6px color-mix(in srgb, var(--bar-from, transparent) calc(var(--bar-glow, 0) * 80%), transparent);
 }
 .card-head {
   display: flex;
@@ -280,8 +332,9 @@ function startResize(e: PointerEvent) {
 }
 .card-title {
   font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text);
+  font-weight: var(--title-weight, 600);
+  color: var(--title-color, var(--text));
+  font-family: var(--card-font-family, inherit);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -6,6 +6,7 @@ import { fetchMinute, fetchKLine } from "../api/market";
 import { useQuotesStore } from "../stores/quotes";
 import { useWatchlistStore } from "../stores/watchlist";
 import type { KBar } from "../api/types";
+import AnimatedNumber from "./common/AnimatedNumber.vue";
 
 interface OrderLevel { price: number; vol: number }
 interface OrderBook {
@@ -180,9 +181,8 @@ onBeforeUnmount(() => {
       <div class="mc-h" @click="emit('select', code)">
         <span class="nm">{{ name }}</span>
         <span class="cd">{{ code }}</span>
-        <span class="q" :class="(quote?.pct ?? 0) >= 0 ? 'up' : 'down'">
-          {{ (quote?.price ?? 0).toFixed(2) }} {{ (quote?.pct ?? 0) >= 0 ? '+' : '' }}{{ (quote?.pct ?? 0).toFixed(2) }}%
-        </span>
+        <AnimatedNumber tag="span" class="q" :class="(quote?.pct ?? 0) >= 0 ? 'up' : 'down'" :value="quote?.price ?? 0" kind="price" />
+        <AnimatedNumber tag="span" class="q" :class="(quote?.pct ?? 0) >= 0 ? 'up' : 'down'" :value="quote?.pct ?? 0" kind="pct" />
       </div>
       <div class="mc-body" title="点击放大">
         <div v-show="view !== 'o'" ref="miniEl" class="mini"></div>
@@ -208,9 +208,8 @@ onBeforeUnmount(() => {
       <div class="focus-card">
         <div class="fc-h">
           <span class="nm">{{ name }}</span><span class="cd">{{ code }}</span>
-          <span class="q" :class="(quote?.pct ?? 0) >= 0 ? 'up':'down'">
-            {{ (quote?.price ?? 0).toFixed(2) }} {{ (quote?.pct ?? 0) >= 0 ? '+' : '' }}{{ (quote?.pct ?? 0).toFixed(2) }}%
-          </span>
+          <AnimatedNumber tag="span" class="q" :class="(quote?.pct ?? 0) >= 0 ? 'up':'down'" :value="quote?.price ?? 0" kind="price" />
+          <AnimatedNumber tag="span" class="q" :class="(quote?.pct ?? 0) >= 0 ? 'up':'down'" :value="quote?.pct ?? 0" kind="pct" />
           <button class="x" @click="closeFocus">×</button>
         </div>
         <div v-show="view !== 'o'" ref="bigEl" class="big"></div>

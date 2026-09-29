@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import AnimatedNumber from "./common/AnimatedNumber.vue";
 
 const props = defineProps<{ code: string | null }>();
 
@@ -62,10 +63,10 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer); });
         <span class="code">{{ ob.code }}</span>
       </div>
       <div class="bigprice" :class="cls(pct())">
-        {{ fmt(ob.price) }}
+        <AnimatedNumber :value="ob.price" kind="price" />
         <span class="chg" :class="cls(pct())">
-          {{ chg() >= 0 ? "+" : "" }}{{ fmt(chg()) }}
-          {{ pct() >= 0 ? "+" : "" }}{{ fmt(pct()) }}%
+          <AnimatedNumber :value="chg()" kind="price" :flash="false" />
+          <AnimatedNumber :value="pct()" kind="pct" />
         </span>
       </div>
     </div>

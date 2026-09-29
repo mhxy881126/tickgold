@@ -9,9 +9,7 @@ export type CardId =
   | "reviewtimeline"
   | "multigrid"
   | "heatmatrix"
-  | "bentofocus"
   | "telegraph"
-  | "breadth"
   | "chart"
   | "sectorheat"
   | "sector"
@@ -29,7 +27,6 @@ export type CardId =
   | "calendar"
   | "ipo"
   | "dist"
-  | "theme"
   | "news"
   | "calc"
   | "export"
@@ -53,9 +50,7 @@ export const CARD_META: Record<CardId, CardMeta> = {
   reviewtimeline: { title: "复盘时间线", accent: "#c9a24a", kind: "chart" },
   multigrid: { title: "多股同列", accent: "#36b8e8", kind: "chart" },
   heatmatrix: { title: "全市场热力矩阵", accent: "#ff7a45", kind: "chart" },
-  bentofocus: { title: "Bento聚焦网格", accent: "#e8c66a", kind: "chart" },
   telegraph: { title: "异动电报墙", accent: "#1dffa0", kind: "chart" },
-  breadth: { title: "市场宽度", accent: "#4ea1ff", kind: "chart" },
   chart: { title: "K线图", accent: "#2f6fed", kind: "chart" },
   sectorheat: { title: "板块热力图", accent: "#d4af37", kind: "chart" },
   sector: { title: "板块行情", accent: "#35c4a8", kind: "chart" },
@@ -73,7 +68,6 @@ export const CARD_META: Record<CardId, CardMeta> = {
   calendar: { title: "财经日历", accent: "#4ea1ff", kind: "chart" },
   ipo: { title: "新股解禁", accent: "#ff8a3d", kind: "chart" },
   dist: { title: "涨跌分布", accent: "#4ea1ff", kind: "narrow" },
-  theme: { title: "题材轮动", accent: "#d4af37", kind: "chart" },
   news: { title: "盘中快讯", accent: "#b07cff", kind: "narrow" },
   calc: { title: "投资计算器", accent: "#e8c878", kind: "chart" },
   export: { title: "数据导出", accent: "#6aa6e8", kind: "chart" },
@@ -95,6 +89,9 @@ export interface CardCustom {
   radius?: number;     // 圆角 6..18
   borderWidth?: number;// 边框宽度 0..2
   headStyle?: 1 | 2 | 3 | 4 | 5; // 标题栏样式
+  // 皮肤装饰（v0.90，未设置=跟随皮肤）
+  glow?: boolean;      // 本卡常驻辉光开关
+  barGlow?: boolean;   // 左条辉光开关
   // 行为
   pinned?: boolean;    // 置顶
   locked?: boolean;    // 锁定（禁止拖拽/resize）
@@ -111,6 +108,12 @@ export const CARD_SWATCHES = [
 export interface SnapshotCard {
   id: CardId;
   zone: Zone;
+  /** 快照版本：1=含微件；缺省=v0 老布局，读取时自动迁移 */
+  v?: number;
+  widgets?: CardWidgets;
   rect?: FreeRect;
   cu?: CardCustom;
 }
+
+// 仅类型依赖，避免 cards.ts 运行时引入 widgets.ts
+import type { CardWidgets } from "./widgets";

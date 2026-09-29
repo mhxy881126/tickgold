@@ -6,6 +6,27 @@
     </div>
 
     <div v-show="tab === 'look'" class="csp-pane">
+      <div class="row skin-row">
+        <span class="k">皮肤</span>
+        <span class="skin-name">{{ currentSkinName }}</span>
+      </div>
+      <div class="row">
+        <span class="k">本卡辉光</span>
+        <button
+          type="button"
+          class="toggle"
+          :class="{ on: look.glow !== false }"
+          @click="$emit('look', { glow: look.glow === false })"
+        >{{ look.glow === false ? "已关" : "开启" }}</button>
+        <span class="k" style="width:auto">左条辉光</span>
+        <button
+          type="button"
+          class="toggle"
+          :class="{ on: look.barGlow !== false }"
+          @click="$emit('look', { barGlow: look.barGlow === false })"
+        >{{ look.barGlow === false ? "已关" : "开启" }}</button>
+      </div>
+
       <div class="row">
         <span class="k">主色</span>
         <span class="sws">
@@ -148,6 +169,7 @@
       </div>
 
       <button type="button" class="reset" @click="$emit('reset')">恢复该卡片默认外观</button>
+      <button type="button" class="reset" @click="$emit('resetwidgets')">恢复出厂微件模板</button>
     </div>
 
     <button type="button" class="done" @click="$emit('close')">完成</button>
@@ -155,8 +177,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import { CARD_SWATCHES } from "../composables/useWorkbench";
+import { useSkins } from "../composables/useSkins";
 
 defineProps<{
   open: boolean;
@@ -171,6 +194,8 @@ defineProps<{
     pinned: boolean;
     locked: boolean;
     tag: string;
+    glow?: boolean;
+    barGlow?: boolean;
   };
   refresh: number;
 }>();
@@ -183,10 +208,16 @@ const emit = defineEmits<{
   (e: "lock"): void;
   (e: "tag", t: string): void;
   (e: "reset"): void;
+  (e: "resetwidgets"): void;
 }>();
 
 const tab = ref<"look" | "behave">("look");
 const swatches = CARD_SWATCHES;
+
+const skins = useSkins();
+const currentSkinName = computed(
+  () => skins.appSkin.value?.name ?? "默认（无皮肤）"
+);
 
 function onGradToggle(ev: Event) {
   const on = (ev.target as HTMLInputElement).checked;

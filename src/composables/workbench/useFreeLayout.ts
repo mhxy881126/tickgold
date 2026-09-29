@@ -28,6 +28,9 @@ export function useFreeLayout(ctx: FreeLayoutContext) {
   // 对齐辅助线（画布坐标 px；空数组=不显示）
   const alignGuides = ref<{ v: number[]; h: number[] }>({ v: [], h: [] });
   const freeCanvasRef = ref<HTMLElement | null>(null);
+  // 松手时若发生过磁吸，短暂脉冲该卡（驱动 snap-spring 动画）
+  const snapPulse = ref<CardId | null>(null);
+  let snapPulseTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ===== 自由布局：开关 / 拖拽 =====
   function enableFree() {
@@ -67,6 +70,7 @@ export function useFreeLayout(ctx: FreeLayoutContext) {
     let lastX = 0;
     let lastY = 0;
     let raf = 0;
+    let didSnap = false;
     const compute = () => {
       raf = 0;
       const mx = lastX - cr.left;
@@ -99,6 +103,7 @@ export function useFreeLayout(ctx: FreeLayoutContext) {
         push(Math.abs(ny + base.h - (r.y + r.h)), "y", r.y + r.h, r.y + r.h - (ny + base.h));
       }
       if (cands.length) {
+        didSnap = true;
         const best = cands.reduce((a, b) => (a.d <= b.d ? a : b));
         if (best.axis === "x") {
           nx = clampNum(nx + best.move, 0, COLS - base.w);
@@ -125,6 +130,14 @@ export function useFreeLayout(ctx: FreeLayoutContext) {
       if (g) {
         freeRects.value[id] = { x: g.x, y: g.y, w: g.w, h: g.h };
         settleFreeRects(freeRects.value);
+        if (didSnap) {
+          snapPulse.value = null;
+          requestAnimationFrame(() => (snapPulse.value = id));
+          if (snapPulseTimer) clearTimeout(snapPulseTimer);
+          snapPulseTimer = setTimeout(() => {
+            if (snapPulse.value === id) snapPulse.value = null;
+          }, 260);
+        }
       }
       alignGuides.value = { v: [], h: [] };
       freeDrag.value = null;
@@ -175,6 +188,7 @@ export function useFreeLayout(ctx: FreeLayoutContext) {
     freeRects,
     freeDrag,
     alignGuides,
+    snapPulse,
     freeCanvasRef,
     enableFree,
     disableFree,

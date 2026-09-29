@@ -3,6 +3,7 @@ import { ref, watch, computed } from "vue";
 import { fetchFundFlow } from "../api/market";
 import type { FundFlow } from "../api/types";
 import { useSmartPolling } from "../composables/useSmartPolling";
+import AnimatedNumber from "./common/AnimatedNumber.vue";
 
 const props = defineProps<{ code: string | null }>();
 
@@ -56,11 +57,9 @@ useSmartPolling(load, { interval: 8000, cardId: "fundflow" });
       <!-- 主力净流入 -->
       <div class="hero">
         <div class="hero-label">主力净流入</div>
-        <div class="hero-val" :class="cls(data.mainNet)">
-          {{ sign(data.mainNet) }}{{ money(data.mainNet) }}
-        </div>
+        <AnimatedNumber tag="div" class="hero-val" :class="cls(data.mainNet)" :value="data.mainNet" kind="money" />
         <div class="hero-pct" :class="cls(data.mainNet)">
-          净占比 {{ sign(data.mainNetPct) }}{{ data.mainNetPct.toFixed(1) }}%
+          净占比 <AnimatedNumber :value="data.mainNetPct" kind="pct" :decimals="1" />
         </div>
       </div>
 

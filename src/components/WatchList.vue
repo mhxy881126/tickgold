@@ -4,6 +4,7 @@ import { useWatchlistStore } from "../stores/watchlist";
 import { useQuotesStore } from "../stores/quotes";
 import { searchStocks } from "../api/market";
 import type { StockItem, Quote } from "../api/types";
+import AnimatedNumber from "./common/AnimatedNumber.vue";
 
 const props = defineProps<{ selected: string | null }>();
 const emit = defineEmits<{ select: [code: string] }>();
@@ -47,9 +48,6 @@ function cls(pct?: number) {
   if (pct > 0) return "up";
   if (pct < 0) return "down";
   return "flat";
-}
-function fmt(n?: number, d = 2) {
-  return n ? n.toFixed(d) : "--";
 }
 
 async function startAdd() {
@@ -186,6 +184,7 @@ async function moveAddGroup() {
         <tr
           v-for="s in wl.currentStocks"
           :key="s.code"
+          v-flash="qOf(s.code)?.price"
           :class="{ active: s.code === props.selected }"
           @click="emit('select', s.code)"
         >
@@ -193,9 +192,12 @@ async function moveAddGroup() {
             <span class="nm">{{ qOf(s.code)?.name || s.name || "--" }}</span>
             <span class="cd">{{ s.code }}</span>
           </td>
-          <td class="r" :class="cls(qOf(s.code)?.pct)">{{ fmt(qOf(s.code)?.price) }}</td>
           <td class="r" :class="cls(qOf(s.code)?.pct)">
-            <span v-if="qOf(s.code)">{{ qOf(s.code)!.pct > 0 ? "+" : "" }}{{ fmt(qOf(s.code)?.pct) }}%</span>
+            <AnimatedNumber v-if="qOf(s.code)" :value="qOf(s.code)!.price" kind="price" />
+            <span v-else>--</span>
+          </td>
+          <td class="r" :class="cls(qOf(s.code)?.pct)">
+            <AnimatedNumber v-if="qOf(s.code)" :value="qOf(s.code)!.pct" kind="pct" />
             <span v-else>--</span>
           </td>
           <td class="r dim">

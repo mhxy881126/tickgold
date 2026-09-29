@@ -305,6 +305,63 @@ fn win_is_maximized(app: tauri::AppHandle) -> Result<bool, String> {
     w.is_maximized().map_err(|e| e.to_string())
 }
 
+// ===== 画中岛：无边框置顶小窗（前端无 set-decorations/position ACL，统一在 Rust 创建）=====
+#[tauri::command]
+fn open_pip_window(
+    app: tauri::AppHandle,
+    label: String,
+    title: String,
+    w: f64,
+    h: f64,
+    x: Option<f64>,
+    y: Option<f64>,
+) -> Result<(), String> {
+    // 只允许 pip- 前缀 label，避免创建任意窗口
+    if !label.starts_with("pip-") {
+        return Err("invalid pip label".to_string());
+    }
+    // 已存在：还原 + 聚焦，不重复开窗
+    if let Some(existing) = app.get_webview_window(&label) {
+        existing.unminimize().map_err(|e| e.to_string())?;
+        existing.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
+        .title(title)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(true)
+        .shadow(false)
+        .min_inner_size(280.0, 180.0)
+        .inner_size(w.max(280.0), h.max(180.0));
+    if let (Some(px), Some(py)) = (x, y) {
+        builder = builder.position(px, py);
+    }
+    builder.build().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn close_pip_window(app: tauri::AppHandle, label: String) -> Result<(), String> {
+    let w = app
+        .get_webview_window(&label)
+        .ok_or_else(|| "pip window not found".to_string())?;
+    w.close().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn pip_set_always_on_top(
+    app: tauri::AppHandle,
+    label: String,
+    on: bool,
+) -> Result<(), String> {
+    let w = app
+        .get_webview_window(&label)
+        .ok_or_else(|| "pip window not found".to_string())?;
+    w.set_always_on_top(on).map_err(|e| e.to_string())
+}
+
 #[allow(dead_code)]
 fn diag_log(msg: &str) {
     use std::io::Write;
@@ -339,6 +396,20 @@ async fn save_export_file(default_name: String, content: String) -> Result<bool,
         .await
         .map_err(|e| e.to_string())?;
     Ok(true)
+}
+
+// ===== 通用打开文本文件（rfd 原生选择对话框；用于导入皮肤 spec，无需 dialog 插件）=====
+#[tauri::command]
+async fn open_text_file(filter_name: String, ext: String) -> Result<String, String> {
+    let file = rfd::AsyncFileDialog::new()
+        .add_filter(&filter_name, &[ext.as_str()])
+        .pick_file()
+        .await
+        .ok_or_else(|| "已取消选择".to_string())?;
+    let path = file.path().to_path_buf();
+    tokio::fs::read_to_string(&path)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ===== E2：更新前数据库备份 / 启动损坏自动恢复（失败回滚）=====
@@ -871,6 +942,20 @@ pub fn run() {
                             sql: "CREATE INDEX IF NOT EXISTS idx_alert_event_time ON alert_event(triggered_at);",
                             kind: MigrationKind::Up,
                         },
+                        // ===== 卡片皮肤包（v0.90；spec 由前端幂等 seed）=====
+                        Migration {
+                            version: 31,
+                            description: "create skin",
+                            sql: "CREATE TABLE IF NOT EXISTS skin (
+                                id TEXT PRIMARY KEY,
+                                name TEXT NOT NULL,
+                                spec TEXT NOT NULL,
+                                builtin INTEGER NOT NULL DEFAULT 0,
+                                created_at INTEGER,
+                                updated_at INTEGER
+                            );",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),
@@ -1021,7 +1106,11 @@ pub fn run() {
             win_toggle_maximize,
             win_close,
             win_is_maximized,
+            open_pip_window,
+            close_pip_window,
+            pip_set_always_on_top,
             save_export_file,
+            open_text_file,
             rust_logs,
             rust_clear_logs,
             rust_set_log_level,

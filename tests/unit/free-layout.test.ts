@@ -15,10 +15,10 @@ describe("packFree 自由布局初始装箱", () => {
   });
 
   it("两张窄卡同行并排，x 累加", () => {
-    // radar w4 + breadth w4 = 8 ≤ 12，同一行，行高 3
-    const out = packFree(["radar", "breadth"]);
+    // radar w4 + news w4（默认尺寸）= 8 ≤ 12，同一行，行高 3
+    const out = packFree(["radar", "news"]);
     expect(out.radar).toEqual(r(0, 0, 4, 3));
-    expect(out.breadth).toEqual(r(4, 0, 4, 3));
+    expect(out.news).toEqual(r(4, 0, 4, 3));
   });
 
   it("超出 12 列则换行，y 累加行高", () => {

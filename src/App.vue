@@ -11,7 +11,6 @@ import OnboardingDialog from "./components/OnboardingDialog.vue";
 import LayoutMenu from "./components/LayoutMenu.vue";
 import ShortTermSpider from "./components/ShortTermSpider.vue";
 import LimitRadar from "./components/LimitRadar.vue";
-import BreadthBoard from "./components/BreadthBoard.vue";
 import WatchList from "./components/WatchList.vue";
 import Indices from "./components/Indices.vue";
 import RankBoard from "./components/RankBoard.vue";
@@ -31,7 +30,6 @@ import SearchBox from "./components/SearchBox.vue";
 import StockChart from "./components/StockChart.vue";
 import TimeTabs from "./components/TimeTabs.vue";
 import DistBoard from "./components/DistBoard.vue";
-import ThemeRotation from "./components/ThemeRotation.vue";
 import NewsFlash from "./components/NewsFlash.vue";
 import WelcomeBoard from "./components/WelcomeBoard.vue";
 import { useWatchlistStore } from "./stores/watchlist";
@@ -40,9 +38,14 @@ import { useAlertStore } from "./stores/alert";
 import { useWorkbench, CARD_META, SCENES, currentTimeSlot, type CardId } from "./composables/useWorkbench";
 import { useTheme } from "./composables/useTheme";
 import { useAccessibility } from "./composables/useAccessibility";
+import { useMotion } from "./composables/useMotion";
+import { useSkins } from "./composables/useSkins";
 import { useWindowControls } from "./composables/useWindowControls";
 import { useCardFocus } from "./composables/useCardFocus";
 import { useCardMount } from "./composables/useCardMount";
+import { createRootMarketContext, provideMarketContext } from "./composables/useMarketContext";
+import { usePip } from "./composables/usePip";
+import WidgetCanvas from "./components/widgets/WidgetCanvas.vue";
 import { useCommandPalette } from "./composables/useCommandPalette";
 import { useActions } from "./composables/useActions";
 import { useBuiltinActions } from "./composables/useBuiltinActions";
@@ -61,9 +64,23 @@ const alerts = useAlertStore();
 const bench = useWorkbench();
 const theme = useTheme();
 const a11y = useAccessibility();
+const motion = useMotion();
+const skins = useSkins();
 // 卡片按需挂载：未进入可视区的卡片延迟初始化内部内容（图表/轮询）
 const cardMount = useCardMount();
 provide("workbench", bench);
+
+// 画中岛：开窗状态管理 + 主窗微件变更实时同步到弹窗
+const pip = usePip(bench, { onSelect: (code) => pickStock(code) });
+watch(
+  () => bench.cardWidgets,
+  () => {
+    Object.keys(bench.cardWidgets).forEach((cid) =>
+      pip.syncCard(cid as CardId)
+    );
+  },
+  { deep: true }
+);
 
 // 自绘标题栏窗口控制
 const {
@@ -91,6 +108,13 @@ const {
 } = useCardFocus(bench);
 
 const selected = ref<string | null>(null);
+
+// 全局行情上下文层：微件总线的根层（卡级层在 WidgetCanvas 内覆盖）
+const rootMarket = createRootMarketContext({
+  primaryCode: selected,
+  onSelect: (code) => pickStock(code),
+});
+provideMarketContext(rootMarket);
 
 // 自由布局画布 DOM（同步给布局引擎，用于指针拖拽换算）
 const freeCanvasEl = ref<HTMLElement | null>(null);
@@ -316,6 +340,7 @@ onMounted(async () => {
   try { await startTimeSeries(); } catch (e) { console.error("[app] timeseries", e); }
   try { await theme.load(); } catch (e) { console.error("[app] theme", e); }
   try { await a11y.load(); } catch (e) { console.error("[app] a11y", e); }
+  try { await motion.load(); } catch (e) { console.error("[app] motion", e); }
   try {
     const obRows = await db().select<{ value: string }[]>("SELECT value FROM meta WHERE key=?", ["onboarding_done"]);
     if (obRows[0]?.value !== "1") showOnboarding.value = true;
@@ -325,6 +350,9 @@ onMounted(async () => {
 
   // —— 行情轮询：盯盘核心，自选加载后立即启动，不被后续任何步骤拖累 ——
   quotes.start(2000);
+
+  // —— 卡片皮肤（内置 seed / 恢复 app_skin），需在布局恢复前 ——
+  try { await skins.load(); } catch (e) { console.error("[app] skins", e); }
 
   // —— 布局恢复（容错）——
   try {
@@ -566,11 +594,12 @@ onBeforeUnmount(() => {
             class="free-cell"
             :data-card-id="id"
             :ref="(el: any) => cardMount.observeSlot(el, id)"
-            :class="{ dragging: bench.freeDrag.value?.id === id }"
+            :class="{ dragging: bench.freeDrag.value?.id === id, 'snap-spring': bench.snapPulse.value === id }"
             :style="bench.freeCellStyle(id)"
           >
             <CardShell
               v-if="cardMount.isMounted(id)"
+              :card-id="id"
               :title="CARD_META[id].title"
               :accent="CARD_META[id].accent"
               free-drag
@@ -581,6 +610,8 @@ onBeforeUnmount(() => {
               :look-vars="bench.cardStyleVars(id)"
               :look="bench.cardLook(id)"
               :cfg-open-signal="bench.openCfgId.value === id"
+              :popoutable="bench.isWidgetCard(id)"
+              :popout-on="pip.isOpen({ kind: 'card', cardId: id })"
               @close="bench.close(id)"
               @focus="enterFocus(id)"
               @restore="exitFocus"
@@ -595,11 +626,19 @@ onBeforeUnmount(() => {
               @lock="bench.toggleLock(id)"
               @tag="(t: string) => bench.setCardTag(id, t)"
               @resetlook="bench.resetCardLook(id)"
+              @resetwidgets="bench.resetCardWidgets(id)"
+              @popout="pip.openPip({ kind: 'card', cardId: id })"
             >
+              <WidgetCanvas
+                v-if="bench.isWidgetCard(id)"
+                :id="id"
+                :editing="false"
+                @popout="(c: CardId, w: string) => pip.openPip({ kind: 'widget', cardId: c, widgetId: w })"
+              />
               <CardContent
+                v-else
                 :id="id"
                 :selected="selected"
-                :compact="bench.isFocused.value ? id !== bench.focusId.value && bench.timeMode.value !== null : bench.timeMode.value !== null"
                 @select="onSelect"
               />
             </CardShell>
@@ -650,6 +689,7 @@ onBeforeUnmount(() => {
           <div v-if="bench.dragId.value === id" class="drag-ghost"></div>
           <CardShell
             v-if="cardMount.isMounted(id)"
+            :card-id="id"
             :title="CARD_META[id].title"
             :accent="CARD_META[id].accent"
             :dragging="bench.dragId.value === id"
@@ -663,6 +703,8 @@ onBeforeUnmount(() => {
             :look-vars="bench.cardStyleVars(id)"
             :look="bench.cardLook(id)"
             :cfg-open-signal="bench.openCfgId.value === id"
+            :popoutable="bench.isWidgetCard(id)"
+            :popout-on="pip.isOpen({ kind: 'card', cardId: id })"
             @close="bench.close(id)"
             @focus="enterFocus(id)"
             @restore="exitFocus"
@@ -678,8 +720,17 @@ onBeforeUnmount(() => {
             @lock="bench.toggleLock(id)"
             @tag="(t: string) => bench.setCardTag(id, t)"
             @resetlook="bench.resetCardLook(id)"
+            @resetwidgets="bench.resetCardWidgets(id)"
+            @popout="pip.openPip({ kind: 'card', cardId: id })"
           >
+            <WidgetCanvas
+              v-if="bench.isWidgetCard(id)"
+              :id="id"
+              :editing="false"
+              @popout="(c: CardId, w: string) => pip.openPip({ kind: 'widget', cardId: c, widgetId: w })"
+            />
             <CardContent
+              v-else
               :id="id"
               :selected="selected"
               :compact="bench.isFocused.value ? id !== bench.focusId.value && bench.timeMode.value !== null : bench.timeMode.value !== null"

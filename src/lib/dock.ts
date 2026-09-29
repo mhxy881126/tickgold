@@ -24,7 +24,6 @@ export const DOCK_GROUPS: DockGroup[] = [
     items: [
       { id: "watch", label: "自选", icon: "M12 17.27 18.18 21l-1.64-7.03L22 9.24l7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z", desc: "我的股票分组实时行情", star: true },
       { id: "rank", label: "榜单", icon: "M3 5h18v2H3zm0 4h18v2H3zm0 4h12v2H3zm0 4h12v2H3z", desc: "全市场涨幅/跌幅/成交额排名", star: true },
-      { id: "breadth", label: "市场宽度", icon: "M3 12h4l3-8 4 16 3-8h4", desc: "上涨/下跌家数分时曲线" },
       { id: "dist", label: "涨跌分布", icon: "M3 21h2v-7H3zm4 0h2V9H7zm4 0h2V5h-2zm4 0h2v-9h-2zm4 0h2V11h-2z", desc: "涨跌幅十档家数分布" },
     ],
   },
@@ -37,7 +36,6 @@ export const DOCK_GROUPS: DockGroup[] = [
       { id: "dragon", label: "龙虎榜", icon: "M4 4h16v6H4zm0 10h16v6H4z", desc: "每日龙虎榜个股 + 买卖前五席位/游资", star: true },
       { id: "multigrid", label: "多股同列", icon: "M3 3h5v5H3zm6.5 0h5v5h-5zM16 3h5v5h-5zM3 9.5h5v5H3zm6.5 0h5v5h-5zM16 9.5h5v5h-5zM3 16h5v5H3zm6.5 0h5v5h-5zM16 16h5v5h-5z", desc: "自选 9 只 分时/K线/盘口同屏" },
       { id: "heatmatrix", label: "热力矩阵", icon: "M3 4h7v4H3zm9 0h9v4h-9zM3 10h9v4H3zm11 0h7v4h-7zM3 16h7v4H3zm9 0h9v4h-9z", desc: "全市场板块热力矩阵" },
-      { id: "bentofocus", label: "Bento聚焦", icon: "M3 3h8v5H3zm9 0h9v9h-9zM3 9h5v12H3zm6 6h12v6H9z", desc: "6 卡不规则总览，点按聚焦" },
       { id: "telegraph", label: "电报墙", icon: "M4 11a8 8 0 0116 0M7 11a5 5 0 0110 0M10 11a2 2 0 014 0M12 13v8", desc: "三列异动电报实时滚动" },
     ],
   },
@@ -60,7 +58,6 @@ export const DOCK_GROUPS: DockGroup[] = [
       { id: "sector", label: "板块行情", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z", desc: "行业/概念板块排名" },
       { id: "sectorheat", label: "板块热力图", icon: "M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z", desc: "板块 treemap 缩放平移" },
       { id: "sectorevent", label: "板块异动", icon: "M3 12h4l3-8 4 16 3-8h4", desc: "板块拉升/跳水捕捉" },
-      { id: "theme", label: "题材轮动", icon: "M12 5l7 3.5-7 3.5L5 8.5 12 5zM5 12l7 3.5L19 12M5 15.5l7 3.5 7-3.5", desc: "热门概念标签云" },
     ],
   },
   {

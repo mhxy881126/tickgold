@@ -20,6 +20,20 @@ import {
 } from "../lib/scenes";
 import type { TimePreset, Scene, NamedLayout } from "../lib/scenes";
 import { useFreeLayout } from "./workbench/useFreeLayout";
+import { useSkins } from "./useSkins";
+import { resolveTokens, skinCssVars } from "../lib/skin";
+import {
+  insertWidget as insertWidgetPure,
+  makeWidgetId,
+  packWidgets,
+  reorderWidgets,
+  resizeWidget as resizeWidgetPure,
+  type CardWidgets,
+  type WidgetInstance,
+} from "../lib/widgets";
+import { hasSingleton, widgetDefOf } from "../components/widgets/registry";
+import { presetOf } from "../lib/widget-presets";
+import { migrateSnapshot } from "../lib/widget-migrate";
 
 // 对外保持原有导出路径兼容
 export type { CardId, Zone, CardMeta, CardCustom, SnapshotCard };
@@ -31,8 +45,10 @@ export type { TimePreset, Scene, NamedLayout };
 const CURRENT_KEY = "workbench_current";
 const TIME_KEY = "workbench_time_mode";
 const SCENE_KEY = "workbench_scene";
+const PRE_V1_KEY = "workbench_current_pre_v1";
 
 export function useWorkbench() {
+  const skins = useSkins();
   const openCards = ref<CardId[]>([]);
   // 用户对卡片分区的自定义覆盖（未设置则用默认分区）
   const zoneOverride = ref<Partial<Record<CardId, Zone>>>({});
@@ -44,6 +60,7 @@ export function useWorkbench() {
     freeRects,
     freeDrag,
     alignGuides,
+    snapPulse,
     freeCanvasRef,
     enableFree,
     disableFree,
@@ -56,6 +73,8 @@ export function useWorkbench() {
   } = useFreeLayout({ openCards, timeMode, pushUndo });
   // 卡片个性化（尺寸 / 折叠 / 强调色 / 刷新频率）
   const cardCustom = ref<Partial<Record<CardId, CardCustom>>>({});
+  // v1 微件布局：有 widgets 的卡走 WidgetCanvas 渲染，无则 legacy CardContent
+  const cardWidgets = ref<Partial<Record<CardId, CardWidgets>>>({});
   const sceneId = ref<string | null>(null);
   function patchCustom(id: CardId, patch: Partial<CardCustom>) {
     cardCustom.value = { ...cardCustom.value, [id]: { ...cardCustom.value[id], ...patch } };
@@ -78,6 +97,8 @@ export function useWorkbench() {
       pinned: !!cu.pinned,
       locked: !!cu.locked,
       tag: (cu.tag ?? "").slice(0, 4),
+      glow: cu.glow,
+      barGlow: cu.barGlow,
     };
   }
   // 注入卡片根元素的 CSS 变量（仅作用于卡片外观，不触碰内部图表配色）
@@ -86,7 +107,7 @@ export function useWorkbench() {
     const grad = L.gradientTo
       ? `linear-gradient(${L.gradAngle}deg, ${L.color} 0%, ${L.gradientTo} 100%)`
       : L.color;
-    return {
+    const base: Record<string, string> = {
       "--card-accent": L.color,
       "--card-accent2": L.gradientTo || L.color,
       "--card-grad": grad,
@@ -94,6 +115,13 @@ export function useWorkbench() {
       "--card-radius": `${L.radius}px`,
       "--card-border": `${L.borderWidth}px`,
     };
+    // 皮肤层（全局 → 场景 → 单卡）；无 app_skin 时仅注入单卡开关，视觉与现状等效
+    const tokens = resolveTokens({
+      global: skins.appSkin.value,
+      scene: skins.sceneSkinOf(sceneId.value ?? ""),
+      custom: cardCustom.value[id],
+    });
+    return { ...base, ...skinCssVars(tokens) };
   }
   function cardColorOf(id: CardId): string {
     return cardCustom.value[id]?.color ?? CARD_META[id].accent;
@@ -173,6 +201,7 @@ export function useWorkbench() {
     freeRects.value = {};
     focusId.value = null;
     cardCustom.value = {};
+    cardWidgets.value = {};
     sceneId.value = null;
     openCards.value = [...cards];
   }
@@ -187,6 +216,7 @@ export function useWorkbench() {
     freeMode.value = false;
     freeRects.value = {};
     cardCustom.value = {};
+    cardWidgets.value = {};
     sceneId.value = null;
     openCards.value = [...p.cards];
   }
@@ -447,6 +477,75 @@ export function useWorkbench() {
     };
   }
 
+  // ===== v1 微件编排 =====
+  function widgetsOf(id: CardId): CardWidgets | undefined {
+    return cardWidgets.value[id];
+  }
+  // 渲染判定：空 widgets（编排时新建但未添加微件）不接管渲染，回落 legacy
+  function isWidgetCard(id: CardId): boolean {
+    return (cardWidgets.value[id]?.items.length ?? 0) > 0;
+  }
+  function setWidgets(id: CardId, w: CardWidgets | undefined) {
+    cardWidgets.value = { ...cardWidgets.value, [id]: w };
+  }
+  // 进入编排：无 widgets 时以出厂模板初始化（无模板则空画布，由用户从托盘添加）
+  function ensureWidgets(id: CardId): CardWidgets {
+    const cur = cardWidgets.value[id];
+    if (cur) return cur;
+    const made: CardWidgets = presetOf(id) ?? { primary: null, items: [] };
+    setWidgets(id, made);
+    return made;
+  }
+  function addWidget(id: CardId, defId: string, index?: number): boolean {
+    const def = widgetDefOf(defId);
+    if (!def) return false;
+    const cur = ensureWidgets(id);
+    if (hasSingleton(cur.items, defId)) return false;
+    const inst: Omit<WidgetInstance, "x" | "y"> = {
+      id: makeWidgetId(defId), def: defId, w: def.defaultW, h: def.defaultH,
+    };
+    setWidgets(id, { ...cur, items: insertWidgetPure(cur.items, inst, index) });
+    return true;
+  }
+  function removeWidgetInst(id: CardId, wId: string) {
+    const cur = cardWidgets.value[id];
+    if (!cur) return;
+    const items = cur.items.filter((i) => i.id !== wId);
+    setWidgets(id, items.length ? { ...cur, items } : undefined);
+  }
+  function reorderWidgetInst(id: CardId, wId: string, index: number) {
+    const cur = cardWidgets.value[id];
+    if (!cur) return;
+    setWidgets(id, { ...cur, items: reorderWidgets(cur.items, wId, index) });
+  }
+  function resizeWidgetInst(id: CardId, wId: string, w: number, h: number) {
+    const cur = cardWidgets.value[id];
+    if (!cur) return;
+    const items = cur.items.map((it) => {
+      if (it.id !== wId) return it;
+      const def = widgetDefOf(it.def);
+      return def ? resizeWidgetPure(it, def, w, h) : it;
+    });
+    // 尺寸变化后重新装箱，保持无重叠
+    setWidgets(id, { ...cur, items: packWidgets(items) });
+  }
+  function patchWidgetInst(id: CardId, wId: string, patch: Partial<WidgetInstance>) {
+    const cur = cardWidgets.value[id];
+    if (!cur) return;
+    setWidgets(id, {
+      ...cur,
+      items: cur.items.map((it) => (it.id === wId ? { ...it, ...patch } : it)),
+    });
+  }
+  function setCardPrimary(id: CardId, code: string | null) {
+    const cur = ensureWidgets(id);
+    setWidgets(id, { ...cur, primary: code || null });
+  }
+  // 恢复出厂微件模板（无模板的卡清空自定义 widgets）
+  function resetCardWidgets(id: CardId) {
+    setWidgets(id, presetOf(id));
+  }
+
   // ===== V3 场景模板：整组替换 + 预设尺寸 =====
   function applyScene(scene: Scene) {
     pushUndo();
@@ -464,6 +563,13 @@ export function useWorkbench() {
       });
     }
     cardCustom.value = cc;
+    // 场景卡片：有出厂微件模板的直接走 v1，无模板的 legacy
+    const wm: Partial<Record<CardId, CardWidgets>> = {};
+    scene.cards.forEach((id) => {
+      const p = presetOf(id);
+      if (p) wm[id] = p;
+    });
+    cardWidgets.value = wm;
     openCards.value = [...scene.cards];
   }
   function saveCurrentAsScene() {
@@ -475,6 +581,10 @@ export function useWorkbench() {
       const c: SnapshotCard = { id, zone: zoneOf(id) };
       if (freeMode.value && freeRects.value[id]) c.rect = freeRects.value[id];
       if (cardCustom.value[id]) c.cu = cardCustom.value[id];
+      if (cardWidgets.value[id]?.items.length) {
+        c.v = 1;
+        c.widgets = cardWidgets.value[id];
+      }
       return c;
     });
     return JSON.stringify(cards);
@@ -483,11 +593,14 @@ export function useWorkbench() {
     clearSlotInline(); // 恢复命名布局 / 启动恢复：清掉聚焦内联定位
     focusId.value = null;
     try {
-      const arr = JSON.parse(json) as SnapshotCard[];
-      if (!Array.isArray(arr)) return;
+      const raw = JSON.parse(json) as SnapshotCard[];
+      if (!Array.isArray(raw)) return;
+      // 老布局自动迁移为微件布局（幂等；未知 def 丢弃）
+      const arr = migrateSnapshot(raw).cards;
       const ov: Partial<Record<CardId, Zone>> = {};
       const rects: Record<string, FreeRect> = {};
       const customs: Partial<Record<CardId, CardCustom>> = {};
+      const widgetsMap: Partial<Record<CardId, CardWidgets>> = {};
       const ids: CardId[] = [];
       let hasRect = false;
       for (const c of arr) {
@@ -496,6 +609,7 @@ export function useWorkbench() {
         if (c.zone && c.zone !== defaultZone(c.id)) ov[c.id] = c.zone;
         if (c.rect) { rects[c.id] = c.rect; hasRect = true; }
         if (c.cu) customs[c.id] = c.cu;
+        if (c.widgets?.items.length) widgetsMap[c.id] = c.widgets;
       }
       if (hasRect) {
         freeMode.value = true;
@@ -508,6 +622,7 @@ export function useWorkbench() {
         zoneOverride.value = ov;
       }
       cardCustom.value = customs;
+      cardWidgets.value = widgetsMap;
       sceneId.value = null;
       openCards.value = ids;
     } catch {
@@ -568,6 +683,23 @@ export function useWorkbench() {
         if (r.key === SCENE_KEY) sc = r.value;
       });
       if (cardsJson) {
+        // 迁移前自保：若为无 v 的老快照，先把原件另存一份（幂等，只存一次）
+        try {
+          const parsed = JSON.parse(cardsJson) as SnapshotCard[];
+          const isLegacy = Array.isArray(parsed) && parsed.some((c) => c.v === undefined);
+          if (isLegacy) {
+            const bak = await db().select<{ value: string }[]>(
+              "SELECT value FROM meta WHERE key=?", [PRE_V1_KEY]
+            );
+            if (!bak.length)
+              await db().execute(
+                "INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)",
+                [PRE_V1_KEY, cardsJson]
+              );
+          }
+        } catch {
+          /* 自保失败不阻断恢复 */
+        }
         applySnapshot(cardsJson);
         if (tm && TIME_PRESETS.some((p) => p.id === tm)) timeMode.value = tm;
         if (sc && SCENES.some((x) => x.id === sc)) sceneId.value = sc;
@@ -612,13 +744,16 @@ export function useWorkbench() {
     freeMode.value = false;
     freeRects.value = {};
     cardCustom.value = {};
+    cardWidgets.value = {};
     sceneId.value = null;
     openCards.value = [...openCards.value].sort((a, b) => rankDefault(a) - rankDefault(b));
   }
 
-  watch([openCards, zoneOverride, timeMode, freeMode, freeRects, cardCustom], persistCurrent, {
-    deep: true,
-  });
+  watch(
+    [openCards, zoneOverride, timeMode, freeMode, freeRects, cardCustom, cardWidgets],
+    persistCurrent,
+    { deep: true }
+  );
 
   return {
     openCards,
@@ -685,6 +820,7 @@ export function useWorkbench() {
     freeRects,
     freeDrag,
     alignGuides,
+    snapPulse,
     freeCanvasRef,
     enableFree,
     disableFree,
@@ -699,5 +835,18 @@ export function useWorkbench() {
     loadNamedLayout,
     deleteNamedLayout,
     resetLayout,
+    // v1 微件编排
+    cardWidgets,
+    widgetsOf,
+    isWidgetCard,
+    setWidgets,
+    ensureWidgets,
+    addWidget,
+    removeWidgetInst,
+    reorderWidgetInst,
+    resizeWidgetInst,
+    patchWidgetInst,
+    setCardPrimary,
+    resetCardWidgets,
   };
 }

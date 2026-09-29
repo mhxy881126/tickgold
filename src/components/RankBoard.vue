@@ -4,6 +4,7 @@ import { fetchRankBoard } from "../api/market";
 import { useWatchlistStore } from "../stores/watchlist";
 import { useVirtualList } from "../composables/useVirtualList";
 import type { RankRow } from "../api/types";
+import AnimatedNumber from "./common/AnimatedNumber.vue";
 
 const emit = defineEmits<{ select: [code: string]; add: [code: string, name: string] }>();
 
@@ -103,35 +104,11 @@ function addOne(q: RankRow) {
 function signCls(n: number) {
   return n > 0.001 ? "up" : n < -0.001 ? "down" : "flat";
 }
-function pctText(n: number) {
-  return (n > 0 ? "+" : "") + n.toFixed(2) + "%";
-}
-function ratioText(n: number) {
-  return n.toFixed(2);
-}
-// 成交额 / 净流入（元）自适应
-function moneyText(n: number) {
-  const abs = Math.abs(n);
-  const sign = n > 0 ? "+" : n < 0 ? "-" : "";
-  if (abs >= 1e8) return sign + (abs / 1e8).toFixed(2) + "亿";
-  if (abs >= 1e4) return sign + (abs / 1e4).toFixed(0) + "万";
-  return sign + abs.toFixed(0);
-}
-function amountText(n: number) {
-  if (n >= 1e8) return (n / 1e8).toFixed(2) + "亿";
-  if (n >= 1e4) return (n / 1e4).toFixed(0) + "万";
-  return n.toFixed(0);
-}
-// 动态指标列文本
-function metricText(q: RankRow) {
-  const v = q[activeTab.value.metric] as number;
-  switch (activeTab.value.kind) {
-    case "pct": return pctText(v);
-    case "money": return moneyText(v);
-    case "ratio": return ratioText(v);
-    default: return amountText(v);
-  }
-}
+// 动态指标列对应的数字动画类型
+const metricAnimKind = computed<"pct" | "money" | "amount" | "raw">(() => {
+  const k = activeTab.value.kind;
+  return k === "pct" ? "pct" : k === "money" ? "money" : k === "ratio" ? "raw" : "amount";
+});
 // 动态指标列着色：带符号的（涨速/大单/主力）随正负着色，成交额/量比/换手为中性
 function metricCls(q: RankRow) {
   const v = q[activeTab.value.metric] as number;
@@ -189,9 +166,17 @@ function metricCls(q: RankRow) {
               <span class="nm">{{ list[index]!.name }}</span>
               <span class="code">{{ list[index]!.code }}</span>
             </span>
-            <span class="price" :class="signCls(list[index]!.pct)">{{ list[index]!.price.toFixed(2) }}</span>
-            <span class="pct" :class="signCls(list[index]!.pct)">{{ pctText(list[index]!.pct) }}</span>
-            <span class="metric" :class="metricCls(list[index]!)">{{ metricText(list[index]!) }}</span>
+            <AnimatedNumber tag="span" class="price" :class="signCls(list[index]!.pct)" :value="list[index]!.price" kind="price" />
+            <AnimatedNumber tag="span" class="pct" :class="signCls(list[index]!.pct)" :value="list[index]!.pct" kind="pct" />
+            <AnimatedNumber
+              tag="span"
+              class="metric"
+              :class="metricCls(list[index]!)"
+              :value="(list[index]![activeTab.metric] as number)"
+              :kind="metricAnimKind"
+              :decimals="activeTab.kind === 'pct' ? 2 : activeTab.kind === 'ratio' ? 2 : 2"
+              :flash="activeTab.kind === 'pct' || activeTab.kind === 'money'"
+            />
             <span class="watch">
               <button
                 v-if="!isWatched(list[index]!.code)"

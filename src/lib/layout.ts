@@ -7,7 +7,7 @@ export interface BentoPos { col: number; colEnd: number; row: number; rowEnd: nu
 export interface FreeRect { x: number; y: number; w: number; h: number }
 
 // 宽卡片（主干区域）与窄卡片（右侧）的默认排列顺序，也决定卡片的默认分区
-const WIDE_ORDER: CardId[] = ["auction", "limitpool", "radar", "radarsweep", "reviewtimeline", "multigrid", "heatmatrix", "bentofocus", "telegraph", "breadth", "chart", "sectorheat", "sector", "screener", "theme", "dist", "f10", "trade", "journal", "calendar", "ipo", "calc", "export", "dragon"];
+const WIDE_ORDER: CardId[] = ["auction", "limitpool", "radar", "radarsweep", "reviewtimeline", "multigrid", "heatmatrix", "telegraph", "chart", "sectorheat", "sector", "screener", "dist", "f10", "trade", "journal", "calendar", "ipo", "calc", "export", "dragon"];
 const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "trades", "order", "fundflow", "news", "watch", "rank"];
 export const ALL_IDS: CardId[] = [...WIDE_ORDER, ...NARROW_ORDER];
 
@@ -19,10 +19,9 @@ const ROWS = 6;
 const DEFAULT_SIZE: Partial<Record<CardId, { w: number; h: number }>> = {
   chart: { w: 6, h: 3 }, sectorheat: { w: 6, h: 3 }, heatmatrix: { w: 8, h: 3 },
   multigrid: { w: 6, h: 3 }, dragon: { w: 6, h: 3 }, reviewtimeline: { w: 6, h: 3 },
-  bentofocus: { w: 6, h: 3 },
-  radar: { w: 4, h: 2 }, radarsweep: { w: 4, h: 2 }, breadth: { w: 4, h: 2 },
+  radar: { w: 4, h: 2 }, radarsweep: { w: 4, h: 2 },
   sector: { w: 4, h: 2 }, screener: { w: 4, h: 2 }, f10: { w: 4, h: 2 },
-  trade: { w: 4, h: 2 }, theme: { w: 4, h: 2 }, calendar: { w: 4, h: 2 },
+  trade: { w: 4, h: 2 }, calendar: { w: 4, h: 2 },
   ipo: { w: 4, h: 2 }, journal: { w: 4, h: 2 }, auction: { w: 4, h: 2 },
   limitpool: { w: 4, h: 2 }, telegraph: { w: 4, h: 2 },
 };
@@ -77,12 +76,10 @@ const FREE_SIZE: Partial<Record<CardId, { w: number; h: number }>> = {
   screener: { w: 6, h: 4 },
   f10: { w: 6, h: 4 },
   trade: { w: 6, h: 4 },
-  theme: { w: 6, h: 4 },
   calendar: { w: 6, h: 4 },
   ipo: { w: 6, h: 4 },
   journal: { w: 6, h: 4 },
   radar: { w: 4, h: 3 },
-  breadth: { w: 4, h: 3 },
   dragon: { w: 8, h: 5 },
 };
 export function freeSizeOf(id: CardId): { w: number; h: number } {

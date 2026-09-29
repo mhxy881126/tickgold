@@ -3,6 +3,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import type { useWorkbench } from "./useWorkbench";
 import type { CardId } from "../lib/cards";
+import { EASE, FOCUS_MS } from "./useMotion";
 
 type Bench = ReturnType<typeof useWorkbench>;
 
@@ -35,7 +36,7 @@ export function useCardFocus(bench: Bench) {
     });
   }
   const FTRANS =
-    "left .46s cubic-bezier(.34,1.25,.5,1),top .46s cubic-bezier(.34,1.25,.5,1),width .46s cubic-bezier(.34,1.25,.5,1),height .46s cubic-bezier(.34,1.25,.5,1)";
+    `left ${FOCUS_MS}ms ${EASE.focus},top ${FOCUS_MS}ms ${EASE.focus},width ${FOCUS_MS}ms ${EASE.focus},height ${FOCUS_MS}ms ${EASE.focus}`;
   function placeAt(el: HTMLElement, r: { left: number; top: number; width: number; height: number }) {
     el.style.transition = FTRANS;
     el.style.left = r.left + "px";
@@ -95,7 +96,7 @@ export function useCardFocus(bench: Bench) {
       bench.clearSlotInline();
       bench.restoreFocus();
       focusClosing.value = false;
-    }, 460);
+    }, FOCUS_MS);
   }
   // 聚焦态新增卡片：新卡直接 fixed 到主区，旧主卡缩回原位
   function addAndFocus(id: CardId) {

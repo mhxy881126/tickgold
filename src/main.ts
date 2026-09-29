@@ -3,8 +3,11 @@ import { createPinia } from "pinia";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App.vue";
 import Island from "./components/Island.vue";
+import PipWindow from "./components/pip/PipWindow.vue";
 import { logger } from "./utils/logger";
+import { vFlash } from "./directives/flash";
 import "./styles/global.css";
+import "./styles/motion.css";
 
 // 全局未捕获错误 / Promise 拒绝：归集到分级日志（不再只打印控制台）
 window.addEventListener("error", (e) => {
@@ -42,10 +45,17 @@ const pinia = createPinia();
 if (label === "island") {
   const app = createApp(Island);
   app.config.errorHandler = vueErrorHandler;
+  app.directive("flash", vFlash);
+  app.use(pinia).mount("#app");
+} else if (label.startsWith("pip-")) {
+  const app = createApp(PipWindow);
+  app.config.errorHandler = vueErrorHandler;
+  app.directive("flash", vFlash);
   app.use(pinia).mount("#app");
 } else {
   const app = createApp(App);
   app.config.errorHandler = vueErrorHandler;
+  app.directive("flash", vFlash);
   app.use(pinia).mount("#app");
   // 请求通知权限
   if ("Notification" in window && Notification.permission === "default") {

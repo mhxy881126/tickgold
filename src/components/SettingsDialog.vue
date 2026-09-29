@@ -3,6 +3,8 @@ import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { useTheme, type ThemeId } from "../composables/useTheme";
 import { useAccessibility } from "../composables/useAccessibility";
+import { useMotion } from "../composables/useMotion";
+import { useSkins } from "../composables/useSkins";
 import { tsStatus } from "../composables/useTimeSeries";
 import { logger, type LogLevel } from "../utils/logger";
 import { isEnabled as autoStartEnabled, enable as enableAutoStart, disable as disableAutoStart } from "@tauri-apps/plugin-autostart";
@@ -15,6 +17,40 @@ function close() {
 
 const { theme, setTheme, THEMES } = useTheme();
 const { zoom, highContrast, setZoom, setHighContrast, ZOOM_LEVELS } = useAccessibility();
+const { tier: motionTier, setTier: setMotionTier, MOTION_TIERS } = useMotion();
+const skinsApi = useSkins();
+
+// 皮肤预览色块：表面 / 左条渐变 / 辉光
+function skinSw(s: import("../lib/skin").SkinSpec): string[] {
+  const t = s.tokens;
+  return [
+    t.surface?.bg ?? "#15181d",
+    t.leftBar?.from ?? "#888",
+    t.leftBar?.to ?? t.leftBar?.from ?? "#555",
+    t.glow?.rest?.color ?? t.glow?.accent ?? "#333",
+  ];
+}
+const skinMsg = ref("");
+async function onImportSkin() {
+  skinMsg.value = "";
+  try {
+    const text = await invoke<string>("open_text_file", { filterName: "皮肤 JSON", ext: "json" });
+    const id = await skinsApi.importSpec(JSON.parse(text));
+    skinMsg.value = `已导入：${id}`;
+  } catch (e) {
+    skinMsg.value = `导入失败：${e}`;
+  }
+}
+function onExportSkin(id: string) {
+  const body = skinsApi.exportSpec(id);
+  if (!body) return;
+  invoke("save_export_file", { defaultName: `tickgold-skin-${id}.json`, content: body })
+    .catch((e) => { skinMsg.value = `导出失败：${e}`; });
+}
+async function onDeleteSkin(id: string) {
+  const ok = await skinsApi.remove(id);
+  if (!ok) skinMsg.value = "内置皮肤不可删除";
+}
 function replayOnboarding() { close(); emit("replay-onboarding"); }
 
 // ===== 开机自动启动 =====
@@ -182,6 +218,48 @@ function pickTab(id: Tab) {
                 </button>
               </div>
 
+              <div class="section-title" style="margin-top:22px">卡片皮肤</div>
+              <div class="section-sub">在配色主题之上的卡片渲染层；「默认」即与无皮肤时完全一致</div>
+              <div class="theme-grid">
+                <button
+                  type="button"
+                  class="theme-card"
+                  :class="{ on: skinsApi.appSkinId.value === null }"
+                  @click="skinsApi.select(null)"
+                >
+                  <span class="tc-preview">
+                    <i class="swatch" style="background:#15181d"></i>
+                  </span>
+                  <span class="tc-info">
+                    <span class="tc-name">默认（无皮肤）</span>
+                    <span class="tc-desc">跟随当前主题，不叠加装饰</span>
+                  </span>
+                </button>
+                <div
+                  v-for="s in skinsApi.skins.value"
+                  :key="s.id"
+                  class="theme-card skin-card"
+                  :class="{ on: skinsApi.appSkinId.value === s.id }"
+                  @click="skinsApi.select(s.id)"
+                >
+                  <span class="tc-preview">
+                    <i v-for="(c, i) in skinSw(s)" :key="i" class="swatch" :style="{ background: c }"></i>
+                  </span>
+                  <span class="tc-info">
+                    <span class="tc-name">{{ s.name }}</span>
+                    <span class="tc-desc">v{{ s.version }}</span>
+                  </span>
+                  <span class="skin-card-tools" @click.stop>
+                    <button type="button" title="导出" @click="onExportSkin(s.id)">↥</button>
+                    <button type="button" title="删除" @click="onDeleteSkin(s.id)">✕</button>
+                  </span>
+                </div>
+              </div>
+              <div class="skin-bar">
+                <button type="button" class="logs-btn" @click="onImportSkin">导入皮肤</button>
+                <span v-if="skinMsg" class="skin-msg">{{ skinMsg }}</span>
+              </div>
+
               <div class="section-title" style="margin-top:22px">显示与可访问性</div>
               <div class="section-sub">界面缩放与高对比，选择后立即生效并记住</div>
               <div class="startup-row">
@@ -199,6 +277,15 @@ function pickTab(id: Tab) {
                   <div class="section-sub" style="margin:3px 0 0">增强文字与边框对比，更易辨识</div>
                 </div>
                 <button type="button" class="switch" :class="{ on: highContrast }" @click="setHighContrast(!highContrast)"><span class="knob"></span></button>
+              </div>
+              <div class="startup-row" style="margin-top:10px">
+                <div class="startup-info">
+                  <div class="startup-name">动效强度</div>
+                  <div class="section-sub" style="margin:3px 0 0">数值补间 / 涨跌辉光 / 悬停抬升，省电档瞬时到位</div>
+                </div>
+                <div class="seg">
+                  <button v-for="m in MOTION_TIERS" :key="m.id" type="button" class="seg-btn" :class="{ on: motionTier === m.id }" :title="m.desc" @click="setMotionTier(m.id)">{{ m.name }}</button>
+                </div>
               </div>
             </div>
 
@@ -441,4 +528,18 @@ function pickTab(id: Tab) {
 .seg-btn + .seg-btn { border-left: 1px solid var(--border); }
 .ab-replay { margin-top: 16px; background: transparent; color: var(--accent); border: 1px solid var(--border-light); border-radius: 8px; padding: 8px 20px; cursor: pointer; font-size: 13px; font-family: inherit; }
 .ab-replay:hover { background: var(--bg-hover); }
+
+/* 卡片皮肤 */
+.skin-card { position: relative; cursor: pointer; }
+.skin-card-tools {
+  position: absolute; top: 5px; right: 6px; display: none; gap: 2px;
+}
+.skin-card:hover .skin-card-tools { display: flex; }
+.skin-card-tools button {
+  width: 18px; height: 18px; border: none; border-radius: 4px;
+  background: var(--bg-hover); color: var(--text-dim); font-size: 10px; cursor: pointer;
+}
+.skin-card-tools button:hover { color: var(--text); }
+.skin-bar { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.skin-msg { font-size: 11px; color: var(--text-dim); }
 </style>

@@ -11,15 +11,12 @@ import RadarSweep from "./RadarSweep.vue";
 import ReviewTimeline from "./ReviewTimeline.vue";
 import MultiStockGrid from "./MultiStockGrid.vue";
 import MarketHeatMatrix from "./MarketHeatMatrix.vue";
-import BentoFocus from "./BentoFocus.vue";
 import TelegraphWall from "./TelegraphWall.vue";
-import BreadthBoard from "./BreadthBoard.vue";
 import ShortTermSpider from "./ShortTermSpider.vue";
 import SectorBoard from "./SectorBoard.vue";
 import SectorHeatmap from "./SectorHeatmap.vue";
 import SectorEvents from "./SectorEvents.vue";
 import Screener from "./Screener.vue";
-import ThemeRotation from "./ThemeRotation.vue";
 import DistBoard from "./DistBoard.vue";
 import NewsFlash from "./NewsFlash.vue";
 import FundFlow from "./FundFlow.vue";
@@ -36,7 +33,7 @@ import TradeTape from "./TradeTape.vue";
 import RightPanel from "./RightPanel.vue";
 import type { CardId } from "../composables/useWorkbench";
 
-const props = defineProps<{ id: CardId; selected: string | null; compact?: boolean }>();
+const props = defineProps<{ id: CardId; selected: string | null }>();
 defineEmits<{ select: [code: string] }>();
 
 // 单卡崩溃边界：捕获子卡片渲染错误，显示兜底而非整屏白屏（不影响其他卡片）
@@ -76,15 +73,12 @@ function retry() {
     <ReviewTimeline v-else-if="id === 'reviewtimeline'" @select="$emit('select', $event)" />
     <MultiStockGrid v-else-if="id === 'multigrid'" @select="$emit('select', $event)" />
     <MarketHeatMatrix v-else-if="id === 'heatmatrix'" @select="$emit('select', $event)" />
-    <BentoFocus v-else-if="id === 'bentofocus'" @select="$emit('select', $event)" />
     <TelegraphWall v-else-if="id === 'telegraph'" @select="$emit('select', $event)" />
-    <BreadthBoard v-else-if="id === 'breadth'" :compact="compact" />
     <ShortTermSpider v-else-if="id === 'spider'" @select="$emit('select', $event)" />
     <SectorBoard v-else-if="id === 'sector'" @select="$emit('select', $event)" />
     <SectorHeatmap v-else-if="id === 'sectorheat'" @select="$emit('select', $event)" />
     <SectorEvents v-else-if="id === 'sectorevent'" @select="$emit('select', $event)" />
     <Screener v-else-if="id === 'screener'" @select="$emit('select', $event)" />
-    <ThemeRotation v-else-if="id === 'theme'" @select="$emit('select', $event)" />
     <DistBoard v-else-if="id === 'dist'" />
     <NewsFlash v-else-if="id === 'news'" />
     <FundFlow v-else-if="id === 'fundflow'" :code="selected" />
