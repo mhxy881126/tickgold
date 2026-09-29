@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>榜单主题预览</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0b0e13; color: #e6edf3;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    padding: 28px; display: flex; gap: 24px; flex-wrap: wrap;
+  }
+  .col { width: 340px; }
+  .col > h2 { font-size: 14px; margin-bottom: 12px; color: #9aa7b8; font-weight: 600; letter-spacing: .5px; }
+
+  /* ============ 主题 1：专业深色终端（密集表格） ============ */
+  .t-terminal { background: #0e1116; border: 1px solid #1b2129; border-radius: 8px; overflow: hidden; }
+  .t-terminal .hd { display:flex; gap:6px; padding:10px; border-bottom:1px solid #1b2129; }
+  .t-terminal .hd button {
+    flex:1; padding:5px 0; font-size:12px; border-radius:5px; background:transparent;
+    border:1px solid #233042; color:#9aa7b8; cursor:pointer;
+  }
+  .t-terminal .hd button.on { color:#e6edf3; border-color:#2f6fed; background:#16233a; }
+  .t-terminal table { width:100%; border-collapse:collapse; table-layout:fixed; }
+  .t-terminal th {
+    text-align:right; font-size:11px; font-weight:500; color:#6b7686;
+    padding:7px 8px; background:#11151c; border-bottom:1px solid #1b2129;
+  }
+  .t-terminal th:nth-child(-n+2), .t-terminal td:nth-child(-n+2) { text-align:left; }
+  .t-terminal td { padding:6px 8px; font-size:12px; border-bottom:1px solid #151a22; white-space:nowrap; }
+  .t-terminal tr:last-child td { border-bottom:none; }
+  .t-terminal .no { color:#6b7686; font-size:11px; }
+  .t-terminal .nm { font-weight:600; }
+  .t-terminal .cd { color:#6b7686; font-size:10px; margin-left:5px; }
+  .t-terminal .up { color:#f23645; }
+  .t-terminal .down { color:#08db98; }
+  .t-terminal .amt { color:#9aa7b8; }
+  .t-terminal tr:hover td { background:#131922; }
+
+  /* ============ 主题 2：卡片渐变（圆角+左色条+阴影） ============ */
+  .t-card { background: linear-gradient(180deg,#141a24,#10141b); border:1px solid #202835; border-radius:14px; padding:14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+  .t-card .hd { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .t-card .hd .seg { display:flex; background:#0e131b; border:1px solid #222c3a; border-radius:9px; padding:3px; }
+  .t-card .hd .seg span { font-size:11px; padding:4px 10px; border-radius:6px; color:#9aa7b8; }
+  .t-card .hd .seg span.on { background:linear-gradient(135deg,#f23645,#c81e32); color:#fff; }
+  .t-card .row {
+    display:flex; align-items:center; gap:10px; padding:10px 12px; margin-bottom:8px;
+    background:linear-gradient(180deg,#171e2a,#131923); border:1px solid #232d3c;
+    border-radius:11px; position:relative; overflow:hidden;
+  }
+  .t-card .row::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; }
+  .t-card .row.up::before { background:linear-gradient(180deg,#f23645,#ff7a5c); }
+  .t-card .row.down::before { background:linear-gradient(180deg,#08db98,#36e0c4); }
+  .t-card .rk { width:24px; height:24px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    font-size:12px; font-weight:700; }
+  .t-card .up .rk { background:rgba(242,54,69,.15); color:#ff6b78; }
+  .t-card .down .rk { background:rgba(8,219,152,.15); color:#3ee6b6; }
+  .t-card .meta { flex:1; min-width:0; overflow:hidden; }
+  .t-card .nm { font-size:13px; font-weight:600; }
+  .t-card .cd { font-size:10px; color:#6b7686; margin-left:5px; }
+  .t-card .px { font-size:12px; color:#9aa7b8; flex-shrink:0; margin-left:4px; }
+  .t-card .pct { font-size:14px; font-weight:700; }
+  .t-card .up .pct { color:#f23645; }
+  .t-card .down .pct { color:#08db98; }
+
+  /* ============ 主题 3：极简大色块（弱化分隔+徽标） ============ */
+  .t-mini { background:#0d1017; border:1px solid #1d2430; border-radius:8px; overflow:hidden; }
+  .t-mini .hd { display:flex; gap:14px; padding:14px 16px; }
+  .t-mini .hd button { background:none; border:none; font-size:13px; color:#6b7686; cursor:pointer; padding-bottom:6px; border-bottom:2px solid transparent; }
+  .t-mini .hd button.on { color:#e6edf3; border-bottom-color:#d4af37; }
+  .t-mini .row { display:flex; align-items:center; gap:14px; padding:14px 16px; }
+  .t-mini .rk {
+    width:30px; height:30px; border-radius:9px; font-size:14px; font-weight:800;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .t-mini .rk.gold { background:linear-gradient(135deg,#f6d365,#d4af37); color:#3a2c00; }
+  .t-mini .rk.silver { background:linear-gradient(135deg,#e3e9f0,#b8c2cf); color:#333; }
+  .t-mini .rk.bronze { background:linear-gradient(135deg,#e0a878,#b5763f); color:#3a2200; }
+  .t-mini .rk.n { background:#1a212c; color:#8b97a8; }
+  .t-mini .meta { flex:1; }
+  .t-mini .nm { font-size:14px; font-weight:600; }
+  .t-mini .sub { font-size:11px; color:#6b7686; margin-top:2px; }
+  .t-mini .pct { font-size:18px; font-weight:800; }
+  .t-mini .up { color:#f23645; }
+  .t-mini .down { color:#08db98; }
+
+  .tag { display:inline-block; font-size:10px; padding:2px 7px; border-radius:20px; margin-left:6px; vertical-align:middle; }
+  .tag.lim { background:rgba(242,54,69,.15); color:#ff6b78; }
+</style>
+</head>
+<body>
+
+  <!-- 主题 1 -->
+  <div class="col">
+    <h2>① 专业深色终端 · 密集表格</h2>
+    <div class="t-terminal">
+      <div class="hd"><button class="on">涨幅</button><button>跌幅</button><button>成交额</button></div>
+      <table>
+        <colgroup>
+          <col style="width:9%"><col style="width:33%"><col style="width:17%">
+          <col style="width:21%"><col style="width:20%">
+        </colgroup>
+        <thead><tr><th>#</th><th>名称</th><th>最新</th><th>涨跌幅</th><th>成交额</th></tr></thead>
+        <tbody>
+          <tr><td class="no">1</td><td class="nm">华懋科技<span class="cd">603306</span></td><td class="up r">24.86</td><td class="up r">+10.01%</td><td class="amt r">8.2亿</td></tr>
+          <tr><td class="no">2</td><td class="nm">通化金马<span class="cd">000766</span></td><td class="up r">7.58</td><td class="up r">+10.01%</td><td class="amt r">5.1亿</td></tr>
+          <tr><td class="no">3</td><td class="nm">常山药业<span class="cd">300255</span></td><td class="up r">6.12</td><td class="up r">+9.87%</td><td class="amt r">3.6亿</td></tr>
+          <tr><td class="no">4</td><td class="nm">某跌股<span class="cd">000004</span></td><td class="down r">3.24</td><td class="down r">-8.42%</td><td class="amt r">1.2亿</td></tr>
+          <tr><td class="no">5</td><td class="nm">某跌股<span class="cd">000005</span></td><td class="down r">9.87</td><td class="down r">-5.16%</td><td class="amt r">0.8亿</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 主题 2 -->
+  <div class="col">
+    <h2>② 卡片渐变 · 左色条 + 悬浮阴影</h2>
+    <div class="t-card">
+      <div class="hd">
+        <div class="seg"><span class="on">涨幅</span><span>跌幅</span><span>成交额</span></div>
+      </div>
+      <div class="row up">
+        <div class="rk">1</div>
+        <div class="meta"><span class="nm">华懋科技</span><span class="cd">603306</span></div>
+        <div class="px">24.86</div>
+        <div class="pct">+10.01%</div>
+      </div>
+      <div class="row up">
+        <div class="rk">2</div>
+        <div class="meta"><span class="nm">通化金马</span><span class="cd">000766</span></div>
+        <div class="px">7.58</div>
+        <div class="pct">+10.01%</div>
+      </div>
+      <div class="row down">
+        <div class="rk">4</div>
+        <div class="meta"><span class="nm">某跌股</span><span class="cd">000004</span></div>
+        <div class="px">3.24</div>
+        <div class="pct">-8.42%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主题 3 -->
+  <div class="col">
+    <h2>③ 极简大色块 · 排名徽标</h2>
+    <div class="t-mini">
+      <div class="hd"><button class="on">涨幅</button><button>跌幅</button><button>成交额</button></div>
+      <div class="row">
+        <div class="rk gold">1</div>
+        <div class="meta"><div class="nm">华懋科技<span class="tag lim">涨停</span></div><div class="sub">603306 · 成交 8.2亿</div></div>
+        <div class="pct up">+10.01%</div>
+      </div>
+      <div class="row">
+        <div class="rk silver">2</div>
+        <div class="meta"><div class="nm">通化金马<span class="tag lim">涨停</span></div><div class="sub">000766 · 成交 5.1亿</div></div>
+        <div class="pct up">+10.01%</div>
+      </div>
+      <div class="row">
+        <div class="rk bronze">3</div>
+        <div class="meta"><div class="nm">常山药业</div><div class="sub">300255 · 成交 3.6亿</div></div>
+        <div class="pct up">+9.87%</div>
+      </div>
+      <div class="row">
+        <div class="rk n">4</div>
+        <div class="meta"><div class="nm">某跌股</div><div class="sub">000004 · 成交 1.2亿</div></div>
+        <div class="pct down">-8.42%</div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
