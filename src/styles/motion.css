@@ -1,0 +1,121 @@
+/* 动效引擎：关键帧 + 三档门控（data-motion）。
+   引入位置：main.ts，global.css 之后。 */
+
+:root {
+  --ease-enter: cubic-bezier(0.22, 1.2, 0.36, 1);
+  --ease-move: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ===== 行情数字瞬时涨跌辉光 ===== */
+@keyframes flashUp {
+  0% { color: var(--up); text-shadow: 0 0 0 rgba(255, 77, 94, 0); }
+  35% { color: color-mix(in srgb, var(--up) 70%, white);
+        text-shadow: 0 0 14px rgba(255, 77, 94, 0.75); }
+  100% { text-shadow: 0 0 0 rgba(255, 77, 94, 0); }
+}
+@keyframes flashDown {
+  0% { color: var(--down); text-shadow: 0 0 0 rgba(25, 195, 125, 0); }
+  35% { color: color-mix(in srgb, var(--down) 65%, white);
+        text-shadow: 0 0 14px rgba(25, 195, 125, 0.7); }
+  100% { text-shadow: 0 0 0 rgba(25, 195, 125, 0); }
+}
+.flash-up { animation: flashUp 0.7s ease-out 1; }
+.flash-down { animation: flashDown 0.7s ease-out 1; }
+
+/* ===== v-flash 列表行瞬时底色辉光 ===== */
+@keyframes rowUp {
+  0% { background-color: rgba(255, 77, 94, 0.22); }
+  100% { background-color: rgba(255, 77, 94, 0); }
+}
+@keyframes rowDown {
+  0% { background-color: rgba(25, 195, 125, 0.2); }
+  100% { background-color: rgba(25, 195, 125, 0); }
+}
+.row-flash-up { animation: rowUp 0.8s ease-out 1; }
+.row-flash-down { animation: rowDown 0.8s ease-out 1; }
+
+/* ===== shimmer 骨架 ===== */
+@keyframes shimmer {
+  0% { background-position: 120% 0; }
+  100% { background-position: -80% 0; }
+}
+.skeleton-block {
+  border-radius: 8px;
+  background: linear-gradient(100deg,
+    color-mix(in srgb, var(--bg-card) 90%, #000) 30%,
+    var(--bg-hover) 50%,
+    color-mix(in srgb, var(--bg-card) 90%, #000) 70%);
+  background-size: 220% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+/* ===== 皮肤：金色辉光呼吸（opacity 动画，不动画 box-shadow） ===== */
+@keyframes breatheGlow {
+  0%, 100% { opacity: 0.16; }
+  50% { opacity: 0.34; }
+}
+
+/* ===== 自由布局磁吸 Q 弹 ===== */
+@keyframes snapSpring {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.015); }
+  70% { transform: scale(0.995); }
+  100% { transform: scale(1); }
+}
+.snap-spring { animation: snapSpring 0.22s var(--ease-spring) 1; }
+
+/* ===== 卡片悬停抬升 / 环境光晕（仅 full 档启用抬升位移） ===== */
+.card-shell {
+  position: relative;
+}
+html[data-motion="full"] .card-shell {
+  transition: transform 0.2s var(--ease-move),
+    border-color 0.18s, box-shadow 0.2s;
+}
+html[data-motion="full"] .card-shell:hover {
+  transform: translateY(-2px);
+}
+/* 环境光晕伪元素（沿边的 accent 微光） */
+.card-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: inset 0 0 24px
+    color-mix(in srgb, var(--accent-var) 22%, transparent);
+  transition: opacity 0.25s;
+  z-index: 1;
+}
+html[data-motion="full"] .card-shell:hover::before {
+  opacity: 1;
+}
+
+/* ===== 皮肤装饰槽占位（后续版本启用：scanline/corners、毛玻璃） ===== */
+.card-shell {
+  /* --card-decor: none | scanline | corners；--card-frost: 0..1 */
+  backdrop-filter: blur(calc(var(--card-frost, 0) * 8px));
+}
+
+/* ===== 省电档：禁用所有非必要动画/过渡 ===== */
+html[data-motion="power"] .card-shell,
+html[data-motion="power"] .card-shell::before,
+html[data-motion="power"] .card-shell::after,
+html[data-motion="power"] .free-cell,
+html[data-motion="power"] .card-move {
+  transition: none !important;
+  animation: none !important;
+}
+html[data-motion="power"] .flash-up,
+html[data-motion="power"] .flash-down,
+html[data-motion="power"] .row-flash-up,
+html[data-motion="power"] .row-flash-down,
+html[data-motion="power"] .snap-spring {
+  animation: none !important;
+}
+/* 省电档隐藏悬停光晕 */
+html[data-motion="power"] .card-shell::before {
+  display: none;
+}
