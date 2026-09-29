@@ -14,13 +14,38 @@ describe("legacy → v1 自动迁移", () => {
   it("有出厂模板的老卡被迁移为 v1，cu/rect 全保留", () => {
     const cu = { color: "#123456", tag: "测", locked: true };
     const rect = { x: 100, y: 50, w: 320, h: 240 };
-    const r = migrateCard(legacy("chart", { cu, rect }));
+    const r = migrateCard(legacy("watch", { cu, rect }));
     expect(r.changed).toBe(true);
     expect(r.card.v).toBe(1);
     expect(r.card.widgets).toBeDefined();
     expect(r.card.widgets!.items.length).toBeGreaterThan(0);
     expect(r.card.cu).toBe(cu);
     expect(r.card.rect).toBe(rect);
+  });
+
+  it("老版出厂微件化的 K线卡（报价头+盘口+分时缩略图）还原为经典组件", () => {
+    const cards: SnapshotCard[] = [
+      {
+        ...legacy("chart"),
+        v: 1,
+        widgets: { primary: null, items: buildItems(["quote-head", "orderbook-mini", "minute-chart"]) },
+      },
+    ];
+    const r = migrateSnapshot(cards);
+    expect(r.changed).toBe(true);
+    expect(r.cards[0]!.v).toBeUndefined();
+    expect(r.cards[0]!.widgets).toBeUndefined();
+    // 还原后再次迁移幂等（保持经典）
+    expect(migrateSnapshot(r.cards).changed).toBe(false);
+  });
+
+  it("用户自行编排过的 K线卡（非出厂三件套）不被还原", () => {
+    const items = buildItems(["quote-head", "kline-mini"]);
+    const cards: SnapshotCard[] = [
+      { ...legacy("chart"), v: 1, widgets: { primary: null, items } },
+    ];
+    const r = migrateSnapshot(cards);
+    expect(r.cards[0]!.widgets!.items.map((i) => i.def)).toEqual(["quote-head", "kline-mini"]);
   });
 
   it("无模板的老卡保持 legacy，不加 v", () => {
