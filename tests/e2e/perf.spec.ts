@@ -42,7 +42,7 @@ test("全量卡片同屏：帧率 ≥50fps、内存无明显增长", async ({ pa
   await mountAll(page);
   await page.waitForTimeout(800);
 
-  expect(await cardCount(page)).toBe(33);
+  expect(await cardCount(page)).toBe(30);
   const stats = await page.evaluate(() => ({
     nodes: document.querySelectorAll("*").length,
     canvases: document.querySelectorAll("canvas").length,

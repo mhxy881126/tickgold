@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch, toRef } from "vue";
+import { nextTick, onMounted, watch, toRef } from "vue";
 import * as echarts from "echarts";
 import { useWidgetData } from "../../composables/useMarketContext";
+import { useEchart } from "../../composables/useEchart";
 
 const props = defineProps<{ bind?: string | null }>();
 const d = useWidgetData(toRef(props, "bind"));
 
-const el = ref<HTMLElement | null>(null);
-let chart: echarts.ECharts | null = null;
+const { el, chart } = useEchart();
 
 function color() {
   const data = d.minute.value;
@@ -49,16 +49,15 @@ function option() {
 async function render() {
   await d.ensure("minute");
   await d.ensure("ob"); // 昨收基准线
-  chart?.setOption(option(), true);
+  chart.value?.setOption(option(), true);
 }
 
+// useEchart 内部先注册的 onMounted 已完成 init，此处再取数首绘
 onMounted(async () => {
   await nextTick();
-  if (el.value) chart = echarts.init(el.value);
   render();
 });
 watch(() => d.code.value, () => nextTick(render));
-onBeforeUnmount(() => { chart?.dispose(); chart = null; });
 </script>
 
 <template>

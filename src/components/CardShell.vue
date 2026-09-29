@@ -404,6 +404,7 @@ function startResize(e: PointerEvent) {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  position: relative; /* 作为微件画布 absolute inset:0 的包含块，避免其覆盖卡头 */
 }
 .card-body.collapsed {
   display: none;

@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch, toRef } from "vue";
-import * as echarts from "echarts";
+import { nextTick, onMounted, watch, toRef } from "vue";
 import { useWidgetData } from "../../composables/useMarketContext";
+import { useEchart } from "../../composables/useEchart";
 
 const props = defineProps<{ bind?: string | null }>();
 const d = useWidgetData(toRef(props, "bind"));
 
-const el = ref<HTMLElement | null>(null);
-let chart: echarts.ECharts | null = null;
+const { el, chart } = useEchart();
 
 function ma(n: number) {
   const data = d.kline.value;
@@ -58,16 +57,14 @@ function option() {
 
 async function render() {
   await d.ensure("kline");
-  chart?.setOption(option(), true);
+  chart.value?.setOption(option(), true);
 }
 
 onMounted(async () => {
   await nextTick();
-  if (el.value) chart = echarts.init(el.value);
   render();
 });
 watch(() => d.code.value, () => nextTick(render));
-onBeforeUnmount(() => { chart?.dispose(); chart = null; });
 </script>
 
 <template>

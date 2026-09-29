@@ -1,4 +1,4 @@
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, inject } from "vue";
 import { db } from "../db/database";
 import type { CardId, Zone, CardMeta, CardCustom, SnapshotCard } from "../lib/cards";
 import { CARD_META, CARD_SWATCHES } from "../lib/cards";
@@ -47,7 +47,7 @@ const TIME_KEY = "workbench_time_mode";
 const SCENE_KEY = "workbench_scene";
 const PRE_V1_KEY = "workbench_current_pre_v1";
 
-export function useWorkbench() {
+function createWorkbench() {
   const skins = useSkins();
   const openCards = ref<CardId[]>([]);
   // 用户对卡片分区的自定义覆盖（未设置则用默认分区）
@@ -849,4 +849,13 @@ export function useWorkbench() {
     setCardPrimary,
     resetCardWidgets,
   };
+}
+
+export type Workbench = ReturnType<typeof createWorkbench>;
+
+// App 根组件 provide 的唯一工作台实例；子孙组件 inject 复用，避免各自新建空状态
+const WORKBENCH_KEY = "workbench";
+
+export function useWorkbench(): Workbench {
+  return inject<Workbench | null>(WORKBENCH_KEY, null) ?? createWorkbench();
 }

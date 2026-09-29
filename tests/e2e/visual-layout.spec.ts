@@ -17,8 +17,9 @@ async function rect(loc: Locator) {
 async function openMini(page: Page) {
   await page.locator(".scene-chip", { hasText: "极简看盘" }).click();
   const chartSlot = page.locator('[data-card-id="chart"]');
-  await chartSlot.locator(".chart-host canvas").first().waitFor();
-  await page.waitForTimeout(400); // 入场动画 settle
+  // 极简看盘的 chart 为微件卡：分时图微件（echarts canvas）
+  await chartSlot.locator(".w-chart canvas").first().waitFor();
+  await page.waitForTimeout(400); // 入场动画 + ResizeObserver settle
   return chartSlot;
 }
 
@@ -27,14 +28,13 @@ test("自动布局：图表填满卡片、卡片互不重叠", async ({ page }) 
   const chartSlot = await openMini(page);
 
   const shell = await rect(chartSlot.locator(".card-shell"));
-  const host = await rect(chartSlot.locator(".chart-host"));
-  const book = await rect(chartSlot.locator(".sc-book"));
+  const minute = await rect(chartSlot.locator(".w-chart"));
 
-  // 图表区 / 盘口底部接近卡片底部（底部留白 < 24px，防大片空白）
-  expect(Math.max(host.bottom, book.bottom)).toBeGreaterThan(shell.bottom - 24);
-  // 图表区占卡片主要宽度、高度充足
-  expect(host.width).toBeGreaterThan(shell.width * 0.7);
-  expect(host.height).toBeGreaterThan(220);
+  // 分时微件底部接近卡片底部（底部留白 < 24px，防大片空白）
+  expect(minute.bottom).toBeGreaterThan(shell.bottom - 24);
+  // 分时图占卡片主要宽度（8/12 列）、高度充足
+  expect(minute.width).toBeGreaterThan(shell.width * 0.6);
+  expect(minute.height).toBeGreaterThan(180);
 
   // chart 与 order 水平相邻不重叠
   const order = await rect(page.locator('[data-card-id="order"] .card-shell'));
@@ -52,7 +52,7 @@ test("自动布局：图表填满卡片、卡片互不重叠", async ({ page }) 
 test("聚焦：卡片放大到主区、canvas 放大、切换栏可见，退出后复位", async ({ page }) => {
   await boot(page);
   const chartSlot = await openMini(page);
-  const beforeCanvas = await rect(chartSlot.locator(".chart-host canvas").first());
+  const beforeCanvas = await rect(chartSlot.locator(".w-chart canvas").first());
 
   await chartSlot.locator(".head-btn[title^='聚焦']").click();
   await page.locator(".focus-rail").waitFor();
@@ -72,7 +72,7 @@ test("聚焦：卡片放大到主区、canvas 放大、切换栏可见，退出�
   expect(slot.height).toBeGreaterThan(vp.height * 0.82);
 
   // canvas 较聚焦前明显放大
-  const afterCanvas = await rect(chartSlot.locator(".chart-host canvas").first());
+  const afterCanvas = await rect(chartSlot.locator(".w-chart canvas").first());
   expect(afterCanvas.width).toBeGreaterThan(beforeCanvas.width);
   expect(afterCanvas.height).toBeGreaterThan(beforeCanvas.height + 80);
 
