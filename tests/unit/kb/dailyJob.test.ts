@@ -108,6 +108,33 @@ describe("runAttributionJob", () => {
     expect(leftCall![1]).toEqual(["2026-09-30", 1, "300001", "300002", "300003"]);
   });
 
+  it("filters market-wide quasi-index tags (融资融券) out of concept attribution", async () => {
+    // N1：3 只股票都带「机器人 + 融资融券」；融资融券是全市场通用标签，
+    // 虽满足 ≥2 涨停也绝不能聚成题材。
+    mocks.ztPool.mockResolvedValue({
+      date: "20260930", total: 3,
+      list: [
+        ztStock({ code: "300001", boards: 3 }),
+        ztStock({ code: "300002", boards: 2 }),
+        ztStock({ code: "300003", boards: 1 }),
+      ],
+    });
+    mocks.themeTags.mockImplementation((codes: string[]) =>
+      Promise.resolve(
+        codes.map((code) => ({ code, industry: "设备", concepts: ["机器人", "融资融券"] }))
+      )
+    );
+
+    const r = await runAttributionJob(d, "2026-09-30", "20260930");
+    expect(r.themes).toBe(1);
+
+    const themeNames = mocks.db.execute.mock.calls
+      .filter((c) => c[0].includes("INSERT INTO theme("))
+      .map((c) => (c[1] as unknown[])[0]);
+    expect(themeNames).toContain("机器人");
+    expect(themeNames).not.toContain("融资融券");
+  });
+
   it("persists an empty concepts string when the stock has no f128 tags", async () => {
     mocks.ztPool.mockResolvedValue({
       date: "20260930", total: 1,

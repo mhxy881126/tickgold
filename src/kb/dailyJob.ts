@@ -16,7 +16,7 @@ import {
   upsertLimitUpRecord,
   type Db,
 } from "./repo";
-import { clusterThemes, type ConceptMembership, type ThemeCluster } from "./cluster";
+import { clusterThemes, isTradeableConcept, type ConceptMembership, type ThemeCluster } from "./cluster";
 import { assignRoles, type RoleInput } from "./roles";
 import { matchTheme } from "./catalystPipe";
 import type { ThemeStage } from "./types";
@@ -94,6 +94,8 @@ export async function runAttributionJob(
   const conceptMap = new Map<string, Set<string>>();
   for (const t of tags) {
     for (const concept of t.concepts) {
+      // N1：融资融券/股通/MSCI/重仓等全市场通用准指数标签不参与概念归因
+      if (!isTradeableConcept(concept)) continue;
       let set = conceptMap.get(concept);
       if (!set) {
         set = new Set();

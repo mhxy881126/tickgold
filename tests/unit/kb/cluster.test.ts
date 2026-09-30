@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clusterThemes } from "../../../src/kb/cluster";
+import { clusterThemes, isTradeableConcept } from "../../../src/kb/cluster";
 import type { SealStock } from "../../../src/kb/cluster";
 
 function s(code: string, boards: number, industry: string, name = code): SealStock {
@@ -18,6 +18,39 @@ const concepts = [
   { concept: "设备", codes: ["300001", "300002", "300003"] }, // 与行业同名，应并入概念不重复
   { concept: "孤独概念", codes: ["600001"] },                  // 仅 1 只涨停，concept 路径不入选
 ];
+
+describe("isTradeableConcept (N1 通用准指数标签过滤)", () => {
+  it("rejects market-wide membership tags", () => {
+    expect(isTradeableConcept("融资融券")).toBe(false);
+    expect(isTradeableConcept("沪股通")).toBe(false);
+  });
+
+  it("accepts real tradeable themes", () => {
+    expect(isTradeableConcept("机器人")).toBe(true);
+    expect(isTradeableConcept("CXO概念")).toBe(true);
+  });
+
+  it("rejects blank names", () => {
+    expect(isTradeableConcept("")).toBe(false);
+    expect(isTradeableConcept("   ")).toBe(false);
+  });
+
+  it("trims surrounding whitespace before judging", () => {
+    expect(isTradeableConcept("  机器人 ")).toBe(true);
+  });
+
+  it("keeps 央企改革/国企改革 as occasionally traded themes", () => {
+    // 复核：央企改革/国企改革在 A 股偶有炒作行情，不属于纯结构性成员标签，不进黑名单。
+    expect(isTradeableConcept("央企改革")).toBe(true);
+    expect(isTradeableConcept("国企改革")).toBe(true);
+  });
+
+  it("rejects pattern-based quasi-index tags", () => {
+    expect(isTradeableConcept("沪港通")).toBe(false); // /股通/
+    expect(isTradeableConcept("机构重仓")).toBe(false); // /重仓$/
+    expect(isTradeableConcept("MSCI概念")).toBe(false); // /^MSCI/
+  });
+});
 
 describe("clusterThemes", () => {
   it("forms a concept cluster from >=2 sealed members", () => {

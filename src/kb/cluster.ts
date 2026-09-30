@@ -42,6 +42,21 @@ function summarize(name: string, path: "concept" | "industry", members: SealStoc
   };
 }
 
+// 市场通用/准指数类标签：不是可炒作题材，不参与概念归因。
+const UNIVERSAL_TAG_DENY: ReadonlySet<string> = new Set([
+  "融资融券", "转融券标的", "沪股通", "深股通", "沪港通", "深港通",
+  "MSCI中国", "MSCI概念", "标普道琼A股", "富时罗素概念股", "富时罗素概念",
+  "机构重仓", "基金重仓", "社保重仓", "QFII重仓", "券商重仓", "保险重仓",
+  "证金持股", "汇金概念",
+]);
+const UNIVERSAL_TAG_PATTERNS: RegExp[] = [/股通/, /重仓$/, /^MSCI/];
+
+export function isTradeableConcept(name: string): boolean {
+  const t = name.trim();
+  if (!t || UNIVERSAL_TAG_DENY.has(t)) return false;
+  return !UNIVERSAL_TAG_PATTERNS.some((re) => re.test(t));
+}
+
 export function clusterThemes(stocks: SealStock[], concepts: ConceptMembership[]): ThemeCluster[] {
   const byCode = new Map(stocks.map((s) => [s.code, s]));
   const sealedCodes = new Set(stocks.map((s) => s.code));

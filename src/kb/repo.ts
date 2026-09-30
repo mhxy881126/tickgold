@@ -69,7 +69,10 @@ function mapCatalyst(r: Record<string, unknown>): CatalystRow {
   const kind = r.kind as CatalystKind;
   const publishedAt = (r.published_at as number | null) ?? null;
   const collectedAt = r.collected_at as number;
-  const ageDays = (Date.now() - (publishedAt ?? collectedAt)) / 86_400_000;
+  // published_at=0（缺失）与 NULL 同义：?? 会保留 0 导致按 1970 计龄（约 56 年），
+  // 非正时间戳一律回退 collected_at，与写入路径口径一致。
+  const base = (typeof r.published_at === "number" && r.published_at > 0) ? r.published_at : collectedAt;
+  const ageDays = (Date.now() - base) / 86_400_000;
   return {
     id: r.id as number,
     kind,

@@ -96,7 +96,8 @@ describe("catalyst freshness on read (M1)", () => {
       catalystRow({ kind: "policy", fresh_score: 1, published_at: Date.now() - 7 * 86_400_000 }),
     ]);
     const [c] = await repo.listCatalysts(d, { limit: 10 });
-    expect(c.freshScore).toBeCloseTo(0.5, 10);
+    // 容差放宽到 5e-6：高负载下取时与映射间可能有毫秒级偏差
+    expect(c.freshScore).toBeCloseTo(0.5, 5);
   });
 
   it("falls back to collected_at when published_at is NULL", async () => {
@@ -104,7 +105,36 @@ describe("catalyst freshness on read (M1)", () => {
       catalystRow({ published_at: null, collected_at: Date.now(), fresh_score: 0.2 }),
     ]);
     const [c] = await repo.listCatalysts(d);
-    expect(c.freshScore).toBeCloseTo(1, 10);
+    expect(c.freshScore).toBeCloseTo(1, 5);
+  });
+
+  it("treats published_at=0 as missing and ages from collected_at (M1 edge)", async () => {
+    const now = Date.now();
+
+    // 关键回归（先断言，缩短取时偏差）：published_at=0 但 collected_at 仅 1 天前
+    // → 必须按 collected_at 计龄（≈0.5）；旧逻辑把 0 当 1970 时间戳，约 56 年 → 0。
+    dbMock.select.mockResolvedValueOnce([
+      catalystRow({ kind: "event", published_at: 0, collected_at: now - 1 * 86_400_000 }),
+    ]);
+    const [recentCollected] = await repo.listCatalysts(d);
+    expect(recentCollected.freshScore).toBeCloseTo(0.5, 5);
+
+    // 远古行：published_at=0、collected_at=100 → 按 collected_at 计龄，event 半衰期 1 天，近 0
+    dbMock.select.mockResolvedValueOnce([
+      catalystRow({ kind: "event", published_at: 0, collected_at: 100 }),
+    ]);
+    const [ancient] = await repo.listCatalysts(d);
+    expect(ancient.freshScore).toBeCloseTo(0, 10);
+  });
+
+  it("uses a positive recent published_at even when collected_at is old", async () => {
+    const now = Date.now();
+    // published_at 为 2 天前（event 两个半衰期 → 0.25），collected_at 远古；必须取 published_at
+    dbMock.select.mockResolvedValueOnce([
+      catalystRow({ kind: "event", published_at: now - 2 * 86_400_000, collected_at: 100 }),
+    ]);
+    const [c] = await repo.listCatalysts(d);
+    expect(c.freshScore).toBeCloseTo(0.25, 5);
   });
 });
 
