@@ -63,6 +63,11 @@ async fn get_sectors(kind: String) -> Result<Vec<market::Sector>, String> {
 }
 
 #[tauri::command]
+async fn get_sector_stocks(board_code: String) -> Result<Vec<String>, String> {
+    market::eastmoney::sector_stocks(&board_code).await
+}
+
+#[tauri::command]
 async fn get_screener(
     filter: market::ScreenFilter,
 ) -> Result<Vec<market::ScreenResult>, String> {
@@ -1181,6 +1186,7 @@ pub fn run() {
             get_trades,
             get_fund_flow,
             get_sectors,
+            get_sector_stocks,
             get_screener,
             search_stocks,
             get_index_quotes,

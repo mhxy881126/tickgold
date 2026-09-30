@@ -29,3 +29,8 @@ export async function fetchAnnouncements(date: string): Promise<AnnounceItem[]> 
 export async function fetchIrmLatest(): Promise<IrmItem[]> {
   return await invoke<IrmItem[]>("get_irm_latest");
 }
+
+/** 概念板块（BKxxxx）成分股代码；单板块失败抛出由作业降级跳过。 */
+export async function fetchSectorStocks(boardCode: string): Promise<string[]> {
+  return await invoke<string[]>("get_sector_stocks", { boardCode });
+}

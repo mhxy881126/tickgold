@@ -4,6 +4,7 @@ use super::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::time::Duration;
 
 #[derive(Deserialize)]
 struct ListResp {
@@ -1374,4 +1375,40 @@ pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
         asks,
         bids,
     })
+}
+
+// ===== 概念板块成分股（clist，fs=b:BKxxxx；多节点串行故障转移）=====
+/// 概念板块成分股代码（clist，fs=b:BKxxxx；多节点串行故障转移）。
+pub async fn sector_stocks(board_code: &str) -> Result<Vec<String>, String> {
+    let nodes = ["82", "88", "29"];
+    let ut = "bd1d9ddb04089700cf9c27f6f7426281";
+    for node in nodes {
+        let url = format!(
+            "https://{}.push2.eastmoney.com/api/qt/clist/get?ut={}&pn=1&pz=500&po=1&np=1&fltt=2&invt=2&fs=b:{}&fields=f12&_={}",
+            node, ut, board_code, now_millis()
+        );
+        let got = tokio::time::timeout(
+            Duration::from_secs(15),
+            http().get(&url).header("Referer", "https://quote.eastmoney.com/").send(),
+        )
+        .await;
+        if let Ok(Ok(resp)) = got {
+            if let Ok(text) = resp.text().await {
+                if let Some(codes) = parse_clist_codes(&text) {
+                    return Ok(codes);
+                }
+            }
+        }
+    }
+    Err("板块成分拉取失败".to_string())
+}
+
+fn parse_clist_codes(text: &str) -> Option<Vec<String>> {
+    let v: Value = serde_json::from_str(text).ok()?;
+    let diff = v.pointer("/data/diff")?.as_array()?;
+    let codes: Vec<String> = diff
+        .iter()
+        .filter_map(|row| row.get("f12").and_then(|x| x.as_str()).map(|s| s.to_string()))
+        .collect();
+    Some(codes)
 }
