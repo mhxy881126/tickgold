@@ -18,7 +18,6 @@ import {
   irmToDraft,
 } from "../kb/catalystPipe";
 import {
-  isoDate,
   runAttributionJob,
   todayCompact,
 } from "../kb/dailyJob";
@@ -56,7 +55,6 @@ async function runAnnouncement(d: Db, date: string): Promise<number> {
 async function runIrm(d: Db): Promise<number> {
   const items = await fetchIrmLatest();
   const { inserted } = await ingestCatalysts(d, items.map(irmToDraft));
-  collectorStatus.lastIrm = 0; // 由下面赋真实时间
   collectorStatus.lastIrm = Date.now();
   collectorStatus.irmCount += inserted;
   return inserted;
@@ -83,8 +81,9 @@ export async function runCollectionNow(job: CollectorJob): Promise<void> {
   if (locked.has(key)) return;
   locked.add(key);
 
-  const runId = await startRun(d, date, job);
+  let runId = 0;
   try {
+    runId = await startRun(d, date, job);
     let rows = 0;
     if (job === "announcement") rows = await runAnnouncement(d, date);
     else if (job === "irm") rows = await runIrm(d);
