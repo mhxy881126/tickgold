@@ -71,18 +71,21 @@ async function runAttribution(d: Db, date: string): Promise<number> {
 export async function runCollectionNow(job: CollectorJob): Promise<void> {
   const date = nowIso();
   const key = `${job}:${date}`;
-  const d: Db = db();
-
-  // 归因作业同日成功则跳过；其余作业允许补抓
-  if (job === "attribution") {
-    const done = await getRun(d, date, job);
-    if (done?.status === "success") return;
-  }
   if (locked.has(key)) return;
   locked.add(key);
 
   let runId = 0;
   try {
+    // M3：db() 获取与所有 await 全部纳入 try（含归因幂等检查），
+    // 任何一步拒绝都走统一失败落库，不能逃逸到 void'd tick。
+    const d: Db = db();
+
+    // 归因作业同日成功则跳过；其余作业允许补抓
+    if (job === "attribution") {
+      const done = await getRun(d, date, job);
+      if (done?.status === "success") return;
+    }
+
     runId = await startRun(d, date, job);
     let rows = 0;
     if (job === "announcement") rows = await runAnnouncement(d, date);
@@ -93,7 +96,12 @@ export async function runCollectionNow(job: CollectorJob): Promise<void> {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     collectorStatus.lastError = msg;
-    await finishRun(d, runId, "failed", 0, msg);
+    // 失败落库本身再拒绝也必须吞掉：调用方是 void runCollectionNow，拒绝无人接收
+    try {
+      await finishRun(db(), runId, "failed", 0, msg);
+    } catch {
+      /* swallow：lastError 已留在 collectorStatus */
+    }
   } finally {
     locked.delete(key);
   }
@@ -113,6 +121,8 @@ function tick(): void {
   // 盘后归因窗口 15:30-17:00
   if (hm >= 930 && hm <= 1020) {
     void runCollectionNow("attribution");
+    // 公告常在收盘后才挂出，盘中窗口抓不到；此处补扫（作业幂等，重复只走忽略）
+    void runCollectionNow("announcement");
   }
 }
 

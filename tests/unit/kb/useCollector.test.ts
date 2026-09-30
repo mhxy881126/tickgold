@@ -67,6 +67,33 @@ describe("scheduler lifecycle", () => {
     expect(mocks.attribution).not.toHaveBeenCalled();
   });
 
+  it("records failure without throwing when getRun itself rejects (M3)", async () => {
+    // db()/getRun 移入 try：select 拒绝也要能走失败落库，拒绝不能逃逸
+    mocks.db.select.mockRejectedValueOnce(new Error("select boom"));
+    await expect(runCollectionNow("attribution")).resolves.toBeUndefined();
+    expect(collectorStatus.lastError).toContain("select boom");
+    const sqls = mocks.db.execute.mock.calls.map((c) => c[0] as string);
+    expect(sqls.some((s) => s.includes("UPDATE collector_run"))).toBe(true);
+  });
+
+  it("intraday window runs announcements and IRM but not attribution", async () => {
+    vi.setSystemTime(new Date(2026, 8, 30, 10, 30, 0)); // 周三 10:30
+    startCollector();
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+    expect(mocks.announcements).toHaveBeenCalledTimes(1);
+    expect(mocks.irmLatest).toHaveBeenCalledTimes(1);
+    expect(mocks.attribution).not.toHaveBeenCalled();
+  });
+
+  it("post-close window runs attribution plus announcement re-sweep, not IRM", async () => {
+    vi.setSystemTime(new Date(2026, 8, 30, 16, 0, 0)); // 周三 16:00
+    startCollector();
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+    expect(mocks.attribution).toHaveBeenCalledTimes(1);
+    expect(mocks.announcements).toHaveBeenCalledTimes(1);
+    expect(mocks.irmLatest).not.toHaveBeenCalled();
+  });
+
   it("start/stop toggles running", () => {
     startCollector();
     expect(collectorStatus.running).toBe(true);

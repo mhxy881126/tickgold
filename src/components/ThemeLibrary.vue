@@ -48,7 +48,10 @@ async function collectNow() {
   }
 }
 
-onMounted(reload);
+onMounted(() => {
+  // 挂载兜底：reload 任一步拒绝都不能变成未处理的 promise 拒绝
+  void reload().catch(() => {});
+});
 </script>
 
 <template>
