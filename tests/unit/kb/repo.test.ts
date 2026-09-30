@@ -85,7 +85,7 @@ describe("catalyst / limit-up", () => {
     expect(await repo.insertCatalystIgnore(d, {
       kind: "policy", title: "t", summary: "", source: "cninfo", sourceUrl: "",
       publishedAt: 1, direction: "利好", themeId: null, code: null,
-      freshScore: 1, contentHash: "h1", collectedAt: 1,
+      freshScore: 1, hash: "h1", collectedAt: 1,
     })).toBe(true);
   });
 

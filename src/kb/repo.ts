@@ -220,7 +220,7 @@ export async function listThemeStocks(d: Db, themeId: number): Promise<ThemeStoc
 }
 
 // ===== catalyst =====
-type NewCatalyst = { hash: string } & Omit<CatalystRow, "id">;
+type NewCatalyst = Omit<CatalystRow, "id" | "contentHash"> & { hash: string };
 
 export async function insertCatalystIgnore(d: Db, c: NewCatalyst): Promise<boolean> {
   const r = await d.execute(
