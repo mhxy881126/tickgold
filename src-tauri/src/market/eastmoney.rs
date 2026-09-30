@@ -1377,63 +1377,276 @@ pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
     })
 }
 
-// ===== 概念板块成分股（clist，fs=b:BKxxxx；多节点串行故障转移）=====
-/// 概念板块成分股代码（clist，fs=b:BKxxxx；多节点串行故障转移）。
-pub async fn sector_stocks(board_code: &str) -> Result<Vec<String>, String> {
+// ===== 个股题材标签（clist f127=所属行业 f128=所属概念；多节点串行故障转移）=====
+/// 单只个股的行业 + 概念标签（f127/f128 由东财 clist 直接返回，概念名为逗号分隔文本）。
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct StockThemeTags {
+    pub code: String,
+    pub industry: String,
+    pub concepts: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct TagsResp {
+    data: Option<TagsData>,
+}
+#[derive(Deserialize)]
+struct TagsData {
+    diff: Option<Vec<TagsRow>>,
+}
+#[derive(Deserialize)]
+struct TagsRow {
+    #[serde(rename = "f12")]
+    code: String,
+    #[serde(rename = "f127", default)]
+    industry: Value,
+    #[serde(rename = "f128", default)]
+    concepts: Value,
+}
+
+/// 标签文本宽容取值：字段缺失 / null / "-" 一律按空处理。
+fn tag_str(v: &Value) -> String {
+    match v.as_str() {
+        Some(s) => {
+            let t = s.trim();
+            if t.is_empty() || t == "-" {
+                String::new()
+            } else {
+                t.to_string()
+            }
+        }
+        None => String::new(),
+    }
+}
+
+/// 拆分 f128 概念文本：兼容英文逗号/中文逗号/顿号分隔；
+/// 每个概念内部去除嵌入空白；丢弃空串并按出现顺序去重。
+pub(crate) fn split_concepts(s: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for part in s.split(|c| c == ',' || c == '，' || c == '、') {
+        // split_whitespace 同时吃掉前导/尾随与内部多余空白，再以单空格拼回
+        let name = part.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !name.is_empty() && !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    out
+}
+
+/// 仅接受 6 位纯数字 A 股代码，防止未校验输入拼进 URL。
+fn is_valid_a_code(c: &str) -> bool {
+    c.len() == 6 && c.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// 题材标签专用 secid 前缀：沿用全局 6/9/5→1、其余→0，但北交所新号段 920xxx 归 0
+/// （东财深 / 京共用 0 前缀；全局 secid_prefix 把所有 9 开头都算 1，会漏掉 920 北交所股）。
+pub(crate) fn theme_secid_prefix(code: &str) -> &'static str {
+    if code.starts_with("920") {
+        "0"
+    } else {
+        secid_prefix(code)
+    }
+}
+
+/// 单批（≤50 个 secid）题材标签请求：82/88/29 三节点串行故障转移，15s 单请求超时。
+/// 任一节点返回可解析 JSON（含空 diff）即成功，全部失败才报错。
+async fn tags_chunk_once(fs: &str) -> Result<Vec<TagsRow>, String> {
     let nodes = ["82", "88", "29"];
-    let ut = "bd1d9ddb04089700cf9c27f6f7426281";
+    let mut last = String::from("所有题材标签节点均失败");
     for node in nodes {
         let url = format!(
-            "https://{}.push2.eastmoney.com/api/qt/clist/get?ut={}&pn=1&pz=500&po=1&np=1&fltt=2&invt=2&fs=b:{}&fields=f12&_={}",
-            node, ut, board_code, now_millis()
+            "https://{}.push2.eastmoney.com/api/qt/clist/get?pn=1&pz=50&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fs={}&fields=f12,f14,f127,f128",
+            node, fs
         );
         let got = tokio::time::timeout(
             Duration::from_secs(15),
             http().get(&url).header("Referer", "https://quote.eastmoney.com/").send(),
         )
         .await;
-        if let Ok(Ok(resp)) = got {
-            if let Ok(text) = resp.text().await {
-                if let Some(codes) = parse_clist_codes(&text) {
-                    return Ok(codes);
+        match got {
+            Ok(Ok(resp)) => {
+                let text = match resp.text().await {
+                    Ok(t) => t,
+                    Err(e) => {
+                        last = format!("{node}: 读取失败 {e}");
+                        continue;
+                    }
+                };
+                match serde_json::from_str::<TagsResp>(&text) {
+                    Ok(j) => return Ok(j.data.and_then(|d| d.diff).unwrap_or_default()),
+                    Err(e) => last = format!("{node}: 解析失败 {e}"),
+                }
+            }
+            Ok(Err(e)) => last = format!("{node}: {e}"),
+            Err(_) => last = format!("{node}: 请求超时(15s)"),
+        }
+    }
+    Err(last)
+}
+
+/// 批量个股题材标签：每批 ≤50 个 secid，跨批结果按 code 合并（行业取首个非空，概念并集去重）。
+/// 输入先经 6 位数字守卫过滤并去重；响应缺失的代码仍返回空标签占位，不报错。
+pub async fn stock_theme_tags(codes: &[String]) -> Result<Vec<StockThemeTags>, String> {
+    // 输入守卫 + 去重（保持首次出现顺序）
+    let mut valid: Vec<String> = Vec::with_capacity(codes.len());
+    for c in codes {
+        if is_valid_a_code(c) && !valid.contains(c) {
+            valid.push(c.clone());
+        }
+    }
+    if valid.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // code -> (industry, concepts)
+    let mut map: std::collections::HashMap<String, (String, Vec<String>)> = std::collections::HashMap::new();
+    for chunk in valid.chunks(50) {
+        let secids: Vec<String> = chunk
+            .iter()
+            .map(|c| format!("{}.{}", theme_secid_prefix(c), c))
+            .collect();
+        let fs = secids.join(",");
+        let rows = tags_chunk_once(&fs).await?;
+        for r in rows {
+            if !is_valid_a_code(&r.code) {
+                continue;
+            }
+            let industry = tag_str(&r.industry);
+            let concepts = split_concepts(&tag_str(&r.concepts));
+            let entry = map.entry(r.code.clone()).or_insert_with(|| (String::new(), Vec::new()));
+            if entry.0.is_empty() && !industry.is_empty() {
+                entry.0 = industry;
+            }
+            for c in concepts {
+                if !entry.1.contains(&c) {
+                    entry.1.push(c);
                 }
             }
         }
     }
-    Err("板块成分拉取失败".to_string())
-}
 
-fn parse_clist_codes(text: &str) -> Option<Vec<String>> {
-    let v: Value = serde_json::from_str(text).ok()?;
-    let diff = v.pointer("/data/diff")?.as_array()?;
-    let codes: Vec<String> = diff
+    // 按输入顺序输出；未返回的代码给空标签（停牌/被剔除字段时概念腿安全降级为空）
+    let out = valid
         .iter()
-        .filter_map(|row| row.get("f12").and_then(|x| x.as_str()).map(|s| s.to_string()))
+        .map(|c| match map.remove(c) {
+            Some((industry, concepts)) => StockThemeTags {
+                code: c.clone(),
+                industry,
+                concepts,
+            },
+            None => StockThemeTags {
+                code: c.clone(),
+                industry: String::new(),
+                concepts: vec![],
+            },
+        })
         .collect();
-    Some(codes)
+    Ok(out)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::parse_clist_codes;
+    use super::*;
+    use crate::market::secid_prefix;
 
-    #[test]
-    fn parse_clist_codes_valid() {
-        let j = r#"{"data":{"diff":[{"f12":"300001"},{"f12":"600519"},{"f12":"x"}]}}"#;
-        assert_eq!(parse_clist_codes(j), Some(vec!["300001".to_string(), "600519".to_string(), "x".to_string()]));
+    const FIXTURE: &str = r#"{"data":{"diff":[
+      {"f12":"600519","f14":"贵州茅台","f127":"白酒","f128":"超级品牌,白酒，电商概念、融资融券"},
+      {"f12":"300750","f14":"宁德时代","f127":"电池","f128":" 新能源 ， 动力电池，新能源 ，"},
+      {"f12":"000001","f14":"平安银行","f127":"-","f128":""},
+      {"f12":"000002","f14":"万科A","f128":"房地产，物业管理"},
+      {"f12":"688981","f127":null,"f128":null}
+    ]}}"#;
+
+    fn parse_fixture() -> Vec<TagsRow> {
+        serde_json::from_str::<TagsResp>(FIXTURE)
+            .unwrap()
+            .data
+            .unwrap()
+            .diff
+            .unwrap()
     }
 
     #[test]
-    fn parse_clist_codes_empty_diff_is_some() {
-        // 空成分是有效响应（某节点成功但无成员），驱动故障转移的"成功即止"
-        assert_eq!(parse_clist_codes(r#"{"data":{"diff":[]}}"#), Some(vec![]));
+    fn fixture_rows_parse_all() {
+        let rows = parse_fixture();
+        assert_eq!(rows.len(), 5);
+        assert_eq!(rows[0].code, "600519");
     }
 
     #[test]
-    fn parse_clist_codes_bad_shapes_none() {
-        assert!(parse_clist_codes("not json").is_none());
-        assert!(parse_clist_codes(r#"{}"#).is_none());
-        assert!(parse_clist_codes(r#"{"data":{}}"#).is_none());
-        assert!(parse_clist_codes(r#"{"data":{"diff":1}}"#).is_none());
+    fn concepts_split_on_three_separators_and_dedup() {
+        // 英文逗号 / 中文逗号 / 顿号
+        assert_eq!(
+            split_concepts("超级品牌,白酒，电商概念、融资融券"),
+            vec!["超级品牌", "白酒", "电商概念", "融资融券"]
+        );
+        // 嵌入空白被规范化；重复概念去重；尾随分隔符不产生空串
+        assert_eq!(
+            split_concepts(" 新能源 ， 动力电池，新能源 ，"),
+            vec!["新能源", "动力电池"]
+        );
+        // 空文本 / 仅分隔符
+        assert!(split_concepts("").is_empty());
+        assert!(split_concepts("，,、 ").is_empty());
+    }
+
+    #[test]
+    fn missing_and_dash_fields_default_empty() {
+        let rows = parse_fixture();
+        // "-" 行业归一化为空；空 f128 无概念
+        assert_eq!(tag_str(&rows[2].industry), "");
+        assert_eq!(split_concepts(&tag_str(&rows[2].concepts)), Vec::<String>::new());
+        // f127 缺失（只有 f128）时行业为空、概念正常
+        assert_eq!(tag_str(&rows[3].industry), "");
+        assert_eq!(
+            split_concepts(&tag_str(&rows[3].concepts)),
+            vec!["房地产", "物业管理"]
+        );
+        // f127/f128 显式 null
+        assert_eq!(tag_str(&rows[4].industry), "");
+        assert_eq!(split_concepts(&tag_str(&rows[4].concepts)), Vec::<String>::new());
+    }
+
+    #[test]
+    fn bad_fixture_shapes_fail_decode() {
+        assert!(serde_json::from_str::<TagsResp>("not json").is_err());
+        // 空 data 是合法响应（节点成功但无数据），diff 缺省为 None -> 空 Vec
+        let v: Vec<TagsRow> = serde_json::from_str::<TagsResp>(r#"{"data":{}}"#)
+            .unwrap()
+            .data
+            .and_then(|d| d.diff)
+            .unwrap_or_default();
+        assert!(v.is_empty());
+    }
+
+    #[test]
+    fn code_guard_and_dedup_input() {
+        assert!(is_valid_a_code("600519"));
+        assert!(is_valid_a_code("920675"));
+        assert!(!is_valid_a_code(""));
+        assert!(!is_valid_a_code("60051"));
+        assert!(!is_valid_a_code("BK0477"));
+        assert!(!is_valid_a_code("60051A"));
+    }
+
+    #[test]
+    fn secid_prefix_rules() {
+        use super::theme_secid_prefix as tp;
+        // 全局规则：6/9/5 开头沪市前缀 1
+        assert_eq!(secid_prefix("600519"), "1");
+        assert_eq!(secid_prefix("688981"), "1");
+        assert_eq!(secid_prefix("900001"), "1");
+        assert_eq!(secid_prefix("510300"), "1");
+        assert_eq!(secid_prefix("000001"), "0");
+        // 题材标签专用：沪深主板 / 创业板一致，920 北交所纠正为 0
+        assert_eq!(tp("600519"), "1");
+        assert_eq!(tp("000001"), "0");
+        assert_eq!(tp("300750"), "0");
+        assert_eq!(tp("301001"), "0");
+        assert_eq!(tp("430047"), "0");
+        assert_eq!(tp("830799"), "0");
+        assert_eq!(tp("920675"), "0");
+        assert_eq!(tp("900001"), "1"); // 9 开头但非 920，仍是沪市 B 股
     }
 }
