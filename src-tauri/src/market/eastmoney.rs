@@ -47,22 +47,57 @@ fn nf(v: &Value) -> f64 {
     v.as_f64().unwrap_or(0.0)
 }
 
+/// push2 行情节点池：主域被本地运营商 / 网络边缘间歇性封锁（socket 直接失败）时，
+/// 编号子域（N.push2.*）通常接入不同边缘、不被连带封锁。
+/// 顺序：把实测可用率较高的编号镜像排在前面，裸主域放最后兜底。
+const PUSH2_HOSTS: &[&str] = &[
+    "82.push2.eastmoney.com",
+    "88.push2.eastmoney.com",
+    "1.push2.eastmoney.com",
+    "17.push2.eastmoney.com",
+    "60.push2.eastmoney.com",
+    "90.push2.eastmoney.com",
+    "120.push2.eastmoney.com",
+    "29.push2.eastmoney.com",
+    "push2.eastmoney.com",
+];
+
+/// push2 多节点串行故障转移：任一节点返回可解析 JSON 即采用，全部失败才报错。
+/// 被封节点多为百毫秒级的快速 socket 失败（而非长超时），所以串行尝试即可在秒级内命中
+/// 可用节点，相比「全节点并发竞速」没有 N 倍请求放大，适合行情 / 盘口等高频调用。
+/// `path_query` 为以 "/" 开头、含 query 的接口路径。
+pub(crate) async fn push2_json(path_query: &str) -> Result<Value, String> {
+    let mut last = String::from("无可用 push2 节点");
+    for host in PUSH2_HOSTS {
+        let url = format!("https://{host}{path_query}");
+        match http()
+            .get(&url)
+            .header("Referer", "https://quote.eastmoney.com/")
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await
+        {
+            Ok(resp) => match resp.json::<Value>().await {
+                Ok(v) => return Ok(v),
+                Err(e) => last = format!("{host}: 解析失败 {e}"),
+            },
+            Err(e) => last = format!("{host}: {e}"),
+        }
+    }
+    Err(format!("所有 push2 节点均失败；{last}"))
+}
+
 pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
     let secids: Vec<String> = codes
         .iter()
         .map(|c| format!("{}.{}", secid_prefix(c), c))
         .collect();
-    let url = format!(
-        "http://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18&secids={}",
+    let path = format!(
+        "/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18&secids={}",
         secids.join(",")
     );
-    let resp = http()
-        .get(&url)
-        .header("Referer", "https://quote.eastmoney.com/")
-        .send()
-        .await
+    let json: ListResp = serde_json::from_value(push2_json(&path).await?)
         .map_err(|e| e.to_string())?;
-    let json: ListResp = resp.json().await.map_err(|e| e.to_string())?;
     let now = now_millis();
     let out = json
         .data
@@ -307,17 +342,12 @@ fn urlencode(s: &str) -> String {
 /// 大盘指数行情（固定 secid：上证/深成/创业板/沪深300/科创50）
 pub async fn index_quotes() -> Result<Vec<Quote>, String> {
     let secids = ["1.000001", "0.399001", "0.399006", "1.000300", "1.000688"];
-    let url = format!(
-        "http://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18&secids={}",
+    let path = format!(
+        "/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18&secids={}",
         secids.join(",")
     );
-    let resp = http()
-        .get(&url)
-        .header("Referer", "https://quote.eastmoney.com/")
-        .send()
-        .await
+    let json: ListResp = serde_json::from_value(push2_json(&path).await?)
         .map_err(|e| e.to_string())?;
-    let json: ListResp = resp.json().await.map_err(|e| e.to_string())?;
     let now = now_millis();
     let out = json
         .data
@@ -614,14 +644,8 @@ pub struct AuctionData {
     pub low_open: Vec<AuctionStock>,  // 低开出逃榜（缺口升序）
 }
 
-/// push2 clist 主机节点：主域被限流时可在编号镜像间故障转移
-/// （东财 push2 为多节点负载，编号子域各自接入，封禁通常不连带）
-const CLIST_HOSTS: &[&str] = &[
-    "82.push2.eastmoney.com",
-    "88.push2.eastmoney.com",
-    "29.push2.eastmoney.com",
-    "push2.eastmoney.com",
-];
+/// clist / rank_board 复用统一的 push2 多节点池
+const CLIST_HOSTS: &[&str] = PUSH2_HOSTS;
 
 /// clist 单页实际请求（pz=100，服务端单页硬上限 100），返回 (全市场总数, 本页行情)。
 /// 依次尝试多个 push2 节点，任一返回可解析 JSON 即成功；全部失败才报错。
@@ -1253,19 +1277,11 @@ pub async fn seat_trades(code: &str, size: i64, page: i64) -> Result<SeatTrades,
 /// 返回最近 n 条逐笔（时间升序）。方向 f54：2=主动买(外盘)，1=主动卖(内盘)，其余中性。
 pub async fn trades(code: &str, n: i64) -> Result<Vec<TradeTick>, String> {
     let secid = format!("{}.{}", secid_prefix(code), code);
-    let url = format!(
-        "http://push2.eastmoney.com/api/qt/stock/details/get?secid={secid}\
+    let path = format!(
+        "/api/qt/stock/details/get?secid={secid}\
          &fields1=f1,f2,f3,f4&fields2=f51,f52,f53,f54,f55&pos=-{n}&np=1&fltt=1&invt=2"
     );
-    let v: Value = http()
-        .get(&url)
-        .header("Referer", "https://quote.eastmoney.com/")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
+    let v: Value = push2_json(&path).await?;
     let arr = v["data"]["details"].as_array().ok_or("逐笔数据为空")?;
     let mut out = Vec::new();
     for item in arr {
@@ -1304,20 +1320,12 @@ pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
             .iter()
             .map(|s| s.to_string()),
     );
-    let url = format!(
-        "http://push2.eastmoney.com/api/qt/stock/get?secid={secid}\
+    let path = format!(
+        "/api/qt/stock/get?secid={secid}\
          &invt=2&fltt=2&np=1&fields={}",
         fields.join(",")
     );
-    let v: Value = http()
-        .get(&url)
-        .header("Referer", "https://quote.eastmoney.com/")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
+    let v: Value = push2_json(&path).await?;
     let d = &v["data"];
     if !d.is_object() {
         return Err("东财盘口为空".to_string());
