@@ -23,12 +23,6 @@ export interface ThemeCluster {
   score: number;
 }
 
-interface Agg {
-  codes: Set<string>;
-  totalBoards: number;
-  leaderBoards: number;
-}
-
 function summarize(name: string, path: "concept" | "industry", members: SealStock[]): ThemeCluster {
   let totalBoards = 0;
   let leaderBoards = 0;
@@ -52,7 +46,6 @@ export function clusterThemes(stocks: SealStock[], concepts: ConceptMembership[]
   const byCode = new Map(stocks.map((s) => [s.code, s]));
   const sealedCodes = new Set(stocks.map((s) => s.code));
   const clusters: ThemeCluster[] = [];
-  const claimedByConcept = new Set<string>();
   const conceptNames = new Set(concepts.map((c) => c.concept));
   const industryNames = new Set(stocks.map((s) => s.industry));
 
@@ -65,7 +58,6 @@ export function clusterThemes(stocks: SealStock[], concepts: ConceptMembership[]
       if (sealedCodes.has(code)) {
         const stk = byCode.get(code)!;
         members.push(stk);
-        claimedByConcept.add(`${code}@${stk.industry}`);
       }
     }
     if (members.length >= 2) clusters.push(summarize(c.concept, "concept", members));

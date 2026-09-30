@@ -53,7 +53,17 @@ describe("clusterThemes", () => {
   });
 
   it("returns clusters sorted by score desc", () => {
-    const out = clusterThemes(stocks, concepts);
+    const two: SealStock[] = [
+      s("300001", 3, "设备"), s("300002", 2, "设备"), s("300003", 1, "设备"),
+      s("100001", 1, "煤炭"), s("100002", 1, "煤炭"), s("100003", 1, "煤炭"),
+    ];
+    const twoConcepts = [
+      { concept: "机器人", codes: ["300001", "300002", "300003"] },
+      { concept: "设备", codes: ["300001", "300002", "300003"] },
+    ];
+    const out = clusterThemes(two, twoConcepts);
+    // 机器人 score=63；煤炭是行业路径 score=33；且两者都应存在
+    expect(out.map((c) => c.name)).toEqual(["机器人", "煤炭"]);
     for (let i = 1; i < out.length; i++) expect(out[i - 1].score).toBeGreaterThanOrEqual(out[i].score);
   });
 });
