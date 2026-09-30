@@ -1610,7 +1610,7 @@ pub mod irminteract;
 
 ```rust
 #[tauri::command]
-async fn get_irm_latest() -> Vec<market::irminteract.IrmItem> {
+async fn get_irm_latest() -> Vec<market::irminteract::IrmItem> {
     market::irminteract::irm_latest().await
 }
 ```
