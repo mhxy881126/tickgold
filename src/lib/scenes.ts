@@ -82,8 +82,9 @@ export const SCENES: Scene[] = [
     cards: ["auction", "order", "radar", "watch", "spider", "sectorevent"],
     size: { auction: { w: 6, h: 3 }, order: { w: 6, h: 3 }, radar: { w: 6, h: 2 }, watch: { w: 6, h: 2 }, spider: { w: 6, h: 1 }, sectorevent: { w: 6, h: 1 } } },
   { id: "review", label: "盘后复盘", icon: "M12 4a8 8 0 108 8h-2a6 6 0 11-6-6v3l4-4-4-4v3z",
-    cards: ["reviewtimeline", "dragon", "chart", "sectorheat", "fundflow", "news", "themelib"],
-    size: { reviewtimeline: { w: 8, h: 3 }, dragon: { w: 4, h: 3 }, chart: { w: 6, h: 2 }, sectorheat: { w: 6, h: 2 }, fundflow: { w: 6, h: 1 }, news: { w: 6, h: 1 }, themelib: { w: 6, h: 3 } } },
+    cards: ["themelib", "chart", "reviewtimeline", "sectorheat", "fundflow", "news"],
+    // 12×6=72 精确铺满：题材库/图表 6×3 占前三行，复盘时间线/热力图占中两行，资金/快讯垫底
+    size: { themelib: { w: 6, h: 3 }, chart: { w: 6, h: 3 }, reviewtimeline: { w: 6, h: 2 }, sectorheat: { w: 6, h: 2 }, fundflow: { w: 6, h: 1 }, news: { w: 6, h: 1 } } },
   { id: "screen", label: "条件选股", icon: "M3 4h18l-7 8v6l-4 2v-8z",
     cards: ["screener", "sectorheat", "sector", "rank", "watch"],
     size: { screener: { w: 8, h: 3 }, sectorheat: { w: 4, h: 3 }, sector: { w: 6, h: 2 }, rank: { w: 6, h: 2 }, watch: { w: 12, h: 1 } } },
