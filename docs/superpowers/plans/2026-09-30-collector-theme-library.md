@@ -1,4 +1,8 @@
-# v1.7.0 采集增强 + 题材库 Implementation Plan
+# v1.8.0 采集增强 + 题材库 Implementation Plan
+
+> **版本号说明（2026-09-30）**：本计划功能范围原编号 v1.7.0，实现期间应用版本号已先行
+> 推进至 1.8.0（用户提交 b9c4b5d），经确认实际发布版本位为 **v1.8.0**；功能范围不变，
+> 文中其余 v1.7 字样为历史规划名，均以 v1.8.0 为准。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -2833,25 +2837,25 @@ Expected: Rust release 编译通过。
 在 Roadmap 列表勾选：
 
 ```markdown
-- [x] 题材库 + 采集增强（v1.7：涨停归因/题材三表/公告与互动易增量/题材库卡）
+- [x] 题材库 + 采集增强（v1.8：涨停归因/题材三表/公告与互动易增量/题材库卡）
 ```
 
 - [ ] **Step 5: 最终提交**
 
 ```bash
 git add src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json package.json README.md
-git commit -m "release: v1.7.0，采集增强与题材库（AI 闭环第一步）"
+git commit -m "release: v1.8.0，采集增强与题材库（AI 闭环第一步）"
 ```
 
 （如需发版：按 README 发版 SOP 打 tag 推送，CI 自动构建发布。）
 
 ---
 
-## 验收对照（Definition of Done · v1.7.0）
+## 验收对照（Definition of Done · v1.8.0）
 
 - [ ] 收盘后（或手动触发）`theme / theme_stock / catalyst / limit_up_record` 当日有数据，归因可在题材库卡复查。
 - [ ] 聚类/角色/新鲜度全部为确定性纯函数，单测覆盖且通过；结果可复算。
 - [ ] 巨潮公告、互动易/e互动增量抓取；单源失败独立降级，不阻断归因作业。
 - [ ] 采集调度随应用启动、防重入、同日幂等；数据中心展示三个作业状态。
 - [ ] 全量 `pnpm test` / `pnpm build` / `pnpm tauri build --no-bundle` 通过。
-- [ ] 版本号四处统一 1.7.0；README 更新；全程保留「不构成投资建议」口径。
+- [ ] 版本号四处统一 1.8.0；README 更新；全程保留「不构成投资建议」口径。
