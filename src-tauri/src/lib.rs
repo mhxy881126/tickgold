@@ -162,7 +162,7 @@ async fn get_zb_pool(date: String) -> Result<market::eastmoney::ZtPool, String> 
 
 #[tauri::command]
 async fn get_announcements(date: String) -> Result<Vec<market::announce::AnnounceItem>, String> {
-    market::announce::announcements(date, 50).await
+    market::announce::announcements(date, 100).await
 }
 
 // ===== 互动易 / 上证 e 互动（两源独立失败，返回空/部分 Vec，不出 Err）=====
