@@ -80,6 +80,82 @@ describe("themes", () => {
   });
 });
 
+describe("catalyst freshness on read (M1)", () => {
+  function catalystRow(over: Record<string, unknown> = {}) {
+    return {
+      id: 1, kind: "policy", title: "t", summary: "", source: "cninfo",
+      source_url: "", published_at: Date.now(), direction: "中性",
+      theme_id: null, code: null, fresh_score: 1, content_hash: "h",
+      collected_at: Date.now(), ...over,
+    };
+  }
+
+  it("recomputes fresh_score from published_at age, ignoring the stored value", async () => {
+    // policy 半衰期 7 天：恰好一个半衰期 → 0.5；库里存的 1 必须被覆盖
+    dbMock.select.mockResolvedValueOnce([
+      catalystRow({ kind: "policy", fresh_score: 1, published_at: Date.now() - 7 * 86_400_000 }),
+    ]);
+    const [c] = await repo.listCatalysts(d, { limit: 10 });
+    expect(c.freshScore).toBeCloseTo(0.5, 10);
+  });
+
+  it("falls back to collected_at when published_at is NULL", async () => {
+    dbMock.select.mockResolvedValueOnce([
+      catalystRow({ published_at: null, collected_at: Date.now(), fresh_score: 0.2 }),
+    ]);
+    const [c] = await repo.listCatalysts(d);
+    expect(c.freshScore).toBeCloseTo(1, 10);
+  });
+});
+
+describe("upsertTheme logic_version (M9)", () => {
+  const existing = { ...themeDbRow, logic: "降本增效", logic_version: 3 };
+
+  function updateBind() {
+    return dbMock.execute.mock.calls[0][1] as unknown[];
+  }
+
+  it("keeps logic_version unchanged when draft logic is identical", async () => {
+    dbMock.select.mockResolvedValueOnce([existing]);
+    await repo.upsertTheme(d, { name: "机器人", logic: "降本增效", stage: "发酵" }, 100);
+    const bind = updateBind();
+    expect(bind[4]).toBe("降本增效");
+    expect(bind[5]).toBe(3);
+  });
+
+  it("keeps logic_version (and logic) when draft logic is empty", async () => {
+    dbMock.select.mockResolvedValueOnce([existing]);
+    await repo.upsertTheme(d, { name: "机器人", logic: "", stage: "高潮" }, 100);
+    const bind = updateBind();
+    expect(bind[4]).toBe("降本增效");
+    expect(bind[5]).toBe(3);
+  });
+
+  it("increments logic_version only when a new non-empty logic differs", async () => {
+    dbMock.select.mockResolvedValueOnce([existing]);
+    await repo.upsertTheme(d, { name: "机器人", logic: "新逻辑：国产替代", stage: "发酵" }, 100);
+    const bind = updateBind();
+    expect(bind[4]).toBe("新逻辑：国产替代");
+    expect(bind[5]).toBe(4);
+  });
+});
+
+describe("markStocksLeft (M6)", () => {
+  it("stamps left_date for absent members with NOT IN and ordered binds", async () => {
+    await repo.markStocksLeft(d, 7, ["300001", "300002"], "2026-09-30");
+    const [sql, bind] = dbMock.execute.mock.calls[0];
+    expect(sql).toContain("UPDATE theme_stock SET left_date=");
+    expect(sql).toContain("left_date IS NULL");
+    expect(sql).toContain("NOT IN (?,?)");
+    expect(bind).toEqual(["2026-09-30", 7, "300001", "300002"]);
+  });
+
+  it("is a no-op when no stock is present today", async () => {
+    await repo.markStocksLeft(d, 7, [], "2026-09-30");
+    expect(dbMock.execute).not.toHaveBeenCalled();
+  });
+});
+
 describe("catalyst / limit-up", () => {
   it("insertCatalystIgnore returns true for a fresh hash", async () => {
     expect(await repo.insertCatalystIgnore(d, {

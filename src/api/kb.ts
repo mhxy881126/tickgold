@@ -30,7 +30,15 @@ export async function fetchIrmLatest(): Promise<IrmItem[]> {
   return await invoke<IrmItem[]>("get_irm_latest");
 }
 
-/** 概念板块（BKxxxx）成分股代码；单板块失败抛出由作业降级跳过。 */
-export async function fetchSectorStocks(boardCode: string): Promise<string[]> {
-  return await invoke<string[]>("get_sector_stocks", { boardCode });
+/** 单只个股的题材标签（东财 f127=行业 / f128=概念，camelCase 由 Rust serde 给出）。 */
+export interface StockThemeTags {
+  code: string;
+  industry: string;
+  concepts: string[];
+}
+
+/** 批量取个股行业/概念标签；f127/f128 替代已失效的板块成分链路。 */
+export async function fetchStockThemeTags(codes: string[]): Promise<StockThemeTags[]> {
+  if (codes.length === 0) return [];
+  return await invoke<StockThemeTags[]>("get_stock_theme_tags", { codes });
 }

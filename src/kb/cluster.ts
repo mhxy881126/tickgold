@@ -47,7 +47,8 @@ export function clusterThemes(stocks: SealStock[], concepts: ConceptMembership[]
   const sealedCodes = new Set(stocks.map((s) => s.code));
   const clusters: ThemeCluster[] = [];
   const conceptNames = new Set(concepts.map((c) => c.concept));
-  const industryNames = new Set(stocks.map((s) => s.industry));
+  // f127 缺失时 industry 为空串：空名行业不能参与同名去重，更不能聚出 "" 题材
+  const industryNames = new Set(stocks.map((s) => s.industry).filter(Boolean));
 
   // ① 概念路径：成分股中当日涨停 ≥ 2
   for (const c of concepts) {
@@ -66,6 +67,7 @@ export function clusterThemes(stocks: SealStock[], concepts: ConceptMembership[]
   // ② 行业路径：同行业涨停 ≥ 3，且该行业没有被同名概念覆盖
   const byIndustry = new Map<string, SealStock[]>();
   for (const stk of stocks) {
+    if (!stk.industry) continue; // 空行业标签（hybk 缺失）不建行业聚类
     if (!byIndustry.has(stk.industry)) byIndustry.set(stk.industry, []);
     byIndustry.get(stk.industry)!.push(stk);
   }

@@ -1,5 +1,6 @@
 // 题材库 repo：所有函数接收 db 句柄，便于测试与复用；不持有全局状态。
 import type {
+  CatalystKind,
   CatalystRow,
   CollectorJob,
   CollectorRunRow,
@@ -10,6 +11,7 @@ import type {
   ThemeStage,
   ThemeStockRow,
 } from "./types";
+import { freshness } from "./freshness";
 
 /** tauri-plugin-sql 句柄的最小结构 */
 export interface Db {
@@ -62,20 +64,26 @@ function mapThemeStock(r: Record<string, unknown>): ThemeStockRow {
 }
 
 function mapCatalyst(r: Record<string, unknown>): CatalystRow {
+  // M1：新鲜度在读取时按 published_at（缺省回退 collected_at）重算，
+  // 库里的 fresh_score 只是写入时刻快照，会随时间失真。
+  const kind = r.kind as CatalystKind;
+  const publishedAt = (r.published_at as number | null) ?? null;
+  const collectedAt = r.collected_at as number;
+  const ageDays = (Date.now() - (publishedAt ?? collectedAt)) / 86_400_000;
   return {
     id: r.id as number,
-    kind: r.kind as CatalystRow["kind"],
+    kind,
     title: r.title as string,
     summary: (r.summary as string) ?? "",
     source: r.source as string,
     sourceUrl: (r.source_url as string) ?? "",
-    publishedAt: (r.published_at as number | null) ?? null,
+    publishedAt,
     direction: r.direction as CatalystRow["direction"],
     themeId: (r.theme_id as number | null) ?? null,
     code: (r.code as string | null) ?? null,
-    freshScore: (r.fresh_score as number) ?? 1,
+    freshScore: freshness(kind, ageDays),
     contentHash: r.content_hash as string,
-    collectedAt: r.collected_at as number,
+    collectedAt,
   };
 }
 
@@ -138,16 +146,22 @@ export async function getRun(d: Db, tradeDate: string, job: CollectorJob): Promi
 export async function upsertTheme(d: Db, draft: ThemeDraft, now = Date.now()): Promise<number> {
   const existing = await getThemeByName(d, draft.name);
   if (existing) {
+    // M9：仅当 draft.logic 非空且与现有逻辑不同才换逻辑并 +1 版本；
+    // 日常归因只刷 stage/活跃日，不得让 logic_version 空转。
+    const logicChanged = !!draft.logic && draft.logic !== existing.logic;
+    const nextLogic = logicChanged ? draft.logic! : existing.logic;
+    const nextLogicVersion = logicChanged ? existing.logicVersion + 1 : existing.logicVersion;
     await d.execute(
       `UPDATE theme SET aliases=?, level=?, stage=?, intro=?, logic=?,
-                       logic_version=logic_version+1, last_active_date=?, updated_at=?
+                       logic_version=?, last_active_date=?, updated_at=?
        WHERE id=?`,
       [
         draft.aliases ?? existing.aliases,
         draft.level ?? existing.level,
         draft.stage ?? existing.stage,
         draft.intro ?? existing.intro,
-        draft.logic ?? existing.logic,
+        nextLogic,
+        nextLogicVersion,
         draft.lastActiveDate ?? existing.lastActiveDate,
         now,
         existing.id,
@@ -208,6 +222,25 @@ export async function upsertThemeStock(
      ON CONFLICT(theme_id, code) DO UPDATE SET
        name=excluded.name, role=excluded.role, role_score=excluded.role_score, left_date=NULL`,
     [themeId, r.code, r.name, r.role, r.roleScore, r.joinedDate]
+  );
+}
+
+/**
+ * M6 退股标记：题材下今日未出现在 presentCodes（当日聚类成分）中的老成员，
+ * 首次缺席时落 left_date；当日无在场成员则跳过（整簇缺席由退潮流程处理）。
+ */
+export async function markStocksLeft(
+  d: Db,
+  themeId: number,
+  presentCodes: string[],
+  date: string
+): Promise<void> {
+  if (presentCodes.length === 0) return;
+  const placeholders = presentCodes.map(() => "?").join(",");
+  await d.execute(
+    `UPDATE theme_stock SET left_date=?
+     WHERE theme_id=? AND left_date IS NULL AND code NOT IN (${placeholders})`,
+    [date, themeId, ...presentCodes]
   );
 }
 

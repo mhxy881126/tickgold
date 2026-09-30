@@ -52,6 +52,18 @@ describe("clusterThemes", () => {
     expect(clusterThemes(stocks, concepts).find((c) => c.name === "孤独概念")).toBeUndefined();
   });
 
+  it("does not form an empty-named industry cluster when industry tags are blank", () => {
+    // f127 缺失时 hybk 为空串：不能聚出一个 name==="" 的行业题材
+    const blankIndustry: SealStock[] = [
+      s("300001", 1, ""),
+      s("300002", 2, ""),
+      s("300003", 3, ""),
+    ];
+    const out = clusterThemes(blankIndustry, []);
+    expect(out.some((c) => c.path === "industry")).toBe(false);
+    expect(out.find((c) => c.name === "")).toBeUndefined();
+  });
+
   it("returns clusters sorted by score desc", () => {
     const two: SealStock[] = [
       s("300001", 3, "设备"), s("300002", 2, "设备"), s("300003", 1, "设备"),
