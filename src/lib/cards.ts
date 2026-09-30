@@ -31,6 +31,7 @@ export type CardId =
   | "calc"
   | "export"
   | "dragon"
+  | "themelib"
   | "trades";
 
 export type Zone = "main" | "side";
@@ -72,6 +73,7 @@ export const CARD_META: Record<CardId, CardMeta> = {
   calc: { title: "投资计算器", accent: "#e8c878", kind: "chart" },
   export: { title: "数据导出", accent: "#6aa6e8", kind: "chart" },
   dragon: { title: "龙虎榜复盘", accent: "#e8c878", kind: "chart" },
+  themelib: { title: "题材库", accent: "#d4af37", kind: "chart" },
   trades: { title: "逐笔成交", accent: "#ffb13d", kind: "narrow" },
 };
 

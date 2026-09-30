@@ -6,6 +6,7 @@ import { useAccessibility } from "../composables/useAccessibility";
 import { useMotion } from "../composables/useMotion";
 import { useSkins } from "../composables/useSkins";
 import { tsStatus } from "../composables/useTimeSeries";
+import { collectorStatus } from "../composables/useCollector";
 import { logger, type LogLevel } from "../utils/logger";
 import { isEnabled as autoStartEnabled, enable as enableAutoStart, disable as disableAutoStart } from "@tauri-apps/plugin-autostart";
 
@@ -307,6 +308,9 @@ function pickTab(id: Tab) {
                 <div class="dc-row"><span class="dr-k">市场情绪</span><span class="dr-v">{{ fmtTime(tsStatus.lastMarketTs) }}</span></div>
                 <div class="dc-row"><span class="dr-k">指数</span><span class="dr-v">{{ fmtTime(tsStatus.lastIndexTs) }}</span></div>
                 <div class="dc-row"><span class="dr-k">板块</span><span class="dr-v">{{ fmtTime(tsStatus.lastSectorTs) }}</span></div>
+                <div class="dc-row"><span class="dr-k">公告催化</span><span class="dr-v">{{ fmtTime(collectorStatus.lastAnnouncement) }} · {{ collectorStatus.announcementCount }} 条</span></div>
+                <div class="dc-row"><span class="dr-k">互动易/e互动</span><span class="dr-v">{{ fmtTime(collectorStatus.lastIrm) }} · {{ collectorStatus.irmCount }} 条</span></div>
+                <div class="dc-row"><span class="dr-k">题材归因</span><span class="dr-v">{{ collectorStatus.lastAttribution || "未运行" }}</span></div>
               </div>
 
               <div class="section-title">本地数据量</div>

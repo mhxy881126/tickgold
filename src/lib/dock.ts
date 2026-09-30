@@ -58,6 +58,7 @@ export const DOCK_GROUPS: DockGroup[] = [
       { id: "sector", label: "板块行情", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z", desc: "行业/概念板块排名" },
       { id: "sectorheat", label: "板块热力图", icon: "M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z", desc: "板块 treemap 缩放平移" },
       { id: "sectorevent", label: "板块异动", icon: "M3 12h4l3-8 4 16 3-8h4", desc: "板块拉升/跳水捕捉" },
+      { id: "themelib", label: "题材库", icon: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20", desc: "题材生命周期/成分角色/催化剂时间线", star: true },
     ],
   },
   {

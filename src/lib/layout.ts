@@ -7,7 +7,7 @@ export interface BentoPos { col: number; colEnd: number; row: number; rowEnd: nu
 export interface FreeRect { x: number; y: number; w: number; h: number }
 
 // 宽卡片（主干区域）与窄卡片（右侧）的默认排列顺序，也决定卡片的默认分区
-const WIDE_ORDER: CardId[] = ["auction", "limitpool", "radar", "radarsweep", "reviewtimeline", "multigrid", "heatmatrix", "telegraph", "chart", "sectorheat", "sector", "screener", "dist", "f10", "trade", "journal", "calendar", "ipo", "calc", "export", "dragon"];
+const WIDE_ORDER: CardId[] = ["auction", "limitpool", "radar", "radarsweep", "reviewtimeline", "multigrid", "heatmatrix", "telegraph", "chart", "sectorheat", "sector", "screener", "dist", "f10", "trade", "journal", "calendar", "ipo", "calc", "export", "dragon", "themelib"];
 const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "trades", "order", "fundflow", "news", "watch", "rank"];
 export const ALL_IDS: CardId[] = [...WIDE_ORDER, ...NARROW_ORDER];
 
@@ -19,6 +19,7 @@ const ROWS = 6;
 const DEFAULT_SIZE: Partial<Record<CardId, { w: number; h: number }>> = {
   chart: { w: 6, h: 3 }, sectorheat: { w: 6, h: 3 }, heatmatrix: { w: 8, h: 3 },
   multigrid: { w: 6, h: 3 }, dragon: { w: 6, h: 3 }, reviewtimeline: { w: 6, h: 3 },
+  themelib: { w: 6, h: 3 },
   radar: { w: 4, h: 2 }, radarsweep: { w: 4, h: 2 },
   sector: { w: 4, h: 2 }, screener: { w: 4, h: 2 }, f10: { w: 4, h: 2 },
   trade: { w: 4, h: 2 }, calendar: { w: 4, h: 2 },
@@ -81,6 +82,7 @@ const FREE_SIZE: Partial<Record<CardId, { w: number; h: number }>> = {
   journal: { w: 6, h: 4 },
   radar: { w: 4, h: 3 },
   dragon: { w: 8, h: 5 },
+  themelib: { w: 8, h: 5 },
 };
 export function freeSizeOf(id: CardId): { w: number; h: number } {
   return FREE_SIZE[id] ?? { w: 4, h: 3 };
