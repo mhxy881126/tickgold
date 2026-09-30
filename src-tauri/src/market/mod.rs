@@ -8,6 +8,7 @@ pub mod limitup;
 pub mod alert;
 pub mod f10;
 pub mod cninfo;
+pub mod announce;
 pub mod cache;
 
 use reqwest::Client;

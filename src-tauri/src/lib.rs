@@ -158,6 +158,11 @@ async fn get_zb_pool(date: String) -> Result<market::eastmoney::ZtPool, String> 
     market::get_zb_pool(date).await
 }
 
+#[tauri::command]
+async fn get_announcements(date: String) -> Result<Vec<market::announce::AnnounceItem>, String> {
+    market::announce::announcements(date, 50).await
+}
+
 // ===== 龙虎榜复盘 =====
 #[tauri::command]
 async fn get_lhb_list(date: String) -> Result<market::eastmoney::LhbList, String> {
@@ -1186,6 +1191,7 @@ pub fn run() {
             get_auction,
             get_zt_pool,
             get_zb_pool,
+            get_announcements,
             get_lhb_list,
             get_lhb_detail,
             get_seat_back,
