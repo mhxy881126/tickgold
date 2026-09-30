@@ -956,6 +956,100 @@ pub fn run() {
                             );",
                             kind: MigrationKind::Up,
                         },
+                        Migration {
+                            version: 32,
+                            description: "collector run status",
+                            sql: "CREATE TABLE IF NOT EXISTS collector_run (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                trade_date TEXT NOT NULL,
+                                job TEXT NOT NULL,
+                                status TEXT NOT NULL,
+                                rows_affected INTEGER DEFAULT 0,
+                                error TEXT,
+                                started_at INTEGER NOT NULL,
+                                finished_at INTEGER,
+                                UNIQUE(trade_date, job)
+                            );",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 33,
+                            description: "theme profile",
+                            sql: "CREATE TABLE IF NOT EXISTS theme (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                name TEXT NOT NULL UNIQUE,
+                                aliases TEXT DEFAULT '',
+                                level TEXT DEFAULT '分支',
+                                stage TEXT DEFAULT '萌芽',
+                                intro TEXT DEFAULT '',
+                                logic TEXT DEFAULT '',
+                                logic_version INTEGER DEFAULT 1,
+                                first_seen_date TEXT,
+                                last_active_date TEXT,
+                                created_at INTEGER NOT NULL,
+                                updated_at INTEGER NOT NULL
+                            );",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 34,
+                            description: "theme stock membership",
+                            sql: "CREATE TABLE IF NOT EXISTS theme_stock (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                theme_id INTEGER NOT NULL REFERENCES theme(id),
+                                code TEXT NOT NULL,
+                                name TEXT DEFAULT '',
+                                role TEXT NOT NULL DEFAULT '跟风',
+                                role_score REAL DEFAULT 0,
+                                joined_date TEXT NOT NULL,
+                                left_date TEXT,
+                                UNIQUE(theme_id, code)
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_theme_stock_code ON theme_stock(code);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 35,
+                            description: "catalyst events",
+                            sql: "CREATE TABLE IF NOT EXISTS catalyst (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                kind TEXT NOT NULL,
+                                title TEXT NOT NULL,
+                                summary TEXT DEFAULT '',
+                                source TEXT NOT NULL,
+                                source_url TEXT DEFAULT '',
+                                published_at INTEGER,
+                                direction TEXT DEFAULT '中性',
+                                theme_id INTEGER REFERENCES theme(id),
+                                code TEXT,
+                                fresh_score REAL DEFAULT 1,
+                                content_hash TEXT NOT NULL UNIQUE,
+                                collected_at INTEGER NOT NULL
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_catalyst_code ON catalyst(code);
+                            CREATE INDEX IF NOT EXISTS idx_catalyst_theme ON catalyst(theme_id);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 36,
+                            description: "daily limit-up snapshot",
+                            sql: "CREATE TABLE IF NOT EXISTS limit_up_record (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                trade_date TEXT NOT NULL,
+                                code TEXT NOT NULL,
+                                name TEXT DEFAULT '',
+                                boards INTEGER DEFAULT 1,
+                                first_seal INTEGER,
+                                last_seal INTEGER,
+                                seal_fund REAL DEFAULT 0,
+                                broken INTEGER DEFAULT 0,
+                                turnover REAL DEFAULT 0,
+                                industry TEXT DEFAULT '',
+                                concepts TEXT DEFAULT '',
+                                UNIQUE(trade_date, code)
+                            );",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),
