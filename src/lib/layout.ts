@@ -7,8 +7,8 @@ export interface BentoPos { col: number; colEnd: number; row: number; rowEnd: nu
 export interface FreeRect { x: number; y: number; w: number; h: number }
 
 // 宽卡片（主干区域）与窄卡片（右侧）的默认排列顺序，也决定卡片的默认分区
-const WIDE_ORDER: CardId[] = ["auction", "limitpool", "radar", "radarsweep", "reviewtimeline", "multigrid", "heatmatrix", "telegraph", "chart", "sectorheat", "sector", "screener", "dist", "f10", "trade", "journal", "calendar", "ipo", "calc", "export", "dragon", "themelib"];
-const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "trades", "order", "fundflow", "news", "watch", "rank"];
+const WIDE_ORDER: CardId[] = ["auction", "limitpool", "radar", "radarsweep", "reviewtimeline", "multigrid", "heatmatrix", "telegraph", "chart", "sectorheat", "sector", "screener", "f10", "trade", "journal", "calendar", "ipo", "calc", "export", "dragon", "themelib"];
+const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "trades", "news", "watch", "rank"];
 export const ALL_IDS: CardId[] = [...WIDE_ORDER, ...NARROW_ORDER];
 
 export const GAP = 12;

@@ -16,8 +16,6 @@ export type CardId =
   | "screener"
   | "spider"
   | "sectorevent"
-  | "order"
-  | "fundflow"
   | "watch"
   | "rank"
   | "alert"
@@ -26,7 +24,6 @@ export type CardId =
   | "journal"
   | "calendar"
   | "ipo"
-  | "dist"
   | "news"
   | "calc"
   | "export"
@@ -58,8 +55,6 @@ export const CARD_META: Record<CardId, CardMeta> = {
   screener: { title: "条件选股", accent: "#d4af37", kind: "chart" },
   spider: { title: "短线精灵", accent: "#e0556b", kind: "narrow" },
   sectorevent: { title: "板块异动", accent: "#e0556b", kind: "narrow" },
-  order: { title: "五档盘口", accent: "#d9a23b", kind: "narrow" },
-  fundflow: { title: "资金流向", accent: "#f0883e", kind: "narrow" },
   watch: { title: "自选股", accent: "#26d07c", kind: "narrow" },
   rank: { title: "榜单", accent: "#e0556b", kind: "narrow" },
   alert: { title: "预警管理", accent: "#ffd700", kind: "narrow" },
@@ -68,7 +63,6 @@ export const CARD_META: Record<CardId, CardMeta> = {
   journal: { title: "盯盘日记", accent: "#d4af37", kind: "chart" },
   calendar: { title: "财经日历", accent: "#4ea1ff", kind: "chart" },
   ipo: { title: "新股解禁", accent: "#ff8a3d", kind: "chart" },
-  dist: { title: "涨跌分布", accent: "#4ea1ff", kind: "narrow" },
   news: { title: "盘中快讯", accent: "#b07cff", kind: "narrow" },
   calc: { title: "投资计算器", accent: "#e8c878", kind: "chart" },
   export: { title: "数据导出", accent: "#6aa6e8", kind: "chart" },

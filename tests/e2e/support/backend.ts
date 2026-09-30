@@ -212,7 +212,6 @@ const handlers: Record<string, Handler> = {
   get_hist_minute_days: () => Array.from({ length: 3 }, (_, d) => ({ date: `2026010${d + 1}`, bars: Array.from({ length: 30 }, (_, i) => bar(i)) })),
   get_rank_page: () => [quote("600519", 1680, 5.2), quote("300750", 189, 4.1), quote("601318", 48, -2.3)],
   get_orderbook: () => ({ code: "600519", name: "贵州茅台", price: 1680, prevClose: 1660, open: 1665, high: 1690, low: 1660, volume: 12000, amount: 2e9, asks: [], bids: [] }),
-  get_fund_flow: () => ({ code: "600519", name: "贵州茅台", mainNet: 1e8, mainIn: 3e8, mainOut: 2e8, mainNetPct: 5, retailNet: -1e8, retailIn: 1e8, retailOut: 2e8, retailNetPct: -5, netAmount: 0, levels: [] }),
   get_sectors: () => [{ code: "BK1", name: "半导体", changePct: 2.3, netAmount: 1e9, inAmount: 3e9, outAmount: 2e9, leadCode: "300750", leadName: "宁德时代", leadPct: 4.1 }],
   get_news_flash: () => [{ id: 1, time: "2026-01-01 09:45:00", text: "市场开盘活跃", tags: ["快讯"], url: "" }],
   get_screener: () => [quote("600519", 1680, 3.2)],

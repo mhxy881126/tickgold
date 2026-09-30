@@ -77,7 +77,6 @@ const passThroughCases: {
   { name: "fetchHistMinuteDays", fn: () => market.fetchHistMinuteDays("600519", 5), command: "get_hist_minute_days", args: { code: "600519", days: 5 } },
   { name: "fetchOrderBook", fn: () => market.fetchOrderBook("600519"), command: "get_orderbook", args: { code: "600519" } },
   { name: "fetchRankPage defaults", fn: () => market.fetchRankPage("gainers", 1), command: "get_rank_page", args: { sort: "gainers", page: 1, num: 50 } },
-  { name: "fetchFundFlow", fn: () => market.fetchFundFlow("600519"), command: "get_fund_flow", args: { code: "600519" } },
   { name: "fetchSectors", fn: () => market.fetchSectors("concept"), command: "get_sectors", args: { kind: "concept" } },
   { name: "fetchNewsFlash defaults", fn: () => market.fetchNewsFlash(1), command: "get_news_flash", args: { page: 1, size: 30 } },
   { name: "fetchScreener", fn: () => market.fetchScreener({ maBull: true, macdGolden: false, volumeUp: false, breakout: false, aboveMa20: false, kdjGolden: false, rsiOversold: false, bollBreak: false, limit: 50 }), command: "get_screener", args: { filter: expect.objectContaining({ maBull: true }) } },

@@ -24,7 +24,6 @@ export const DOCK_GROUPS: DockGroup[] = [
     items: [
       { id: "watch", label: "自选", icon: "M12 17.27 18.18 21l-1.64-7.03L22 9.24l7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z", desc: "我的股票分组实时行情", star: true },
       { id: "rank", label: "榜单", icon: "M3 5h18v2H3zm0 4h18v2H3zm0 4h12v2H3zm0 4h12v2H3z", desc: "全市场涨幅/跌幅/成交额排名", star: true },
-      { id: "dist", label: "涨跌分布", icon: "M3 21h2v-7H3zm4 0h2V9H7zm4 0h2V5h-2zm4 0h2v-9h-2zm4 0h2V11h-2z", desc: "涨跌幅十档家数分布" },
     ],
   },
   {
@@ -66,9 +65,7 @@ export const DOCK_GROUPS: DockGroup[] = [
     icon: "M6 3h2v4H6zm0 14h2v4H6zM5 8h4v8H5zm11-9h2v3h-2zm0 12h2v5h-2zm-1-7h4v7h-4z",
     items: [
       { id: "chart", label: "K线/分时", icon: "M6 3h2v4H6zm0 14h2v4H6zM5 8h4v8H5zm11-9h2v3h-2zm0 12h2v5h-2zm-1-7h4v7h-4z", desc: "日周月 K + 当日分时", star: true },
-      { id: "order", label: "盘口", icon: "M5 3h14v18H5zm2 4h10v2H7zm0 4h10v2H7zm0 4h7v2H7z", desc: "动态档数买卖盘 + 今日概览" },
       { id: "trades", label: "逐笔成交", icon: "M4 6h16M4 10h16M4 14h16M4 18h12", desc: "逐笔实时滚动 + 主动买卖着色", star: true },
-      { id: "fundflow", label: "资金流向", icon: "M12 3c-4 0-7 1.3-7 3v12c0 1.7 3 3 7 3s7-1.3 7-3V6c0-1.7-3-3-7-3zm0 2c3.3 0 5 .9 5 1s-1.7 1-5 1-5-.9-5-1 1.7-1 5-1zm-5 4.5c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V12c0 .1-1.7 1-5 1s-5-.9-5-1zm0 4c1.2.8 3 1.3 5 1.3s3.8-.5 5-1.3V16c0 .1-1.7 1-5 1s-5-.9-5-1z", desc: "主力/散户 四档资金" },
       { id: "f10", label: "F10资料", icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm0 2l4 4h-4V4zM8 13h8v1.5H8zm0 4h8v1.5H8zm0-8h5v1.5H8z", desc: "公司/财务/筹码分布" },
     ],
   },

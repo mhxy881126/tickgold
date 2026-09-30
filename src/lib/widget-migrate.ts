@@ -76,12 +76,22 @@ function widgetsEqual(a: CardWidgets, b: CardWidgets): boolean {
 // StockChart。检测到该卡仍是这份未改动的旧出厂模板时，一次性还原为经典
 // 完整组件；用户若自行编排过（增删/改绑定）则尊重其自定义，不还原。
 const LEGACY_FACTORY_CHART_DEFS = ["quote-head", "orderbook-mini", "minute-chart"];
-function isLegacyFactoryChart(c: SnapshotCard, w: CardWidgets): boolean {
+// 直接读未清洗的快照：orderbook-mini 已从注册表移除，清洗后该实例会被丢弃，
+// 必须在 sanitize 之前比对原始 def 顺序才能识别旧出厂模板。
+function isLegacyFactoryChart(c: SnapshotCard): boolean {
   if (c.id !== "chart") return false;
-  const defs = w.items.map((i) => i.def);
+  const raw = c.widgets;
+  if (!raw || typeof raw !== "object") return false;
+  const items = (raw as { items?: unknown }).items;
+  if (!Array.isArray(items)) return false;
   return (
-    defs.length === LEGACY_FACTORY_CHART_DEFS.length &&
-    defs.every((d, i) => d === LEGACY_FACTORY_CHART_DEFS[i])
+    items.length === LEGACY_FACTORY_CHART_DEFS.length &&
+    items.every(
+      (it, i) =>
+        typeof it === "object" &&
+        it !== null &&
+        (it as { def?: unknown }).def === LEGACY_FACTORY_CHART_DEFS[i]
+    )
   );
 }
 
@@ -89,12 +99,12 @@ function isLegacyFactoryChart(c: SnapshotCard, w: CardWidgets): boolean {
 export function migrateCard(c: SnapshotCard): { card: SnapshotCard; changed: boolean } {
   // 已是 v1：清洗后保持；内容未变即幂等（changed=false）
   if (c.v === WIDGET_V && c.widgets) {
-    const clean = sanitizeWidgets(c.widgets);
-    // 旧出厂微件化的 K线卡 → 还原经典完整 StockChart
-    if (clean && isLegacyFactoryChart(c, clean)) {
+    // 旧出厂微件化的 K线卡 → 还原经典完整 StockChart（须在清洗前检测）
+    if (isLegacyFactoryChart(c)) {
       const { v: _v, widgets: _w, ...rest } = c;
       return { card: rest, changed: true };
     }
+    const clean = sanitizeWidgets(c.widgets);
     if (!clean) {
       // widgets 全无效：回落出厂模板或移除 widgets
       const preset = presetOf(c.id);

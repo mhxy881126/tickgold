@@ -33,7 +33,7 @@ test("聚焦：放大卡片并可还原", async ({ page }) => {
   await expect(page.locator(".focus-backdrop")).toBeHidden();
 });
 
-// 3) 场景切换：一键替换为「极简看盘」布局（chart / order / watch）
+// 3) 场景切换：一键替换为「极简看盘」布局（chart / watch）
 test("场景切换：应用极简看盘模板", async ({ page }) => {
   await boot(page);
   const chip = page.locator(".scene-chip", { hasText: "极简看盘" });
@@ -42,7 +42,6 @@ test("场景切换：应用极简看盘模板", async ({ page }) => {
 
   await expect(chip).toHaveClass(/\bon\b/);
   await expect(page.locator('[data-card-id="chart"]')).toBeVisible();
-  await expect(page.locator('[data-card-id="order"]')).toBeVisible();
   await expect(page.locator('[data-card-id="watch"]')).toBeVisible();
 });
 

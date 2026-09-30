@@ -17,9 +17,7 @@ import SectorBoard from "./SectorBoard.vue";
 import SectorHeatmap from "./SectorHeatmap.vue";
 import SectorEvents from "./SectorEvents.vue";
 import Screener from "./Screener.vue";
-import DistBoard from "./DistBoard.vue";
 import NewsFlash from "./NewsFlash.vue";
-import FundFlow from "./FundFlow.vue";
 import AlertCenter from "./AlertCenter.vue";
 import F10Card from "./F10Card.vue";
 import PaperTrade from "./PaperTrade.vue";
@@ -31,7 +29,6 @@ import DataExport from "./DataExport.vue";
 import DragonTiger from "./DragonTiger.vue";
 import ThemeLibrary from "./ThemeLibrary.vue";
 import TradeTape from "./TradeTape.vue";
-import RightPanel from "./RightPanel.vue";
 import type { CardId } from "../composables/useWorkbench";
 
 const props = defineProps<{ id: CardId; selected: string | null }>();
@@ -80,9 +77,7 @@ function retry() {
     <SectorHeatmap v-else-if="id === 'sectorheat'" @select="$emit('select', $event)" />
     <SectorEvents v-else-if="id === 'sectorevent'" @select="$emit('select', $event)" />
     <Screener v-else-if="id === 'screener'" @select="$emit('select', $event)" />
-    <DistBoard v-else-if="id === 'dist'" />
     <NewsFlash v-else-if="id === 'news'" />
-    <FundFlow v-else-if="id === 'fundflow'" :code="selected" />
     <AlertCenter v-else-if="id === 'alert'" />
     <F10Card v-else-if="id === 'f10'" :code="selected" />
     <PaperTrade v-else-if="id === 'trade'" :code="selected" />
@@ -94,7 +89,6 @@ function retry() {
     <DragonTiger v-else-if="id === 'dragon'" @select="$emit('select', $event)" />
     <ThemeLibrary v-else-if="id === 'themelib'" />
     <TradeTape v-else-if="id === 'trades'" :code="selected" />
-    <RightPanel v-else :code="selected" />
   </template>
 </template>
 

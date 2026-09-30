@@ -24,11 +24,15 @@ describe("legacy → v1 自动迁移", () => {
   });
 
   it("老版出厂微件化的 K线卡（报价头+盘口+分时缩略图）还原为经典组件", () => {
+    // orderbook-mini 已移出注册表，直接构造原始快照实例以模拟历史出厂布局
+    const legacyItems = ["quote-head", "orderbook-mini", "minute-chart"].map((def) => ({
+      id: `${def}_x`, def, w: 4, h: 3, x: 0, y: 0,
+    }));
     const cards: SnapshotCard[] = [
       {
         ...legacy("chart"),
         v: 1,
-        widgets: { primary: null, items: buildItems(["quote-head", "orderbook-mini", "minute-chart"]) },
+        widgets: { primary: null, items: legacyItems },
       },
     ];
     const r = migrateSnapshot(cards);
@@ -59,14 +63,12 @@ describe("legacy → v1 自动迁移", () => {
     const cards = [
       legacy("watch"),
       legacy("rank"),
-      legacy("fundflow"),
       legacy("news"),
-      legacy("order"),
       legacy("heatmatrix"), // 无模板
     ];
     const once = migrateSnapshot(cards);
     expect(once.changed).toBe(true);
-    expect(once.cards.filter((c) => c.v === 1)).toHaveLength(5);
+    expect(once.cards.filter((c) => c.v === 1)).toHaveLength(3);
 
     const twice = migrateSnapshot(once.cards);
     expect(twice.changed).toBe(false);

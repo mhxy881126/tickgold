@@ -3,8 +3,6 @@ import type { WidgetDef } from "../../lib/widgets";
 import QuoteHead from "./QuoteHead.vue";
 import MinuteChart from "./MinuteChart.vue";
 import KlineMini from "./KlineMini.vue";
-import OrderbookMini from "./OrderbookMini.vue";
-import FundFlowBar from "./FundFlowBar.vue";
 import QuoteList from "./QuoteList.vue";
 import NewsTape from "./NewsTape.vue";
 import TextNote from "./TextNote.vue";
@@ -21,14 +19,6 @@ export const WIDGET_DEFS: WidgetDef[] = [
   {
     id: "kline-mini", title: "迷你K线", component: KlineMini,
     minW: 4, minH: 4, defaultW: 8, defaultH: 6, binding: "stock",
-  },
-  {
-    id: "orderbook-mini", title: "五档盘口", component: OrderbookMini,
-    minW: 3, minH: 4, defaultW: 4, defaultH: 5, binding: "stock", singleton: true,
-  },
-  {
-    id: "fund-flow-bar", title: "资金条", component: FundFlowBar,
-    minW: 4, minH: 3, defaultW: 6, defaultH: 4, binding: "stock",
   },
   {
     id: "quote-list", title: "行情列表", component: QuoteList,

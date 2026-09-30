@@ -32,14 +32,9 @@ test("自动布局：图表填满卡片、卡片互不重叠", async ({ page }) 
 
   // 图表区底部接近卡片底部（底部留白 < 24px，防大片空白）
   expect(chartArea.bottom).toBeGreaterThan(shell.bottom - 24);
-  // 经典图表区（K线+盘口）占卡片主要宽度、高度充足
-  expect(chartArea.width).toBeGreaterThan(shell.width * 0.55);
+  // 极简场景下图表占满整行宽度、高度充足
+  expect(chartArea.width).toBeGreaterThan(shell.width * 0.7);
   expect(chartArea.height).toBeGreaterThan(180);
-
-  // chart 与 order 水平相邻不重叠
-  const order = await rect(page.locator('[data-card-id="order"] .card-shell'));
-  const hOverlap = Math.min(shell.right, order.right) - Math.max(shell.x, order.x);
-  expect(hOverlap).toBeLessThan(4);
 
   // watch 在 chart 下方，垂直不重叠
   const watch = await rect(page.locator('[data-card-id="watch"] .card-shell'));

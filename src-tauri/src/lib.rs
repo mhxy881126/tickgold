@@ -53,11 +53,6 @@ async fn get_trades(code: String, n: i64) -> Result<Vec<market::TradeTick>, Stri
 }
 
 #[tauri::command]
-async fn get_fund_flow(code: String) -> Result<market::FundFlow, String> {
-    market::get_fund_flow(code).await
-}
-
-#[tauri::command]
 async fn get_sectors(kind: String) -> Result<Vec<market::Sector>, String> {
     market::get_sectors(kind).await
 }
@@ -1184,7 +1179,6 @@ pub fn run() {
             get_hist_minute_days,
             get_orderbook,
             get_trades,
-            get_fund_flow,
             get_sectors,
             get_sector_stocks,
             get_screener,

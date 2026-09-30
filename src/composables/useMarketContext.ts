@@ -1,7 +1,7 @@
 // 行情上下文总线：两层 provide/inject。
 // 全局层（App，primaryCode = 当前选中）→ 卡级层（WidgetCanvas，可被卡绑定覆盖）。
 // 微件零 props 透传：只拿 bind?，标的代码 = bind ?? ctx.primaryCode。
-// 另含 useWidgetData：同卡同标的的分时/K/盘口/资金只请求一次（下沉 MultiCell 的 got 缓存）。
+// 另含 useWidgetData：同卡同标的的分时/K/盘口只请求一次（下沉 MultiCell 的 got 缓存）。
 import {
   computed,
   inject,
@@ -12,9 +12,8 @@ import {
   type Ref,
 } from "vue";
 import { storeToRefs } from "pinia";
-import type { FundFlow, KBar, OrderBook, Quote } from "../api/types";
+import type { KBar, OrderBook, Quote } from "../api/types";
 import {
-  fetchFundFlow,
   fetchKLine,
   fetchMinute,
   fetchOrderBook,
@@ -114,14 +113,13 @@ export function useCardMarketLayer(
 }
 
 // ===== useWidgetData：按代码会话级缓存，同标的多微件共享一次请求 =====
-export type WidgetDataKind = "minute" | "kline" | "ob" | "fund";
+export type WidgetDataKind = "minute" | "kline" | "ob";
 
 interface CodeEntry {
   got: Set<WidgetDataKind>;
   minute: Ref<KBar[]>;
   kline: Ref<KBar[]>;
   ob: Ref<OrderBook | null>;
-  fund: Ref<FundFlow | null>;
   ensure(kind: WidgetDataKind): Promise<void>;
 }
 
@@ -134,7 +132,6 @@ function entryFor(code: string): CodeEntry {
   const minute = ref<KBar[]>([]);
   const kline = ref<KBar[]>([]);
   const ob = ref<OrderBook | null>(null);
-  const fund = ref<FundFlow | null>(null);
   // 失败时删掉 kind 标记，下次 ensure 可重试（与 MultiCell 行为一致）
   async function ensure(kind: WidgetDataKind) {
     if (got.has(kind)) return;
@@ -142,13 +139,12 @@ function entryFor(code: string): CodeEntry {
     try {
       if (kind === "minute") minute.value = await fetchMinute(code);
       else if (kind === "kline") kline.value = await fetchKLine(code, 101, 180);
-      else if (kind === "ob") ob.value = await fetchOrderBook(code);
-      else fund.value = await fetchFundFlow(code);
+      else ob.value = await fetchOrderBook(code);
     } catch {
       got.delete(kind);
     }
   }
-  e = { got, minute, kline, ob, fund, ensure };
+  e = { got, minute, kline, ob, ensure };
   cache.set(code, e);
   return e;
 }
@@ -161,7 +157,6 @@ export interface WidgetData {
   minute: ComputedRef<KBar[]>;
   kline: ComputedRef<KBar[]>;
   ob: ComputedRef<OrderBook | null>;
-  fund: ComputedRef<FundFlow | null>;
   ensure(kind: WidgetDataKind): Promise<void>;
 }
 
@@ -184,7 +179,6 @@ export function useWidgetData(
     minute: computed(() => entry.value?.minute.value ?? []),
     kline: computed(() => entry.value?.kline.value ?? []),
     ob: computed(() => entry.value?.ob.value ?? null),
-    fund: computed(() => entry.value?.fund.value ?? null),
     ensure: async (kind) => {
       await entry.value?.ensure(kind);
     },

@@ -32,10 +32,7 @@ const PRESET_DEFS: Partial<Record<CardId, string[]>> = {
   // K线图卡恢复为经典完整组件（StockChart：全周期/指标/画线），不再出厂微件化
   watch: ["quote-list"],
   rank: ["quote-list"],
-  fundflow: ["fund-flow-bar"],
   news: ["news-tape"],
-  // 五档盘口卡：单微件全幅
-  order: ["orderbook-mini"],
 };
 
 export function presetOf(id: CardId): CardWidgets | undefined {

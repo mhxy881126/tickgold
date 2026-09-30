@@ -104,33 +104,6 @@ pub struct TradeTick {
     pub side: String,  // buy 主动买 / sell 主动卖 / neutral 中性
 }
 
-/// 单档资金（特大 / 大 / 中 / 小单）
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct FundLevel {
-    pub name: String,
-    pub net: f64, // 净流入（元）
-    pub in_flow: f64,
-    pub out_flow: f64,
-}
-/// 个股当日资金流向
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct FundFlow {
-    pub code: String,
-    pub name: String,
-    pub main_net: f64, // 主力（特大+大单）净流入
-    pub main_in: f64,
-    pub main_out: f64,
-    pub main_net_pct: f64,
-    pub retail_net: f64, // 散户（中+小单）净流入
-    pub retail_in: f64,
-    pub retail_out: f64,
-    pub retail_net_pct: f64,
-    pub net_amount: f64, // 全部净流入
-    pub levels: Vec<FundLevel>,
-}
-
 /// 板块（行业 / 概念）
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -495,13 +468,6 @@ pub async fn get_trades(code: String, n: i64) -> Result<Vec<TradeTick>, String> 
     )
     .await
     .map_err(|_| "逐笔: 超时".to_string())?
-}
-
-/// 资金流向：新浪（当日实时，特大/大/中/小单）
-pub async fn get_fund_flow(code: String) -> Result<FundFlow, String> {
-    tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), sina::fund_flow(&code))
-        .await
-        .map_err(|_| "资金流向: 超时".to_string())?
 }
 
 /// 板块行情：新浪（kind: industry=行业, concept=概念）
