@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { fetchAuction, type AuctionData, type AuctionStock } from "../api/market";
+import { useRetryableLoad } from "../composables/useRetryableLoad";
 
 const emit = defineEmits<{ select: [code: string] }>();
 
-const data = ref<AuctionData | null>(null);
-const loading = ref(false);
-const error = ref("");
+const { data, loading, error, load, retry } = useRetryableLoad<AuctionData>(
+  () => fetchAuction(),
+  { retries: 2, baseDelay: 600 },
+);
 const tab = ref<"high" | "low">("high");
 let timer: number | undefined;
 
@@ -44,18 +46,6 @@ function hhmmss(ts: number): string {
   const d = new Date(ts);
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
-
-async function load() {
-  loading.value = true;
-  error.value = "";
-  try {
-    data.value = await fetchAuction();
-  } catch (e) {
-    error.value = String(e);
-  } finally {
-    loading.value = false;
-  }
 }
 
 onMounted(() => {
@@ -106,7 +96,10 @@ onUnmounted(() => {
 
     <div class="body">
       <div v-if="loading && !data" class="empty">正在拉取全市场竞价数据…</div>
-      <div v-else-if="error" class="empty err">加载失败：{{ error }}</div>
+      <div v-else-if="error" class="empty err">
+        <div class="err-line">加载失败：{{ error }}</div>
+        <button class="retry-btn" @click="retry">重新加载</button>
+      </div>
       <div v-else-if="list.length === 0" class="empty">暂无数据</div>
       <template v-else>
         <div
@@ -163,7 +156,13 @@ onUnmounted(() => {
 
 .body { flex: 1; overflow-y: auto; }
 .empty { color: var(--text-dim); font-size: 11px; text-align: center; padding: 30px 10px; }
-.empty.err { color: var(--accent); }
+.empty.err { color: var(--accent); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.err-line { word-break: break-word; }
+.retry-btn {
+  background: var(--bg-hover); border: 1px solid var(--border); color: var(--text);
+  font-size: 11px; padding: 4px 16px; border-radius: 6px; cursor: pointer;
+}
+.retry-btn:hover { border-color: var(--accent); }
 .row { padding: 6px 8px; border-radius: 6px; cursor: pointer; }
 .row:hover { background: var(--bg-hover); }
 .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
