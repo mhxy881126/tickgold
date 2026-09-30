@@ -54,6 +54,7 @@ import { bootstrapAlerts } from "./composables/useAlertBootstrap";
 import { ensureDb, db } from "./db/database";
 import AlertToast from "./components/alert/AlertToast.vue";
 import { startTimeSeries } from "./composables/useTimeSeries";
+import { startCollector } from "./composables/useCollector";
 import { playAlert } from "./utils/sound";
 import { DOCK_GROUPS } from "./lib/dock";
 import type { DockGroup, DockItem } from "./lib/dock";
@@ -338,6 +339,8 @@ onMounted(async () => {
   try { await ensureDb(); } catch (e) { console.error("[app] db", e); }
   // —— 本地时序采集（情绪/指数/板块，盘中分时+收盘日级，常驻后台）——
   try { await startTimeSeries(); } catch (e) { console.error("[app] timeseries", e); }
+  // —— 题材采集调度器（盘中 20 分钟催化增量 + 盘后归因；内部防重入/同日幂等）——
+  try { startCollector(); } catch (e) { console.error("[app] collector", e); }
   try { await theme.load(); } catch (e) { console.error("[app] theme", e); }
   try { await a11y.load(); } catch (e) { console.error("[app] a11y", e); }
   try { await motion.load(); } catch (e) { console.error("[app] motion", e); }
