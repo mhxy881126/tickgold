@@ -147,7 +147,7 @@ function dateNDaysAgoIso(n: number): string {
  * 行业路径成员的每只股票都已出现在（一个或多个）概念聚类中时，行业题材不新增任何
  * 成分股，保留它只会让同一批股票被双重归因。部分覆盖（行业内仍有未解释涨停）保留。
  */
-function dropCoveredIndustryClusters(clusters: ThemeCluster[]): ThemeCluster[] {
+export function dropCoveredIndustryClusters(clusters: ThemeCluster[]): ThemeCluster[] {
   const conceptCodes = new Set<string>();
   for (const c of clusters) {
     if (c.path === "concept") {

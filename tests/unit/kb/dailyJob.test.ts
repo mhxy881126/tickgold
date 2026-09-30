@@ -18,7 +18,7 @@ vi.mock("../../../src/api/kb", () => ({
   fetchSectorStocks: (b: string) => mocks.sectorStocks(b),
 }));
 
-import { decideStage, runAttributionJob, todayCompact } from "../../../src/kb/dailyJob";
+import { decideStage, dropCoveredIndustryClusters, runAttributionJob, todayCompact } from "../../../src/kb/dailyJob";
 import type { Db } from "../../../src/kb/repo";
 
 const d = mocks.db as unknown as Db;
@@ -83,5 +83,25 @@ describe("runAttributionJob", () => {
   it("throws when the limit pool is empty (no data yet)", async () => {
     mocks.ztPool.mockResolvedValue({ date: "20260930", total: 0, list: [] });
     await expect(runAttributionJob(d, "2026-09-30", "20260930")).rejects.toThrow("涨停池为空");
+  });
+});
+
+describe("dropCoveredIndustryClusters", () => {
+  const ind = (codes: string[]) => ({ name: "设备", path: "industry" as const, codes, sealCount: 3, totalBoards: 3, leaderBoards: 1, score: 33 });
+  const con = (name: string, codes: string[]) => ({ name, path: "concept" as const, codes, sealCount: 3, totalBoards: 6, leaderBoards: 3, score: 63 });
+
+  it("keeps an industry cluster when no concepts exist", () => {
+    const out = dropCoveredIndustryClusters([ind(["a", "b", "c"])]);
+    expect(out.map((c) => c.name)).toEqual(["设备"]);
+  });
+
+  it("keeps an industry cluster only partially covered", () => {
+    const out = dropCoveredIndustryClusters([con("机器人", ["a"]), ind(["a", "b", "c"])]);
+    expect(out.map((c) => c.name)).toEqual(["机器人", "设备"]);
+  });
+
+  it("drops an industry cluster fully covered by concept clusters", () => {
+    const out = dropCoveredIndustryClusters([con("机器人", ["a", "b"]), con("工业母机", ["c"]), ind(["a", "b", "c"])]);
+    expect(out.map((c) => c.name)).toEqual(["机器人", "工业母机"]);
   });
 });

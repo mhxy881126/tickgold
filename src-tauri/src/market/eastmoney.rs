@@ -1412,3 +1412,28 @@ fn parse_clist_codes(text: &str) -> Option<Vec<String>> {
         .collect();
     Some(codes)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_clist_codes;
+
+    #[test]
+    fn parse_clist_codes_valid() {
+        let j = r#"{"data":{"diff":[{"f12":"300001"},{"f12":"600519"},{"f12":"x"}]}}"#;
+        assert_eq!(parse_clist_codes(j), Some(vec!["300001".to_string(), "600519".to_string(), "x".to_string()]));
+    }
+
+    #[test]
+    fn parse_clist_codes_empty_diff_is_some() {
+        // 空成分是有效响应（某节点成功但无成员），驱动故障转移的"成功即止"
+        assert_eq!(parse_clist_codes(r#"{"data":{"diff":[]}}"#), Some(vec![]));
+    }
+
+    #[test]
+    fn parse_clist_codes_bad_shapes_none() {
+        assert!(parse_clist_codes("not json").is_none());
+        assert!(parse_clist_codes(r#"{}"#).is_none());
+        assert!(parse_clist_codes(r#"{"data":{}}"#).is_none());
+        assert!(parse_clist_codes(r#"{"data":{"diff":1}}"#).is_none());
+    }
+}
