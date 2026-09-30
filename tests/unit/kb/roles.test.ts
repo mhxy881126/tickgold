@@ -38,8 +38,17 @@ describe("assignRoles", () => {
     expect(out.map((r) => r.role)).toEqual(["龙一", "龙二", "助攻", "跟风"]);
   });
 
-  it("flags a unique leader when its boards exceed the runner-up by >=2", () => {
+  it("flags unique leader on strict board high", () => {
     const out = assignRoles(stocks);
     expect(out[0].uniqueLeader).toBe(true);
+  });
+
+  it("does not flag a unique leader on a top tie", () => {
+    const tied = [
+      { code: "1", name: "一", boards: 2, firstSeal: 93500, sealFund: 2e8 },
+      { code: "2", name: "二", boards: 2, firstSeal: 94500, sealFund: 0 },
+    ];
+    const out = assignRoles(tied);
+    expect(out[0].uniqueLeader).toBe(false);
   });
 });
