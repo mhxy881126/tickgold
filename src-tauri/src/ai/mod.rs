@@ -56,11 +56,11 @@ pub fn now_millis() -> i64 {
         .unwrap_or(0)
 }
 
-/// FNV-1a 32-bit，8 位十六进制；与前端 src/kb/hash.ts 同口径。
+/// FNV-1a 32-bit，8 位十六进制；按 UTF-16 码元迭代，与前端 src/kb/hash.ts 同口径。
 pub fn fnv1a_hex(s: &str) -> String {
     let mut h: u32 = 0x811c9dc5;
-    for b in s.as_bytes() {
-        h ^= *b as u32;
+    for cu in s.encode_utf16() {
+        h ^= cu as u32;
         h = h.wrapping_mul(0x01000193);
     }
     format!("{:08x}", h)
@@ -74,6 +74,7 @@ mod scaffold_tests {
     fn fnv_vectors_match_frontend() {
         assert_eq!(fnv1a_hex(""), "811c9dc5");
         assert_eq!(fnv1a_hex("a"), "e40c292c");
+        assert_eq!(fnv1a_hex("中"), "28619638");
     }
 
     #[tokio::test]
