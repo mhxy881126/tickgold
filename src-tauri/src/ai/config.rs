@@ -108,8 +108,14 @@ mod tests {
     use super::*;
     use crate::ai::vectordb::open;
 
+    // 并行测试同毫秒撞名会打开同一个临时库（评审亲测 25 passed/1 failed）；
+    // 追加进程内原子序号保证唯一（与 tools.rs SEED_SEQ 同一修法）。
+    static CFG_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
     fn db() -> crate::ai::vectordb::AiDb {
-        let p = std::env::temp_dir().join(format!("tickgold-ai-test-cfg-{}.db", now_millis()));
+        let seq = CFG_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let p = std::env::temp_dir()
+            .join(format!("tickgold-ai-test-cfg-{}-{}.db", now_millis(), seq));
         open(&p).unwrap()
     }
 

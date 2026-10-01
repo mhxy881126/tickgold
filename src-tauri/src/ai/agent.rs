@@ -1,6 +1,8 @@
 // Agent 循环：装配历史 → 流式 chat → 工具调用 → 回填 → 直到无工具调用或达 6 轮。
 use crate::ai::config::AiConfig;
-use crate::ai::provider::{self, ChatMsg, HttpEmbedder, StreamEv, ToolCall};
+use crate::ai::provider::{
+    self, AssistantToolCall, AssistantToolFn, ChatMsg, HttpEmbedder, StreamEv, ToolCall,
+};
 use crate::ai::tools::{self, FactRef, ToolCtx};
 use crate::ai::vectordb;
 use crate::ai::AbortRegistry;
@@ -65,10 +67,13 @@ pub async fn run_turn(
         Ok((text, refs, aborted)) => {
             let db = vectordb::open(&ai_path)?;
             let refs_json = serde_json::to_string(&refs).map_err(|e| e.to_string())?;
-            let final_text = if text.trim().is_empty() {
-                "已达到工具调用轮数上限，暂未能形成完整结论，请缩小问题范围后重试。".to_string()
-            } else {
+            let final_text = if !text.trim().is_empty() {
                 text
+            } else if aborted {
+                "已手动中止本次回答。".to_string()
+            } else {
+                // 非中止空文本：6 轮工具调用耗尽仍未形成结论
+                "已达到工具调用轮数上限，暂未能形成完整结论，请缩小问题范围后重试。".to_string()
             };
             let mid = vectordb::insert_message(
                 &db.0,
@@ -113,6 +118,8 @@ impl<'a> TurnAgent<'a> {
         msgs.push(ChatMsg {
             role: "system".into(),
             content: format!("{SYSTEM_PROMPT}\n今天是：{}", beijing_today()),
+            tool_calls: None,
+            tool_call_id: None,
         });
         for m in history {
             // tool 记录不回送 API：缺少对应 assistant tool_calls 与 tool_call_id 会报错；
@@ -123,6 +130,8 @@ impl<'a> TurnAgent<'a> {
             msgs.push(ChatMsg {
                 role: m.role,
                 content: m.content,
+                tool_calls: None,
+                tool_call_id: None,
             });
         }
 
@@ -158,31 +167,74 @@ impl<'a> TurnAgent<'a> {
             }
             // 工具前的零碎文本丢弃（属于工具调用前的思考，不入库）
             answer.clear();
+            // 协议配对（OpenAI 兼容）：先规整本回合全部调用——
+            // id 缺省补 call_{index}；arguments 非法时回送 "{}" 保证合法 JSON。
+            struct PlannedCall {
+                call_id: String,
+                name: String,
+                arguments: String,
+                args: serde_json::Value,
+            }
+            let planned: Vec<PlannedCall> = calls
+                .into_iter()
+                .map(|call| {
+                    let call_id = if call.id.is_empty() {
+                        format!("call_{}", call.index)
+                    } else {
+                        call.id
+                    };
+                    let (arguments, args) =
+                        match serde_json::from_str::<serde_json::Value>(&call.args) {
+                            Ok(v) => (call.args, v),
+                            Err(_) => ("{}".to_string(), serde_json::json!({})),
+                        };
+                    PlannedCall {
+                        call_id,
+                        name: call.name,
+                        arguments,
+                        args,
+                    }
+                })
+                .collect();
+            // 先 push assistant 消息（content 为空，build_api_messages 输出 null + tool_calls），
+            // 其后每条 role:"tool" 消息带同一 tool_call_id，二者 id 必须完全一致。
+            msgs.push(ChatMsg {
+                role: "assistant".into(),
+                content: String::new(),
+                tool_calls: Some(
+                    planned
+                        .iter()
+                        .map(|c| AssistantToolCall {
+                            id: c.call_id.clone(),
+                            kind: "function".into(),
+                            function: AssistantToolFn {
+                                name: c.name.clone(),
+                                arguments: c.arguments.clone(),
+                            },
+                        })
+                        .collect(),
+                ),
+                tool_call_id: None,
+            });
             let ctx = ToolCtx {
                 data_dir,
                 embedder: &self.embedder,
             };
-            for call in calls {
+            for pc in &planned {
                 if registry.take_abort(session_id) {
                     aborted = true;
                     break;
                 }
-                let call_id = if call.id.is_empty() {
-                    format!("call_{}", call.index)
-                } else {
-                    call.id.clone()
-                };
-                let args: serde_json::Value =
-                    serde_json::from_str(&call.args).unwrap_or(serde_json::json!({}));
+                let call_id = pc.call_id.clone();
                 let _ = self.app.emit(
                     "ai://tool",
                     serde_json::json!({
                         "sessionId": session_id, "callId": call_id,
-                        "name": call.name, "args": args, "status": "running", "elapsedMs": 0,
+                        "name": pc.name, "args": pc.args, "status": "running", "elapsedMs": 0,
                     }),
                 );
                 let started = Instant::now();
-                let outcome = tools::dispatch(&call.name, args.clone(), &ctx).await;
+                let outcome = tools::dispatch(&pc.name, pc.args.clone(), &ctx).await;
                 let elapsed = started.elapsed().as_millis() as i64;
                 let (status, tool_content) = match outcome {
                     Ok(out) => {
@@ -199,13 +251,15 @@ impl<'a> TurnAgent<'a> {
                     "ai://tool",
                     serde_json::json!({
                         "sessionId": session_id, "callId": call_id,
-                        "name": call.name, "args": args, "status": status, "elapsedMs": elapsed,
+                        "name": pc.name, "args": pc.args, "status": status, "elapsedMs": elapsed,
                     }),
                 );
-                let tool_msg = format!("[{} 结果]\n{}", call.name, tool_content);
+                let tool_msg = format!("[{} 结果]\n{}", pc.name, tool_content);
                 msgs.push(ChatMsg {
                     role: "tool".into(),
                     content: tool_msg.clone(),
+                    tool_calls: None,
+                    tool_call_id: Some(call_id.clone()),
                 });
                 // 工具消息同步落库（刷新页面后历史可溯源）
                 let db = vectordb::open(&data_dir.join("ai.db"))?;

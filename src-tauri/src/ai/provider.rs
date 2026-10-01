@@ -7,9 +7,30 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::Instant;
 
+/// 回送 assistant 工具回合时 function.arguments 必须为 JSON 字符串（而非对象）。
+#[derive(Serialize)]
+pub struct AssistantToolFn {
+    pub name: String,
+    pub arguments: String,
+}
+
+/// assistant 消息中的单个 tool_calls 条目，形状严格对齐 OpenAI 协议。
+#[derive(Serialize)]
+pub struct AssistantToolCall {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub kind: String, // 恒为 "function"
+    pub function: AssistantToolFn,
+}
+
+#[derive(Serialize)]
 pub struct ChatMsg {
     pub role: String,
     pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<AssistantToolCall>>,
+    #[serde(rename = "tool_call_id", skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -161,6 +182,47 @@ fn check_status(resp: reqwest::Response) -> Result<reqwest::Response, String> {
     }
 }
 
+/// 把对话消息装配为 OpenAI /chat/completions 请求体的 messages 数组（纯函数，便于单测）。
+/// 多轮工具调用协议要求严格配对：assistant 先带 tool_calls（此时 content 为 null），
+/// 随后每条工具结果 role:"tool" 且带 tool_call_id；三者缺一则第 2 轮起云端 400。
+/// Ollama 同样兼容此形状。
+fn build_api_messages(msgs: &[ChatMsg]) -> Vec<serde_json::Value> {
+    msgs.iter()
+        .map(|m| {
+            let mut v = serde_json::Map::new();
+            v.insert("role".into(), serde_json::Value::String(m.role.clone()));
+            match &m.tool_calls {
+                // 工具回合的 assistant 消息：content 必须是 JSON null 而非空字符串，
+                // 并附完整 tool_calls（id/type/function{name,arguments 字符串}）。
+                Some(calls) => {
+                    let content = if m.content.is_empty() {
+                        serde_json::Value::Null
+                    } else {
+                        serde_json::Value::String(m.content.clone())
+                    };
+                    v.insert("content".into(), content);
+                    v.insert(
+                        "tool_calls".into(),
+                        serde_json::to_value(calls).expect("AssistantToolCall 序列化不会失败"),
+                    );
+                }
+                // 普通消息（system/user/assistant 文本/tool 结果）：content 恒为字符串。
+                None => {
+                    v.insert("content".into(), serde_json::Value::String(m.content.clone()));
+                }
+            }
+            // role:"tool" 消息必须带与其前 assistant tool_calls 中相同的 id。
+            if let Some(id) = &m.tool_call_id {
+                v.insert(
+                    "tool_call_id".into(),
+                    serde_json::Value::String(id.clone()),
+                );
+            }
+            serde_json::Value::Object(v)
+        })
+        .collect()
+}
+
 /// 流式对话。on 回调实时收到文本增量与工具参数碎片；工具组装由 SseState。
 pub async fn chat_stream(
     cfg: &AiConfig,
@@ -169,10 +231,7 @@ pub async fn chat_stream(
     tools: &[ToolSpec],
     on: &mut impl FnMut(StreamEv),
 ) -> Result<Vec<ToolCall>, String> {
-    let messages: Vec<serde_json::Value> = msgs
-        .iter()
-        .map(|m| serde_json::json!({ "role": m.role, "content": m.content }))
-        .collect();
+    let messages: Vec<serde_json::Value> = build_api_messages(msgs);
     let tool_schemas: Vec<ToolSchema> = tools
         .iter()
         .map(|t| ToolSchema {
@@ -425,6 +484,79 @@ mod tests {
         assert_eq!(calls[0].name, "market_overview");
         let args: serde_json::Value = serde_json::from_str(&calls[0].args).unwrap();
         assert_eq!(args["date"], "2026-09-30");
+    }
+
+    /// M1：工具回合消息必须严格按 OpenAI 协议配对——
+    /// assistant(content=null + tool_calls) → tool(tool_call_id) → 下一轮 user。
+    #[test]
+    fn tool_round_messages_serialize_openai_shape() {
+        let msgs = vec![
+            ChatMsg {
+                role: "assistant".into(),
+                content: String::new(),
+                tool_calls: Some(vec![AssistantToolCall {
+                    id: "call_9".into(),
+                    kind: "function".into(),
+                    function: AssistantToolFn {
+                        name: "market_overview".into(),
+                        arguments: r#"{"date":"2026-09-30"}"#.into(),
+                    },
+                }]),
+                tool_call_id: None,
+            },
+            ChatMsg {
+                role: "tool".into(),
+                content: "[market_overview 结果]\n涨停 72 家".into(),
+                tool_calls: None,
+                tool_call_id: Some("call_9".into()),
+            },
+            ChatMsg {
+                role: "user".into(),
+                content: "继续".into(),
+                tool_calls: None,
+                tool_call_id: None,
+            },
+        ];
+        let v = serde_json::to_value(&build_api_messages(&msgs)).unwrap();
+        let arr = v.as_array().unwrap();
+        assert_eq!(arr.len(), 3);
+
+        // assistant：content === null（不是空串），tool_calls 形状完整
+        let a = &arr[0];
+        assert_eq!(a["role"], "assistant");
+        assert!(a["content"].is_null(), "工具回合 assistant content 必须为 null");
+        assert_eq!(a["tool_calls"].as_array().unwrap().len(), 1);
+        let tc = &a["tool_calls"][0];
+        assert_eq!(tc["id"], "call_9");
+        assert_eq!(tc["type"], "function");
+        assert_eq!(tc["function"]["name"], "market_overview");
+        assert!(
+            tc["function"]["arguments"].is_string(),
+            "function.arguments 必须是 JSON 字符串而非对象"
+        );
+        let args: serde_json::Value =
+            serde_json::from_str(tc["function"]["arguments"].as_str().unwrap()).unwrap();
+        assert_eq!(args["date"], "2026-09-30");
+
+        // tool：带同一 tool_call_id，且不得带 tool_calls 键
+        let t = &arr[1];
+        assert_eq!(t["role"], "tool");
+        assert_eq!(t["content"], "[market_overview 结果]\n涨停 72 家");
+        assert_eq!(t["tool_call_id"], "call_9");
+        assert!(t.get("tool_calls").is_none(), "tool 消息不得带 tool_calls");
+
+        // 普通 user：恰好只有 role/content 两个键
+        let u = &arr[2];
+        assert_eq!(u["role"], "user");
+        assert_eq!(u["content"], "继续");
+        let keys: std::collections::BTreeSet<&String> =
+            u.as_object().unwrap().keys().collect();
+        assert_eq!(
+            keys,
+            [&"role".to_string(), &"content".to_string()]
+                .into_iter()
+                .collect()
+        );
     }
 
     #[test]
