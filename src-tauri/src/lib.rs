@@ -1,3 +1,4 @@
+mod ai;
 mod logging;
 mod market;
 
@@ -1067,6 +1068,8 @@ pub fn run() {
                 )
                 .build(),
         )
+        .manage(ai::AiState::default())
+        .manage(ai::AbortRegistry::default())
         .manage(BossHidden(Mutex::new(false)))
         .manage(Arc::new(market::spider::SpiderCtl::new()))
         .manage(Arc::new(market::limitup::LimitRadar::new()))
@@ -1083,6 +1086,17 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            // ===== v1.9 AI 边车库初始化 + data_dir 状态就位 =====
+            {
+                let dir = app.path().app_data_dir()?;
+                let ai_path = dir.join("ai.db");
+                match ai::vectordb::open(&ai_path) {
+                    Ok(_db) => log::info!("AI 边车库就绪: {}", ai_path.display()),
+                    Err(e) => log::error!("AI 边车库初始化失败（AI 功能不可用）: {e}"),
+                }
+                // brief 原写法 `*.inner().0.lock()...` 跨模块访问私有字段触发 E0616，改用 set_dir。
+                app.state::<ai::AiState>().inner().set_dir(dir);
+            }
             // ===== 主窗口：标题栏融入工作台 =====
             if let Some(main) = app.get_webview_window("main") {
                 // 显式设置图标，确保 Windows 任务栏正确显示

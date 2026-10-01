@@ -34,6 +34,11 @@ rfd = "0.17.2"
 log = "0.4.22"
 tauri-plugin-autostart = "2.5.1"
 
+# ===== v1.9 AI 慢脑：边车库 / 系统凭据箱 / SSE 流 =====
+rusqlite = { version = "0.32", features = ["bundled"] }
+keyring = "2.3"
+tokio-stream = "0.1"
+
 # macOS 透明窗口（灵动岛毛玻璃）需要私有 API
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri = { version = "2", features = ["macos-private-api"] }
