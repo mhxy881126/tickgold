@@ -9,7 +9,7 @@ use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct FactRef {
     pub kind: String, // "card" | "url"
