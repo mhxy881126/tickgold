@@ -172,6 +172,243 @@ async fn get_irm_latest() -> Vec<market::irminteract::IrmItem> {
     market::irminteract::irm_latest().await
 }
 
+// ===== v1.9 AI 慢脑命令 =====
+#[tauri::command]
+fn ai_get_config(state: tauri::State<ai::AiState>) -> Result<ai::config::AiConfig, String> {
+    let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
+    ai::config::load_config(&db.0)
+}
+
+#[tauri::command]
+fn ai_save_config(
+    state: tauri::State<ai::AiState>,
+    cfg: ai::config::AiConfig,
+) -> Result<(), String> {
+    let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
+    ai::config::save_config(&db.0, &cfg)
+}
+
+/// 云 Key 的系统凭据箱定位（服务名/账户固定）。
+fn cloud_secret() -> ai::config::KeyringSecret {
+    ai::config::KeyringSecret {
+        service: "tickgold.ai.cloud-key".to_string(),
+        user: "default".to_string(),
+    }
+}
+
+#[tauri::command]
+fn ai_get_cloud_key_set() -> bool {
+    matches!(
+        ai::config::SecretStore::get(&cloud_secret()),
+        Ok(Some(_))
+    )
+}
+
+#[tauri::command]
+fn ai_set_cloud_key(secret: String) -> Result<(), String> {
+    ai::config::SecretStore::set(&cloud_secret(), secret.trim())
+}
+
+#[tauri::command]
+fn ai_clear_cloud_key() -> Result<(), String> {
+    ai::config::SecretStore::erase(&cloud_secret())
+}
+
+#[tauri::command]
+async fn ai_test_connection(
+    state: tauri::State<'_, ai::AiState>,
+) -> Result<serde_json::Value, String> {
+    let cfg = {
+        let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
+        ai::config::load_config(&db.0)?
+    };
+    let key = if cfg.provider == "cloud" {
+        ai::config::SecretStore::get(&cloud_secret())?
+    } else {
+        None
+    };
+    let info = ai::provider::list_models(&cfg, &key).await?;
+    Ok(serde_json::json!({"latencyMs": info.latency_ms, "models": info.models}))
+}
+
+#[tauri::command]
+fn ai_new_session(state: tauri::State<ai::AiState>) -> Result<i64, String> {
+    let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
+    ai::vectordb::create_session(&db.0, "")
+}
+
+#[tauri::command]
+fn ai_list_sessions(
+    state: tauri::State<ai::AiState>,
+) -> Result<Vec<ai::vectordb::SessionRow>, String> {
+    let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
+    ai::vectordb::list_sessions(&db.0)
+}
+
+#[tauri::command]
+fn ai_load_session(
+    state: tauri::State<ai::AiState>,
+    session_id: i64,
+) -> Result<Vec<AiMsgOut>, String> {
+    // vectordb::MsgRow 未派生 Serialize（Tauri IPC 要求），在命令边界映射为可序列化 DTO；
+    // 字段名与 MsgRow 原样一致（snake_case）。
+    let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
+    let rows = ai::vectordb::list_messages(&db.0, session_id, 100)?;
+    Ok(rows
+        .into_iter()
+        .map(|m| AiMsgOut {
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            tool_calls: m.tool_calls,
+            refs: m.refs,
+            created_at: m.created_at,
+        })
+        .collect())
+}
+
+/// ai_load_session 的 IPC 输出行（与 ai::vectordb::MsgRow 同字段）。
+#[derive(serde::Serialize)]
+struct AiMsgOut {
+    id: i64,
+    role: String,
+    content: String,
+    tool_calls: String,
+    refs: String,
+    created_at: i64,
+}
+
+#[tauri::command]
+fn ai_delete_session(state: tauri::State<ai::AiState>, session_id: i64) -> Result<(), String> {
+    let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
+    ai::vectordb::delete_session(&db.0, session_id)
+}
+
+#[tauri::command]
+async fn ai_chat_send(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, ai::AiState>,
+    registry: tauri::State<'_, ai::AbortRegistry>,
+    session_id: i64,
+    text: String,
+) -> Result<(), String> {
+    let (cfg, key, data_dir) = {
+        let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
+        let cfg = ai::config::load_config(&db.0)?;
+        let key = if cfg.provider == "cloud" {
+            ai::config::SecretStore::get(&cloud_secret())?
+        } else {
+            None
+        };
+        (cfg, key, state.dir().clone())
+    };
+    // flags 是 Arc<Mutex<HashSet>>：克隆 Arc 与 spawn 共享，中止命令可即时置位
+    let reg = ai::AbortRegistry {
+        flags: registry.flags.clone(),
+    };
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) =
+            ai::agent::run_turn(&app, &data_dir, &reg, &cfg, key, session_id, text).await
+        {
+            log::error!("AI 对话失败: {e}");
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn ai_chat_abort(
+    registry: tauri::State<ai::AbortRegistry>,
+    session_id: i64,
+) -> Result<(), String> {
+    registry.abort(session_id);
+    Ok(())
+}
+
+#[tauri::command]
+fn ai_kb_stats(state: tauri::State<ai::AiState>) -> Result<ai::vectordb::KbStats, String> {
+    let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
+    ai::vectordb::stats(&db.0)
+}
+
+#[tauri::command]
+fn ai_list_docs(state: tauri::State<ai::AiState>) -> Result<Vec<(String, i64)>, String> {
+    let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
+    ai::vectordb::list_sources(&db.0, "manual_doc")
+}
+
+#[tauri::command]
+async fn ai_import_docs(
+    state: tauri::State<'_, ai::AiState>,
+) -> Result<Vec<String>, String> {
+    let files = rfd::AsyncFileDialog::new()
+        .add_filter("文本文档", &["md", "txt"])
+        .pick_files()
+        .await
+        .ok_or_else(|| "已取消选择".to_string())?;
+    let mut imported = vec![];
+    for f in files {
+        let name = f.file_name();
+        let is_md = name.to_lowercase().ends_with(".md");
+        let bytes = tokio::fs::read(f.path()).await.map_err(|e| e.to_string())?;
+        let content = String::from_utf8(bytes)
+            .map_err(|_| format!("{name} 不是 UTF-8 文本，请转码后再导入"))?;
+        let n = ai::ingest::ingest_document(&state.dir(), &name, &content, is_md)?;
+        if n > 0 {
+            imported.push(name);
+        }
+    }
+    Ok(imported)
+}
+
+#[tauri::command]
+fn ai_delete_doc(
+    state: tauri::State<ai::AiState>,
+    file_name: String,
+) -> Result<usize, String> {
+    let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
+    ai::vectordb::delete_by_source_ref(&db.0, "manual_doc", &file_name)
+}
+
+#[tauri::command]
+async fn ai_reindex(state: tauri::State<'_, ai::AiState>) -> Result<usize, String> {
+    let cfg = {
+        let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
+        ai::config::load_config(&db.0)?
+    };
+    let key = if cfg.provider == "cloud" {
+        ai::config::SecretStore::get(&cloud_secret())?
+    } else {
+        None
+    };
+    let embedder = ai::provider::HttpEmbedder {
+        cfg: cfg.clone(),
+        api_key: key,
+    };
+    ai::ingest::embed_pending(&state.dir(), &cfg, &embedder, None, 100_000).await
+}
+
+#[tauri::command]
+async fn ai_index_daily(
+    state: tauri::State<'_, ai::AiState>,
+    trade_date: String,
+) -> Result<usize, String> {
+    let cfg = {
+        let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
+        ai::config::load_config(&db.0)?
+    };
+    let key = if cfg.provider == "cloud" {
+        ai::config::SecretStore::get(&cloud_secret())?
+    } else {
+        None
+    };
+    let embedder = ai::provider::HttpEmbedder {
+        cfg: cfg.clone(),
+        api_key: key,
+    };
+    ai::ingest::index_day(&state.dir(), &cfg, &embedder, &trade_date, None).await
+}
+
 // ===== 龙虎榜复盘 =====
 #[tauri::command]
 async fn get_lhb_list(date: String) -> Result<market::eastmoney::LhbList, String> {
@@ -1238,7 +1475,25 @@ pub fn run() {
             rust_clear_logs,
             rust_set_log_level,
             backup_database,
-            restore_latest_backup
+            restore_latest_backup,
+            ai_get_config,
+            ai_save_config,
+            ai_get_cloud_key_set,
+            ai_set_cloud_key,
+            ai_clear_cloud_key,
+            ai_test_connection,
+            ai_new_session,
+            ai_list_sessions,
+            ai_load_session,
+            ai_delete_session,
+            ai_chat_send,
+            ai_chat_abort,
+            ai_kb_stats,
+            ai_list_docs,
+            ai_import_docs,
+            ai_delete_doc,
+            ai_reindex,
+            ai_index_daily
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

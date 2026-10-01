@@ -1,5 +1,6 @@
 // 采集调度器：盘中每 20 分钟增量抓公告/互动易催化；15:30-17:00 跑当日归因。
 // 与 useTimeSeries 相同的前端调度模式；防重入、同日幂等、失败落 collector_run。
+import { invoke } from "@tauri-apps/api/core";
 import { reactive } from "vue";
 import {
   fetchAnnouncements,
@@ -64,6 +65,10 @@ async function runAttribution(d: Db, date: string): Promise<number> {
   const r = await runAttributionJob(d, date, todayCompact(new Date()));
   collectorStatus.lastAttribution = r.tradeDate;
   collectorStatus.attributionThemes = r.themes;
+  // v1.9：归因成功后触发 AI 知识库日增量（独立失败，不阻断归因）
+  void invoke<number>("ai_index_daily", { tradeDate: date })
+    .then((n) => { if (n > 0) console.info(`[ai] 日度入库新增分块 ${n}（${date}）`); })
+    .catch((e) => console.warn("[ai] 日度入库跳过：", e));
   return r.themes;
 }
 
