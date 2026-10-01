@@ -211,26 +211,47 @@ pub async fn chat_stream(
     let mut resp = check_status(resp)?;
 
     let mut state = SseState::new();
-    let mut buf = String::new();
+    // 字节缓冲（不是 String）：多字节 UTF-8（如中文）可能被 TCP 切到两个 chunk，
+    // 若对每块直接 from_utf8_lossy 会产生永久 U+FFFD。必须先按 \n 切出完整行，
+    // 再对整行做严格 UTF-8 解码；无换行的尾部残余可能是不完整字符，留给下一块。
+    let mut buf: Vec<u8> = Vec::new();
     // reqwest 未启用 stream feature（Cargo.toml 仅 json/rustls-tls），
     // 故用核心 API chunk() 逐块读取（brief 原写 bytes_stream，偏离见报告）。
-    while let Some(bytes) = resp
-        .chunk()
-        .await
-        .map_err(|e| format!("读取模型流失败: {e}"))?
-    {
-        buf.push_str(&String::from_utf8_lossy(&bytes));
-        while let Some(pos) = buf.find('\n') {
-            let line: String = buf.drain(..=pos).collect();
-            let line = line.trim();
-            if let Some(rest) = line.strip_prefix("data:") {
-                state.feed(rest, on)?;
+    loop {
+        // 读空闲超时：每收到一块即重置（不是整轮总超时）。
+        let chunk = tokio::time::timeout(std::time::Duration::from_secs(60), resp.chunk())
+            .await
+            .map_err(|_| "读取模型流超时（60s 无数据）".to_string())?
+            .map_err(|e| format!("读取模型流失败: {e}"))?;
+        let Some(bytes) = chunk else { break };
+        buf.extend_from_slice(&bytes);
+        while let Some(pos) = buf.iter().position(|b| *b == b'\n') {
+            let line: Vec<u8> = buf.drain(..=pos).collect();
+            if line.starts_with(b"data:") {
+                let rest = std::str::from_utf8(&line[5..])
+                    .map_err(|e| format!("SSE UTF-8 解析失败: {e}"))?;
+                state.feed(rest.trim(), on)?;
             }
+            // 非 data 行（注释/空行/事件行）忽略
         }
     }
-    // 尾部残余
-    if let Some(rest) = buf.trim().strip_prefix("data:") {
-        state.feed(rest, on)?;
+    // 流结束后的尾部残余：正常情况下其中已无换行（完整行在上面都已 drain）。
+    while let Some(pos) = buf.iter().position(|b| *b == b'\n') {
+        let line: Vec<u8> = buf.drain(..=pos).collect();
+        if line.starts_with(b"data:") {
+            let rest = std::str::from_utf8(&line[5..])
+                .map_err(|e| format!("SSE UTF-8 解析失败: {e}"))?;
+            state.feed(rest.trim(), on)?;
+        }
+    }
+    // 容忍服务端最后一帧不带尾换行：残余本身是一帧 data: 时解码一次。
+    if buf.starts_with(b"data:") {
+        let rest = std::str::from_utf8(&buf[5..])
+            .map_err(|e| format!("SSE UTF-8 解析失败: {e}"))?;
+        let rest = rest.trim();
+        if !rest.is_empty() {
+            state.feed(rest, on)?;
+        }
     }
     // 返回本轮组装好的工具调用（空 Vec = 无工具调用 = 终轮）
     Ok(state.finish_tools())
@@ -300,10 +321,12 @@ pub async fn embed(
         .map_err(|_| "嵌入服务超时（30s）".to_string())?
         .map_err(|e| format!("嵌入请求失败: {e}"))?;
     let resp = check_status(resp)?;
-    let v: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("嵌入响应解析失败: {e}"))?;
+    let v: serde_json::Value = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        resp.json::<serde_json::Value>().await
+    })
+    .await
+    .map_err(|_| "读取嵌入响应超时（30s）".to_string())?
+    .map_err(|e| format!("嵌入响应解析失败: {e}"))?;
     let mut out: Vec<(i64, Vec<f32>)> = vec![];
     let Some(arr) = v.get("data").and_then(|x| x.as_array()) else {
         return Err("嵌入响应缺少 data 字段".to_string());
@@ -313,13 +336,25 @@ pub async fn embed(
         let Some(emb) = item.get("embedding").and_then(|x| x.as_array()) else {
             return Err("嵌入向量字段缺失".to_string());
         };
-        let vec: Vec<f32> = emb
-            .iter()
-            .map(|n| n.as_f64().map(|x| x as f32).unwrap_or(0.0))
-            .collect();
+        // 数据完整性：非数字元素不能静默置 0.0（会造成向量静默错位/污染）。
+        let mut vec: Vec<f32> = Vec::with_capacity(emb.len());
+        for n in emb {
+            let x = n
+                .as_f64()
+                .ok_or_else(|| "嵌入向量含非数字元素".to_string())?;
+            vec.push(x as f32);
+        }
         out.push((index, vec));
     }
     out.sort_by_key(|(i, _)| *i);
+    // 排序后再比条数：服务端少返回/多返回都属于数据完整性错误，不可静默截断或补零。
+    if out.len() != texts.len() {
+        return Err(format!(
+            "嵌入返回条数 {} 与请求 {} 不符",
+            out.len(),
+            texts.len()
+        ));
+    }
     Ok(out.into_iter().map(|(_, v)| v).collect())
 }
 
@@ -460,5 +495,130 @@ mod tests {
         assert_eq!(text, "你好，世界");
         // 纯文本流返回空工具集
         assert!(calls.is_empty());
+    }
+
+    /// 手写最小 HTTP mock（仅 127.0.0.1 回环，不触外网）。
+    /// shard=Some(n) 时把响应体按每 n 字节 write+flush 分片（片间 sleep 1ms）。
+    async fn spawn_loopback_mock(content_type: &str, body: String, shard: Option<usize>) -> u16 {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let content_type = content_type.to_string();
+        tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut req = vec![0u8; 4096];
+            let _ = sock.read(&mut req).await;
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n",
+                body.len()
+            );
+            sock.write_all(head.as_bytes()).await.unwrap();
+            match shard {
+                Some(n) => {
+                    for part in body.as_bytes().chunks(n) {
+                        sock.write_all(part).await.unwrap();
+                        sock.flush().await.unwrap();
+                        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                    }
+                }
+                None => {
+                    sock.write_all(body.as_bytes()).await.unwrap();
+                }
+            }
+        });
+        port
+    }
+
+    fn test_cfg(port: u16) -> AiConfig {
+        AiConfig {
+            provider: "ollama".into(),
+            base_url: format!("http://127.0.0.1:{port}/v1"),
+            chat_model: "m".into(),
+            embed_model: "e".into(),
+            temperature: 0.3,
+            enable_auto_index: true,
+        }
+    }
+
+    /// I-1 回归：中文多字节字符被 TCP 按每 3 字节切到不同 chunk 时，
+    /// 字节缓冲必须拼回完整 UTF-8，不得出现 U+FFFD。
+    #[tokio::test]
+    async fn chat_stream_chinese_split_across_byte_chunks() {
+        const CONTENT: &str = "今日涨停 72 家，情绪回暖";
+        let sse = format!(
+            "data: {{\"choices\":[{{\"delta\":{{\"role\":\"assistant\",\"content\":\"{CONTENT}\"}}}}]}}\n\ndata: [DONE]\n\n"
+        );
+        // 前置 ASCII（SSE 帧头 + JSON 键）使 3 字节边界必然切中多字节中文字符。
+        let port = spawn_loopback_mock("text/event-stream", sse, Some(3)).await;
+        let cfg = test_cfg(port);
+        let mut text = String::new();
+        let calls = chat_stream(&cfg, &None, &[], &[], &mut |e| {
+            if let StreamEv::Delta(s) = e {
+                text.push_str(&s);
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(text, CONTENT, "中文跨 chunk 后必须逐字相等");
+        assert!(
+            !text.contains('\u{FFFD}'),
+            "不得出现 U+FFFD 替换字符，实际: {text}"
+        );
+        assert!(calls.is_empty(), "纯文本流不应产生工具调用");
+    }
+
+    /// M-4：embed 按响应 index 还原为请求顺序（index 1 在前后 0 在前）。
+    #[tokio::test]
+    async fn embed_end_to_end_reorders_by_index() {
+        let body = serde_json::json!({
+            "object": "list",
+            "model": "e",
+            "data": [
+                {"index": 1, "embedding": [0.25, 0.5]},
+                {"index": 0, "embedding": [0.75, 1.0]}
+            ]
+        })
+        .to_string();
+        let port = spawn_loopback_mock("application/json", body, None).await;
+        let cfg = test_cfg(port);
+        let out = embed(
+            &cfg,
+            &None,
+            &["a".to_string(), "b".to_string()],
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.len(), 2);
+        // a（index 0）→ [0.75, 1.0]；b（index 1）→ [0.25, 0.5]
+        assert_eq!(out[0], vec![0.75_f32, 1.0_f32]);
+        assert_eq!(out[1], vec![0.25_f32, 0.5_f32]);
+    }
+
+    /// M-4：返回条数与请求不符必须报错，不得静默截断。
+    #[tokio::test]
+    async fn embed_count_mismatch_is_error() {
+        let body = serde_json::json!({
+            "object": "list",
+            "model": "e",
+            "data": [
+                {"index": 0, "embedding": [0.75, 1.0]}
+            ]
+        })
+        .to_string();
+        let port = spawn_loopback_mock("application/json", body, None).await;
+        let cfg = test_cfg(port);
+        let err = embed(
+            &cfg,
+            &None,
+            &["a".to_string(), "b".to_string()],
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.contains("嵌入返回条数 1 与请求 2 不符"),
+            "条数不符错误信息不匹配: {err}"
+        );
     }
 }
