@@ -892,4 +892,45 @@ mod tests {
         };
         assert!(dispatch("nope", json!({}), &ctx).await.is_err());
     }
+
+    #[tokio::test]
+    async fn list_limit_ups_default_all_and_code_filter() {
+        let dir = seeded_dir();
+        let c = open_readonly(&dir).unwrap();
+
+        // 1) 不传 code：走 SQL 短路条件 `AND (:code='' OR code=:code)`，
+        //    这是修复 rusqlite「多绑未用命名参数 InvalidParameterName」的关键回归路径。
+        let out = list_limit_ups(&c, &json!({"date":"2026-09-30"})).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out.content).unwrap();
+        assert_eq!(v["date"], "2026-09-30");
+        let ups = v["limitUps"].as_array().unwrap();
+        assert_eq!(ups.len(), 2);
+        // ORDER BY boards DESC：2 板甲在前、1 板乙在后（乙 broken=1 仍在榜）。
+        assert_eq!(ups[0]["code"], "300001");
+        assert_eq!(ups[0]["name"], "甲");
+        assert_eq!(ups[0]["boards"], 2);
+        assert_eq!(ups[0]["broken"], 0);
+        assert_eq!(ups[1]["code"], "300002");
+        assert_eq!(ups[1]["name"], "乙");
+        assert_eq!(ups[1]["boards"], 1);
+        assert_eq!(ups[1]["broken"], 1);
+        assert_eq!(out.refs.len(), 1);
+        assert_eq!(out.refs[0].card.as_deref(), Some("limitpool"));
+        assert_eq!(out.refs[0].date.as_deref(), Some("2026-09-30"));
+
+        // 2) 传 code：短路条件走 code=:code 精确过滤。
+        let out = list_limit_ups(&c, &json!({"date":"2026-09-30","code":"300001"})).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out.content).unwrap();
+        let ups = v["limitUps"].as_array().unwrap();
+        assert_eq!(ups.len(), 1);
+        assert_eq!(ups[0]["code"], "300001");
+        assert_eq!(ups[0]["boards"], 2);
+
+        // 3) minBoards=2：仅 2 连板的甲入选。
+        let out = list_limit_ups(&c, &json!({"date":"2026-09-30","minBoards":2})).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out.content).unwrap();
+        let ups = v["limitUps"].as_array().unwrap();
+        assert_eq!(ups.len(), 1);
+        assert_eq!(ups[0]["code"], "300001");
+    }
 }
