@@ -296,6 +296,7 @@ const showEne = ref(false);  // ENE 主图叠加
 
 const subInd = ref("MACD"); // 当前副图指标
 let subPaneId: string | null = null;
+let volPaneId: string | null = null;
 const subMenu = ref(false);
 const subPickerEl = ref<HTMLElement | null>(null);
 // 点击选择器外部时收起菜单
@@ -370,6 +371,21 @@ const myPos = computed(() => paper.positions.find((p) => p.code === props.code))
 const costPrice = computed(() => (myPos.value ? myPos.value.costAmount / myPos.value.vol : 0));
 const axTone = (p: number) => (p > 0.05 ? "up" : p < -0.05 ? "dn" : "zero");
 
+const PANE_MINH = 12;
+// 副图窗格高度按容器自适应：矮卡片里压缩成交量/副图，保证主图窗格不被挤成 0
+function paneHeights(minute: boolean) {
+  const H = host.value?.clientHeight ?? 0;
+  if (H > 0 && H < 260) {
+    if (minute) return { vol: Math.max(PANE_MINH, Math.round(H * 0.28)) };
+    // 成交量+副图合计不超过容器 42%，余下（扣时间轴）留给主图
+    return {
+      vol: Math.max(PANE_MINH, Math.round(H * 0.16)),
+      sub: Math.max(PANE_MINH, Math.round(H * 0.26)),
+    };
+  }
+  return minute ? { vol: 84 } : { vol: 76, sub: 84 };
+}
+
 // ---- 渲染图表（每次切换整体重建，避免指标残留）----
 function renderChart(bars: KBar[], minute: boolean) {
   if (!host.value) return;
@@ -379,6 +395,7 @@ function renderChart(bars: KBar[], minute: boolean) {
     dispose(chart); chart = null;
     drawInstances.clear(); // 旧 chart 的 overlay 实例已失效
   }
+  volPaneId = null; subPaneId = null;
   chart = init(host.value);
   if (!chart) return;
   chart.setTimezone("UTC");
@@ -386,13 +403,14 @@ function renderChart(bars: KBar[], minute: boolean) {
   chart.setStyles(buildStyles(minute));
   chart.applyNewData(toKData(bars));
 
+  const ph = paneHeights(minute);
   if (minute) {
     chart.createIndicator("sessionBg", true, { id: "candle_pane" });
     chart.createIndicator({ name: "AVG", styles: { lines: [line(AVG_Y)] } } as any, false, { id: "candle_pane" });
-    chart.createIndicator(
+    volPaneId = chart.createIndicator(
       { name: "VOL", styles: { tooltip: { showName: false, showParams: false }, lines: [{ color: "rgba(0,0,0,0)" }, { color: "rgba(0,0,0,0)" }, { color: "rgba(0,0,0,0)" }] } } as any,
-      false, { height: 84 }
-    );
+      false, { height: ph.vol, minHeight: PANE_MINH }
+    ) as string | null;
     chart.createIndicator({ name: "thsLevels", extendData: { prevClose: prevClose.value } } as any, true, { id: "candle_pane" });
   } else {
     chart.createIndicator({
@@ -400,8 +418,8 @@ function renderChart(bars: KBar[], minute: boolean) {
       calcParams: maCfg.value.periods.slice(),
       styles: { lines: maCfg.value.colors.map((c) => line(c)) },
     } as any, false, { id: "candle_pane" });
-    chart.createIndicator("VOL", false, { height: 76 });
-    subPaneId = chart.createIndicator(subInd.value, false, { height: 84 }) as string | null;
+    volPaneId = chart.createIndicator("VOL", false, { height: ph.vol, minHeight: PANE_MINH }) as string | null;
+    subPaneId = chart.createIndicator(subInd.value, false, { height: ph.sub, minHeight: PANE_MINH }) as string | null;
   }
 
   // 叠加层恢复（同 pane 叠加必须 isStack=true，否则会清空 MA/AVG）
@@ -484,7 +502,8 @@ function switchSub(name: string) {
   subMenu.value = false;
   if (!chart) return;
   if (subPaneId) chart.removeIndicator(subPaneId);
-  subPaneId = chart.createIndicator(name, false, { height: 84 }) as string | null;
+  const h = paneHeights(false);
+  subPaneId = chart.createIndicator(name, false, { height: h.sub, minHeight: PANE_MINH }) as string | null;
 }
 
 // ===== 指标设置弹窗 =====
@@ -740,8 +759,12 @@ onMounted(async () => {
   await loadHead();
   await load();
   ro = new ResizeObserver(() => {
+    const minute = !!tabs[active.value].minute;
+    const ph = paneHeights(minute);
+    if (chart && volPaneId) chart.setPaneOptions({ id: volPaneId, height: ph.vol, minHeight: PANE_MINH });
+    if (chart && !minute && subPaneId) chart.setPaneOptions({ id: subPaneId, height: ph.sub, minHeight: PANE_MINH });
     chart?.resize();
-    if (tabs[active.value].minute) fitMinute();
+    if (minute) fitMinute();
   });
   if (host.value) ro.observe(host.value);
   headTimer = window.setInterval(refreshHead, 5000);

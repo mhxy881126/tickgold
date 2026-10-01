@@ -87,8 +87,9 @@ export const SCENES: Scene[] = [
     cards: ["screener", "sectorheat", "sector", "rank", "watch"],
     size: { screener: { w: 8, h: 3 }, sectorheat: { w: 4, h: 3 }, sector: { w: 6, h: 2 }, rank: { w: 6, h: 2 }, watch: { w: 12, h: 1 } } },
   { id: "mini", label: "极简看盘", icon: "M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z",
-    cards: ["chart", "watch"],
-    size: { chart: { w: 12, h: 4 }, watch: { w: 12, h: 2 } } },
+    cards: ["chart", "radar", "watch"],
+    // 12×6=72：图表 8×4 + 雷达 4×4，自选整行垫底
+    size: { chart: { w: 8, h: 4 }, radar: { w: 4, h: 4 }, watch: { w: 12, h: 2 } } },
 ];
 
 export interface NamedLayout {
