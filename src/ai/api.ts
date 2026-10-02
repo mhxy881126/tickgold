@@ -193,6 +193,7 @@ export interface AutoExecConfigInfo {
   bridgeDefaultAction: string;
   bridgeTtlMinutes: number;
   bridgePriceDeviatePct: number;
+  bridgeOrderTemplate: string;
 }
 
 export interface DecisionLogInfo {
@@ -405,6 +406,7 @@ export function signalConfirm(
     vol?: number | null;
     actionKind?: string | null;
     broker?: string | null;
+    orderTemplate?: string | null;
   },
 ) {
   return invoke<SignalConfirmResult>("signal_confirm", {
@@ -413,6 +415,7 @@ export function signalConfirm(
     vol: opts.vol ?? null,
     actionKind: opts.actionKind ?? null,
     broker: opts.broker ?? null,
+    orderTemplate: opts.orderTemplate ?? null,
   });
 }
 
@@ -457,6 +460,7 @@ export function signalPreviewOrder(
   price: number,
   vol: number,
   broker?: string,
+  template?: string,
 ) {
   return invoke<string>("signal_preview_order", {
     side,
@@ -465,5 +469,6 @@ export function signalPreviewOrder(
     price,
     vol,
     broker: broker ?? null,
+    template: template ?? null,
   });
 }

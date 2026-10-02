@@ -617,6 +617,14 @@ function pickTab(id: Tab) {
                         <option value="hotkey">唤起券商</option>
                       </select></label>
                   </div>
+                  <div class="bridge-grid">
+                    <label class="ai-field grow2"><span>下单指令模板（留空 = 内置默认）</span>
+                      <textarea v-model="fbCfg.bridgeOrderTemplate" class="bridge-tpl" rows="2" spellcheck="false"
+                        placeholder="{side} {code} {name} 价格 {price} 数量 {vol} · {broker}"></textarea>
+                      <span class="tpl-hint">占位符：{side} {sideEn} {code} {name} {price} {vol} {amount} {broker} {date}；未识别的占位符会原样保留</span>
+                    </label>
+                    <button type="button" class="logs-btn" @click="fbCfg.bridgeOrderTemplate = ''">恢复默认</button>
+                  </div>
                 </div>
                 <div class="ai-actions">
                   <button type="button" class="logs-btn primary" @click="saveFastBrain">保存快脑参数</button>
@@ -940,6 +948,8 @@ function pickTab(id: Tab) {
 .bridge-grid .ai-field { flex:1; min-width:130px; display:flex; flex-direction:column; gap:4px; color:var(--text-dim,#97a0b2); }
 .bridge-grid .ai-field.grow2 { flex:2; min-width:200px; }
 .bridge-grid input, .bridge-grid select { background:var(--bg-input,#0e1117); border:1px solid var(--border,#2a3344); border-radius:6px; color:var(--text,#e6ecf5); padding:5px 8px; font-size:11px; }
+.bridge-tpl { width:100%; box-sizing:border-box; background:var(--bg-input,#0e1117); border:1px solid var(--border,#2a3344); border-radius:6px; color:var(--text,#e6ecf5); padding:6px 8px; font-size:11px; resize:vertical; font-family:inherit; line-height:1.5; }
+.tpl-hint { color:var(--text-dim,#7d8698); font-size:10px; line-height:1.6; }
 .ai-provider { align-self: flex-start; margin-bottom: 4px; }
 .ai-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 13px; }
 .ai-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

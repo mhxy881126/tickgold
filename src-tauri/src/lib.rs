@@ -8,7 +8,7 @@ use std::sync::atomic::Ordering;
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    LogicalPosition, Manager, WebviewUrl, WebviewWindowBuilder,
+    Emitter, LogicalPosition, Manager, WebviewUrl, WebviewWindowBuilder,
 };
 use tauri_plugin_global_shortcut::ShortcutState;
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -1010,6 +1010,16 @@ fn boss_toggle(app: &tauri::AppHandle) {
     }
 }
 
+/// 信号确认快捷键（Alt+S）：显示并聚焦主窗口，通知前端打开「信号确认桥」。
+fn bridge_focus(app: &tauri::AppHandle) {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.show();
+        let _ = main.unminimize();
+        let _ = main.set_focus();
+    }
+    let _ = app.emit("bridge:focus", ());
+}
+
 /// 切换指定窗口显隐，并把对应托盘勾选项与窗口实际可见性对齐
 fn toggle_window<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
@@ -1736,11 +1746,16 @@ pub fn run() {
         .manage(ai::autoexec::AutoExecCtl::new())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcuts(["Alt+`"])
+                .with_shortcuts(["Alt+`", "Alt+S"])
                 .expect("invalid shortcut")
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(|app, shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        boss_toggle(app);
+                        // Alt+S 唤起信号确认桥，其余（Alt+`）走老板键
+                        if shortcut.to_string().ends_with('S') {
+                            bridge_focus(app);
+                        } else {
+                            boss_toggle(app);
+                        }
                     }
                 })
                 .build(),

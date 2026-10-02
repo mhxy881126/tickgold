@@ -34,6 +34,7 @@ pub struct AutoExecConfig {
     pub bridge_default_action: String,// 默认动作 copy/export/hotkey
     pub bridge_ttl_minutes: i64,      // 待确认信号有效期（分钟）
     pub bridge_price_deviate_pct: f64,// 参考价偏离提示阈值（%）
+    pub bridge_order_template: String,  // 自定义下单指令模板（空=内置默认）
 }
 
 impl Default for AutoExecConfig {
@@ -55,6 +56,7 @@ impl Default for AutoExecConfig {
             bridge_default_action: "copy".to_string(),
             bridge_ttl_minutes: 30,
             bridge_price_deviate_pct: 1.5,
+            bridge_order_template: String::new(),
         }
     }
 }

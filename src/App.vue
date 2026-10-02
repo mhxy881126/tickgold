@@ -388,6 +388,9 @@ onMounted(async () => {
       }),
       await listen<string>("island:open-card", (e) => {
         bench.open(e.payload as CardId);
+      }),
+      await listen("bridge:focus", () => {
+        if (!bench.isOpen("signalbridge")) bench.open("signalbridge");
       })
     );
     // 预警触发：写历史 + 系统通知 + 声音 + 记录触发时间

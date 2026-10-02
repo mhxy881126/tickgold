@@ -100,6 +100,7 @@ async function onConfirm(t: SignalTicketInfo) {
   try {
     const r = await signalConfirm(t.id, {
       price, vol, actionKind: e.actionKind, broker: e.broker,
+      orderTemplate: orderTpl.value || null,
     });
     if (e.actionKind === "copy") {
       try {
@@ -131,6 +132,43 @@ async function onReject(t: SignalTicketInfo) {
   }
 }
 
+// ===== 卡片内快捷键：Enter 确认 / Ctrl(⌘)+Enter 确认并唤起 / R 驳回 =====
+function firstPending(): SignalTicketInfo | undefined {
+  return tickets.value.find((t) => t.status === "pending");
+}
+function isFormTarget(ev: KeyboardEvent): boolean {
+  const el = ev.target as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+}
+async function quickConfirm(ev: KeyboardEvent, launch: boolean) {
+  if (isFormTarget(ev)) return;
+  const t = firstPending();
+  if (!t) return;
+  const e = ensureEdit(t);
+  if (launch) e.actionKind = "hotkey";
+  ev.preventDefault();
+  await onConfirm(t);
+}
+async function quickReject(ev: KeyboardEvent) {
+  if (isFormTarget(ev)) return;
+  const t = firstPending();
+  if (!t) return;
+  ev.preventDefault();
+  await onReject(t);
+}
+function onCardKey(ev: KeyboardEvent) {
+  if (ev.key === "Enter") {
+    void quickConfirm(ev, ev.ctrlKey || ev.metaKey);
+  } else if (
+    (ev.key === "r" || ev.key === "R") &&
+    !ev.ctrlKey && !ev.metaKey && !ev.altKey
+  ) {
+    void quickReject(ev);
+  }
+}
+
 async function onDone(t: SignalTicketInfo) {
   busy.value = t.id;
   try {
@@ -158,10 +196,12 @@ function selectAll(e: FocusEvent) {
 
 // ===== 券商唤起 =====
 const brokerPath = ref("");
+const orderTpl = ref("");
 async function loadBrokerPath() {
   try {
     const c = await autoexecGetConfig();
     brokerPath.value = c.bridgeBrokerPath || "";
+    orderTpl.value = c.bridgeOrderTemplate || "";
   } catch {
     /* 忽略 */
   }
@@ -228,8 +268,12 @@ onMounted(() => {
   void load();
   void loadBrokerPath();
   timer = setInterval(() => void load(), 10000);
+  window.addEventListener("keydown", onCardKey);
 });
-onUnmounted(() => clearInterval(timer));
+onUnmounted(() => {
+  clearInterval(timer);
+  window.removeEventListener("keydown", onCardKey);
+});
 </script>
 
 <template>
@@ -257,6 +301,10 @@ onUnmounted(() => clearInterval(timer));
       <button class="tb-btn" @click="showManual = !showManual">
         {{ showManual ? "收起" : "手动新建" }}
       </button>
+    </div>
+
+    <div class="hk-hint">
+      快捷键：<b>Enter</b> 确认最新待确认 · <b>Ctrl/⌘+Enter</b> 确认并唤起券商 · <b>R</b> 驳回 · 全局 <b>Alt+S</b> 打开信号桥
     </div>
 
     <!-- 手动新建表单 -->
@@ -431,6 +479,17 @@ onUnmounted(() => clearInterval(timer));
   flex-direction: column;
   font-size: 12px;
 }
+.hk-hint {
+  margin: 6px 8px 0;
+  padding: 5px 10px;
+  border: 1px solid var(--border, #2a3344);
+  border-radius: 7px;
+  background: rgba(232, 198, 106, 0.08);
+  color: var(--text-dim, #97a0b2);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.hk-hint b { color: var(--accent, #e8c66a); font-weight: 700; }
 .sb-tabs {
   display: flex;
   gap: 4px;

@@ -105,11 +105,48 @@ pub fn build_order_text(
     vol: i64,
     broker: &str,
 ) -> String {
+    build_order_text_tpl("", side, code, name, price, vol, broker)
+}
+
+/// 按自定义模板渲染指令；template 为空（或全空白）时回退内置默认格式。
+/// 占位符：{side} 中文方向、{sideEn} 英文方向、{code}、{name}、{price} 两位小数、
+/// {vol}、{amount} 整数元、{broker}、{date}；未识别占位符原样保留以便发现书写错误。
+pub fn build_order_text_tpl(
+    template: &str,
+    side: &str,
+    code: &str,
+    name: &str,
+    price: f64,
+    vol: i64,
+    broker: &str,
+) -> String {
     let action_cn = if side == "SELL" { "卖出" } else { "买入" };
     let amount = price * vol as f64;
-    format!(
-        "{action_cn} {code} {name} 价格 {price:.2} 数量 {vol}（约 {amount:.0} 元） · {broker}"
-    )
+    if template.trim().is_empty() {
+        format!(
+            "{action_cn} {code} {name} 价格 {price:.2} 数量 {vol}（约 {amount:.0} 元） · {broker}"
+        )
+    } else {
+        let price_s = format!("{price:.2}");
+        let amount_s = format!("{amount:.0}");
+        let vol_s = vol.to_string();
+        let date_s = beijing_today_dashed();
+        let mut out = template.to_string();
+        for (k, v) in [
+            ("{side}", action_cn.as_str()),
+            ("{sideEn}", side),
+            ("{code}", code),
+            ("{name}", name),
+            ("{price}", price_s.as_str()),
+            ("{vol}", vol_s.as_str()),
+            ("{amount}", amount_s.as_str()),
+            ("{broker}", broker),
+            ("{date}", date_s.as_str()),
+        ] {
+            out = out.replace(k, v);
+        }
+        out
+    }
 }
 
 // ===== 列表 =====
@@ -172,6 +209,7 @@ pub struct ConfirmOpts {
     pub action_kind: Option<String>,
     pub broker: Option<String>,
     pub actor: Option<String>,
+    pub order_template: Option<String>,
 }
 
 pub fn confirm(conn: &Connection, id: i64, opts: ConfirmOpts) -> Result<Value, String> {
@@ -210,7 +248,10 @@ pub fn confirm(conn: &Connection, id: i64, opts: ConfirmOpts) -> Result<Value, S
         return Err("数量无效，请先填写数量（100 的整数倍）".to_string());
     }
     let amount = price * vol as f64;
-    let order_text = build_order_text(&side, &code, &name, price, vol, &broker);
+    let order_text = build_order_text_tpl(
+        &opts.order_template.clone().unwrap_or_default(),
+        &side, &code, &name, price, vol, &broker,
+    );
     let now = now_millis();
     conn.execute(
         "UPDATE signal_ticket SET status='confirmed',price=?1,vol=?2,amount=?3,\
@@ -408,6 +449,7 @@ pub fn signal_confirm(
     action_kind: Option<String>,
     broker: Option<String>,
     actor: Option<String>,
+    order_template: Option<String>,
 ) -> Result<Value, String> {
     let conn = maindb::open_readwrite(&state.dir())?;
     confirm(
@@ -419,6 +461,7 @@ pub fn signal_confirm(
             action_kind,
             broker,
             actor,
+            order_template,
         },
     )
 }
@@ -495,8 +538,10 @@ pub fn signal_preview_order(
     price: f64,
     vol: i64,
     broker: Option<String>,
+    template: Option<String>,
 ) -> String {
-    build_order_text(
+    build_order_text_tpl(
+        &template.unwrap_or_default(),
         &side,
         &code,
         &name,
@@ -536,5 +581,30 @@ mod tests {
         let t = build_order_text("SELL", "000001", "平安银行", 12.5, 200, "同花顺");
         assert!(t.contains("卖出"));
         assert!(t.contains("000001"));
+    }
+
+    #[test]
+    fn custom_template_renders_fields() {
+        let tpl = "{sideEn} {code} {name} {price} x{vol} @{broker}";
+        let t = build_order_text_tpl(tpl, "BUY", "600519", "贵州茅台", 1500.0, 100, "同花顺");
+        assert!(t.contains("BUY"));
+        assert!(t.contains("600519"));
+        assert!(t.contains("1500.00"));
+        assert!(t.contains("@同花顺"));
+        // 自定义模板不应出现内置的「约 … 元」
+        assert!(!t.contains("约"));
+    }
+
+    #[test]
+    fn unknown_placeholder_is_kept() {
+        let t = build_order_text_tpl("{code} {foo}", "BUY", "600519", "x", 1.0, 100, "b");
+        assert!(t.contains("{foo}"));
+    }
+
+    #[test]
+    fn blank_template_falls_back() {
+        let t = build_order_text_tpl("   ", "BUY", "600519", "贵州茅台", 1500.0, 100, "同花顺");
+        assert!(t.contains("买入"));
+        assert!(t.contains("价格"));
     }
 }
