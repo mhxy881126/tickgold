@@ -133,7 +133,7 @@ pub fn build_order_text_tpl(
         let date_s = beijing_today_dashed();
         let mut out = template.to_string();
         for (k, v) in [
-            ("{side}", action_cn.as_str()),
+            ("{side}", action_cn), // action_cn 本身就是 &str
             ("{sideEn}", side),
             ("{code}", code),
             ("{name}", name),
