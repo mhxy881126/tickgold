@@ -266,7 +266,7 @@ pub async fn run_labeling(
         };
         let dated: Vec<String> = bars.iter().map(|b| dashed_from_ts(b.timestamp)).collect();
 
-        for d in *drows {
+        for &d in drows.iter() {
             let Some(pi) = dated.iter().position(|x| x == &d.trade_date) else {
                 insufficient += 1;
                 continue;
@@ -368,7 +368,7 @@ fn final_ret_expr() -> &'static str {
 pub fn stats(data_dir: &std::path::Path) -> Result<Value, String> {
     let conn = maindb::open_readonly(data_dir)?;
     let sql = format!(
-        "SELECT model_version,strategy,verdict,{final_ret_expr} AS fr,hit_stop,hit_target,miss_type \
+        "SELECT model_version,strategy,verdict,{final_ret_expr()} AS fr,hit_stop,hit_target,miss_type \
          FROM trade_label"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -536,41 +536,47 @@ pub fn data_check(
         format!("{y}-{m:02}-{d:02}")
     };
 
-    let conn = maindb::open_readonly(data_dir)?;
-    let count = |sql: &str, p: &[String]| -> i64 {
-        let mut stmt = match conn.prepare(sql) {
-            Ok(s) => s,
-            Err(_) => return -1,
+    let (
+        missing_label_stale,
+        horizon_zero,
+        orphan_labels,
+        missing_model,
+        total_decisions,
+        total_labels,
+    ) = {
+        let conn = maindb::open_readonly(data_dir)?;
+        let count = |sql: &str, p: &[String]| -> i64 {
+            let mut stmt = match conn.prepare(sql) {
+                Ok(s) => s,
+                Err(_) => return -1,
+            };
+            stmt.query_row(rusqlite::params_from_iter(p.iter()), |r| r.get(0))
+                .unwrap_or(-1)
         };
-        stmt.query_row(rusqlite::params_from_iter(p.iter()), |r| r.get(0))
-            .unwrap_or(-1)
+        (
+            count(
+                "SELECT COUNT(*) FROM decision_log d \
+                 WHERE d.action IN ('executed','watch') \
+                   AND NOT EXISTS (SELECT 1 FROM trade_label t WHERE t.decision_id=d.id) \
+                   AND d.trade_date<=?1",
+                &[cutoff.clone()],
+            ),
+            count("SELECT COUNT(*) FROM trade_label WHERE horizon_days=0", &[]),
+            count(
+                "SELECT COUNT(*) FROM trade_label t \
+                 WHERE NOT EXISTS (SELECT 1 FROM decision_log d WHERE d.id=t.decision_id)",
+                &[],
+            ),
+            count(
+                "SELECT COUNT(DISTINCT d.model_version) FROM decision_log d \
+                 WHERE d.model_version<>'' \
+                   AND NOT EXISTS (SELECT 1 FROM model_version m WHERE m.version=d.model_version)",
+                &[],
+            ),
+            count("SELECT COUNT(*) FROM decision_log", &[]),
+            count("SELECT COUNT(*) FROM trade_label", &[]),
+        )
     };
-
-    let missing_label_stale = count(
-        "SELECT COUNT(*) FROM decision_log d \
-         WHERE d.action IN ('executed','watch') \
-           AND NOT EXISTS (SELECT 1 FROM trade_label t WHERE t.decision_id=d.id) \
-           AND d.trade_date<=?1",
-        &[cutoff.clone()],
-    );
-    let horizon_zero = count(
-        "SELECT COUNT(*) FROM trade_label WHERE horizon_days=0",
-        &[],
-    );
-    let orphan_labels = count(
-        "SELECT COUNT(*) FROM trade_label t \
-         WHERE NOT EXISTS (SELECT 1 FROM decision_log d WHERE d.id=t.decision_id)",
-        &[],
-    );
-    let missing_model = count(
-        "SELECT COUNT(DISTINCT d.model_version) FROM decision_log d \
-         WHERE d.model_version<>'' \
-           AND NOT EXISTS (SELECT 1 FROM model_version m WHERE m.version=d.model_version)",
-        &[],
-    );
-    let total_decisions = count("SELECT COUNT(*) FROM decision_log", &[]);
-    let total_labels = count("SELECT COUNT(*) FROM trade_label", &[]);
-    drop(conn);
 
     let mut deleted_orphan = 0_i64;
     let mut deleted_old_labels = 0_i64;
