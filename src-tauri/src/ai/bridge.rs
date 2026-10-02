@@ -5,7 +5,7 @@ use crate::ai::{maindb, now_millis};
 use rusqlite::Connection;
 use serde_json::{json, Value};
 use std::process::Command;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 // ===== 信号输入 =====
 
@@ -504,6 +504,7 @@ pub fn signal_expire(
 #[tauri::command]
 pub fn signal_create_manual(
     state: State<'_, crate::ai::AiState>,
+    app: AppHandle,
     code: String,
     name: String,
     side: String,
@@ -513,16 +514,27 @@ pub fn signal_create_manual(
 ) -> Result<String, String> {
     let trade_date = beijing_today_dashed();
     let conn = maindb::open_readwrite(&state.dir())?;
-    create_manual(
+    let px = price.unwrap_or(0.0);
+    let vl = vol.unwrap_or(0);
+    let sid = create_manual(
         &conn,
         &code,
         &name,
         &side,
-        price.unwrap_or(0.0),
-        vol.unwrap_or(0),
+        px,
+        vl,
         &reason.unwrap_or_default(),
         &trade_date,
-    )
+    )?;
+    // 与自动信号一致：推送灵动岛（置顶 + 自动展开）
+    let _ = app.emit(
+        "signal:new",
+        json!({
+            "sigId": sid, "code": code, "name": name,
+            "side": side, "source": "manual", "price": px, "vol": vl,
+        }),
+    );
+    Ok(sid)
 }
 
 #[tauri::command]
