@@ -13,6 +13,7 @@ import {
   signalReject,
   type SignalTicketInfo,
 } from "../ai/api";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 const TABS = [
   { k: "pending", t: "待确认" },
@@ -264,15 +265,23 @@ function confColor(c: number) {
 }
 
 let timer: ReturnType<typeof setInterval> | undefined;
+const unlisteners: UnlistenFn[] = [];
 onMounted(() => {
   void load();
   void loadBrokerPath();
   timer = setInterval(() => void load(), 10000);
   window.addEventListener("keydown", onCardKey);
+  // 事件驱动即时刷新：状态变更（确认/驳回/完成）或新信号到达立即重拉，
+  // 不必等待 10s 轮询，避免卡片计数与 DB 短暂不一致。
+  for (const ev of ["signal:updated", "signal:new"]) {
+    listen(ev, () => void load()).then((u) => unlisteners.push(u));
+  }
 });
 onUnmounted(() => {
   clearInterval(timer);
   window.removeEventListener("keydown", onCardKey);
+  for (const u of unlisteners) u();
+  unlisteners.length = 0;
 });
 </script>
 
