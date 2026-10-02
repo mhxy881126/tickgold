@@ -33,7 +33,8 @@ export type CardId =
   | "ai"
   | "strategy"
   | "review"
-  | "battleplan";
+  | "battleplan"
+  | "decisionlog";
 
 export type Zone = "main" | "side";
 
@@ -77,6 +78,7 @@ export const CARD_META: Record<CardId, CardMeta> = {
   strategy: { title: "策略库", accent: "#d4af37", kind: "chart" },
   review: { title: "AI 复盘", accent: "#d4af37", kind: "chart" },
   battleplan: { title: "作战计划", accent: "#d4af37", kind: "chart" },
+  decisionlog: { title: "决策日志", accent: "#e8c878", kind: "chart" },
 };
 
 // ===== 卡片个性化（V1 单卡设置 / V3 场景模板）=====

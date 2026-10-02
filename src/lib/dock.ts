@@ -76,6 +76,7 @@ export const DOCK_GROUPS: DockGroup[] = [
       { id: "ai", label: "AI 问数", icon: "M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2zM9 21h6M10 17v4M14 17v4", desc: "自然语言查询行情/题材/资金/持仓", star: true },
       { id: "review", label: "AI 复盘", icon: "M6 2h9l5 5v15H6zm8 1.5V8h4.5z", desc: "盘后市场/题材/个股三层复盘", star: true },
       { id: "battleplan", label: "作战计划", icon: "M6 3v18M6 4h12l-2.5 4L18 12H6", desc: "次日触发/候选/观察指令，一键转预警", star: true },
+      { id: "decisionlog", label: "决策日志", icon: "M4 6h16M4 12h16M4 18h10", desc: "快脑 BUY/SELL 决策审计与回放", star: true },
       { id: "strategy", label: "策略库", icon: "M12 2l9 5-9 5-9-5zm-9 10l9 5 9-5", desc: "龙头/1进2/抄底策略版本化管理" },
       { id: "screener", label: "条件选股", icon: "M4 5h3v14H4zm6.5 5h3v9h-3zM17 9h3v10h-3z", desc: "技术/基本面智能选股" },
       { id: "trade", label: "模拟交易", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1c1.7.3 3 1.4 3 3.1 0 1.9-1.5 2.8-3.4 2.8-1.2 0-2.1-.4-2.6-1l1.2-1c.3.4.8.7 1.5.7.8 0 1.3-.3 1.3-.8s-.4-.8-1.5-1c-1.6-.4-3.2-1-3.2-2.9 0-1.6 1.3-2.7 3-3V5h2zm-1 11h2v2h-2z", desc: "虚拟资金 T+1 练盘" },

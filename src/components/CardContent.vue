@@ -33,6 +33,7 @@ import AiAssistant from "./AiAssistant.vue";
 import StrategyProfiles from "./StrategyProfiles.vue";
 import AiReview from "./AiReview.vue";
 import BattlePlan from "./BattlePlan.vue";
+import DecisionLog from "./DecisionLog.vue";
 import type { CardId } from "../composables/useWorkbench";
 
 const props = defineProps<{ id: CardId; selected: string | null }>();
@@ -96,6 +97,7 @@ function retry() {
     <AiAssistant v-else-if="id === 'ai'" />
     <AiReview v-else-if="id === 'review'" />
     <BattlePlan v-else-if="id === 'battleplan'" />
+    <DecisionLog v-else-if="id === 'decisionlog'" />
     <StrategyProfiles v-else-if="id === 'strategy'" />
   </template>
 </template>

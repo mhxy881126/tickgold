@@ -23,8 +23,12 @@ import {
   deleteDoc as invokeDeleteDoc,
   reindex as invokeReindex,
   indexDaily,
+  autoexecGetConfig,
+  autoexecSetConfig,
+  layaHealth,
 } from "../ai/api";
 import type { AiConfig, ConnTest, KbStats, IndexProgress } from "../ai/types";
+import type { AutoExecConfigInfo } from "../ai/api";
 
 defineProps<{ open: boolean }>();
 const emit = defineEmits<{ "update:open": [boolean]; "replay-onboarding": [] }>();
@@ -166,11 +170,40 @@ const cloudKeyInput = ref("");
 const testingAi = ref(false);
 const connResult = ref<ConnTest | null>(null);
 
+// 快脑 / Laya 控制台
+const fbCfg = ref<AutoExecConfigInfo | null>(null);
+const fbMsg = ref("");
+const fbHealth = ref("");
+async function loadFastBrain() {
+  fbCfg.value = await autoexecGetConfig();
+}
+async function saveFastBrain() {
+  if (!fbCfg.value) return;
+  fbMsg.value = "";
+  try {
+    await autoexecSetConfig(fbCfg.value);
+    fbMsg.value = "快脑参数已保存";
+  } catch (e) {
+    fbMsg.value = `保存失败：${e}`;
+  }
+}
+async function checkLaya() {
+  if (!fbCfg.value) return;
+  fbHealth.value = "检查中…";
+  try {
+    const ms = await layaHealth(fbCfg.value.layaUrl);
+    fbHealth.value = `在线 · 延迟 ${ms.toFixed(0)}ms`;
+  } catch {
+    fbHealth.value = "不可达，将自动使用规则脑";
+  }
+}
+
 async function loadAiTab() {
   aiMsg.value = "";
   try {
     aiCfg.value = await getAiConfig();
     cloudKeySet.value = await getCloudKeySet();
+    await loadFastBrain();
     await ensureKbListener();
     await loadKb();
   } catch (e) {
@@ -512,6 +545,61 @@ function pickTab(id: Tab) {
 
             <!-- AI 模型配置 -->
             <div v-else-if="tab === 'ai'" class="ai-tab">
+              <!-- 快脑盘中决策引擎 -->
+              <template v-if="fbCfg">
+                <div class="section-title">快脑盘中决策引擎</div>
+                <div class="section-sub">规则脑零依赖、默认可用、可解释；Laya 为本地决策模型 sidecar，不可达时自动降级规则脑</div>
+                <div class="seg ai-provider">
+                  <button type="button" class="seg-btn" :class="{ on: fbCfg.brainMode === 'rule' }" @click="fbCfg.brainMode = 'rule'">规则脑</button>
+                  <button type="button" class="seg-btn" :class="{ on: fbCfg.brainMode === 'laya' }" @click="fbCfg.brainMode = 'laya'">Laya 模型</button>
+                </div>
+
+                <div class="ai-field" style="margin-top:12px">
+                  <label>Laya 服务地址</label>
+                  <div class="fb-urlrow">
+                    <input v-model="fbCfg.layaUrl" type="text" spellcheck="false" placeholder="http://127.0.0.1:8788" />
+                    <button type="button" class="logs-btn" @click="checkLaya">健康检查</button>
+                  </div>
+                  <span v-if="fbHealth" class="fb-health">{{ fbHealth }}</span>
+                </div>
+
+                <div class="fb-params">
+                  <div class="ai-field">
+                    <label>硬止损 %：{{ fbCfg.hardStopPct }}</label>
+                    <input v-model.number="fbCfg.hardStopPct" type="range" min="-15" max="-3" step="0.5" />
+                  </div>
+                  <div class="ai-field">
+                    <label>执行置信度：{{ fbCfg.execConfidence }}</label>
+                    <input v-model.number="fbCfg.execConfidence" type="range" min="0.55" max="0.95" step="0.05" />
+                  </div>
+                  <div class="ai-field">
+                    <label>观察置信度：{{ fbCfg.watchConfidence }}</label>
+                    <input v-model.number="fbCfg.watchConfidence" type="range" min="0.4" max="0.75" step="0.05" />
+                  </div>
+                  <div class="ai-field">
+                    <label>滑点 %：{{ fbCfg.slippagePct }}</label>
+                    <input v-model.number="fbCfg.slippagePct" type="range" min="0" max="0.5" step="0.05" />
+                  </div>
+                  <div class="ai-field">
+                    <label>单票仓位上限 %：{{ fbCfg.maxSinglePct }}</label>
+                    <input v-model.number="fbCfg.maxSinglePct" type="range" min="5" max="50" step="1" />
+                  </div>
+                  <div class="ai-field">
+                    <label>总仓位上限 %：{{ fbCfg.maxTotalPct }}</label>
+                    <input v-model.number="fbCfg.maxTotalPct" type="range" min="20" max="100" step="5" />
+                  </div>
+                </div>
+                <div class="ai-field">
+                  <label>禁止开仓时间（之后只卖不买）</label>
+                  <input v-model="fbCfg.noOpenAfter" type="text" spellcheck="false" placeholder="14:55" />
+                </div>
+                <div class="ai-actions">
+                  <button type="button" class="logs-btn primary" @click="saveFastBrain">保存快脑参数</button>
+                  <span v-if="fbMsg" class="ai-msg" :class="{ ok: fbMsg.includes('已保存') }">{{ fbMsg }}</span>
+                </div>
+                <div class="fb-divider"></div>
+              </template>
+
               <div class="section-title">模型提供方</div>
               <div class="section-sub">本地 Ollama 数据不出本机；云端为 OpenAI 兼容接口，需 API Key</div>
               <div class="seg ai-provider">
@@ -873,4 +961,13 @@ function pickTab(id: Tab) {
   color: var(--text-dim); cursor: pointer; flex: none;
 }
 .kbd-del:hover { background: var(--bg-hover); color: #f25868; }
+
+/* 快脑控制台 */
+.fb-urlrow { display: flex; gap: 8px; }
+.fb-urlrow input { flex: 1; padding: 8px 11px; font-size: 12px; color: var(--text);
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; outline: none; font-family: inherit; }
+.fb-urlrow input:focus { border-color: var(--accent); }
+.fb-health { font-size: 11px; color: var(--text-dim); margin-top: 5px; }
+.fb-params { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
+.fb-divider { height: 1px; background: var(--border); margin: 18px 0 20px; }
 </style>

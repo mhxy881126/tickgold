@@ -174,3 +174,63 @@ export function updateInstruction(instrId: number, field: string, value: string)
 export function convertInstructionAlert(instrId: number) {
   return invoke<string>("ai_convert_instruction_alert", { instrId });
 }
+
+// ===== v2.1 快脑 / 自动执行 / 决策日志 =====
+export interface AutoExecConfigInfo {
+  enabled: boolean;
+  brainMode: string;
+  layaUrl: string;
+  hardStopPct: number;
+  execConfidence: number;
+  watchConfidence: number;
+  slippagePct: number;
+  maxSinglePct: number;
+  maxTotalPct: number;
+  noOpenAfter: string;
+}
+
+export interface DecisionLogInfo {
+  id: number;
+  tradeDate: string;
+  ts: string;
+  code: string;
+  name: string;
+  strategy: string;
+  instrId: number | null;
+  label: string;
+  confidence: number;
+  probs: Record<string, number>;
+  features: Record<string, unknown>;
+  mode: string;
+  action: string;
+  modelVersion: string;
+  inferMs: number;
+  createdAt: number;
+}
+
+export function autoexecGetConfig() {
+  return invoke<AutoExecConfigInfo>("autoexec_get_config");
+}
+
+export function autoexecStart(cfg: AutoExecConfigInfo) {
+  return invoke<void>("autoexec_start", { cfg });
+}
+
+export function autoexecStop() {
+  return invoke<void>("autoexec_stop");
+}
+
+export function autoexecSetConfig(cfg: AutoExecConfigInfo) {
+  return invoke<void>("autoexec_set_config", { cfg });
+}
+
+export function layaHealth(url: string) {
+  return invoke<number>("laya_health", { url });
+}
+
+export function listDecisionLogs(date?: string | null, limit?: number) {
+  return invoke<DecisionLogInfo[]>("list_decision_logs", {
+    date: date ?? null,
+    limit: limit ?? null,
+  });
+}

@@ -541,6 +541,108 @@ async fn get_seat_trades(
     market::eastmoney::seat_trades(&code, size, page).await
 }
 
+// ===== v2.1 快脑 / 自动执行 / 决策日志 =====
+#[tauri::command]
+fn autoexec_get_config(
+    ctl: tauri::State<'_, Arc<ai::autoexec::AutoExecCtl>>,
+) -> Result<ai::autoexec::AutoExecConfig, String> {
+    Ok(ctl.config.lock().unwrap().clone())
+}
+
+#[tauri::command]
+async fn autoexec_start(
+    app: tauri::AppHandle,
+    ai_state: tauri::State<'_, ai::AiState>,
+    ctl: tauri::State<'_, Arc<ai::autoexec::AutoExecCtl>>,
+    cfg: ai::autoexec::AutoExecConfig,
+) -> Result<(), String> {
+    *ctl.config.lock().unwrap() = cfg.clone();
+    if ctl.running.load(Ordering::Acquire) {
+        return Ok(());
+    }
+    ctl.running.store(true, Ordering::Release);
+    let data_dir = ai_state.dir();
+    let c: Arc<ai::autoexec::AutoExecCtl> = ctl.inner().clone();
+    tauri::async_runtime::spawn(async move {
+        ai::autoexec::run_loop(app, c, data_dir).await;
+    });
+    log::info!("快脑自动执行器已启动（模式 {}）", cfg.brain_mode);
+    Ok(())
+}
+
+#[tauri::command]
+fn autoexec_stop(ctl: tauri::State<'_, Arc<ai::autoexec::AutoExecCtl>>) -> Result<(), String> {
+    ctl.running.store(false, Ordering::Release);
+    let mut cfg = ctl.config.lock().unwrap().clone();
+    cfg.enabled = false;
+    *ctl.config.lock().unwrap() = cfg;
+    log::info!("快脑自动执行器已停止");
+    Ok(())
+}
+
+#[tauri::command]
+fn autoexec_set_config(
+    ctl: tauri::State<'_, Arc<ai::autoexec::AutoExecCtl>>,
+    cfg: ai::autoexec::AutoExecConfig,
+) -> Result<(), String> {
+    let cur = ctl.config.lock().unwrap().clone();
+    let mut c = cfg;
+    c.enabled = cur.enabled; // 运行开关仅由 启用/停用/急停 控制，保存参数不改启停
+    *ctl.config.lock().unwrap() = c;
+    Ok(())
+}
+
+#[tauri::command]
+async fn laya_health(url: String) -> Result<f64, String> {
+    ai::fastbrain::LayaClient::new(&url).health().await
+}
+
+#[tauri::command]
+fn list_decision_logs(
+    state: tauri::State<'_, ai::AiState>,
+    date: Option<String>,
+    limit: Option<i64>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let conn = ai::maindb::open_readonly(&state.dir())?;
+    let limit = limit.unwrap_or(200).clamp(1, 1000);
+    let mut sql = "SELECT id,trade_date,ts,code,name,strategy,instr_id,label,confidence,\
+                   probs,features,mode,action,model_version,infer_ms,created_at \
+                   FROM decision_log"
+        .to_string();
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    if let Some(d) = date {
+        sql.push_str(" WHERE trade_date=?1");
+        params.push(Box::new(d));
+    }
+    sql.push_str(&format!(" ORDER BY id DESC LIMIT {limit}"));
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(params.iter()), |r| {
+            let probs_s: String = r.get(9)?;
+            let features_s: String = r.get(10)?;
+            Ok(serde_json::json!({
+                "id": r.get::<_, i64>(0)?,
+                "tradeDate": r.get::<_, String>(1)?,
+                "ts": r.get::<_, String>(2)?,
+                "code": r.get::<_, String>(3)?,
+                "name": r.get::<_, String>(4)?,
+                "strategy": r.get::<_, String>(5)?,
+                "instrId": r.get::<_, Option<i64>>(6)?,
+                "label": r.get::<_, String>(7)?,
+                "confidence": r.get::<_, f64>(8)?,
+                "probs": serde_json::from_str::<serde_json::Value>(&probs_s).unwrap_or(serde_json::json!({})),
+                "features": serde_json::from_str::<serde_json::Value>(&features_s).unwrap_or(serde_json::json!({})),
+                "mode": r.get::<_, String>(11)?,
+                "action": r.get::<_, String>(12)?,
+                "modelVersion": r.get::<_, String>(13)?,
+                "inferMs": r.get::<_, f64>(14)?,
+                "createdAt": r.get::<_, i64>(15)?,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(rows.flatten().collect())
+}
+
 #[tauri::command]
 async fn start_spider(
     app: tauri::AppHandle,
@@ -1504,6 +1606,47 @@ pub fn run() {
                                 ON company_note(code);",
                             kind: MigrationKind::Up,
                         },
+                        Migration {
+                            version: 42,
+                            description: "create decision_log (fast-brain decisions audit/replay)",
+                            sql: "CREATE TABLE IF NOT EXISTS decision_log (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                trade_date TEXT NOT NULL,
+                                ts TEXT DEFAULT '',
+                                code TEXT NOT NULL,
+                                name TEXT DEFAULT '',
+                                strategy TEXT DEFAULT '',
+                                instr_id INTEGER,
+                                label TEXT NOT NULL,
+                                confidence REAL DEFAULT 0,
+                                probs TEXT DEFAULT '{}',
+                                features TEXT DEFAULT '{}',
+                                mode TEXT DEFAULT 'rule',
+                                action TEXT DEFAULT 'drop',
+                                model_version TEXT DEFAULT '',
+                                infer_ms REAL DEFAULT 0,
+                                created_at INTEGER NOT NULL
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_decision_log_code
+                                ON decision_log(code, created_at);
+                            CREATE INDEX IF NOT EXISTS idx_decision_log_date
+                                ON decision_log(trade_date);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 43,
+                            description: "create model_version (fast/slow model registry)",
+                            sql: "CREATE TABLE IF NOT EXISTS model_version (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                kind TEXT DEFAULT 'fast',
+                                version TEXT NOT NULL,
+                                provider TEXT DEFAULT '',
+                                active INTEGER DEFAULT 1,
+                                note TEXT DEFAULT '',
+                                created_at INTEGER NOT NULL
+                            );",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),
@@ -1514,6 +1657,7 @@ pub fn run() {
         .manage(Arc::new(market::spider::SpiderCtl::new()))
         .manage(Arc::new(market::limitup::LimitRadar::new()))
         .manage(Arc::new(market::alert::AlertEngine::new()))
+        .manage(ai::autoexec::AutoExecCtl::new())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcuts(["Alt+`"])
@@ -1707,7 +1851,13 @@ pub fn run() {
             ai_set_plan_status,
             ai_update_plan_text,
             ai_update_instruction,
-            ai_convert_instruction_alert
+            ai_convert_instruction_alert,
+            autoexec_get_config,
+            autoexec_start,
+            autoexec_stop,
+            autoexec_set_config,
+            laya_health,
+            list_decision_logs
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");
