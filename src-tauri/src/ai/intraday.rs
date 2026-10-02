@@ -69,7 +69,7 @@ pub fn assemble_features(input: &IntradayInput) -> Value {
         _ => 0.0,
     };
     let blast = input.ctx.broken_codes.get(code).copied().unwrap_or(0) as f64;
-    let broken_limit = if input.final_broken.contains(code) {
+    let broken_limit = if input.ctx.final_broken.contains(code) {
         1.0
     } else {
         0.0
