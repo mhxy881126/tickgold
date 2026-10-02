@@ -2,6 +2,7 @@
 // 模拟盘全自动；实盘只 emit 信号到灵动岛 / 决策条由人工确认，不接券商。硬止损绕过快脑强制执行。
 use crate::ai::fastbrain::{self, FastDecision, RULE_MODEL_VERSION};
 use crate::ai::intraday::{self, IntradayInput, MarketCtx};
+use crate::ai::bridge;
 use crate::ai::maindb;
 use crate::market::spider;
 use crate::market::{self, Quote};
@@ -27,6 +28,12 @@ pub struct AutoExecConfig {
     pub max_single_pct: f64,  // 单票占总资产上限
     pub max_total_pct: f64,   // 总仓位上限
     pub no_open_after: String,// 14:55 后禁开仓
+    pub bridge_enabled: bool,         // 信号人工确认桥开关（不自动下单）
+    pub bridge_default_broker: String,// 目标券商软件名
+    pub bridge_broker_path: String,   // 券商可执行/应用路径（空=不唤起）
+    pub bridge_default_action: String,// 默认动作 copy/export/hotkey
+    pub bridge_ttl_minutes: i64,      // 待确认信号有效期（分钟）
+    pub bridge_price_deviate_pct: f64,// 参考价偏离提示阈值（%）
 }
 
 impl Default for AutoExecConfig {
@@ -42,6 +49,12 @@ impl Default for AutoExecConfig {
             max_single_pct: 20.0,
             max_total_pct: 80.0,
             no_open_after: "14:55".to_string(),
+            bridge_enabled: false,
+            bridge_default_broker: "同花顺".to_string(),
+            bridge_broker_path: String::new(),
+            bridge_default_action: "copy".to_string(),
+            bridge_ttl_minutes: 30,
+            bridge_price_deviate_pct: 1.5,
         }
     }
 }
@@ -448,6 +461,33 @@ fn emit_signal(app: &AppHandle, item: &WatchItem, d: &FastDecision, action: &str
     let _ = app.emit("fastbrain-signal", payload);
 }
 
+/// 信号桥：创建待人工确认票并推送灵动岛（已去重；bridge 关闭则跳过）。
+fn bridge_push(
+    app: &AppHandle,
+    conn: &Connection,
+    cfg: &AutoExecConfig,
+    input: bridge::SignalInput,
+) {
+    if !cfg.bridge_enabled {
+        return;
+    }
+    let code = input.code.clone();
+    let name = input.name.clone();
+    let side = input.side.clone();
+    let source = input.source.clone();
+    let price = input.ref_price;
+    let vol = input.vol;
+    if let Some(sid) = bridge::create_ticket(conn, input) {
+        let _ = app.emit(
+            "signal:new",
+            json!({
+                "sigId": sid, "code": code, "name": name,
+                "side": side, "source": source, "price": price, "vol": vol,
+            }),
+        );
+    }
+}
+
 /// 登记内置规则模型版本。
 fn ensure_rule_model(conn: &Connection) {
     let exists = conn
@@ -570,6 +610,19 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                         Ok(msg) => {
                             log_decision(&conn, item, &d, "executed", &features, true);
                             emit_signal(&app, item, &d, "executed", &msg);
+                            bridge_push(&app, &conn, &cfg, bridge::SignalInput {
+                                code: item.code.clone(),
+                                name: item.name.clone(),
+                                side: "SELL".to_string(),
+                                source: "hardstop".to_string(),
+                                model_version: d.model_version.clone(),
+                                strategy: item.strategy.clone(),
+                                confidence: d.confidence,
+                                ref_price: q.price,
+                                vol: p.vol,
+                                reason: format!("硬止损：{msg}"),
+                                trade_date: today_dashed(),
+                            });
                         }
                         Err(e) => {
                             log_decision(&conn, item, &d, "watch", &features, true);
@@ -600,6 +653,20 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                             Ok(msg) => {
                                 log_decision(&conn, item, &d, "executed", &features, false);
                                 emit_signal(&app, item, &d, "executed", &msg);
+                                let budget = total_asset * cfg.max_single_pct / 100.0;
+                                bridge_push(&app, &conn, &cfg, bridge::SignalInput {
+                                    code: item.code.clone(),
+                                    name: item.name.clone(),
+                                    side: "BUY".to_string(),
+                                    source: "fastbrain".to_string(),
+                                    model_version: d.model_version.clone(),
+                                    strategy: item.strategy.clone(),
+                                    confidence: d.confidence,
+                                    ref_price: q.price,
+                                    vol: bridge::suggest_buy_vol(q.price, budget),
+                                    reason: format!("快脑买入：{msg}"),
+                                    trade_date: today_dashed(),
+                                });
                             }
                             Err(reason) => {
                                 log_decision(&conn, item, &d, "drop", &features, false);
@@ -613,6 +680,20 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                     {
                         log_decision(&conn, item, &d, "watch", &features, false);
                         emit_signal(&app, item, &d, "watch", "快脑买入观察信号，请人工确认");
+                        let budget = total_asset * cfg.max_single_pct / 100.0;
+                        bridge_push(&app, &conn, &cfg, bridge::SignalInput {
+                            code: item.code.clone(),
+                            name: item.name.clone(),
+                            side: "BUY".to_string(),
+                            source: "fastbrain".to_string(),
+                            model_version: d.model_version.clone(),
+                            strategy: item.strategy.clone(),
+                            confidence: d.confidence,
+                            ref_price: q.price,
+                            vol: bridge::suggest_buy_vol(q.price, budget),
+                            reason: "快脑买入观察信号".to_string(),
+                            trade_date: today_dashed(),
+                        });
                     }
                 }
                 "SELL" if pos.is_some() => {
@@ -621,6 +702,19 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                             Ok(msg) => {
                                 log_decision(&conn, item, &d, "executed", &features, false);
                                 emit_signal(&app, item, &d, "executed", &msg);
+                                bridge_push(&app, &conn, &cfg, bridge::SignalInput {
+                                    code: item.code.clone(),
+                                    name: item.name.clone(),
+                                    side: "SELL".to_string(),
+                                    source: "fastbrain".to_string(),
+                                    model_version: d.model_version.clone(),
+                                    strategy: item.strategy.clone(),
+                                    confidence: d.confidence,
+                                    ref_price: q.price,
+                                    vol: p.vol,
+                                    reason: format!("快脑卖出：{msg}"),
+                                    trade_date: today_dashed(),
+                                });
                             }
                             Err(e) => {
                                 log_decision(&conn, item, &d, "watch", &features, false);

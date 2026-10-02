@@ -385,6 +385,9 @@ onMounted(async () => {
         const c = e.payload;
         if (!wl.codes.includes(c)) wl.add(c);
         pickStock(c);
+      }),
+      await listen<string>("island:open-card", (e) => {
+        bench.open(e.payload as CardId);
       })
     );
     // 预警触发：写历史 + 系统通知 + 声音 + 记录触发时间

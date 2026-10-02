@@ -593,6 +593,31 @@ function pickTab(id: Tab) {
                   <label>禁止开仓时间（之后只卖不买）</label>
                   <input v-model="fbCfg.noOpenAfter" type="text" spellcheck="false" placeholder="14:55" />
                 </div>
+                <div class="bridge-box">
+                  <div class="bridge-title">
+                    <span>信号人工确认桥（不自动下单）</span>
+                    <button type="button" class="switch" :class="{ on: fbCfg.bridgeEnabled }" @click="fbCfg.bridgeEnabled = !fbCfg.bridgeEnabled"><span class="knob"></span></button>
+                  </div>
+                  <div class="section-sub">双脑 BUY/SELL 信号落待确认单，人工改价改量后生成券商指令，可唤起券商软件；真实成交由你完成</div>
+                  <div class="bridge-grid">
+                    <label class="ai-field"><span>默认券商</span>
+                      <input v-model="fbCfg.bridgeDefaultBroker" type="text" spellcheck="false" placeholder="同花顺" /></label>
+                    <label class="ai-field grow2"><span>券商软件路径（.exe / .app）</span>
+                      <input v-model="fbCfg.bridgeBrokerPath" type="text" spellcheck="false" placeholder="留空则不唤起" /></label>
+                  </div>
+                  <div class="bridge-grid">
+                    <label class="ai-field"><span>有效期(分钟)：{{ fbCfg.bridgeTtlMinutes }}</span>
+                      <input v-model.number="fbCfg.bridgeTtlMinutes" type="range" min="5" max="240" step="5" /></label>
+                    <label class="ai-field"><span>价偏提示%：{{ fbCfg.bridgePriceDeviatePct }}</span>
+                      <input v-model.number="fbCfg.bridgePriceDeviatePct" type="range" min="0.2" max="5" step="0.1" /></label>
+                    <label class="ai-field"><span>默认动作</span>
+                      <select v-model="fbCfg.bridgeDefaultAction">
+                        <option value="copy">复制指令</option>
+                        <option value="export">仅生成</option>
+                        <option value="hotkey">唤起券商</option>
+                      </select></label>
+                  </div>
+                </div>
                 <div class="ai-actions">
                   <button type="button" class="logs-btn primary" @click="saveFastBrain">保存快脑参数</button>
                   <span v-if="fbMsg" class="ai-msg" :class="{ ok: fbMsg.includes('已保存') }">{{ fbMsg }}</span>
@@ -909,6 +934,12 @@ function pickTab(id: Tab) {
 
 /* AI 配置 Tab */
 .ai-tab { display: flex; flex-direction: column; }
+.bridge-box { margin-top:14px; padding:10px 12px; border:1px solid var(--border,#2a3344); border-radius:10px; background:rgba(255,255,255,0.02); }
+.bridge-title { display:flex; align-items:center; justify-content:space-between; font-weight:700; color:var(--text,#e6ecf5); font-size:12px; }
+.bridge-grid { display:flex; gap:12px; margin-top:10px; flex-wrap:wrap; }
+.bridge-grid .ai-field { flex:1; min-width:130px; display:flex; flex-direction:column; gap:4px; color:var(--text-dim,#97a0b2); }
+.bridge-grid .ai-field.grow2 { flex:2; min-width:200px; }
+.bridge-grid input, .bridge-grid select { background:var(--bg-input,#0e1117); border:1px solid var(--border,#2a3344); border-radius:6px; color:var(--text,#e6ecf5); padding:5px 8px; font-size:11px; }
 .ai-provider { align-self: flex-start; margin-bottom: 4px; }
 .ai-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 13px; }
 .ai-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

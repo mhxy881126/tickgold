@@ -187,6 +187,12 @@ export interface AutoExecConfigInfo {
   maxSinglePct: number;
   maxTotalPct: number;
   noOpenAfter: string;
+  bridgeEnabled: boolean;
+  bridgeDefaultBroker: string;
+  bridgeBrokerPath: string;
+  bridgeDefaultAction: string;
+  bridgeTtlMinutes: number;
+  bridgePriceDeviatePct: number;
 }
 
 export interface DecisionLogInfo {
@@ -345,5 +351,119 @@ export function evolutionDataCheck(cleanup = false, keepDays?: number) {
   return invoke<EvolutionDataCheckInfo>("evolution_data_check", {
     cleanup,
     keepDays: keepDays ?? null,
+  });
+}
+
+// ===== v2.3 信号人工确认桥 =====
+export interface SignalTicketInfo {
+  id: number;
+  sigId: string;
+  tradeDate: string;
+  createdAt: number;
+  code: string;
+  name: string;
+  side: string;
+  source: string;
+  modelVersion: string;
+  strategy: string;
+  confidence: number;
+  refPrice: number;
+  price: number;
+  vol: number;
+  amount: number;
+  reason: string;
+  status: string;
+  actionKind: string;
+  broker: string;
+  orderText: string;
+  decidedBy: string;
+  decidedAt: number;
+}
+
+export interface SignalConfirmResult {
+  id: number;
+  sigId: string;
+  orderText: string;
+  price: number;
+  vol: number;
+  amount: number;
+  actionKind: string;
+  broker: string;
+}
+
+export function signalList(status?: string | null, limit?: number) {
+  return invoke<SignalTicketInfo[]>("signal_list", {
+    status: status ?? null,
+    limit: limit ?? null,
+  });
+}
+
+export function signalConfirm(
+  id: number,
+  opts: {
+    price?: number | null;
+    vol?: number | null;
+    actionKind?: string | null;
+    broker?: string | null;
+  },
+) {
+  return invoke<SignalConfirmResult>("signal_confirm", {
+    id,
+    price: opts.price ?? null,
+    vol: opts.vol ?? null,
+    actionKind: opts.actionKind ?? null,
+    broker: opts.broker ?? null,
+  });
+}
+
+export function signalReject(id: number, reason?: string) {
+  return invoke<void>("signal_reject", { id, reason: reason ?? null });
+}
+
+export function signalDone(id: number) {
+  return invoke<void>("signal_done", { id });
+}
+
+export function signalExpire(ttlMinutes?: number) {
+  return invoke<number>("signal_expire", { ttlMinutes: ttlMinutes ?? null });
+}
+
+export function signalCreateManual(
+  code: string,
+  name: string,
+  side: string,
+  price?: number,
+  vol?: number,
+  reason?: string,
+) {
+  return invoke<string>("signal_create_manual", {
+    code,
+    name,
+    side,
+    price: price ?? null,
+    vol: vol ?? null,
+    reason: reason ?? null,
+  });
+}
+
+export function signalLaunchBroker(path: string) {
+  return invoke<void>("signal_launch_broker", { path });
+}
+
+export function signalPreviewOrder(
+  side: string,
+  code: string,
+  name: string,
+  price: number,
+  vol: number,
+  broker?: string,
+) {
+  return invoke<string>("signal_preview_order", {
+    side,
+    code,
+    name,
+    price,
+    vol,
+    broker: broker ?? null,
   });
 }

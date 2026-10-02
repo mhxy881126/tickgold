@@ -1681,6 +1681,48 @@ pub fn run() {
                                 ON trade_label(trade_date);",
                             kind: MigrationKind::Up,
                         },
+                        Migration {
+                            version: 45,
+                            description: "create signal_ticket + signal_audit (manual-confirm broker bridge)",
+                            sql: "CREATE TABLE IF NOT EXISTS signal_ticket (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                sig_id TEXT NOT NULL UNIQUE,
+                                trade_date TEXT DEFAULT '',
+                                created_at INTEGER NOT NULL,
+                                code TEXT NOT NULL,
+                                name TEXT DEFAULT '',
+                                side TEXT DEFAULT '',
+                                source TEXT DEFAULT '',
+                                model_version TEXT DEFAULT '',
+                                strategy TEXT DEFAULT '',
+                                confidence REAL DEFAULT 0,
+                                ref_price REAL DEFAULT 0,
+                                price REAL DEFAULT 0,
+                                vol INTEGER DEFAULT 0,
+                                amount REAL DEFAULT 0,
+                                reason TEXT DEFAULT '',
+                                status TEXT DEFAULT 'pending',
+                                action_kind TEXT DEFAULT '',
+                                broker TEXT DEFAULT '',
+                                order_text TEXT DEFAULT '',
+                                decided_by TEXT DEFAULT '',
+                                decided_at INTEGER DEFAULT 0,
+                                updated_at INTEGER DEFAULT 0
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_signal_status ON signal_ticket(status);
+                            CREATE INDEX IF NOT EXISTS idx_signal_code ON signal_ticket(code);
+                            CREATE INDEX IF NOT EXISTS idx_signal_date ON signal_ticket(trade_date);
+                            CREATE TABLE IF NOT EXISTS signal_audit (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                sig_id TEXT NOT NULL,
+                                action TEXT DEFAULT '',
+                                detail TEXT DEFAULT '',
+                                actor TEXT DEFAULT '',
+                                created_at INTEGER NOT NULL
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_signal_audit_sig ON signal_audit(sig_id);",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),
@@ -1895,7 +1937,15 @@ pub fn run() {
             ai::evolution::evolution_run_labeling,
             ai::evolution::evolution_list_labels,
             ai::evolution::evolution_stats,
-            ai::evolution::evolution_data_check
+            ai::evolution::evolution_data_check,
+            ai::bridge::signal_list,
+            ai::bridge::signal_confirm,
+            ai::bridge::signal_reject,
+            ai::bridge::signal_done,
+            ai::bridge::signal_expire,
+            ai::bridge::signal_create_manual,
+            ai::bridge::signal_launch_broker,
+            ai::bridge::signal_preview_order
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

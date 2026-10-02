@@ -1,6 +1,7 @@
 // v1.9 慢脑：知识库边车库 + OpenAI 兼容慢脑 + 只读工具 Agent。
 pub mod agent;
 pub mod autoexec;
+pub mod bridge;
 pub mod config;
 pub mod decision;
 pub mod evolution;
