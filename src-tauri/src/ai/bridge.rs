@@ -201,6 +201,13 @@ pub fn list_tickets(conn: &Connection, status: Option<String>, limit: Option<i64
     }
 }
 
+/// 写操作后把 WAL 回灌主库（PASSIVE 不阻塞），确保只读 / 外部连接立即可见最新状态。
+/// 背景：signal_ticket 的写入在 checkpoint 前仅存在于 -wal，主库本体为空/为旧值，
+/// SQLITE_OPEN_READ_ONLY 连接在 Windows 上可能读不到最新 WAL，导致确认后 UI 仍显示待确认。
+fn checkpoint(conn: &Connection) {
+    let _ = conn.execute_batch("PRAGMA wal_checkpoint(PASSIVE);");
+}
+
 // ===== 确认 =====
 
 pub struct ConfirmOpts {
@@ -443,6 +450,7 @@ pub fn signal_list(
 #[tauri::command]
 pub fn signal_confirm(
     state: State<'_, crate::ai::AiState>,
+    app: AppHandle,
     id: i64,
     price: Option<f64>,
     vol: Option<i64>,
@@ -452,7 +460,7 @@ pub fn signal_confirm(
     order_template: Option<String>,
 ) -> Result<Value, String> {
     let conn = maindb::open_readwrite(&state.dir())?;
-    confirm(
+    let res = confirm(
         &conn,
         id,
         ConfirmOpts {
@@ -463,33 +471,44 @@ pub fn signal_confirm(
             actor,
             order_template,
         },
-    )
+    )?;
+    checkpoint(&conn);
+    let _ = app.emit("signal:updated", json!({ "id": id, "status": "confirmed" }));
+    Ok(res)
 }
 
 #[tauri::command]
 pub fn signal_reject(
     state: State<'_, crate::ai::AiState>,
+    app: AppHandle,
     id: i64,
     reason: Option<String>,
     actor: Option<String>,
 ) -> Result<(), String> {
     let conn = maindb::open_readwrite(&state.dir())?;
-    reject(
+    let res = reject(
         &conn,
         id,
         &reason.unwrap_or_default(),
         &actor.unwrap_or_else(|| "local".to_string()),
-    )
+    )?;
+    checkpoint(&conn);
+    let _ = app.emit("signal:updated", json!({ "id": id, "status": "rejected" }));
+    Ok(res)
 }
 
 #[tauri::command]
 pub fn signal_done(
     state: State<'_, crate::ai::AiState>,
+    app: AppHandle,
     id: i64,
     actor: Option<String>,
 ) -> Result<(), String> {
     let conn = maindb::open_readwrite(&state.dir())?;
-    mark_done(&conn, id, &actor.unwrap_or_else(|| "local".to_string()))
+    let res = mark_done(&conn, id, &actor.unwrap_or_else(|| "local".to_string()))?;
+    checkpoint(&conn);
+    let _ = app.emit("signal:updated", json!({ "id": id, "status": "done" }));
+    Ok(res)
 }
 
 #[tauri::command]
@@ -498,7 +517,9 @@ pub fn signal_expire(
     ttl_minutes: Option<i64>,
 ) -> Result<i64, String> {
     let conn = maindb::open_readwrite(&state.dir())?;
-    expire_stale(&conn, ttl_minutes.unwrap_or(30))
+    let n = expire_stale(&conn, ttl_minutes.unwrap_or(30))?;
+    checkpoint(&conn);
+    Ok(n)
 }
 
 #[tauri::command]
@@ -526,6 +547,7 @@ pub fn signal_create_manual(
         &reason.unwrap_or_default(),
         &trade_date,
     )?;
+    checkpoint(&conn);
     // 与自动信号一致：推送灵动岛（置顶 + 自动展开）
     let _ = app.emit(
         "signal:new",

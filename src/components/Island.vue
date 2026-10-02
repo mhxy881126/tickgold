@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { emit, listen } from "@tauri-apps/api/event";
 import { fetchQuotes, type AlertEvent } from "../api/market";
+import { signalList } from "../ai/api";
 import { useWatchlistStore } from "../stores/watchlist";
 import type { Quote } from "../api/types";
 
@@ -25,6 +26,8 @@ let rotateTimer: number | null = null;
 let unlistenAlert: (() => void) | null = null;
 let unlistenWatch: (() => void) | null = null;
 let unlistenSignal: (() => void) | null = null;
+let unlistenSignalUpdated: (() => void) | null = null;
+let signalSyncTimer: number | null = null;
 
 // 待人工确认的交易信号（最新在前，≤20）
 interface SignalEvent {
@@ -111,6 +114,26 @@ function pickSignal(s: SignalEvent) {
   if (expanded.value) toggleExpand();
 }
 
+// 待确认信号以 DB 为准（事件只负责即时置顶，状态以这里校正）
+async function syncSignals() {
+  try {
+    const list = await signalList("pending", 20);
+    signalEvents.value = list.map((t) => ({
+      sigId: t.sigId,
+      code: t.code,
+      name: t.name,
+      side: t.side,
+      source: t.source,
+      price: t.price || t.refPrice,
+      vol: t.vol,
+      time: t.createdAt,
+    }));
+    if (list.length) signalMode.value = true;
+  } catch {
+    /* 查询失败时保留当前展示，等待定时/事件兜底 */
+  }
+}
+
 function fmtHM(t: number): string {
   return new Date(t).toLocaleTimeString("zh-CN", {
     hour: "2-digit",
@@ -136,13 +159,23 @@ onMounted(async () => {
     refresh();
   });
 
-  // 新交易信号：置顶 + 自动展开
+  // 新交易信号：置顶 + 自动展开，随后以 DB 校正（去重/补全）
   unlistenSignal = await listen<SignalEvent>("signal:new", (ev) => {
     const s = { ...ev.payload, time: Date.now() };
     signalEvents.value = [s, ...signalEvents.value].slice(0, 20);
     signalMode.value = true;
     if (!expanded.value) toggleExpand();
+    void syncSignals();
   });
+
+  // 确认 / 驳回 / 完成：重新从 DB 同步待确认（计数即时回落）
+  unlistenSignalUpdated = await listen("signal:updated", () => {
+    void syncSignals();
+  });
+
+  // 初始 + 定时兜底：重启后恢复待确认、事件丢失时也能收敛
+  await syncSignals();
+  signalSyncTimer = window.setInterval(syncSignals, 15000);
 });
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer);
@@ -150,6 +183,8 @@ onBeforeUnmount(() => {
   if (unlistenAlert) unlistenAlert();
   if (unlistenWatch) unlistenWatch();
   if (unlistenSignal) unlistenSignal();
+  if (unlistenSignalUpdated) unlistenSignalUpdated();
+  if (signalSyncTimer) clearInterval(signalSyncTimer);
 });
 </script>
 
