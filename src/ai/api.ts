@@ -74,3 +74,103 @@ export function reindex(): Promise<number> {
 export function indexDaily(tradeDate: string): Promise<number> {
   return invoke<number>("ai_index_daily", { tradeDate });
 }
+
+// ===== v2.0 决策 / 复盘 / 计划 =====
+// ReviewSummary 为 Rust struct 直接序列化，字段为 snake_case；Plan / ReviewDetail 为 json! 构造，camelCase。
+export interface ReviewSummaryInfo {
+  id: number;
+  trade_date: string;
+  scope: string;
+  subject: string;
+  title: string;
+  summary: string;
+  reused: boolean;
+}
+
+export interface ReviewDetailInfo {
+  id: number;
+  tradeDate: string;
+  scope: string;
+  subject: string;
+  title: string;
+  summary: string;
+  content: string;
+  evidence: string;
+  model: string;
+  createdAt: number;
+}
+
+export interface PlanInstructionInfo {
+  id: number;
+  tier: string;
+  code: string;
+  name: string;
+  theme: string;
+  condition: string;
+  action: string;
+  positionHint: string;
+  alertRule: string;
+  status: string;
+  sort: number;
+}
+
+export interface PlanInfo {
+  id: number;
+  planDate: string;
+  title: string;
+  marketView: string;
+  status: string;
+  profileKey: string;
+  sourceReviewDate: string;
+  model: string;
+  createdAt: number;
+  updatedAt: number;
+  instructions: PlanInstructionInfo[];
+}
+
+export function buildDecisionPack(date?: string | null) {
+  return invoke<Record<string, unknown>>("ai_build_decision_pack", { date: date ?? null });
+}
+
+export function runReview(date?: string | null, force = false) {
+  return invoke<ReviewSummaryInfo[]>("ai_run_review", { date: date ?? null, force });
+}
+
+export function listReviews(date: string) {
+  return invoke<ReviewSummaryInfo[]>("ai_list_reviews", { date });
+}
+
+export function getReview(id: number) {
+  return invoke<ReviewDetailInfo>("ai_get_review", { id });
+}
+
+export function generatePlan(profileKey?: string | null, reviewDate?: string | null) {
+  return invoke<PlanInfo>("ai_generate_plan", {
+    profileKey: profileKey ?? null,
+    reviewDate: reviewDate ?? null,
+  });
+}
+
+export function getLatestPlan() {
+  return invoke<PlanInfo>("ai_get_latest_plan");
+}
+
+export function getPlan(id: number) {
+  return invoke<PlanInfo>("ai_get_plan", { id });
+}
+
+export function setPlanStatus(id: number, status: string) {
+  return invoke<void>("ai_set_plan_status", { id, status });
+}
+
+export function updatePlanText(id: number, field: string, value: string) {
+  return invoke<void>("ai_update_plan_text", { id, field, value });
+}
+
+export function updateInstruction(instrId: number, field: string, value: string) {
+  return invoke<void>("ai_update_instruction", { instrId, field, value });
+}
+
+export function convertInstructionAlert(instrId: number) {
+  return invoke<string>("ai_convert_instruction_alert", { instrId });
+}

@@ -30,7 +30,10 @@ export type CardId =
   | "dragon"
   | "themelib"
   | "trades"
-  | "ai";
+  | "ai"
+  | "strategy"
+  | "review"
+  | "battleplan";
 
 export type Zone = "main" | "side";
 
@@ -71,6 +74,9 @@ export const CARD_META: Record<CardId, CardMeta> = {
   themelib: { title: "题材库", accent: "#d4af37", kind: "chart" },
   trades: { title: "逐笔成交", accent: "#ffb13d", kind: "narrow" },
   ai: { title: "AI 问数", accent: "#d4af37", kind: "chart" },
+  strategy: { title: "策略库", accent: "#d4af37", kind: "chart" },
+  review: { title: "AI 复盘", accent: "#d4af37", kind: "chart" },
+  battleplan: { title: "作战计划", accent: "#d4af37", kind: "chart" },
 };
 
 // ===== 卡片个性化（V1 单卡设置 / V3 场景模板）=====

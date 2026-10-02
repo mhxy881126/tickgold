@@ -409,6 +409,110 @@ async fn ai_index_daily(
     ai::ingest::index_day(&state.dir(), &cfg, &embedder, &trade_date, None).await
 }
 
+// ===== v2.0 AI 决策：特征包 / 三层复盘 / 作战计划 =====
+/// 加载慢脑配置与云 Key（复盘 / 计划命令共用）。
+fn load_brain(
+    state: &tauri::State<'_, ai::AiState>,
+) -> Result<(ai::config::AiConfig, Option<String>, std::path::PathBuf), String> {
+    let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
+    let cfg = ai::config::load_config(&db.0)?;
+    let key = if cfg.provider == "cloud" {
+        ai::config::SecretStore::get(&cloud_secret())?
+    } else {
+        None
+    };
+    Ok((cfg, key, state.dir()))
+}
+
+#[tauri::command]
+async fn ai_build_decision_pack(
+    state: tauri::State<'_, ai::AiState>,
+    date: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let dir = state.dir();
+    tauri::async_runtime::spawn_blocking(move || {
+        ai::decision::build_pack(&dir, date.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn ai_run_review(
+    state: tauri::State<'_, ai::AiState>,
+    date: Option<String>,
+    force: bool,
+) -> Result<Vec<ai::review::ReviewSummary>, String> {
+    let (cfg, key, dir) = load_brain(&state)?;
+    ai::review::run_review(&dir, &cfg, &key, date.as_deref(), force).await
+}
+
+#[tauri::command]
+fn ai_list_reviews(
+    state: tauri::State<ai::AiState>,
+    date: String,
+) -> Result<Vec<ai::review::ReviewSummary>, String> {
+    ai::review::list_reviews(&state.dir(), &date)
+}
+
+#[tauri::command]
+fn ai_get_review(state: tauri::State<ai::AiState>, id: i64) -> Result<serde_json::Value, String> {
+    ai::review::get_review(&state.dir(), id)
+}
+
+#[tauri::command]
+async fn ai_generate_plan(
+    state: tauri::State<'_, ai::AiState>,
+    profile_key: Option<String>,
+    review_date: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let (cfg, key, dir) = load_brain(&state)?;
+    ai::plan::generate_plan(&dir, &cfg, &key, profile_key.as_deref(), review_date.as_deref()).await
+}
+
+#[tauri::command]
+fn ai_get_latest_plan(state: tauri::State<ai::AiState>) -> Result<serde_json::Value, String> {
+    ai::plan::get_latest_plan(&state.dir())
+}
+
+#[tauri::command]
+fn ai_get_plan(state: tauri::State<ai::AiState>, id: i64) -> Result<serde_json::Value, String> {
+    ai::plan::get_plan(&state.dir(), id)
+}
+
+#[tauri::command]
+fn ai_set_plan_status(state: tauri::State<ai::AiState>, id: i64, status: String) -> Result<(), String> {
+    ai::plan::set_plan_status(&state.dir(), id, &status)
+}
+
+#[tauri::command]
+fn ai_update_plan_text(
+    state: tauri::State<ai::AiState>,
+    id: i64,
+    field: String,
+    value: String,
+) -> Result<(), String> {
+    ai::plan::update_plan_text(&state.dir(), id, &field, &value)
+}
+
+#[tauri::command]
+fn ai_update_instruction(
+    state: tauri::State<ai::AiState>,
+    instr_id: i64,
+    field: String,
+    value: String,
+) -> Result<(), String> {
+    ai::plan::update_instruction(&state.dir(), instr_id, &field, &value)
+}
+
+#[tauri::command]
+fn ai_convert_instruction_alert(
+    state: tauri::State<ai::AiState>,
+    instr_id: i64,
+) -> Result<String, String> {
+    ai::plan::convert_instruction_to_alert(&state.dir(), instr_id)
+}
+
 // ===== 龙虎榜复盘 =====
 #[tauri::command]
 async fn get_lhb_list(date: String) -> Result<market::eastmoney::LhbList, String> {
@@ -1301,6 +1405,105 @@ pub fn run() {
                             );",
                             kind: MigrationKind::Up,
                         },
+                        // ===== v2.0 AI 决策：策略 profile（版本化，可克隆/回滚）=====
+                        Migration {
+                            version: 37,
+                            description: "create strategy_profile (versioned strategy configs)",
+                            sql: "CREATE TABLE IF NOT EXISTS strategy_profile (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                key TEXT NOT NULL,
+                                name TEXT NOT NULL,
+                                version INTEGER NOT NULL DEFAULT 1,
+                                builtin INTEGER NOT NULL DEFAULT 0,
+                                is_current INTEGER NOT NULL DEFAULT 1,
+                                spec TEXT NOT NULL,
+                                note TEXT DEFAULT '',
+                                parent_id INTEGER,
+                                created_at INTEGER NOT NULL,
+                                updated_at INTEGER NOT NULL,
+                                UNIQUE(key, version)
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_strategy_profile_key
+                                ON strategy_profile(key, is_current);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 38,
+                            description: "create ai_review (market/theme/stock reviews)",
+                            sql: "CREATE TABLE IF NOT EXISTS ai_review (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                trade_date TEXT NOT NULL,
+                                scope TEXT NOT NULL,
+                                subject TEXT NOT NULL DEFAULT '',
+                                title TEXT DEFAULT '',
+                                summary TEXT DEFAULT '',
+                                content TEXT NOT NULL,
+                                evidence TEXT NOT NULL DEFAULT '[]',
+                                model TEXT DEFAULT '',
+                                tokens INTEGER DEFAULT 0,
+                                created_at INTEGER NOT NULL,
+                                UNIQUE(trade_date, scope, subject)
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_ai_review_date
+                                ON ai_review(trade_date, scope);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 39,
+                            description: "create plan (next-day battle plan)",
+                            sql: "CREATE TABLE IF NOT EXISTS plan (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                plan_date TEXT NOT NULL,
+                                title TEXT DEFAULT '',
+                                market_view TEXT DEFAULT '',
+                                status TEXT NOT NULL DEFAULT 'draft',
+                                profile_key TEXT DEFAULT '',
+                                source_review_date TEXT DEFAULT '',
+                                model TEXT DEFAULT '',
+                                created_at INTEGER NOT NULL,
+                                updated_at INTEGER NOT NULL,
+                                UNIQUE(plan_date)
+                            );",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 40,
+                            description: "create plan_instruction (watch/candidate/trigger)",
+                            sql: "CREATE TABLE IF NOT EXISTS plan_instruction (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                plan_id INTEGER NOT NULL REFERENCES plan(id),
+                                tier TEXT NOT NULL DEFAULT 'watch',
+                                code TEXT DEFAULT '',
+                                name TEXT DEFAULT '',
+                                theme TEXT DEFAULT '',
+                                condition TEXT DEFAULT '',
+                                action TEXT DEFAULT '',
+                                position_hint TEXT DEFAULT '',
+                                alert_rule TEXT DEFAULT '{}',
+                                status TEXT NOT NULL DEFAULT 'open',
+                                sort INTEGER NOT NULL DEFAULT 0
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_plan_instruction_plan
+                                ON plan_instruction(plan_id, sort);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 41,
+                            description: "create company_note (per-stock notes)",
+                            sql: "CREATE TABLE IF NOT EXISTS company_note (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                code TEXT NOT NULL,
+                                trade_date TEXT DEFAULT '',
+                                title TEXT DEFAULT '',
+                                content TEXT DEFAULT '',
+                                tags TEXT DEFAULT '',
+                                created_at INTEGER NOT NULL,
+                                updated_at INTEGER NOT NULL
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_company_note_code
+                                ON company_note(code);",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),
@@ -1493,7 +1696,18 @@ pub fn run() {
             ai_import_docs,
             ai_delete_doc,
             ai_reindex,
-            ai_index_daily
+            ai_index_daily,
+            ai_build_decision_pack,
+            ai_run_review,
+            ai_list_reviews,
+            ai_get_review,
+            ai_generate_plan,
+            ai_get_latest_plan,
+            ai_get_plan,
+            ai_set_plan_status,
+            ai_update_plan_text,
+            ai_update_instruction,
+            ai_convert_instruction_alert
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

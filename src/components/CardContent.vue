@@ -30,6 +30,9 @@ import DragonTiger from "./DragonTiger.vue";
 import ThemeLibrary from "./ThemeLibrary.vue";
 import TradeTape from "./TradeTape.vue";
 import AiAssistant from "./AiAssistant.vue";
+import StrategyProfiles from "./StrategyProfiles.vue";
+import AiReview from "./AiReview.vue";
+import BattlePlan from "./BattlePlan.vue";
 import type { CardId } from "../composables/useWorkbench";
 
 const props = defineProps<{ id: CardId; selected: string | null }>();
@@ -91,6 +94,9 @@ function retry() {
     <ThemeLibrary v-else-if="id === 'themelib'" />
     <TradeTape v-else-if="id === 'trades'" :code="selected" />
     <AiAssistant v-else-if="id === 'ai'" />
+    <AiReview v-else-if="id === 'review'" />
+    <BattlePlan v-else-if="id === 'battleplan'" />
+    <StrategyProfiles v-else-if="id === 'strategy'" />
   </template>
 </template>
 

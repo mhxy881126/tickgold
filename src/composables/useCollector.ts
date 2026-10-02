@@ -69,6 +69,10 @@ async function runAttribution(d: Db, date: string): Promise<number> {
   void invoke<number>("ai_index_daily", { tradeDate: date })
     .then((n) => { if (n > 0) console.info(`[ai] 日度入库新增分块 ${n}（${date}）`); })
     .catch((e) => console.warn("[ai] 日度入库跳过：", e));
+  // v2.0：归因成功后自动跑盘后三层复盘（独立失败不阻断；同日幂等复用，未配置 AI 则跳过）
+  void invoke<unknown>("ai_run_review", { date: null, force: false })
+    .then(() => console.info(`[ai] 自动复盘完成（${date}）`))
+    .catch((e) => console.warn("[ai] 自动复盘跳过：", e));
   return r.themes;
 }
 

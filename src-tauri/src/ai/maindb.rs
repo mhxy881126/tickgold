@@ -1,4 +1,4 @@
-// 主库 stock-dock.db 只读旁路：AI 永不写入主库。
+// 主库 stock-dock.db 连接旁路：默认只读；v2.0 复盘/计划经 open_readwrite 仅写 AI 决策新表。
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 
@@ -19,6 +19,20 @@ pub fn open_readonly(dir: &Path) -> Result<Connection, String> {
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_FULL_MUTEX,
     )
     .map_err(|e| format!("只读打开主库失败: {e}"))
+}
+
+/// 读写打开主库：仅供 AI 复盘/计划写 ai_review、plan、plan_instruction 等 v2.0 新表。
+/// 与前端 plugin-sql 主连接并存，SQLite 库级写锁串行短事务即可（不改 journal 模式）。
+pub fn open_readwrite(dir: &Path) -> Result<Connection, String> {
+    let p = main_db_path(dir);
+    if !p.exists() {
+        return Err("本地主库尚不存在，请先在应用中初始化行情数据".to_string());
+    }
+    Connection::open_with_flags(
+        &p,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_FULL_MUTEX,
+    )
+    .map_err(|e| format!("读写打开主库失败: {e}"))
 }
 
 #[cfg(test)]
