@@ -29,6 +29,7 @@ import DataExport from "./DataExport.vue";
 import DragonTiger from "./DragonTiger.vue";
 import ThemeLibrary from "./ThemeLibrary.vue";
 import TradeTape from "./TradeTape.vue";
+import AiAssistant from "./AiAssistant.vue";
 import type { CardId } from "../composables/useWorkbench";
 
 const props = defineProps<{ id: CardId; selected: string | null }>();
@@ -89,6 +90,7 @@ function retry() {
     <DragonTiger v-else-if="id === 'dragon'" @select="$emit('select', $event)" />
     <ThemeLibrary v-else-if="id === 'themelib'" />
     <TradeTape v-else-if="id === 'trades'" :code="selected" />
+    <AiAssistant v-else-if="id === 'ai'" />
   </template>
 </template>
 

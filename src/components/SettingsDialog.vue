@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useTheme, type ThemeId } from "../composables/useTheme";
 import { useAccessibility } from "../composables/useAccessibility";
 import { useMotion } from "../composables/useMotion";
@@ -9,6 +10,21 @@ import { tsStatus } from "../composables/useTimeSeries";
 import { collectorStatus } from "../composables/useCollector";
 import { logger, type LogLevel } from "../utils/logger";
 import { isEnabled as autoStartEnabled, enable as enableAutoStart, disable as disableAutoStart } from "@tauri-apps/plugin-autostart";
+import {
+  getAiConfig,
+  saveAiConfig,
+  getCloudKeySet,
+  setCloudKey,
+  clearCloudKey,
+  testConnection as testAiConnection,
+  kbStats as fetchKbStats,
+  listDocs,
+  importDocs as invokeImportDocs,
+  deleteDoc as invokeDeleteDoc,
+  reindex as invokeReindex,
+  indexDaily,
+} from "../ai/api";
+import type { AiConfig, ConnTest, KbStats, IndexProgress } from "../ai/types";
 
 defineProps<{ open: boolean }>();
 const emit = defineEmits<{ "update:open": [boolean]; "replay-onboarding": [] }>();
@@ -73,7 +89,7 @@ async function toggleAutoStart(v: boolean) {
 }
 void loadAutoStart();
 
-type Tab = "appearance" | "data" | "logs" | "about";
+type Tab = "appearance" | "data" | "ai" | "logs" | "about";
 const tab = ref<Tab>("appearance");
 function pick(id: ThemeId) {
   setTheme(id);
@@ -134,9 +150,174 @@ async function exportLogs() {
     logMsg.value = `导出失败（${e}）`;
   }
 }
+// ===== AI 模型配置 =====
+const aiCfg = ref<AiConfig>({
+  provider: "ollama",
+  baseUrl: "http://localhost:11434",
+  chatModel: "",
+  embedModel: "",
+  temperature: 0.4,
+  enableAutoIndex: true,
+});
+const aiLoaded = ref(false);
+const aiMsg = ref("");
+const cloudKeySet = ref(false);
+const cloudKeyInput = ref("");
+const testingAi = ref(false);
+const connResult = ref<ConnTest | null>(null);
+
+async function loadAiTab() {
+  aiMsg.value = "";
+  try {
+    aiCfg.value = await getAiConfig();
+    cloudKeySet.value = await getCloudKeySet();
+    await ensureKbListener();
+    await loadKb();
+  } catch (e) {
+    aiMsg.value = `加载失败：${e}`;
+  } finally {
+    aiLoaded.value = true;
+  }
+}
+async function saveAiTab() {
+  aiMsg.value = "";
+  try {
+    await saveAiConfig(aiCfg.value);
+    aiMsg.value = "已保存";
+  } catch (e) {
+    aiMsg.value = `保存失败：${e}`;
+  }
+}
+async function onTestAi() {
+  testingAi.value = true;
+  aiMsg.value = "";
+  connResult.value = null;
+  try {
+    await saveAiConfig(aiCfg.value);
+    connResult.value = await testAiConnection();
+    aiMsg.value = `连接成功 · 延迟 ${connResult.value.latencyMs}ms · 可用模型 ${connResult.value.models.length} 个`;
+  } catch (e) {
+    aiMsg.value = `连接失败：${e}`;
+  } finally {
+    testingAi.value = false;
+  }
+}
+async function saveCloudKeyEv() {
+  const k = cloudKeyInput.value.trim();
+  if (!k) return;
+  try {
+    await setCloudKey(k);
+    cloudKeySet.value = true;
+    cloudKeyInput.value = "";
+    aiMsg.value = "密钥已保存";
+  } catch (e) {
+    aiMsg.value = `密钥保存失败：${e}`;
+  }
+}
+async function clearCloudKeyEv() {
+  try {
+    await clearCloudKey();
+    cloudKeySet.value = false;
+    aiMsg.value = "密钥已清除";
+  } catch (e) {
+    aiMsg.value = `清除失败：${e}`;
+  }
+}
+
+// ===== 知识库管理 =====
+const kbData = ref<KbStats>({ total: 0, embedded: 0, bytesEstimate: 0, byType: [] });
+const kbDocs = ref<Array<[string, number]>>([]);
+const kbBusy = ref(false);
+const kbIndexing = ref(false);
+const kbProgress = ref<IndexProgress>({ phase: "", done: 0, total: 0 });
+const kbProgPct = computed(() =>
+  kbProgress.value.total > 0
+    ? Math.min(100, Math.round((kbProgress.value.done / kbProgress.value.total) * 100))
+    : 0
+);
+const kbSizeText = computed(() => {
+  const b = kbData.value.bytesEstimate;
+  if (b < 1024) return `${b}B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)}KB`;
+  return `${(b / 1024 / 1024).toFixed(1)}MB`;
+});
+function kbTypeName(k: string): string {
+  const map: Record<string, string> = {
+    catalyst: "催化剂", theme: "题材", limitup: "涨停",
+    announcement: "公告", note: "笔记", other: "其他",
+  };
+  return map[k] ?? k;
+}
+let unlistenKb: (() => void) | null = null;
+async function ensureKbListener() {
+  if (unlistenKb) return;
+  unlistenKb = await listen<IndexProgress>("ai://index_progress", (ev) => {
+    kbProgress.value = ev.payload;
+    kbIndexing.value = true;
+  });
+}
+async function loadKb() {
+  try {
+    kbData.value = await fetchKbStats();
+    kbDocs.value = await listDocs();
+  } catch (e) {
+    aiMsg.value = `知识库加载失败：${e}`;
+  }
+}
+async function onImportDocs() {
+  kbBusy.value = true; aiMsg.value = "";
+  try {
+    const added = await invokeImportDocs();
+    aiMsg.value = added.length ? `已导入：${added.join("、")}` : "没有新增内容";
+    await loadKb();
+  } catch (e) {
+    aiMsg.value = `导入失败：${e}`;
+  } finally {
+    kbBusy.value = false;
+  }
+}
+async function onReindex() {
+  kbBusy.value = true; kbIndexing.value = true; aiMsg.value = "";
+  try {
+    const n = await invokeReindex();
+    aiMsg.value = `重建嵌入完成：${n} 块`;
+    await loadKb();
+  } catch (e) {
+    aiMsg.value = `重建失败：${e}`;
+  } finally {
+    kbBusy.value = false; kbIndexing.value = false;
+  }
+}
+async function onIndexToday() {
+  kbBusy.value = true; kbIndexing.value = true; aiMsg.value = "";
+  try {
+    const n = await indexDaily(tradeDateStr(new Date()));
+    aiMsg.value = `今日入库：${n} 块`;
+    await loadKb();
+  } catch (e) {
+    aiMsg.value = `入库失败：${e}`;
+  } finally {
+    kbBusy.value = false; kbIndexing.value = false;
+  }
+}
+async function onDeleteDoc(name: string) {
+  try {
+    await invokeDeleteDoc(name);
+    aiMsg.value = `已删除：${name}`;
+    await loadKb();
+  } catch (e) {
+    aiMsg.value = `删除失败：${e}`;
+  }
+}
+function tradeDateStr(d: Date): string {
+  const p = (x: number) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 function pickTab(id: Tab) {
   tab.value = id;
   if (id === "logs") refreshLogs();
+  if (id === "ai" && !aiLoaded.value) void loadAiTab();
 }
 </script>
 
@@ -164,6 +345,10 @@ function pickTab(id: Tab) {
             <button class="nav-item" :class="{ on: tab === 'data' }" @click="pickTab('data')">
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 3C7.6 3 4 4.8 4 7v10c0 2.2 3.6 4 8 4s8-1.8 8-4V7c0-2.2-3.6-4-8-4zm6 14c0 .6-2.2 1.7-6 1.7S6 17.6 6 17v-2.6c1.3 1 3.4 1.6 6 1.6s4.7-.6 6-1.6zm0-5c0 .6-2.2 1.7-6 1.7S6 12.6 6 12V9.4c1.3 1 3.4 1.6 6 1.6s4.7-.6 6-1.6zm0-5c0 .6-2.2 1.7-6 1.7S6 7.6 6 7s2.2-1.7 6-1.7S18 6.4 18 7z" /></svg>
               数据中心
+            </button>
+            <button class="nav-item" :class="{ on: tab === 'ai' }" @click="pickTab('ai')">
+              <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2zM9 21h6M10 17v4M14 17v4" /></svg>
+              AI 模型
             </button>
             <button class="nav-item" :class="{ on: tab === 'logs' }" @click="pickTab('logs')">
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M3 13h2l2-6 3 12 3-9 2 3h6v-2h-4.6l-1.2-1.8L12 5.2 9.2 16 7.3 8.6 6.4 11H3z" /></svg>
@@ -323,6 +508,93 @@ function pickTab(id: Tab) {
 
               <div class="dc-note">分时明细保留最近 60 天；收盘日级长期保留，用于情绪周期与题材轮动分析。</div>
               <div v-if="tsStatus.lastError" class="dc-err">采集异常：{{ tsStatus.lastError }}</div>
+            </div>
+
+            <!-- AI 模型配置 -->
+            <div v-else-if="tab === 'ai'" class="ai-tab">
+              <div class="section-title">模型提供方</div>
+              <div class="section-sub">本地 Ollama 数据不出本机；云端为 OpenAI 兼容接口，需 API Key</div>
+              <div class="seg ai-provider">
+                <button type="button" class="seg-btn" :class="{ on: aiCfg.provider === 'ollama' }" @click="aiCfg.provider = 'ollama'">本地 Ollama</button>
+                <button type="button" class="seg-btn" :class="{ on: aiCfg.provider === 'cloud' }" @click="aiCfg.provider = 'cloud'">云端兼容</button>
+              </div>
+
+              <div class="ai-field">
+                <label>接口地址 Base URL</label>
+                <input v-model="aiCfg.baseUrl" type="text" spellcheck="false" :placeholder="aiCfg.provider === 'ollama' ? 'http://localhost:11434' : 'https://api.openai.com/v1'" />
+              </div>
+
+              <div class="ai-field-row">
+                <div class="ai-field">
+                  <label>对话模型</label>
+                  <input v-model="aiCfg.chatModel" type="text" spellcheck="false" placeholder="qwen2.5:7b / gpt-4o-mini" />
+                </div>
+                <div class="ai-field">
+                  <label>嵌入模型</label>
+                  <input v-model="aiCfg.embedModel" type="text" spellcheck="false" placeholder="bge-m3 / text-embedding-3-small" />
+                </div>
+              </div>
+
+              <div class="ai-field">
+                <label>温度 Temperature：{{ aiCfg.temperature.toFixed(1) }}</label>
+                <input v-model.number="aiCfg.temperature" type="range" min="0" max="1" step="0.1" />
+              </div>
+
+              <template v-if="aiCfg.provider === 'cloud'">
+                <div class="section-title" style="margin-top:18px">云端 API Key</div>
+                <div class="ai-keyrow">
+                  <span v-if="cloudKeySet" class="key-ok">已设置（保存在本机，仅用于请求）</span>
+                  <input v-else v-model="cloudKeyInput" type="password" placeholder="粘贴 API Key（sk-…）" />
+                  <button v-if="cloudKeySet" type="button" class="logs-btn" @click="clearCloudKeyEv">清除</button>
+                  <button v-else type="button" class="logs-btn" :disabled="!cloudKeyInput.trim()" @click="saveCloudKeyEv">保存密钥</button>
+                </div>
+              </template>
+
+              <div class="startup-row" style="margin-top:16px">
+                <div class="startup-info">
+                  <div class="startup-name">每日自动入库</div>
+                  <div class="section-sub" style="margin:3px 0 0">收盘后自动把当日资料切块入知识库</div>
+                </div>
+                <button type="button" class="switch" :class="{ on: aiCfg.enableAutoIndex }" @click="aiCfg.enableAutoIndex = !aiCfg.enableAutoIndex"><span class="knob"></span></button>
+              </div>
+
+              <div class="ai-actions">
+                <button type="button" class="logs-btn" :disabled="testingAi" @click="onTestAi">{{ testingAi ? "测试中…" : "测试连接" }}</button>
+                <button type="button" class="logs-btn primary" @click="saveAiTab">保存配置</button>
+                <span v-if="aiMsg" class="ai-msg" :class="{ ok: /成功|已保存/.test(aiMsg) }">{{ aiMsg }}</span>
+              </div>
+              <div class="section-title" style="margin-top:24px">知识库</div>
+              <div class="section-sub">本地切块与向量索引，是「知识库语义检索」的数据来源</div>
+              <div class="dc-stats kb-stats">
+                <div class="dc-stat"><b>{{ kbData.total }}</b><span>总分块</span></div>
+                <div class="dc-stat"><b>{{ kbData.embedded }}</b><span>已嵌入</span></div>
+                <div class="dc-stat"><b>{{ kbSizeText }}</b><span>估算体积</span></div>
+                <div class="dc-stat"><b>{{ kbDocs.length }}</b><span>文档数</span></div>
+              </div>
+              <div v-if="kbData.byType.length" class="kb-kinds">
+                <span v-for="t in kbData.byType" :key="t[0]" class="kb-kind">{{ kbTypeName(t[0]) }} · {{ t[1] }}</span>
+              </div>
+              <div v-if="kbIndexing" class="kb-prog-wrap">
+                <div class="kb-prog-label">
+                  {{ kbProgress.phase === 'embed' ? '向量嵌入中' : '资料收集中' }} · {{ kbProgress.done }}/{{ kbProgress.total }}
+                  <span v-if="kbProgress.error" class="kb-prog-err">{{ kbProgress.error }}</span>
+                </div>
+                <div class="kb-prog"><div class="kb-prog-bar" :style="{ width: kbProgPct + '%' }"></div></div>
+              </div>
+              <div class="ai-actions kb-actions">
+                <button type="button" class="logs-btn" :disabled="kbBusy" @click="onImportDocs">导入文档</button>
+                <button type="button" class="logs-btn" :disabled="kbBusy" @click="onReindex">重建嵌入</button>
+                <button type="button" class="logs-btn" :disabled="kbBusy" @click="onIndexToday">入库今日</button>
+              </div>
+              <div class="kb-docs">
+                <div v-if="!kbDocs.length" class="logs-empty">暂无文档，点击「导入文档」或「入库今日」</div>
+                <div v-for="d in kbDocs" :key="d[0]" class="kb-doc">
+                  <span class="kbd-name" :title="d[0]">{{ d[0] }}</span>
+                  <span class="kbd-chunks">{{ d[1] }} 块</span>
+                  <button type="button" class="kbd-del" title="删除该文档" @click="onDeleteDoc(d[0])">✕</button>
+                </div>
+              </div>
+              <div class="ai-tip">嵌入模型用于知识库语义检索；模型输出仅供参考，不构成投资建议。</div>
             </div>
 
             <!-- 诊断日志 -->
@@ -546,4 +818,59 @@ function pickTab(id: Tab) {
 .skin-card-tools button:hover { color: var(--text); }
 .skin-bar { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
 .skin-msg { font-size: 11px; color: var(--text-dim); }
+
+/* AI 配置 Tab */
+.ai-tab { display: flex; flex-direction: column; }
+.ai-provider { align-self: flex-start; margin-bottom: 4px; }
+.ai-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 13px; }
+.ai-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ai-field label { font-size: 11.5px; font-weight: 600; color: var(--text-dim); }
+.ai-field input[type="text"],
+.ai-field input[type="password"] {
+  padding: 8px 11px; font-size: 12px; color: var(--text);
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+  outline: none; font-family: inherit;
+}
+.ai-field input:focus { border-color: var(--accent); }
+.ai-field input[type="range"] { accent-color: var(--accent); width: 100%; }
+.ai-keyrow { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.ai-keyrow input {
+  flex: 1; padding: 8px 11px; font-size: 12px; color: var(--text);
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; outline: none;
+}
+.key-ok { font-size: 11.5px; color: #26d07c; }
+.ai-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.ai-msg { font-size: 11.5px; color: #f25868; }
+.ai-msg.ok { color: #26d07c; }
+.ai-tip { margin-top: 14px; font-size: 10.5px; color: var(--text-dim); line-height: 1.6; }
+
+/* 知识库 */
+.kb-stats { margin-bottom: 12px; }
+.kb-kinds { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.kb-kind {
+  font-size: 10.5px; padding: 3px 9px; border-radius: 20px;
+  background: var(--bg-card); border: 1px solid var(--border); color: var(--text-dim);
+}
+.kb-prog-wrap { margin-bottom: 12px; }
+.kb-prog-label { font-size: 11px; color: var(--text-dim); margin-bottom: 5px; }
+.kb-prog-err { color: #f25868; }
+.kb-prog { height: 6px; border-radius: 3px; background: var(--bg); overflow: hidden; }
+.kb-prog-bar {
+  height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .25s;
+}
+.kb-actions { margin-top: 2px; }
+.kb-docs {
+  margin-top: 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg-card); max-height: 168px; overflow: auto;
+}
+.kb-doc { display: flex; align-items: center; gap: 10px; padding: 7px 12px; font-size: 11.5px; }
+.kb-doc + .kb-doc { border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent); }
+.kbd-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.kbd-chunks { color: var(--text-dim); font-size: 10.5px; flex: none; }
+.kbd-del {
+  width: 20px; height: 20px; border: none; border-radius: 5px; background: transparent;
+  color: var(--text-dim); cursor: pointer; flex: none;
+}
+.kbd-del:hover { background: var(--bg-hover); color: #f25868; }
 </style>

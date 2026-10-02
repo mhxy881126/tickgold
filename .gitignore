@@ -30,3 +30,8 @@ src-tauri/.omc/
 
 # SDD scratch (subagent-driven development)
 .superpowers/
+
+# 本地临时目录与诊断文件（不入库）
+/.tmp/
+/pw.local.ts
+/tests/e2e/probe.spec.ts

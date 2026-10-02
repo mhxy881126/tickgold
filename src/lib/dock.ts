@@ -73,6 +73,7 @@ export const DOCK_GROUPS: DockGroup[] = [
     name: "交易工具",
     icon: "M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z",
     items: [
+      { id: "ai", label: "AI 问数", icon: "M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2zM9 21h6M10 17v4M14 17v4", desc: "自然语言查询行情/题材/资金/持仓", star: true },
       { id: "screener", label: "条件选股", icon: "M4 5h3v14H4zm6.5 5h3v9h-3zM17 9h3v10h-3z", desc: "技术/基本面智能选股" },
       { id: "trade", label: "模拟交易", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1c1.7.3 3 1.4 3 3.1 0 1.9-1.5 2.8-3.4 2.8-1.2 0-2.1-.4-2.6-1l1.2-1c.3.4.8.7 1.5.7.8 0 1.3-.3 1.3-.8s-.4-.8-1.5-1c-1.6-.4-3.2-1-3.2-2.9 0-1.6 1.3-2.7 3-3V5h2zm-1 11h2v2h-2z", desc: "虚拟资金 T+1 练盘" },
       { id: "journal", label: "盯盘日记", icon: "M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1zm3 5h8v1.5H8zm0 4h8v1.5H8zm0 4h5v1.5H8z", desc: "交易复盘记录" },
