@@ -1647,6 +1647,40 @@ pub fn run() {
                             );",
                             kind: MigrationKind::Up,
                         },
+                        Migration {
+                            version: 44,
+                            description: "create trade_label (decision outcome labeling / evolution feedback)",
+                            sql: "CREATE TABLE IF NOT EXISTS trade_label (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                decision_id INTEGER NOT NULL UNIQUE,
+                                trade_date TEXT DEFAULT '',
+                                code TEXT NOT NULL,
+                                name TEXT DEFAULT '',
+                                decision_label TEXT DEFAULT '',
+                                model_version TEXT DEFAULT '',
+                                strategy TEXT DEFAULT '',
+                                entry_price REAL DEFAULT 0,
+                                ret1d REAL DEFAULT 0,
+                                ret2d REAL DEFAULT 0,
+                                ret3d REAL DEFAULT 0,
+                                ret5d REAL DEFAULT 0,
+                                max_gain REAL DEFAULT 0,
+                                max_pain REAL DEFAULT 0,
+                                hit_stop INTEGER DEFAULT 0,
+                                hit_target INTEGER DEFAULT 0,
+                                horizon_days INTEGER DEFAULT 0,
+                                verdict TEXT DEFAULT 'neutral',
+                                miss_type TEXT DEFAULT 'none',
+                                checked_at INTEGER NOT NULL
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_trade_label_model
+                                ON trade_label(model_version, strategy);
+                            CREATE INDEX IF NOT EXISTS idx_trade_label_verdict
+                                ON trade_label(verdict);
+                            CREATE INDEX IF NOT EXISTS idx_trade_label_date
+                                ON trade_label(trade_date);",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),
@@ -1857,7 +1891,11 @@ pub fn run() {
             autoexec_stop,
             autoexec_set_config,
             laya_health,
-            list_decision_logs
+            list_decision_logs,
+            ai::evolution::evolution_run_labeling,
+            ai::evolution::evolution_list_labels,
+            ai::evolution::evolution_stats,
+            ai::evolution::evolution_data_check
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

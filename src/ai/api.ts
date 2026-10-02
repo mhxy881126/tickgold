@@ -234,3 +234,116 @@ export function listDecisionLogs(date?: string | null, limit?: number) {
     limit: limit ?? null,
   });
 }
+
+// ===== v2.2 回灌进化 =====
+export interface EvolutionConfigInfo {
+  stopPct: number;
+  targetPct: number;
+  horizon: number;
+  includeWatch: boolean;
+}
+
+export interface LabelRunResult {
+  total: number;
+  labeled: number;
+  insufficient: number;
+  codes: number;
+  stopPct: number;
+  targetPct: number;
+  horizon: number;
+  ranAt: number;
+}
+
+export interface TradeLabelInfo {
+  id: number;
+  decisionId: number;
+  tradeDate: string;
+  code: string;
+  name: string;
+  decisionLabel: string;
+  modelVersion: string;
+  strategy: string;
+  entryPrice: number;
+  ret1d: number | null;
+  ret2d: number | null;
+  ret3d: number | null;
+  ret5d: number | null;
+  maxGain: number;
+  maxPain: number;
+  hitStop: boolean;
+  hitTarget: boolean;
+  horizonDays: number;
+  verdict: string;
+  missType: string;
+  checkedAt: number;
+  confidence: number;
+  ts: string;
+  action: string;
+}
+
+export interface EvolutionGroupInfo {
+  modelVersion: string;
+  strategy: string;
+  samples: number;
+  good: number;
+  bad: number;
+  neutral: number;
+  winRate: number;
+  avgWin: number;
+  avgLoss: number;
+  profitFactor: number | null;
+  expectancy: number;
+  avgRet: number;
+  hitStop: number;
+  hitTarget: number;
+  falsePositive: number;
+  sellTooEarly: number;
+}
+
+export interface EvolutionStatsInfo {
+  groups: EvolutionGroupInfo[];
+  totalLabels: number;
+  generatedAt: number;
+  note: string;
+}
+
+export interface EvolutionDataCheckInfo {
+  totalDecisions: number;
+  totalLabels: number;
+  missingLabelStale: number;
+  horizonZero: number;
+  orphanLabels: number;
+  missingModelRegistry: number;
+  issues: number;
+  cleanup: boolean;
+  keepDays: number;
+  deletedOrphan: number;
+  deletedOldLabels: number;
+  deletedOldDecisions: number;
+  checkedAt: number;
+}
+
+export function evolutionRunLabeling(config?: EvolutionConfigInfo | null, force = false) {
+  return invoke<LabelRunResult>("evolution_run_labeling", {
+    config: config ?? null,
+    force,
+  });
+}
+
+export function evolutionListLabels(verdict?: string | null, limit?: number) {
+  return invoke<TradeLabelInfo[]>("evolution_list_labels", {
+    verdict: verdict ?? null,
+    limit: limit ?? null,
+  });
+}
+
+export function evolutionStats() {
+  return invoke<EvolutionStatsInfo>("evolution_stats");
+}
+
+export function evolutionDataCheck(cleanup = false, keepDays?: number) {
+  return invoke<EvolutionDataCheckInfo>("evolution_data_check", {
+    cleanup,
+    keepDays: keepDays ?? null,
+  });
+}

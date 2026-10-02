@@ -3,6 +3,7 @@ pub mod agent;
 pub mod autoexec;
 pub mod config;
 pub mod decision;
+pub mod evolution;
 pub mod fastbrain;
 pub mod intraday;
 pub mod ingest;
