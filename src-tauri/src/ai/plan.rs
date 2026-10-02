@@ -356,7 +356,8 @@ pub fn convert_instruction_to_alert(data_dir: &Path, instr_id: i64) -> Result<St
         "SELECT code,name,alert_rule FROM plan_instruction WHERE id=?1",
         [instr_id],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-    )?;
+    )
+    .map_err(|e| e.to_string())?;
     let rule = serde_json::from_str::<Value>(&rule_json).unwrap_or(json!({}));
     let id = format!("plan-{}-{}", code, now_millis());
     c.execute(

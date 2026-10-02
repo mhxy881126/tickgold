@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn parse_plain_json() {
-        let v = parse_review_json(r#"{"title":"市场缩量","summary":"情绪回落","content":"# 点一","evidence":[]}"#);
+        let v = parse_review_json(r##"{"title":"市场缩量","summary":"情绪回落","content":"# 点一","evidence":[]}"##);
         assert_eq!(v["title"], "市场缩量");
         assert_eq!(v["summary"], "情绪回落");
         assert!(v["content"].as_str().unwrap().contains("点一"));
