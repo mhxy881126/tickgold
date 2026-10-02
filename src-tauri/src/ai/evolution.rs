@@ -367,8 +367,9 @@ fn final_ret_expr() -> &'static str {
 
 pub fn stats(data_dir: &std::path::Path) -> Result<Value, String> {
     let conn = maindb::open_readonly(data_dir)?;
+    let fre_expr = final_ret_expr();
     let sql = format!(
-        "SELECT model_version,strategy,verdict,{final_ret_expr()} AS fr,hit_stop,hit_target,miss_type \
+        "SELECT model_version,strategy,verdict,{fre_expr} AS fr,hit_stop,hit_target,miss_type \
          FROM trade_label"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
