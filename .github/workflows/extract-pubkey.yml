@@ -14,6 +14,15 @@ jobs:
         run: |
           set -e
           printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" > /tmp/key.key
-          echo "=== EXTRACTED PUBLIC KEY (copy the base64 block below) ==="
-          npx --yes @tauri-apps/cli signer extract --private-key /tmp/key.key --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" --no-color
+          sudo apt-get install -y minisign >/dev/null
+          echo "=== EXTRACTED PUBLIC KEY ==="
+          PW="$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" expect <<'EOF'
+          set timeout 20
+          spawn minisign -p /tmp/pub.key -s /tmp/key.key
+          expect {
+            "Password" { send "$env(PW)\r"; exp_continue }
+            eof
+          }
+          EOF
+          cat /tmp/pub.key
           echo "=== END ==="
