@@ -5,6 +5,7 @@ import WatchList from "./WatchList.vue";
 import RankBoard from "./RankBoard.vue";
 import StockChart from "./StockChart.vue";
 import LimitRadar from "./LimitRadar.vue";
+import SieveCard from "./SieveCard.vue";
 import AuctionBoard from "./AuctionBoard.vue";
 import LimitPool from "./LimitPool.vue";
 import RadarSweep from "./RadarSweep.vue";
@@ -74,6 +75,7 @@ function retry() {
     <AuctionBoard v-else-if="id === 'auction'" @select="$emit('select', $event)" />
     <LimitPool v-else-if="id === 'limitpool'" @select="$emit('select', $event)" />
     <LimitRadar v-else-if="id === 'radar'" @select="$emit('select', $event)" />
+    <SieveCard v-else-if="id === 'sieve'" @select="$emit('select', $event)" />
     <RadarSweep v-else-if="id === 'radarsweep'" @select="$emit('select', $event)" />
     <ReviewTimeline v-else-if="id === 'reviewtimeline'" @select="$emit('select', $event)" />
     <MultiStockGrid v-else-if="id === 'multigrid'" @select="$emit('select', $event)" />

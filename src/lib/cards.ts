@@ -36,7 +36,8 @@ export type CardId =
   | "battleplan"
   | "decisionlog"
   | "evolution"
-  | "signalbridge";
+  | "signalbridge"
+  | "sieve";
 
 export type Zone = "main" | "side";
 
@@ -83,6 +84,7 @@ export const CARD_META: Record<CardId, CardMeta> = {
   decisionlog: { title: "决策日志", accent: "#e8c878", kind: "chart" },
   evolution: { title: "进化回灌", accent: "#1dbe7d", kind: "chart" },
   signalbridge: { title: "信号确认桥", accent: "#ffb13d", kind: "chart" },
+  sieve: { title: "连板选股器", accent: "#ffd76a", kind: "chart" },
 };
 
 // ===== 卡片个性化（V1 单卡设置 / V3 场景模板）=====

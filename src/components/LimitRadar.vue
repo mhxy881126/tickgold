@@ -178,6 +178,31 @@ function rateCls(r: number): string {
   if (r >= 0.25) return "mid";
   return "lo";                    // 晋级率低=接力差
 }
+
+// ===== 板块筛选：主板 / 创业板 / 科创板 / 北交所 =====
+type BoardKey = "main" | "gem" | "star" | "bj";
+const BOARD_OPTS: { k: BoardKey; label: string }[] = [
+  { k: "main", label: "主板" },
+  { k: "gem", label: "创业板" },
+  { k: "star", label: "科创板" },
+  { k: "bj", label: "北交所" },
+];
+const boardFilter = ref<Set<BoardKey>>(new Set());
+function boardOf(code: string): BoardKey {
+  if (code.startsWith("688")) return "star";
+  if (code.startsWith("30")) return "gem";
+  if (/^(43|83|87|88|92)/.test(code)) return "bj";
+  return "main";
+}
+function passFilter(code: string): boolean {
+  if (boardFilter.value.size === 0) return true;
+  return boardFilter.value.has(boardOf(code));
+}
+function toggleBoard(k: BoardKey) {
+  const s = new Set(boardFilter.value);
+  if (s.has(k)) s.delete(k); else s.add(k);
+  boardFilter.value = s;
+}
 </script>
 
 <template>
@@ -234,6 +259,15 @@ function rateCls(r: number): string {
     </div>
 
     <div class="body">
+      <!-- 板块筛选条（梯队/天梯视图） -->
+      <div v-if="tab === 'ladder' || tab === 'bridge'" class="board-filter">
+        <button
+          v-for="b in BOARD_OPTS" :key="b.k"
+          class="bf-chip" :class="{ on: boardFilter.has(b.k) }"
+          @click="toggleBoard(b.k)"
+        >{{ b.label }}</button>
+      </div>
+
       <!-- 连板梯队（含首板） -->
       <div v-if="tab === 'ladder'" class="ladder">
         <div v-if="!data" class="empty">正在全市场扫描…</div>
@@ -257,7 +291,7 @@ function rateCls(r: number): string {
           </div>
           <div class="lad-items">
             <button
-              v-for="s in shownItems(g)"
+              v-for="s in shownItems(g).filter((x) => passFilter(x.code))"
               :key="s.code"
               class="stock-chip"
               :class="chipClass(s)"
@@ -308,9 +342,9 @@ function rateCls(r: number): string {
           <div class="br-cols">
             <!-- 左：昨日高标 -->
             <div class="br-col">
-              <div class="br-col-head">昨日高标 {{ bridgeRows.length }}</div>
+              <div class="br-col-head">昨日高标 {{ bridgeRows.filter((r) => passFilter(r.code)).length }}</div>
               <div
-                v-for="r in [...bridgeRows].sort((a, b) => b.prevBoards - a.prevBoards)"
+                v-for="r in bridgeRows.filter((r) => passFilter(r.code)).sort((a, b) => b.prevBoards - a.prevBoards)"
                 :key="'l' + r.code"
                 class="br-row"
                 :class="{ ok: r.todayBoards > 0, dead: r.todayBoards === 0 }"
@@ -326,9 +360,9 @@ function rateCls(r: number): string {
             </div>
             <!-- 右：今日晋级 -->
             <div class="br-col">
-              <div class="br-col-head up">今日晋级 {{ bridgeRows.filter((r) => r.todayBoards > 0).length }}</div>
+              <div class="br-col-head up">今日晋级 {{ bridgeRows.filter((r) => passFilter(r.code) && r.todayBoards > 0).length }}</div>
               <div
-                v-for="r in bridgeRows.filter((r) => r.todayBoards > 0).sort((a, b) => b.todayBoards - a.todayBoards)"
+                v-for="r in bridgeRows.filter((r) => passFilter(r.code) && r.todayBoards > 0).sort((a, b) => b.todayBoards - a.todayBoards)"
                 :key="'r' + r.code"
                 class="br-row ok"
                 @click="emit('select', r.code)"
@@ -337,7 +371,7 @@ function rateCls(r: number): string {
                 <span class="br-nm">{{ r.name }}</span>
                 <span class="br-ind">{{ r.industry }}</span>
               </div>
-              <div v-if="bridgeRows.filter((r) => r.todayBoards > 0).length === 0" class="empty small">无晋级票</div>
+              <div v-if="bridgeRows.filter((r) => passFilter(r.code) && r.todayBoards > 0).length === 0" class="empty small">无晋级票</div>
             </div>
           </div>
         </template>
@@ -413,6 +447,15 @@ function rateCls(r: number): string {
 /* body */
 .body { flex: 1; overflow-y: auto; }
 .empty { color: var(--text-dim); font-size: 11px; text-align: center; padding: 30px 10px; }
+
+/* 板块筛选条 */
+.board-filter { display: flex; gap: 5px; padding: 2px 0 8px; }
+.bf-chip {
+  background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-dim);
+  font-size: 10px; padding: 3px 10px; border-radius: 11px; cursor: pointer;
+}
+.bf-chip:hover { color: var(--text); border-color: var(--text-dim); }
+.bf-chip.on { background: var(--accent); border-color: var(--accent); color: #1a1a1a; font-weight: 700; }
 .empty.small { padding: 16px 6px; font-size: 10px; }
 .empty.err { color: var(--accent); }
 
