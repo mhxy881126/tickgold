@@ -4,6 +4,9 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { emit, listen } from "@tauri-apps/api/event";
 import { fetchQuotes, type AlertEvent } from "../api/market";
+import { signalList } from "../ai/api";
+import { brokerListOrders } from "../broker/api";
+import type { BrokerOrderInfo } from "../broker/api";
 import { useWatchlistStore } from "../stores/watchlist";
 import type { Quote } from "../api/types";
 
@@ -24,9 +27,45 @@ let pollTimer: number | null = null;
 let rotateTimer: number | null = null;
 let unlistenAlert: (() => void) | null = null;
 let unlistenWatch: (() => void) | null = null;
+let unlistenSignal: (() => void) | null = null;
+let unlistenSignalUpdated: (() => void) | null = null;
+let signalSyncTimer: number | null = null;
+
+// 待人工确认的交易信号（最新在前，≤20）
+interface SignalEvent {
+  sigId: string;
+  code: string;
+  name: string;
+  side: string;
+  source: string;
+  price: number;
+  vol: number;
+  time: number;
+}
+const signalEvents = ref<SignalEvent[]>([]);
+const signalMode = ref(true);
+// v2.5 活跃券商委托（报单中/已报/部分成交）
+const activeOrders = ref<BrokerOrderInfo[]>([]);
+
+function bkLabel(s: string): string {
+  return (
+    { submitting: "报单中", submitted: "已报", part_filled: "部分成交" } as Record<string, string>
+  )[s] || s;
+}
+async function syncOrders() {
+  try {
+    const all = await brokerListOrders(null);
+    activeOrders.value = all.filter((o) =>
+      ["submitting", "submitted", "part_filled"].includes(o.status),
+    );
+  } catch {
+    /* 忽略：未初始化不阻断 */
+  }
+}
 
 const current = computed(() => quotes.value[idx.value] ?? null);
 const latestAlert = computed(() => alertEvents.value[0] ?? null);
+const latestSignal = computed(() => signalEvents.value[0] ?? null);
 
 function cls(pct: number) {
   if (pct > 0) return "up";
@@ -58,8 +97,9 @@ async function retry() {
 }
 
 function rotate() {
-  // 预警展示中不轮播行情
-  if (alertMode.value && alertEvents.value.length) return;
+  // 信号 / 预警展示中不轮播行情
+  if ((signalMode.value && signalEvents.value.length)
+    || (alertMode.value && alertEvents.value.length)) return;
   if (quotes.value.length > 1 && !expanded.value) {
     idx.value = (idx.value + 1) % quotes.value.length;
   }
@@ -73,6 +113,7 @@ async function toggleExpand() {
 
 function backToQuotes() {
   alertMode.value = false;
+  signalMode.value = false;
 }
 
 function pick(q: Quote) {
@@ -85,6 +126,32 @@ function pick(q: Quote) {
 function pickAlert(e: AlertEvent) {
   emit("island:select", e.code);
   if (expanded.value) toggleExpand();
+}
+
+function pickSignal(s: SignalEvent) {
+  emit("island:select", s.code);
+  emit("island:open-card", "signalbridge");
+  if (expanded.value) toggleExpand();
+}
+
+// 待确认信号以 DB 为准（事件只负责即时置顶，状态以这里校正）
+async function syncSignals() {
+  try {
+    const list = await signalList("pending", 20);
+    signalEvents.value = list.map((t) => ({
+      sigId: t.sigId,
+      code: t.code,
+      name: t.name,
+      side: t.side,
+      source: t.source,
+      price: t.price || t.refPrice,
+      vol: t.vol,
+      time: t.createdAt,
+    }));
+    if (list.length) signalMode.value = true;
+  } catch {
+    /* 查询失败时保留当前展示，等待定时/事件兜底 */
+  }
 }
 
 function fmtHM(t: number): string {
@@ -111,12 +178,42 @@ onMounted(async () => {
   unlistenWatch = await listen("watch:changed", () => {
     refresh();
   });
+
+  // 新交易信号：置顶 + 自动展开，随后以 DB 校正（去重/补全）
+  unlistenSignal = await listen<SignalEvent>("signal:new", (ev) => {
+    const s = { ...ev.payload, time: Date.now() };
+    signalEvents.value = [s, ...signalEvents.value].slice(0, 20);
+    signalMode.value = true;
+    if (!expanded.value) toggleExpand();
+    void syncSignals();
+  });
+
+  // 确认 / 驳回 / 完成：重新从 DB 同步待确认（计数即时回落）
+  unlistenSignalUpdated = await listen("signal:updated", () => {
+    void syncSignals();
+  });
+
+  // 初始 + 定时兜底：重启后恢复待确认、事件丢失时也能收敛
+  await syncSignals();
+  await syncOrders();
+  signalSyncTimer = window.setInterval(() => {
+    void syncSignals();
+    void syncOrders();
+  }, 15000);
+
+  // v2.5 券商委托/成交回报：即时刷新活跃委托
+  await listen("broker:event", () => void syncOrders());
+  await listen("broker:sidecar", () => void syncOrders());
+  await listen("broker:kill", () => void syncOrders());
 });
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer);
   if (rotateTimer) clearInterval(rotateTimer);
   if (unlistenAlert) unlistenAlert();
   if (unlistenWatch) unlistenWatch();
+  if (unlistenSignal) unlistenSignal();
+  if (unlistenSignalUpdated) unlistenSignalUpdated();
+  if (signalSyncTimer) clearInterval(signalSyncTimer);
 });
 </script>
 
@@ -124,8 +221,21 @@ onBeforeUnmount(() => {
   <div class="island" :class="{ open: expanded }">
     <!-- 折叠态 -->
     <div v-if="!expanded" class="bar" data-tauri-drag-region>
+      <!-- 待确认信号胶囊（最优先） -->
+      <template v-if="signalMode && latestSignal">
+        <div class="sg-pill" :class="latestSignal.side === 'BUY' ? 'buy' : 'sell'" data-tauri-drag-region>
+          {{ latestSignal.side === "BUY" ? "买" : "卖" }}
+        </div>
+        <div class="al-nm" data-tauri-drag-region>{{ latestSignal.name }}</div>
+        <div class="sg-info" data-tauri-drag-region>
+          {{ latestSignal.price.toFixed(2) }}<span v-if="latestSignal.vol"> · {{ latestSignal.vol }}</span>
+        </div>
+        <button class="mini-btn" title="看行情" @click.stop="backToQuotes">⚡</button>
+        <button class="chev" title="展开" @click.stop="toggleExpand">⌄</button>
+      </template>
+
       <!-- 预警胶囊 -->
-      <template v-if="alertMode && latestAlert">
+      <template v-else-if="alertMode && latestAlert">
         <div class="bell" :class="latestAlert.tone" data-tauri-drag-region>
           <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C8.63 5.36 7 7.92 7 11v5l-2 2v1h14v-1l-2-2z"/></svg>
         </div>
@@ -163,6 +273,53 @@ onBeforeUnmount(() => {
 
     <!-- 展开态 -->
     <div v-else class="open-wrap">
+      <!-- 待确认信号区（最优先） -->
+      <div v-if="signalEvents.length" class="signal-sec">
+        <div class="sec-head">
+          <span class="sec-title">
+            <span class="sg-dot"></span>
+            待确认信号 {{ signalEvents.length }}
+          </span>
+        </div>
+        <div class="signal-list">
+          <div
+            v-for="s in signalEvents"
+            :key="s.sigId"
+            class="signal-row"
+            :class="s.side === 'BUY' ? 'buy' : 'sell'"
+            @click="pickSignal(s)"
+          >
+            <span class="sr-side">{{ s.side === "BUY" ? "买入" : "卖出" }}</span>
+            <span class="sr-nm">{{ s.name }}</span>
+            <span class="sr-px">{{ s.price.toFixed(2) }}</span>
+            <span v-if="s.vol" class="sr-vol">x{{ s.vol }}</span>
+            <span class="sr-src">{{ s.source }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- v2.5 活跃券商委托 -->
+      <div v-if="activeOrders.length" class="broker-sec">
+        <div class="sec-head">
+          <span class="sec-title">
+            <span class="bk-dot"></span>
+            券商委托 {{ activeOrders.length }}
+          </span>
+        </div>
+        <div class="bk-list">
+          <div
+            v-for="o in activeOrders"
+            :key="o.sigId"
+            class="bk-row"
+            :class="`bk-${o.status}`"
+          >
+            <span class="bk-state">{{ bkLabel(o.status) }}</span>
+            <span class="bk-code">{{ o.code }}</span>
+            <span class="bk-fill">{{ o.filledVol }}/{{ o.vol }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- 预警区 -->
       <div v-if="alertEvents.length" class="alert-sec">
         <div class="sec-head">
@@ -357,4 +514,47 @@ body,
 .up { color: #ef5350; }
 .down { color: #26a69a; }
 .flat { color: #8b98a5; }
+
+/* 待确认信号胶囊 */
+.sg-pill {
+  font-weight: 800; font-size: 11px; width: 22px; height: 22px;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+}
+.sg-pill.buy { background: #ff3b46; color: #fff; }
+.sg-pill.sell { background: #1fbf75; color: #fff; }
+.sg-info {
+  font-variant-numeric: tabular-nums; font-weight: 700;
+  margin-left: auto; color: #ffd700; font-size: 12px;
+}
+
+/* 展开态 待确认信号区 */
+.broker-sec { border-bottom: 1px solid rgba(106,166,232,.2); flex-shrink: 0; }
+.bk-list { padding-bottom: 4px; }
+.bk-row { display: flex; align-items: center; gap: 8px; padding: 5px 16px; font-size: 11px; }
+.bk-row .bk-state { font-weight: 800; color: #6aa6e8; min-width: 56px; }
+.bk-row .bk-code { color: #e6ecf5; font-variant-numeric: tabular-nums; }
+.bk-row .bk-fill { color: #97a0b2; font-variant-numeric: tabular-nums; }
+.bk-submitting .bk-state { color: #97a0b2; }
+.bk-part_filled .bk-state { color: #ffb13d; }
+.bk-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: #6aa6e8; margin-right: 5px;
+}
+.signal-sec { border-bottom: 1px solid rgba(255,215,0,.2); flex-shrink: 0; }.signal-list { max-height: 128px; overflow-y: auto; padding-bottom: 4px; }
+.signal-row { display: flex; align-items: center; gap: 8px; padding: 6px 16px; cursor: pointer; }
+.signal-row:hover { background: rgba(255,215,0,.07); }
+.sr-side { font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 5px; }
+.signal-row.buy .sr-side { background: #ff3b46; color: #fff; }
+.signal-row.sell .sr-side { background: #1fbf75; color: #fff; }
+.sr-nm { font-size: 11px; color: #c9d1d9; }
+.sr-px { font-size: 11px; color: #ffd700; font-variant-numeric: tabular-nums; margin-left: auto; }
+.sr-vol { font-size: 10px; color: #8b98a5; font-variant-numeric: tabular-nums; }
+.sr-src {
+  font-size: 10px; color: #8b98a5; border: 1px solid rgba(255,215,0,.25);
+  border-radius: 5px; padding: 0 5px;
+}
+.sg-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #ffb13d;
+  box-shadow: 0 0 6px rgba(255,177,61,.8);
+}
 </style>

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { WIDGET_DEFS } from "./registry";
+import { computed } from "vue";
+import { listWidgetDefs } from "./registry";
 
 // 微件托盘：点击添加（singleton 已存在的禁用）
 defineProps<{ present: string[] }>();
 const emit = defineEmits<{ add: [defId: string] }>();
+const defs = computed(() => listWidgetDefs());
 </script>
 
 <template>
@@ -11,7 +13,7 @@ const emit = defineEmits<{ add: [defId: string] }>();
     <span class="wt-label">添加微件</span>
     <div class="wt-items">
       <button
-        v-for="d in WIDGET_DEFS"
+        v-for="d in defs"
         :key="d.id"
         type="button"
         class="wt-btn"

@@ -1,0 +1,19 @@
+{
+  "id": "com.tickgold.quote-banner",
+  "name": "报价大字条",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "permissions": ["quotes:read"],
+  "ui": "ui.js",
+  "widgets": [
+    {
+      "id": "banner",
+      "title": "报价大字条",
+      "minW": 4,
+      "minH": 2,
+      "defaultW": 5,
+      "defaultH": 2,
+      "binding": "stock"
+    }
+  ]
+}

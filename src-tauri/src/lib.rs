@@ -1,6 +1,8 @@
 mod ai;
+mod broker;
 mod logging;
 mod market;
+mod plugin;
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -8,7 +10,7 @@ use std::sync::atomic::Ordering;
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    LogicalPosition, Manager, WebviewUrl, WebviewWindowBuilder,
+    Emitter, LogicalPosition, Manager, WebviewUrl, WebviewWindowBuilder,
 };
 use tauri_plugin_global_shortcut::ShortcutState;
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -541,6 +543,108 @@ async fn get_seat_trades(
     market::eastmoney::seat_trades(&code, size, page).await
 }
 
+// ===== v2.1 快脑 / 自动执行 / 决策日志 =====
+#[tauri::command]
+fn autoexec_get_config(
+    ctl: tauri::State<'_, Arc<ai::autoexec::AutoExecCtl>>,
+) -> Result<ai::autoexec::AutoExecConfig, String> {
+    Ok(ctl.config.lock().unwrap().clone())
+}
+
+#[tauri::command]
+async fn autoexec_start(
+    app: tauri::AppHandle,
+    ai_state: tauri::State<'_, ai::AiState>,
+    ctl: tauri::State<'_, Arc<ai::autoexec::AutoExecCtl>>,
+    cfg: ai::autoexec::AutoExecConfig,
+) -> Result<(), String> {
+    *ctl.config.lock().unwrap() = cfg.clone();
+    if ctl.running.load(Ordering::Acquire) {
+        return Ok(());
+    }
+    ctl.running.store(true, Ordering::Release);
+    let data_dir = ai_state.dir();
+    let c: Arc<ai::autoexec::AutoExecCtl> = ctl.inner().clone();
+    tauri::async_runtime::spawn(async move {
+        ai::autoexec::run_loop(app, c, data_dir).await;
+    });
+    log::info!("快脑自动执行器已启动（模式 {}）", cfg.brain_mode);
+    Ok(())
+}
+
+#[tauri::command]
+fn autoexec_stop(ctl: tauri::State<'_, Arc<ai::autoexec::AutoExecCtl>>) -> Result<(), String> {
+    ctl.running.store(false, Ordering::Release);
+    let mut cfg = ctl.config.lock().unwrap().clone();
+    cfg.enabled = false;
+    *ctl.config.lock().unwrap() = cfg;
+    log::info!("快脑自动执行器已停止");
+    Ok(())
+}
+
+#[tauri::command]
+fn autoexec_set_config(
+    ctl: tauri::State<'_, Arc<ai::autoexec::AutoExecCtl>>,
+    cfg: ai::autoexec::AutoExecConfig,
+) -> Result<(), String> {
+    let cur = ctl.config.lock().unwrap().clone();
+    let mut c = cfg;
+    c.enabled = cur.enabled; // 运行开关仅由 启用/停用/急停 控制，保存参数不改启停
+    *ctl.config.lock().unwrap() = c;
+    Ok(())
+}
+
+#[tauri::command]
+async fn laya_health(url: String) -> Result<f64, String> {
+    ai::fastbrain::LayaClient::new(&url).health().await
+}
+
+#[tauri::command]
+fn list_decision_logs(
+    state: tauri::State<'_, ai::AiState>,
+    date: Option<String>,
+    limit: Option<i64>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let conn = ai::maindb::open_readonly(&state.dir())?;
+    let limit = limit.unwrap_or(200).clamp(1, 1000);
+    let mut sql = "SELECT id,trade_date,ts,code,name,strategy,instr_id,label,confidence,\
+                   probs,features,mode,action,model_version,infer_ms,created_at \
+                   FROM decision_log"
+        .to_string();
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    if let Some(d) = date {
+        sql.push_str(" WHERE trade_date=?1");
+        params.push(Box::new(d));
+    }
+    sql.push_str(&format!(" ORDER BY id DESC LIMIT {limit}"));
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(params.iter()), |r| {
+            let probs_s: String = r.get(9)?;
+            let features_s: String = r.get(10)?;
+            Ok(serde_json::json!({
+                "id": r.get::<_, i64>(0)?,
+                "tradeDate": r.get::<_, String>(1)?,
+                "ts": r.get::<_, String>(2)?,
+                "code": r.get::<_, String>(3)?,
+                "name": r.get::<_, String>(4)?,
+                "strategy": r.get::<_, String>(5)?,
+                "instrId": r.get::<_, Option<i64>>(6)?,
+                "label": r.get::<_, String>(7)?,
+                "confidence": r.get::<_, f64>(8)?,
+                "probs": serde_json::from_str::<serde_json::Value>(&probs_s).unwrap_or(serde_json::json!({})),
+                "features": serde_json::from_str::<serde_json::Value>(&features_s).unwrap_or(serde_json::json!({})),
+                "mode": r.get::<_, String>(11)?,
+                "action": r.get::<_, String>(12)?,
+                "modelVersion": r.get::<_, String>(13)?,
+                "inferMs": r.get::<_, f64>(14)?,
+                "createdAt": r.get::<_, i64>(15)?,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(rows.flatten().collect())
+}
+
 #[tauri::command]
 async fn start_spider(
     app: tauri::AppHandle,
@@ -906,6 +1010,16 @@ fn boss_toggle(app: &tauri::AppHandle) {
             let _ = w.set_focus();
         }
     }
+}
+
+/// 信号确认快捷键（Alt+S）：显示并聚焦主窗口，通知前端打开「信号确认桥」。
+fn bridge_focus(app: &tauri::AppHandle) {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.show();
+        let _ = main.unminimize();
+        let _ = main.set_focus();
+    }
+    let _ = app.emit("bridge:focus", ());
 }
 
 /// 切换指定窗口显隐，并把对应托盘勾选项与窗口实际可见性对齐
@@ -1504,6 +1618,187 @@ pub fn run() {
                                 ON company_note(code);",
                             kind: MigrationKind::Up,
                         },
+                        Migration {
+                            version: 42,
+                            description: "create decision_log (fast-brain decisions audit/replay)",
+                            sql: "CREATE TABLE IF NOT EXISTS decision_log (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                trade_date TEXT NOT NULL,
+                                ts TEXT DEFAULT '',
+                                code TEXT NOT NULL,
+                                name TEXT DEFAULT '',
+                                strategy TEXT DEFAULT '',
+                                instr_id INTEGER,
+                                label TEXT NOT NULL,
+                                confidence REAL DEFAULT 0,
+                                probs TEXT DEFAULT '{}',
+                                features TEXT DEFAULT '{}',
+                                mode TEXT DEFAULT 'rule',
+                                action TEXT DEFAULT 'drop',
+                                model_version TEXT DEFAULT '',
+                                infer_ms REAL DEFAULT 0,
+                                created_at INTEGER NOT NULL
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_decision_log_code
+                                ON decision_log(code, created_at);
+                            CREATE INDEX IF NOT EXISTS idx_decision_log_date
+                                ON decision_log(trade_date);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 43,
+                            description: "create model_version (fast/slow model registry)",
+                            sql: "CREATE TABLE IF NOT EXISTS model_version (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                kind TEXT DEFAULT 'fast',
+                                version TEXT NOT NULL,
+                                provider TEXT DEFAULT '',
+                                active INTEGER DEFAULT 1,
+                                note TEXT DEFAULT '',
+                                created_at INTEGER NOT NULL
+                            );",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 44,
+                            description: "create trade_label (decision outcome labeling / evolution feedback)",
+                            sql: "CREATE TABLE IF NOT EXISTS trade_label (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                decision_id INTEGER NOT NULL UNIQUE,
+                                trade_date TEXT DEFAULT '',
+                                code TEXT NOT NULL,
+                                name TEXT DEFAULT '',
+                                decision_label TEXT DEFAULT '',
+                                model_version TEXT DEFAULT '',
+                                strategy TEXT DEFAULT '',
+                                entry_price REAL DEFAULT 0,
+                                ret1d REAL DEFAULT 0,
+                                ret2d REAL DEFAULT 0,
+                                ret3d REAL DEFAULT 0,
+                                ret5d REAL DEFAULT 0,
+                                max_gain REAL DEFAULT 0,
+                                max_pain REAL DEFAULT 0,
+                                hit_stop INTEGER DEFAULT 0,
+                                hit_target INTEGER DEFAULT 0,
+                                horizon_days INTEGER DEFAULT 0,
+                                verdict TEXT DEFAULT 'neutral',
+                                miss_type TEXT DEFAULT 'none',
+                                checked_at INTEGER NOT NULL
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_trade_label_model
+                                ON trade_label(model_version, strategy);
+                            CREATE INDEX IF NOT EXISTS idx_trade_label_verdict
+                                ON trade_label(verdict);
+                            CREATE INDEX IF NOT EXISTS idx_trade_label_date
+                                ON trade_label(trade_date);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 45,
+                            description: "create signal_ticket + signal_audit (manual-confirm broker bridge)",
+                            sql: "CREATE TABLE IF NOT EXISTS signal_ticket (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                sig_id TEXT NOT NULL UNIQUE,
+                                trade_date TEXT DEFAULT '',
+                                created_at INTEGER NOT NULL,
+                                code TEXT NOT NULL,
+                                name TEXT DEFAULT '',
+                                side TEXT DEFAULT '',
+                                source TEXT DEFAULT '',
+                                model_version TEXT DEFAULT '',
+                                strategy TEXT DEFAULT '',
+                                confidence REAL DEFAULT 0,
+                                ref_price REAL DEFAULT 0,
+                                price REAL DEFAULT 0,
+                                vol INTEGER DEFAULT 0,
+                                amount REAL DEFAULT 0,
+                                reason TEXT DEFAULT '',
+                                status TEXT DEFAULT 'pending',
+                                action_kind TEXT DEFAULT '',
+                                broker TEXT DEFAULT '',
+                                order_text TEXT DEFAULT '',
+                                decided_by TEXT DEFAULT '',
+                                decided_at INTEGER DEFAULT 0,
+                                updated_at INTEGER DEFAULT 0
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_signal_status ON signal_ticket(status);
+                            CREATE INDEX IF NOT EXISTS idx_signal_code ON signal_ticket(code);
+                            CREATE INDEX IF NOT EXISTS idx_signal_date ON signal_ticket(trade_date);
+                            CREATE TABLE IF NOT EXISTS signal_audit (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                sig_id TEXT NOT NULL,
+                                action TEXT DEFAULT '',
+                                detail TEXT DEFAULT '',
+                                actor TEXT DEFAULT '',
+                                created_at INTEGER NOT NULL
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_signal_audit_sig ON signal_audit(sig_id);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 46,
+                            description: "create broker_order (broker integration: qmt/mock order mapping)",
+                            sql: "CREATE TABLE IF NOT EXISTS broker_order (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                sig_id TEXT NOT NULL UNIQUE,
+                                broker_kind TEXT DEFAULT 'mock',
+                                broker_account TEXT DEFAULT '',
+                                broker_order_id TEXT DEFAULT '',
+                                code TEXT NOT NULL,
+                                side TEXT DEFAULT '',
+                                price REAL DEFAULT 0,
+                                vol INTEGER DEFAULT 0,
+                                status TEXT DEFAULT 'submitting',
+                                filled_vol INTEGER DEFAULT 0,
+                                filled_avg_price REAL DEFAULT 0,
+                                error_msg TEXT DEFAULT '',
+                                created_at INTEGER NOT NULL,
+                                updated_at INTEGER NOT NULL
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_broker_status ON broker_order(status);
+                            CREATE INDEX IF NOT EXISTS idx_broker_code ON broker_order(code);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 47,
+                            description: "create plugin_registry/plugin_kv/plugin_audit (plugin ecosystem)",
+                            sql: "CREATE TABLE IF NOT EXISTS plugin_registry (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                plugin_id TEXT NOT NULL UNIQUE,
+                                name TEXT DEFAULT '',
+                                version TEXT DEFAULT '',
+                                api_version INTEGER DEFAULT 1,
+                                builtin INTEGER DEFAULT 0,
+                                source_path TEXT DEFAULT '',
+                                enabled INTEGER DEFAULT 0,
+                                signed INTEGER DEFAULT 0,
+                                signature TEXT DEFAULT '',
+                                hash TEXT DEFAULT '',
+                                permissions TEXT DEFAULT '[]',
+                                status TEXT DEFAULT 'disabled',
+                                error_msg TEXT DEFAULT '',
+                                installed_at INTEGER NOT NULL,
+                                updated_at INTEGER NOT NULL
+                            );
+                            CREATE TABLE IF NOT EXISTS plugin_kv (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                plugin_id TEXT NOT NULL,
+                                key TEXT NOT NULL,
+                                value TEXT DEFAULT '',
+                                updated_at INTEGER NOT NULL,
+                                UNIQUE(plugin_id, key)
+                            );
+                            CREATE TABLE IF NOT EXISTS plugin_audit (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                plugin_id TEXT NOT NULL,
+                                action TEXT DEFAULT '',
+                                method TEXT DEFAULT '',
+                                detail TEXT DEFAULT '',
+                                created_at INTEGER NOT NULL
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_plugin_audit_pid ON plugin_audit(plugin_id);",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),
@@ -1514,13 +1809,21 @@ pub fn run() {
         .manage(Arc::new(market::spider::SpiderCtl::new()))
         .manage(Arc::new(market::limitup::LimitRadar::new()))
         .manage(Arc::new(market::alert::AlertEngine::new()))
+        .manage(ai::autoexec::AutoExecCtl::new())
+        .manage(broker::BrokerManager::new())
+        .manage(plugin::PluginManager::new())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcuts(["Alt+`"])
+                .with_shortcuts(["Alt+`", "Alt+S"])
                 .expect("invalid shortcut")
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(|app, shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        boss_toggle(app);
+                        // Alt+S 唤起信号确认桥，其余（Alt+`）走老板键
+                        if shortcut.to_string().ends_with('S') {
+                            bridge_focus(app);
+                        } else {
+                            boss_toggle(app);
+                        }
                     }
                 })
                 .build(),
@@ -1535,6 +1838,14 @@ pub fn run() {
                     Err(e) => log::error!("AI 边车库初始化失败（AI 功能不可用）: {e}"),
                 }
                 // brief 原写法 `*.inner().0.lock()...` 跨模块访问私有字段触发 E0616，改用 set_dir。
+                // v2.5 券商对接：按数据目录加载持久化配置并初始化模拟账户（在 set_dir move 之前）。
+                app.state::<broker::BrokerManager>()
+                    .inner()
+                    .init_with_dir(&dir);
+                // v2.6 插件生态：就位数据目录（创建 plugins 目录）。
+                app.state::<plugin::PluginManager>()
+                    .inner()
+                    .init_with_dir(&dir);
                 app.state::<ai::AiState>().inner().set_dir(dir);
             }
             // ===== 主窗口：标题栏融入工作台 =====
@@ -1707,7 +2018,51 @@ pub fn run() {
             ai_set_plan_status,
             ai_update_plan_text,
             ai_update_instruction,
-            ai_convert_instruction_alert
+            ai_convert_instruction_alert,
+            autoexec_get_config,
+            autoexec_start,
+            autoexec_stop,
+            autoexec_set_config,
+            laya_health,
+            list_decision_logs,
+            ai::evolution::evolution_run_labeling,
+            ai::evolution::evolution_list_labels,
+            ai::evolution::evolution_stats,
+            ai::evolution::evolution_data_check,
+            ai::bridge::signal_list,
+            ai::bridge::signal_confirm,
+            ai::bridge::signal_reject,
+            ai::bridge::signal_done,
+            ai::bridge::signal_expire,
+            ai::bridge::signal_create_manual,
+            ai::bridge::signal_launch_broker,
+            ai::bridge::signal_preview_order,
+            broker::broker_get_status,
+            broker::broker_get_config,
+            broker::broker_set_config,
+            broker::broker_enable_live,
+            broker::broker_connect,
+            broker::broker_disconnect,
+            broker::broker_submit,
+            broker::broker_cancel,
+            broker::broker_list_orders,
+            broker::broker_query_asset,
+            broker::broker_query_position,
+            broker::broker_kill_switch,
+            broker::broker_release_kill,
+            broker::mock_seed_position,
+            broker::mock_reset,
+            plugin::plugin_list,
+            plugin::plugin_scan,
+            plugin::plugin_install,
+            plugin::plugin_enable,
+            plugin::plugin_disable,
+            plugin::plugin_uninstall,
+            plugin::plugin_rpc,
+            plugin::plugin_read_asset,
+            plugin::plugin_get_dev_mode,
+            plugin::plugin_set_dev_mode,
+            plugin::plugin_reload
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

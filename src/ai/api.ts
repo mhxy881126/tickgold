@@ -174,3 +174,301 @@ export function updateInstruction(instrId: number, field: string, value: string)
 export function convertInstructionAlert(instrId: number) {
   return invoke<string>("ai_convert_instruction_alert", { instrId });
 }
+
+// ===== v2.1 快脑 / 自动执行 / 决策日志 =====
+export interface AutoExecConfigInfo {
+  enabled: boolean;
+  brainMode: string;
+  layaUrl: string;
+  hardStopPct: number;
+  execConfidence: number;
+  watchConfidence: number;
+  slippagePct: number;
+  maxSinglePct: number;
+  maxTotalPct: number;
+  noOpenAfter: string;
+  bridgeEnabled: boolean;
+  bridgeDefaultBroker: string;
+  bridgeBrokerPath: string;
+  bridgeDefaultAction: string;
+  bridgeTtlMinutes: number;
+  bridgePriceDeviatePct: number;
+  bridgeOrderTemplate: string;
+}
+
+export interface DecisionLogInfo {
+  id: number;
+  tradeDate: string;
+  ts: string;
+  code: string;
+  name: string;
+  strategy: string;
+  instrId: number | null;
+  label: string;
+  confidence: number;
+  probs: Record<string, number>;
+  features: Record<string, unknown>;
+  mode: string;
+  action: string;
+  modelVersion: string;
+  inferMs: number;
+  createdAt: number;
+}
+
+export function autoexecGetConfig() {
+  return invoke<AutoExecConfigInfo>("autoexec_get_config");
+}
+
+export function autoexecStart(cfg: AutoExecConfigInfo) {
+  return invoke<void>("autoexec_start", { cfg });
+}
+
+export function autoexecStop() {
+  return invoke<void>("autoexec_stop");
+}
+
+export function autoexecSetConfig(cfg: AutoExecConfigInfo) {
+  return invoke<void>("autoexec_set_config", { cfg });
+}
+
+export function layaHealth(url: string) {
+  return invoke<number>("laya_health", { url });
+}
+
+export function listDecisionLogs(date?: string | null, limit?: number) {
+  return invoke<DecisionLogInfo[]>("list_decision_logs", {
+    date: date ?? null,
+    limit: limit ?? null,
+  });
+}
+
+// ===== v2.2 回灌进化 =====
+export interface EvolutionConfigInfo {
+  stopPct: number;
+  targetPct: number;
+  horizon: number;
+  includeWatch: boolean;
+}
+
+export interface LabelRunResult {
+  total: number;
+  labeled: number;
+  insufficient: number;
+  codes: number;
+  stopPct: number;
+  targetPct: number;
+  horizon: number;
+  ranAt: number;
+}
+
+export interface TradeLabelInfo {
+  id: number;
+  decisionId: number;
+  tradeDate: string;
+  code: string;
+  name: string;
+  decisionLabel: string;
+  modelVersion: string;
+  strategy: string;
+  entryPrice: number;
+  ret1d: number | null;
+  ret2d: number | null;
+  ret3d: number | null;
+  ret5d: number | null;
+  maxGain: number;
+  maxPain: number;
+  hitStop: boolean;
+  hitTarget: boolean;
+  horizonDays: number;
+  verdict: string;
+  missType: string;
+  checkedAt: number;
+  confidence: number;
+  ts: string;
+  action: string;
+}
+
+export interface EvolutionGroupInfo {
+  modelVersion: string;
+  strategy: string;
+  samples: number;
+  good: number;
+  bad: number;
+  neutral: number;
+  winRate: number;
+  avgWin: number;
+  avgLoss: number;
+  profitFactor: number | null;
+  expectancy: number;
+  avgRet: number;
+  hitStop: number;
+  hitTarget: number;
+  falsePositive: number;
+  sellTooEarly: number;
+}
+
+export interface EvolutionStatsInfo {
+  groups: EvolutionGroupInfo[];
+  totalLabels: number;
+  generatedAt: number;
+  note: string;
+}
+
+export interface EvolutionDataCheckInfo {
+  totalDecisions: number;
+  totalLabels: number;
+  missingLabelStale: number;
+  horizonZero: number;
+  orphanLabels: number;
+  missingModelRegistry: number;
+  issues: number;
+  cleanup: boolean;
+  keepDays: number;
+  deletedOrphan: number;
+  deletedOldLabels: number;
+  deletedOldDecisions: number;
+  checkedAt: number;
+}
+
+export function evolutionRunLabeling(config?: EvolutionConfigInfo | null, force = false) {
+  return invoke<LabelRunResult>("evolution_run_labeling", {
+    config: config ?? null,
+    force,
+  });
+}
+
+export function evolutionListLabels(verdict?: string | null, limit?: number) {
+  return invoke<TradeLabelInfo[]>("evolution_list_labels", {
+    verdict: verdict ?? null,
+    limit: limit ?? null,
+  });
+}
+
+export function evolutionStats() {
+  return invoke<EvolutionStatsInfo>("evolution_stats");
+}
+
+export function evolutionDataCheck(cleanup = false, keepDays?: number) {
+  return invoke<EvolutionDataCheckInfo>("evolution_data_check", {
+    cleanup,
+    keepDays: keepDays ?? null,
+  });
+}
+
+// ===== v2.3 信号人工确认桥 =====
+export interface SignalTicketInfo {
+  id: number;
+  sigId: string;
+  tradeDate: string;
+  createdAt: number;
+  code: string;
+  name: string;
+  side: string;
+  source: string;
+  modelVersion: string;
+  strategy: string;
+  confidence: number;
+  refPrice: number;
+  price: number;
+  vol: number;
+  amount: number;
+  reason: string;
+  status: string;
+  actionKind: string;
+  broker: string;
+  orderText: string;
+  decidedBy: string;
+  decidedAt: number;
+}
+
+export interface SignalConfirmResult {
+  id: number;
+  sigId: string;
+  orderText: string;
+  price: number;
+  vol: number;
+  amount: number;
+  actionKind: string;
+  broker: string;
+}
+
+export function signalList(status?: string | null, limit?: number) {
+  return invoke<SignalTicketInfo[]>("signal_list", {
+    status: status ?? null,
+    limit: limit ?? null,
+  });
+}
+
+export function signalConfirm(
+  id: number,
+  opts: {
+    price?: number | null;
+    vol?: number | null;
+    actionKind?: string | null;
+    broker?: string | null;
+    orderTemplate?: string | null;
+  },
+) {
+  return invoke<SignalConfirmResult>("signal_confirm", {
+    id,
+    price: opts.price ?? null,
+    vol: opts.vol ?? null,
+    actionKind: opts.actionKind ?? null,
+    broker: opts.broker ?? null,
+    orderTemplate: opts.orderTemplate ?? null,
+  });
+}
+
+export function signalReject(id: number, reason?: string) {
+  return invoke<void>("signal_reject", { id, reason: reason ?? null });
+}
+
+export function signalDone(id: number) {
+  return invoke<void>("signal_done", { id });
+}
+
+export function signalExpire(ttlMinutes?: number) {
+  return invoke<number>("signal_expire", { ttlMinutes: ttlMinutes ?? null });
+}
+
+export function signalCreateManual(
+  code: string,
+  name: string,
+  side: string,
+  price?: number,
+  vol?: number,
+  reason?: string,
+) {
+  return invoke<string>("signal_create_manual", {
+    code,
+    name,
+    side,
+    price: price ?? null,
+    vol: vol ?? null,
+    reason: reason ?? null,
+  });
+}
+
+export function signalLaunchBroker(path: string) {
+  return invoke<void>("signal_launch_broker", { path });
+}
+
+export function signalPreviewOrder(
+  side: string,
+  code: string,
+  name: string,
+  price: number,
+  vol: number,
+  broker?: string,
+  template?: string,
+) {
+  return invoke<string>("signal_preview_order", {
+    side,
+    code,
+    name,
+    price,
+    vol,
+    broker: broker ?? null,
+    template: template ?? null,
+  });
+}

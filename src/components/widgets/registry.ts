@@ -1,4 +1,7 @@
 // 微件注册表：id → WidgetDef。卡内编排的托盘与渲染都从这里取定义。
+// v2.6：内置微件为编译期静态数组；插件微件在运行时经 addWidgetDef 动态注册、
+// removeWidgetDef 注销（停用/卸载）。MAP 用 reactive 包裹，托盘列表自动更新。
+import { reactive } from "vue";
 import type { WidgetDef } from "../../lib/widgets";
 import QuoteHead from "./QuoteHead.vue";
 import MinuteChart from "./MinuteChart.vue";
@@ -34,10 +37,29 @@ export const WIDGET_DEFS: WidgetDef[] = [
   },
 ];
 
-const MAP = new Map<string, WidgetDef>(WIDGET_DEFS.map((d) => [d.id, d]));
+const MAP: Map<string, WidgetDef> = reactive(
+  new Map(WIDGET_DEFS.map((d) => [d.id, d] as [string, WidgetDef])),
+);
+const BUILTIN_IDS = new Set(WIDGET_DEFS.map((d) => d.id));
 
 export function widgetDefOf(id: string): WidgetDef | undefined {
   return MAP.get(id);
+}
+
+/** 托盘用：当前全部可用微件（内置 + 已注册插件）。 */
+export function listWidgetDefs(): WidgetDef[] {
+  return Array.from(MAP.values());
+}
+
+/** 注册一个（插件）微件定义；同 id 覆盖（热重载场景）。 */
+export function addWidgetDef(def: WidgetDef): void {
+  MAP.set(def.id, def);
+}
+
+/** 注销插件微件；内置微件不可删。 */
+export function removeWidgetDef(id: string): void {
+  if (BUILTIN_IDS.has(id)) return;
+  MAP.delete(id);
 }
 
 export function hasSingleton(items: { def: string }[], defId: string): boolean {

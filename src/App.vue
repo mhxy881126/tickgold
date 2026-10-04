@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, provide, watch, nextTick } from "vue";
 import { listen } from "@tauri-apps/api/event";
+import { initPluginSystem } from "./plugin/register";
 import CardShell from "./components/CardShell.vue";
 import CardContextMenu from "./components/CardContextMenu.vue";
 import CardContent from "./components/CardContent.vue";
@@ -354,6 +355,9 @@ onMounted(async () => {
   // —— 卡片皮肤（内置 seed / 恢复 app_skin），需在布局恢复前 ——
   try { await skins.load(); } catch (e) { console.error("[app] skins", e); }
 
+  // —— 插件生态：扫描并注册已启用插件微件（必须在布局恢复前）——
+  try { await initPluginSystem(); } catch (e) { console.error("[app] plugins", e); }
+
   // —— 布局恢复（容错）——
   try {
     const restored = await bench.restoreCurrent();
@@ -385,6 +389,12 @@ onMounted(async () => {
         const c = e.payload;
         if (!wl.codes.includes(c)) wl.add(c);
         pickStock(c);
+      }),
+      await listen<string>("island:open-card", (e) => {
+        bench.open(e.payload as CardId);
+      }),
+      await listen("bridge:focus", () => {
+        if (!bench.isOpen("signalbridge")) bench.open("signalbridge");
       })
     );
     // 预警触发：写历史 + 系统通知 + 声音 + 记录触发时间

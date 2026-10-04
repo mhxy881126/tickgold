@@ -3,6 +3,12 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { usePaperStore } from "../stores/paper";
 import { fetchQuotes } from "../api/market";
 import type { Quote } from "../api/types";
+import {
+  autoexecGetConfig,
+  autoexecStart,
+  autoexecStop,
+  type AutoExecConfigInfo,
+} from "../ai/api";
 
 const props = defineProps<{ code: string | null }>();
 const paper = usePaperStore();
@@ -15,6 +21,33 @@ const subTab = ref<"positions" | "orders">("positions");
 const msg = ref("");
 const busy = ref(false);
 let qtimer: number | null = null;
+
+// 快脑自动执行控制
+const aiCfg = ref<AutoExecConfigInfo | null>(null);
+const aiBusy = ref(false);
+async function loadAiCfg() {
+  aiCfg.value = await autoexecGetConfig();
+}
+async function toggleAi() {
+  if (!aiCfg.value) return;
+  aiBusy.value = true;
+  try {
+    if (aiCfg.value.enabled) await autoexecStop();
+    else await autoexecStart({ ...aiCfg.value, enabled: true });
+    await loadAiCfg();
+  } finally {
+    aiBusy.value = false;
+  }
+}
+async function emergencyStop() {
+  aiBusy.value = true;
+  try {
+    await autoexecStop();
+    await loadAiCfg();
+  } finally {
+    aiBusy.value = false;
+  }
+}
 
 watch(() => props.code, (c) => { if (c) tradeCode.value = c; });
 watch(tradeCode, () => { loadOrderQuote(); });
@@ -120,6 +153,7 @@ function cls(v: number): string { return v > 1e-6 ? "up" : v < -1e-6 ? "down" : 
 onMounted(async () => {
   await paper.load();
   await loadOrderQuote();
+  await loadAiCfg();
   qtimer = window.setInterval(loadOrderQuote, 3000);
 });
 onBeforeUnmount(() => {
@@ -142,6 +176,18 @@ onBeforeUnmount(() => {
           {{ money(paper.totalPnl) }} <span class="pct">{{ paper.pnlPct.toFixed(2) }}%</span>
         </div></div>
       <button class="reset" @click="resetAccount">重置</button>
+    </div>
+
+    <!-- 快脑自动执行 -->
+    <div class="ai-ctl" :class="{ on: aiCfg?.enabled }">
+      <span class="ai-dot" />
+      <span class="ai-title">快脑自动执行</span>
+      <span class="ai-mode">{{ aiCfg?.brainMode === "laya" ? "Laya 模型" : "规则脑" }}</span>
+      <span class="ai-hint">信号 → 风控 → 执行 → 记录 全自动（参数见 设置·快脑控制台）</span>
+      <button class="ai-toggle" :disabled="aiBusy" @click="toggleAi">
+        {{ aiCfg?.enabled ? "停用" : "启用" }}
+      </button>
+      <button class="ai-stop" :disabled="aiBusy" @click="emergencyStop">急停</button>
     </div>
 
     <!-- 下单面板 -->
@@ -240,7 +286,10 @@ onBeforeUnmount(() => {
             <tr v-for="o in paper.orders" :key="o.id">
               <td class="t">{{ fmtTime(o.createdAt) }}</td>
               <td class="l-name"><span class="p-code">{{ o.code }}</span> {{ o.name }}</td>
-              <td :class="o.side === 'buy' ? 'up' : 'down'">{{ o.side === "buy" ? "买入" : "卖出" }}</td>
+              <td :class="o.side === 'buy' ? 'up' : 'down'">
+                {{ o.side === "buy" ? "买入" : "卖出" }}
+                <span v-if="o.id.startsWith('AI')" class="ai-tag">快脑</span>
+              </td>
               <td>{{ o.price.toFixed(2) }}</td>
               <td>{{ o.vol }}</td>
               <td>{{ money(o.amount) }}</td>
@@ -330,4 +379,25 @@ tr.cur { background: #16233a; }
 .no-data { text-align: center !important; color: var(--text-dim); padding: 22px 0; }
 
 .up { color: #f23645; } .down { color: #0ecb81; }
+
+/* 快脑控制条 */
+.ai-ctl { display: flex; align-items: center; gap: 9px; background: var(--bg-panel);
+  border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; flex-shrink: 0; font-size: 11px; }
+.ai-ctl.on { border-color: var(--accent); }
+.ai-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); flex: none; }
+.ai-ctl.on .ai-dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.ai-title { font-weight: 700; color: var(--text); }
+.ai-mode { color: var(--accent); border: 1px solid var(--border); border-radius: 5px;
+  padding: 1px 7px; font-size: 10px; }
+.ai-hint { flex: 1; color: var(--text-dim); font-size: 10.5px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.ai-toggle { padding: 4px 14px; font-size: 11px; border-radius: 6px; cursor: pointer;
+  background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+.ai-toggle:hover { background: var(--accent); color: #11151c; }
+.ai-stop { padding: 4px 12px; font-size: 11px; border-radius: 6px; cursor: pointer;
+  background: transparent; color: #f23645; border: 1px solid #f23645; }
+.ai-stop:hover { background: #f23645; color: #fff; }
+.ai-toggle:disabled, .ai-stop:disabled { opacity: .5; cursor: default; }
+.ai-tag { display: inline-block; margin-left: 4px; font-size: 9px; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 4px; padding: 0 4px; vertical-align: middle; }
 </style>

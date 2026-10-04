@@ -16,6 +16,8 @@ card_check_tmp.mjs
 
 # 工具本地状态（src-tauri 下）
 src-tauri/.omc/
+# 本机 cargo 配置（target-dir 重定向等，含本机绝对路径，不随仓库分发）
+src-tauri/.cargo/
 
 # Playwright E2E 产物
 /test-results/
