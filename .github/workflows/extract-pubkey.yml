@@ -14,7 +14,7 @@ jobs:
         run: |
           set -e
           printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" > /tmp/key.key
-          sudo apt-get install -y minisign >/dev/null
+          sudo apt-get install -y minisign expect >/dev/null
           echo "=== EXTRACTED PUBLIC KEY ==="
           PW="$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" expect <<'EOF'
           set timeout 20
