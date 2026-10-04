@@ -14,6 +14,14 @@ import {
   type SignalTicketInfo,
 } from "../ai/api";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import {
+  brokerSubmit,
+  brokerConnect,
+  brokerGetStatus,
+  brokerListOrders,
+  brokerCancel,
+  type BrokerOrderInfo,
+} from "../broker/api";
 
 const TABS = [
   { k: "pending", t: "待确认" },
@@ -195,6 +203,70 @@ function selectAll(e: FocusEvent) {
   (e.target as HTMLTextAreaElement | null)?.select();
 }
 
+// ===== 券商实盘发送 / 委托回报（v2.6）=====
+const orders = ref<Record<string, BrokerOrderInfo>>({});
+const bConnected = ref(false);
+const bKind = ref("mock");
+const bLive = ref(false);
+async function loadOrders() {
+  try {
+    const list = await brokerListOrders(null);
+    const m: Record<string, BrokerOrderInfo> = {};
+    for (const o of list) m[o.sigId] = o;
+    orders.value = m;
+    const st = await brokerGetStatus();
+    bConnected.value = st.connected;
+    bKind.value = st.kind;
+    bLive.value = st.liveEnabled;
+  } catch {
+    /* 忽略：未初始化时不阻断 */
+  }
+}
+function bkText(s: string): string {
+  return (
+    {
+      submitting: "报单中",
+      submitted: "已报",
+      part_filled: "部分成交",
+      filled: "全部成交",
+      cancelled: "已撤单",
+      error: "错误",
+      rejected: "拒单",
+    } as Record<string, string>
+  )[s] || s;
+}
+async function onBrokerSend(t: SignalTicketInfo) {
+  busy.value = t.id;
+  try {
+    if (!bConnected.value) {
+      await brokerConnect();
+      bConnected.value = true;
+    }
+    if (bLive.value) {
+      const ok = window.confirm(`实盘已开启，确认向券商提交真实委托 ${t.code} ${t.vol} 股？`);
+      if (!ok) return;
+    }
+    await brokerSubmit(t.sigId);
+    flash(bLive.value ? "实盘委托已提交" : "模拟委托已提交");
+    await loadOrders();
+  } catch (e) {
+    flash(String(e));
+  } finally {
+    busy.value = null;
+  }
+}
+async function onBrokerCancel(t: SignalTicketInfo) {
+  busy.value = t.id;
+  try {
+    await brokerCancel(t.sigId);
+    await loadOrders();
+  } catch (e) {
+    flash(String(e));
+  } finally {
+    busy.value = null;
+  }
+}
+
 // ===== 券商唤起 =====
 const brokerPath = ref("");
 const orderTpl = ref("");
@@ -269,7 +341,8 @@ const unlisteners: UnlistenFn[] = [];
 onMounted(() => {
   void load();
   void loadBrokerPath();
-  timer = setInterval(() => void load(), 10000);
+  void loadOrders();
+  timer = setInterval(() => { void load(); void loadOrders(); }, 10000);
   window.addEventListener("keydown", onCardKey);
   // 事件驱动即时刷新：状态变更（确认/驳回/完成）或新信号到达立即重拉，
   // 不必等待 10s 轮询，避免卡片计数与 DB 短暂不一致。
@@ -466,6 +539,32 @@ onUnmounted(() => {
             />
             <button class="act" @click="onLaunch">唤起券商</button>
           </div>
+
+          <!-- v2.6 券商委托回报 / 程序化发送 -->
+          <div v-if="orders[t.sigId]" class="bk-box" :class="`bk-st-${orders[t.sigId].status}`">
+            <div class="bk-line">
+              <span class="bk-state">{{ bkText(orders[t.sigId].status) }}</span>
+              <span class="bk-fill">成交 {{ orders[t.sigId].filledVol }}/{{ t.vol }}</span>
+              <span v-if="orders[t.sigId].filledAvgPrice > 0" class="bk-fill">均价 {{ orders[t.sigId].filledAvgPrice.toFixed(2) }}</span>
+              <span v-if="orders[t.sigId].brokerOrderId" class="bk-fill">委托号 {{ orders[t.sigId].brokerOrderId }}</span>
+            </div>
+            <div v-if="orders[t.sigId].errorMsg" class="bk-err">{{ orders[t.sigId].errorMsg }}</div>
+            <button
+              v-if="['submitting', 'submitted', 'part_filled'].includes(orders[t.sigId].status)"
+              class="act ghost"
+              :disabled="busy === t.id"
+              @click="onBrokerCancel(t)"
+            >撤单</button>
+          </div>
+          <div v-else class="sig-actions">
+            <button
+              class="act"
+              :class="{ primary: !bLive, dangerlive: bLive }"
+              :disabled="busy === t.id"
+              @click="onBrokerSend(t)"
+            >{{ busy === t.id ? "处理中…" : bLive ? "实盘发送" : bKind === "qmt" ? "QMT 发送" : "模拟发送" }}</button>
+          </div>
+
           <div class="sig-actions">
             <button class="act" @click="copyText(t.orderText)">复制指令</button>
             <button class="act primary" @click="onDone(t)">我已下单 · 标记完成</button>
@@ -816,4 +915,32 @@ onUnmounted(() => {
   opacity: 0;
   transform: translateX(-50%) translateY(8px);
 }
+/* v2.6 券商委托回报 */
+.bk-box {
+  margin-top: 8px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--border, #2a3344);
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bk-line {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+.bk-state { font-weight: 800; color: #6aa6e8; }
+.bk-fill { color: var(--text-dim, #97a0b2); font-variant-numeric: tabular-nums; }
+.bk-err { color: #ff5a6a; font-size: 10px; }
+.bk-st-part_filled .bk-state { color: #ffb13d; }
+.bk-st-filled .bk-state { color: #1fbf75; }
+.bk-st-cancelled .bk-state { color: #8a93a6; }
+.bk-st-error .bk-state,
+.bk-st-rejected .bk-state { color: #ff5a6a; }
+.act.dangerlive { background: #ff3b46; border-color: #ff3b46; color: #fff; font-weight: 700; }
+.act.ghost { background: transparent; }
 </style>

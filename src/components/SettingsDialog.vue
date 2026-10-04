@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTheme, type ThemeId } from "../composables/useTheme";
@@ -10,6 +10,32 @@ import { tsStatus } from "../composables/useTimeSeries";
 import { collectorStatus } from "../composables/useCollector";
 import { logger, type LogLevel } from "../utils/logger";
 import { isEnabled as autoStartEnabled, enable as enableAutoStart, disable as disableAutoStart } from "@tauri-apps/plugin-autostart";
+import {
+  brokerGetStatus,
+  brokerGetConfig,
+  brokerSetConfig,
+  brokerEnableLive,
+  brokerConnect,
+  brokerDisconnect,
+  brokerKillSwitch,
+  brokerReleaseKill,
+  mockSeedPosition,
+  mockReset,
+  type BrokerStatus,
+  type BrokerConfigFull,
+} from "../broker/api";
+import {
+  pluginList,
+  pluginScan,
+  pluginInstall,
+  pluginEnable,
+  pluginDisable,
+  pluginUninstall,
+  pluginReload,
+  pluginGetDevMode,
+  pluginSetDevMode,
+  type PluginRow,
+} from "../plugin/api";
 import {
   getAiConfig,
   saveAiConfig,
@@ -93,7 +119,7 @@ async function toggleAutoStart(v: boolean) {
 }
 void loadAutoStart();
 
-type Tab = "appearance" | "data" | "ai" | "logs" | "about";
+type Tab = "appearance" | "data" | "ai" | "broker" | "plugins" | "logs" | "about";
 const tab = ref<Tab>("appearance");
 function pick(id: ThemeId) {
   setTheme(id);
@@ -351,6 +377,217 @@ function pickTab(id: Tab) {
   tab.value = id;
   if (id === "logs") refreshLogs();
   if (id === "ai" && !aiLoaded.value) void loadAiTab();
+  if (id === "broker" && !brokerLoaded.value) void loadBrokerTab();
+  if (id === "plugins") void loadPluginsTab();
+}
+
+// ===== 券商交易（v2.6）=====
+const brokerLoaded = ref(false);
+const bStatus = ref<BrokerStatus | null>(null);
+const bForm = ref<BrokerConfigFull | null>(null);
+const bMsg = ref("");
+const seedForm = reactive({ code: "", vol: 1000, price: 10 });
+function bFlash(m: string) {
+  bMsg.value = m;
+}
+async function refreshBStatus() {
+  try {
+    bStatus.value = await brokerGetStatus();
+  } catch {
+    /* ignore */
+  }
+}
+async function loadBrokerTab() {
+  try {
+    bForm.value = await brokerGetConfig();
+    await refreshBStatus();
+    brokerLoaded.value = true;
+  } catch (e) {
+    bFlash(`加载失败：${e}`);
+  }
+}
+async function saveBroker() {
+  if (!bForm.value) return;
+  const f = bForm.value;
+  try {
+    await brokerSetConfig({
+      kind: f.kind,
+      pythonPath: f.pythonPath,
+      qmtPath: f.qmtPath,
+      accountId: f.accountId,
+      maxSinglePct: f.maxSinglePct,
+      maxTotalPct: f.maxTotalPct,
+      noOpenAfter: f.noOpenAfter,
+      feePct: f.feePct,
+      mockAllowAnytime: f.mockAllowAnytime,
+      mockInitCash: f.mockInitCash,
+    });
+    bFlash("配置已保存");
+  } catch (e) {
+    bFlash(`保存失败：${e}`);
+  }
+}
+async function bConnect() {
+  try {
+    bFlash(await brokerConnect());
+    await refreshBStatus();
+  } catch (e) {
+    bFlash(String(e));
+  }
+}
+async function bDisconnect() {
+  try {
+    await brokerDisconnect();
+    await refreshBStatus();
+    bFlash("已断开");
+  } catch (e) {
+    bFlash(String(e));
+  }
+}
+async function toggleLive(v: boolean) {
+  if (v) {
+    const ok = window.confirm(
+      "开启实盘后，已确认信号可能被提交为真实委托并产生真实资金变动。确认开启实盘？",
+    );
+    if (!ok) {
+      if (bForm.value) bForm.value.liveEnabled = false;
+      return;
+    }
+  }
+  try {
+    await brokerEnableLive(v);
+    await refreshBStatus();
+    bFlash(v ? "实盘已开启，请谨慎操作" : "实盘已关闭");
+  } catch (e) {
+    bFlash(String(e));
+  }
+}
+async function bKill(cancelAll: boolean) {
+  try {
+    bFlash(await brokerKillSwitch(cancelAll));
+    await refreshBStatus();
+  } catch (e) {
+    bFlash(String(e));
+  }
+}
+async function bReleaseKill() {
+  try {
+    await brokerReleaseKill();
+    await refreshBStatus();
+    bFlash("Kill Switch 已解除");
+  } catch (e) {
+    bFlash(String(e));
+  }
+}
+async function bSeed() {
+  const { code, vol, price } = seedForm;
+  if (!code.trim()) return bFlash("请填写代码");
+  try {
+    await mockSeedPosition(code.trim(), vol, price);
+    bFlash(`已注入模拟持仓 ${code} ${vol} 股`);
+  } catch (e) {
+    bFlash(String(e));
+  }
+}
+async function bMockReset() {
+  try {
+    await mockReset();
+    bFlash("模拟账户已重置");
+  } catch (e) {
+    bFlash(String(e));
+  }
+}
+
+// ===== 插件生态（v2.6）=====
+const plugins = ref<PluginRow[]>([]);
+const pMsg = ref("");
+const pMsgOk = ref(false);
+const installPath = ref("");
+const devMode = ref(false);
+
+function pFlash(m: string, ok = false) {
+  pMsg.value = m;
+  pMsgOk.value = ok;
+}
+async function loadPluginsTab() {
+  await refreshPlugins();
+  try {
+    devMode.value = await pluginGetDevMode();
+  } catch {
+    /* 忽略 */
+  }
+}
+async function refreshPlugins() {
+  try {
+    plugins.value = await pluginList();
+  } catch (e) {
+    pFlash(String(e));
+  }
+}
+async function scanPlugins() {
+  try {
+    const n = await pluginScan();
+    await refreshPlugins();
+    pFlash(`扫描完成，共登记 ${n} 个插件`, true);
+  } catch (e) {
+    pFlash(String(e));
+  }
+}
+async function doInstall() {
+  const p = installPath.value.trim();
+  if (!p) {
+    pFlash("请粘贴含 plugin.json 的插件文件夹路径");
+    return;
+  }
+  try {
+    const id = await pluginInstall(p);
+    installPath.value = "";
+    await refreshPlugins();
+    pFlash(`已安装插件：${id}`, true);
+  } catch (e) {
+    pFlash(String(e));
+  }
+}
+async function togglePlugin(r: PluginRow) {
+  try {
+    if (r.enabled) {
+      await pluginDisable(r.pluginId);
+      pFlash(`已停用 ${r.name}`, true);
+    } else {
+      await pluginEnable(r.pluginId);
+      pFlash(`已启用 ${r.name}`, true);
+    }
+  } catch (e) {
+    pFlash(String(e));
+  }
+  await refreshPlugins();
+}
+async function removePlugin(r: PluginRow) {
+  try {
+    await pluginUninstall(r.pluginId);
+    pFlash(`已卸载 ${r.name}`, true);
+  } catch (e) {
+    pFlash(String(e));
+  }
+  await refreshPlugins();
+}
+async function reloadPlugin(r: PluginRow) {
+  try {
+    await pluginReload(r.pluginId);
+    pFlash(`已热重载 ${r.name}`, true);
+  } catch (e) {
+    pFlash(String(e));
+  }
+  await refreshPlugins();
+}
+async function toggleDev() {
+  try {
+    await pluginSetDevMode(!devMode.value);
+    devMode.value = await pluginGetDevMode();
+    pFlash(devMode.value ? "开发者模式已开启" : "开发者模式已关闭", true);
+  } catch (e) {
+    pFlash(String(e));
+  }
 }
 </script>
 
@@ -382,6 +619,14 @@ function pickTab(id: Tab) {
             <button class="nav-item" :class="{ on: tab === 'ai' }" @click="pickTab('ai')">
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2zM9 21h6M10 17v4M14 17v4" /></svg>
               AI 模型
+            </button>
+            <button class="nav-item" :class="{ on: tab === 'broker' }" @click="pickTab('broker')">
+              <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M3 6l9-3 9 3v12l-9 3-9-3V6zm9 1.5L6 9.5v5l6 2 6-2v-5l-6-2zM7 15h2v2H7v-2zm8 0h2v2h-2v-2z" /></svg>
+              券商交易
+            </button>
+            <button class="nav-item" :class="{ on: tab === 'plugins' }" @click="pickTab('plugins')">
+              <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M10 3h4v5h5v4h-5v4h-4v-4H5V8h5V3zM4 18h16v2H4v-2z" /></svg>
+              插件生态
             </button>
             <button class="nav-item" :class="{ on: tab === 'logs' }" @click="pickTab('logs')">
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M3 13h2l2-6 3 12 3-9 2 3h6v-2h-4.6l-1.2-1.8L12 5.2 9.2 16 7.3 8.6 6.4 11H3z" /></svg>
@@ -718,6 +963,154 @@ function pickTab(id: Tab) {
               <div class="ai-tip">嵌入模型用于知识库语义检索；模型输出仅供参考，不构成投资建议。</div>
             </div>
 
+            <!-- 券商交易（v2.6）-->
+            <div v-else-if="tab === 'broker'" class="broker-tab">
+              <!-- 状态行 -->
+              <div class="bk-statusbar">
+                <span class="bk-chip" :class="{ on: bStatus?.connected }">
+                  {{ bStatus?.connected ? "已连接" : "未连接" }} · {{ bStatus?.kind }}
+                </span>
+                <span v-if="bStatus?.killSwitch" class="bk-chip kill">Kill Switch 已触发</span>
+                <button type="button" class="logs-btn" @click="refreshBStatus">刷新状态</button>
+              </div>
+
+              <!-- 紧急停止 -->
+              <div class="section-title" style="margin-top:16px">紧急停止 Kill Switch</div>
+              <div class="section-sub">立即断开券商通道，任何模型或流程不得拦截</div>
+              <div class="bk-actions">
+                <button type="button" class="logs-btn danger" @click="bKill(false)">紧急停止（断开）</button>
+                <button type="button" class="logs-btn danger" @click="bKill(true)">紧急停止 + 全撤</button>
+                <button v-if="bStatus?.killSwitch" type="button" class="logs-btn" @click="bReleaseKill">解除 Kill Switch</button>
+              </div>
+
+              <!-- 适配器 -->
+              <div class="section-title" style="margin-top:20px">券商适配器</div>
+              <div class="section-sub">默认「模拟」，无需券商环境即可离线联调；QMT 需本机 miniQMT 极简登录 + xtquant</div>
+              <div v-if="bForm" class="bk-actions">
+                <label class="bk-radio"><input v-model="bForm.kind" type="radio" value="mock" /> 模拟（默认）</label>
+                <label class="bk-radio"><input v-model="bForm.kind" type="radio" value="qmt" /> QMT / xtquant</label>
+              </div>
+              <div class="bk-actions">
+                <button type="button" class="logs-btn primary" @click="bConnect">连接</button>
+                <button type="button" class="logs-btn" @click="bDisconnect">断开</button>
+              </div>
+
+              <!-- QMT 环境 -->
+              <template v-if="bForm && bForm.kind === 'qmt'">
+                <div class="section-title" style="margin-top:18px">QMT 环境</div>
+                <div class="bridge-grid">
+                  <label class="ai-field"><span>Python 路径</span>
+                    <input v-model="bForm.pythonPath" type="text" spellcheck="false" placeholder="python.exe（已装 xtquant）" /></label>
+                  <label class="ai-field"><span>userdata_mini 路径</span>
+                    <input v-model="bForm.qmtPath" type="text" spellcheck="false" placeholder="miniQMT userdata_mini" /></label>
+                </div>
+                <div class="bridge-grid">
+                  <label class="ai-field"><span>资金账号</span>
+                    <input v-model="bForm.accountId" type="text" spellcheck="false" placeholder="资金账号" /></label>
+                </div>
+              </template>
+
+              <!-- 实盘开关 -->
+              <div class="section-title" style="margin-top:20px">实盘交易</div>
+              <div class="section-sub">默认关闭；开启后已确认信号可能提交真实委托</div>
+              <div v-if="bForm" class="bk-actions">
+                <button type="button" class="switch" :class="{ on: bForm.liveEnabled }" @click="toggleLive(!bForm.liveEnabled)">
+                  <span class="knob"></span>
+                </button>
+                <span :class="{ 'bk-live-on': bForm.liveEnabled }">
+                  {{ bForm.liveEnabled ? "实盘已开启" : "实盘关闭（模拟）" }}
+                </span>
+              </div>
+
+              <!-- 风控参数 -->
+              <div class="section-title" style="margin-top:20px">风控参数</div>
+              <div v-if="bForm" class="bridge-grid">
+                <label class="ai-field"><span>单票上限%：{{ bForm.maxSinglePct }}</span>
+                  <input v-model.number="bForm.maxSinglePct" type="range" min="5" max="100" step="1" /></label>
+                <label class="ai-field"><span>总仓位上限%：{{ bForm.maxTotalPct }}</span>
+                  <input v-model.number="bForm.maxTotalPct" type="range" min="10" max="100" step="5" /></label>
+              </div>
+              <div v-if="bForm" class="bridge-grid">
+                <label class="ai-field"><span>禁止开仓时间</span>
+                  <input v-model="bForm.noOpenAfter" type="text" spellcheck="false" placeholder="14:55" /></label>
+                <label class="ai-field"><span>预留费用%：{{ bForm.feePct }}</span>
+                  <input v-model.number="bForm.feePct" type="range" min="0" max="1" step="0.01" /></label>
+              </div>
+
+              <!-- 模拟工具 -->
+              <div class="section-title" style="margin-top:20px">模拟工具</div>
+              <div class="section-sub">注入"昨日持仓"以联调卖出 / 止损；重置清空模拟账户</div>
+              <div class="bridge-grid">
+                <label class="ai-field"><span>代码</span>
+                  <input v-model="seedForm.code" type="text" spellcheck="false" placeholder="600519" /></label>
+                <label class="ai-field"><span>数量</span>
+                  <input v-model.number="seedForm.vol" type="number" step="100" /></label>
+                <label class="ai-field"><span>成本价</span>
+                  <input v-model.number="seedForm.price" type="number" step="0.01" /></label>
+              </div>
+              <div v-if="bForm" class="bk-actions">
+                <button type="button" class="logs-btn" @click="bSeed">注入模拟持仓</button>
+                <label class="ai-field" style="margin-left:12px"><span>初始资金</span>
+                  <input v-model.number="bForm.mockInitCash" type="number" step="10000" /></label>
+                <button type="button" class="logs-btn" @click="bMockReset">重置模拟账户</button>
+              </div>
+              <div v-if="bForm" class="bk-actions" style="margin-top:14px">
+                <label class="ai-field">
+                  <input v-model="bForm.mockAllowAnytime" type="checkbox" />
+                  模拟允许任意时间（休市 / 周末可联调）
+                </label>
+              </div>
+
+              <div class="bk-actions" style="margin-top:16px">
+                <button type="button" class="logs-btn primary" @click="saveBroker">保存配置</button>
+                <span v-if="bMsg" class="ai-msg" :class="{ ok: bMsg.includes('已保存') }">{{ bMsg }}</span>
+              </div>
+            </div>
+
+            <div v-else-if="tab === 'plugins'" class="plugin-tab">
+              <div class="section-title">插件生态 <span class="p-beta">beta</span></div>
+              <div class="section-sub">卡片微件 / 自定义指标 / 自定义数据源。逻辑在受限 QuickJS 沙箱运行、UI 在隔离 frame 渲染；插件不能访问券商交易能力。</div>
+
+              <div class="p-toolbar">
+                <button type="button" class="logs-btn" @click="scanPlugins">扫描插件目录</button>
+                <label class="p-dev"><input type="checkbox" :checked="devMode" @change="toggleDev" /> 开发者模式（允许运行未签名的本地插件）</label>
+              </div>
+
+              <div class="section-title" style="margin-top:16px">本地安装</div>
+              <div class="p-install">
+                <input v-model="installPath" type="text" spellcheck="false" placeholder="粘贴插件文件夹完整路径（文件夹内含 plugin.json）" />
+                <button type="button" class="logs-btn primary" @click="doInstall">安装</button>
+              </div>
+
+              <div class="section-title" style="margin-top:18px">已登记插件</div>
+              <div class="p-list">
+                <div v-for="r in plugins" :key="r.pluginId" class="p-item">
+                  <div class="p-rowhead">
+                    <div class="p-name">
+                      <span class="p-nm">{{ r.name || r.pluginId }}</span>
+                      <span v-if="r.builtin" class="p-tag builtin">内置</span>
+                      <span v-if="r.signed" class="p-tag signed">已签名</span>
+                      <span v-else class="p-tag unsig">未签名</span>
+                      <span class="p-version">v{{ r.version }}</span>
+                    </div>
+                    <div class="p-ops">
+                      <button type="button" class="p-op" @click="togglePlugin(r)">{{ r.enabled ? "停用" : "启用" }}</button>
+                      <button v-if="devMode && r.enabled" type="button" class="p-op" @click="reloadPlugin(r)">热重载</button>
+                      <button v-if="!r.builtin" type="button" class="p-op danger" @click="removePlugin(r)">卸载</button>
+                    </div>
+                  </div>
+                  <div class="p-meta">
+                    <span class="p-status" :class="{ bad: r.status === 'error' }">{{ r.status }}</span>
+                    <span class="p-scopes"><span v-for="s in r.permissions" :key="s" class="p-scope">{{ s }}</span></span>
+                  </div>
+                  <div v-if="r.errorMsg" class="p-err">{{ r.errorMsg }}</div>
+                </div>
+                <div v-if="!plugins.length" class="p-empty">暂无插件，点击「扫描插件目录」发现内置插件</div>
+              </div>
+
+              <div v-if="pMsg" class="ai-msg" :class="{ ok: pMsgOk }" style="margin-top:12px">{{ pMsg }}</div>
+            </div>
+
             <!-- 诊断日志 -->
             <div v-else-if="tab === 'logs'" class="logs-panel">
               <div class="logs-bar">
@@ -1011,4 +1404,50 @@ function pickTab(id: Tab) {
 .fb-health { font-size: 11px; color: var(--text-dim); margin-top: 5px; }
 .fb-params { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
 .fb-divider { height: 1px; background: var(--border); margin: 18px 0 20px; }
+/* 插件生态（v2.6） */
+.plugin-tab { padding-bottom: 8px; }
+.p-beta { font-size: 9px; font-weight: 700; color: var(--accent-2); border: 1px solid var(--accent-2);
+  border-radius: 4px; padding: 0 4px; vertical-align: middle; margin-left: 5px; }
+.p-toolbar { display: flex; align-items: center; gap: 14px; margin-top: 12px; flex-wrap: wrap; }
+.p-dev { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--text-dim); cursor: pointer; }
+.p-install { display: flex; gap: 8px; margin-top: 8px; }
+.p-install input { flex: 1; height: 28px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px;
+  background: rgba(255, 255, 255, .03); color: var(--text); font-size: 10.5px; min-width: 0; }
+.p-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.p-item { border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; background: rgba(255, 255, 255, .02); }
+.p-rowhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.p-name { display: flex; align-items: center; gap: 7px; min-width: 0; flex-wrap: wrap; }
+.p-nm { font-size: 12px; font-weight: 700; }
+.p-version { font-size: 9.5px; color: var(--text-dim); }
+.p-tag { font-size: 8.5px; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-dim); }
+.p-tag.builtin { color: var(--accent-2); border-color: var(--accent-2); }
+.p-tag.signed { color: #08db94; border-color: #08db94; }
+.p-tag.unsig { color: #e8a33d; border-color: #e8a33d; }
+.p-ops { display: flex; gap: 5px; flex-shrink: 0; }
+.p-op { height: 22px; padding: 0 9px; font-size: 10px; border: 1px solid var(--border); border-radius: 5px;
+  background: transparent; color: var(--text); cursor: pointer; }
+.p-op:hover { border-color: var(--accent-2); color: var(--accent-2); }
+.p-op.danger:hover { border-color: #f23645; color: #f23645; }
+.p-meta { display: flex; align-items: center; gap: 8px; margin-top: 7px; flex-wrap: wrap; }
+.p-status { font-size: 9.5px; color: var(--text-dim); text-transform: uppercase; }
+.p-status.bad { color: #f23645; }
+.p-scopes { display: flex; gap: 4px; flex-wrap: wrap; }
+.p-scope { font-size: 8.5px; color: var(--text-dim); background: rgba(255, 255, 255, .05);
+  border-radius: 4px; padding: 1px 5px; font-variant-numeric: tabular-nums; }
+.p-err { font-size: 10px; color: #f23645; margin-top: 6px; word-break: break-all; }
+.p-empty { font-size: 10.5px; color: var(--text-dim); padding: 14px 0; text-align: center; }
+
+/* 券商交易（v2.6） */
+.broker-tab { padding-bottom: 8px; }
+.bk-statusbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bk-chip {
+  font-size: 11px; padding: 3px 10px; border-radius: 20px;
+  border: 1px solid var(--border); color: var(--text-dim);
+}
+.bk-chip.on { color: #26d07c; border-color: #26d07c; }
+.bk-chip.kill { color: #ff5a6a; border-color: #ff5a6a; font-weight: 700; }
+.bk-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.bk-radio { font-size: 11.5px; color: var(--text-dim); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.bk-radio input { accent-color: var(--accent); }
+.bk-live-on { color: #ff5a6a; font-weight: 700; }
 </style>

@@ -55,6 +55,7 @@ import { startCollector } from "./composables/useCollector";
 import { playAlert } from "./utils/sound";
 import { DOCK_GROUPS } from "./lib/dock";
 import type { DockGroup, DockItem } from "./lib/dock";
+import { initPluginSystem } from "./plugin/register";
 
 const wl = useWatchlistStore();
 const quotes = useQuotesStore();
@@ -366,6 +367,9 @@ onMounted(async () => {
   if (wl.codes.length) {
     selected.value = wl.codes[0];
   }
+
+  // —— 插件生态：扫描内置/已装插件、动态注册微件、订阅启停事件 ——
+  try { await initPluginSystem(); } catch (e) { console.error("[app] plugins", e); }
 
   // —— 预警引擎：停用旧 Rust 引擎，启动 v0.71 TypeScript 条件树引擎 ——
   await bootstrapAlerts({

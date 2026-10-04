@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "TickGold",
-  "version": "2.4.3",
+  "version": "2.6.0",
   "identifier": "com.stockdock.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -35,6 +35,14 @@
       "icons/128x128.png",
       "icons/icon.icns"
     ],
+    "resources": {
+      "resources/broker/sidecar_qmt.py": "resources/broker/sidecar_qmt.py",
+      "resources/plugins/bias-indicator/main.js": "resources/plugins/bias-indicator/main.js",
+      "resources/plugins/bias-indicator/plugin.json": "resources/plugins/bias-indicator/plugin.json",
+      "resources/plugins/bias-indicator/ui.js": "resources/plugins/bias-indicator/ui.js",
+      "resources/plugins/quote-banner/plugin.json": "resources/plugins/quote-banner/plugin.json",
+      "resources/plugins/quote-banner/ui.js": "resources/plugins/quote-banner/ui.js"
+    },
     "macOS": {
       "minimumSystemVersion": "10.15"
     },

@@ -1,6 +1,8 @@
 mod ai;
+mod broker;
 mod logging;
 mod market;
+mod plugin;
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -1744,6 +1746,8 @@ pub fn run() {
         .manage(Arc::new(market::limitup::LimitRadar::new()))
         .manage(Arc::new(market::alert::AlertEngine::new()))
         .manage(ai::autoexec::AutoExecCtl::new())
+        .manage(broker::BrokerManager::new())
+        .manage(plugin::PluginManager::new())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcuts(["Alt+`", "Alt+S"])
@@ -1770,7 +1774,11 @@ pub fn run() {
                     Err(e) => log::error!("AI 边车库初始化失败（AI 功能不可用）: {e}"),
                 }
                 // brief 原写法 `*.inner().0.lock()...` 跨模块访问私有字段触发 E0616，改用 set_dir。
-                app.state::<ai::AiState>().inner().set_dir(dir);
+                app.state::<ai::AiState>().inner().set_dir(dir.clone());
+
+                // ===== v2.6 券商 / 插件：按数据目录加载配置、建插件目录 =====
+                app.state::<broker::BrokerManager>().inner().init_with_dir(&dir);
+                app.state::<plugin::PluginManager>().inner().init_with_dir(&dir);
             }
             // ===== 主窗口：标题栏融入工作台 =====
             if let Some(main) = app.get_webview_window("main") {
@@ -1960,7 +1968,35 @@ pub fn run() {
             ai::bridge::signal_expire,
             ai::bridge::signal_create_manual,
             ai::bridge::signal_launch_broker,
-            ai::bridge::signal_preview_order
+            ai::bridge::signal_preview_order,
+            // ===== v2.6 券商实盘对接 =====
+            broker::broker_get_status,
+            broker::broker_get_config,
+            broker::broker_set_config,
+            broker::broker_enable_live,
+            broker::broker_connect,
+            broker::broker_disconnect,
+            broker::broker_submit,
+            broker::broker_cancel,
+            broker::broker_list_orders,
+            broker::broker_query_asset,
+            broker::broker_query_position,
+            broker::broker_kill_switch,
+            broker::broker_release_kill,
+            broker::mock_seed_position,
+            broker::mock_reset,
+            // ===== v2.6 插件生态 =====
+            plugin::plugin_list,
+            plugin::plugin_scan,
+            plugin::plugin_install,
+            plugin::plugin_enable,
+            plugin::plugin_disable,
+            plugin::plugin_uninstall,
+            plugin::plugin_rpc,
+            plugin::plugin_read_asset,
+            plugin::plugin_get_dev_mode,
+            plugin::plugin_set_dev_mode,
+            plugin::plugin_reload
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

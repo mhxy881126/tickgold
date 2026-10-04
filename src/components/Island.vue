@@ -6,6 +6,8 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { fetchQuotes, type AlertEvent } from "../api/market";
 import { signalList } from "../ai/api";
 import { useWatchlistStore } from "../stores/watchlist";
+import { brokerListOrders } from "../broker/api";
+import type { BrokerOrderInfo } from "../broker/api";
 import type { Quote } from "../api/types";
 
 const wl = useWatchlistStore();
@@ -42,6 +44,24 @@ interface SignalEvent {
 }
 const signalEvents = ref<SignalEvent[]>([]);
 const signalMode = ref(true);
+
+// 活跃券商委托（报单中 / 已报 / 部分成交）
+const activeOrders = ref<BrokerOrderInfo[]>([]);
+function bkLabel(s: string): string {
+  return (
+    { submitting: "报单中", submitted: "已报", part_filled: "部分成交" } as Record<string, string>
+  )[s] || s;
+}
+async function syncOrders() {
+  try {
+    const all = await brokerListOrders(null);
+    activeOrders.value = all.filter((o) =>
+      ["submitting", "submitted", "part_filled"].includes(o.status),
+    );
+  } catch {
+    /* 忽略：未初始化不阻断 */
+  }
+}
 
 const current = computed(() => quotes.value[idx.value] ?? null);
 const latestAlert = computed(() => alertEvents.value[0] ?? null);
@@ -175,7 +195,13 @@ onMounted(async () => {
 
   // 初始 + 定时兜底：重启后恢复待确认、事件丢失时也能收敛
   await syncSignals();
-  signalSyncTimer = window.setInterval(syncSignals, 15000);
+  signalSyncTimer = window.setInterval(() => { void syncSignals(); void syncOrders(); }, 15000);
+
+  // v2.6 活跃券商委托：定时 + 事件驱动同步
+  void syncOrders();
+  await listen("broker:event", () => void syncOrders());
+  await listen("broker:sidecar", () => void syncOrders());
+  await listen("broker:kill", () => void syncOrders());
 });
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer);
@@ -244,6 +270,28 @@ onBeforeUnmount(() => {
 
     <!-- 展开态 -->
     <div v-else class="open-wrap">
+      <!-- v2.6 活跃券商委托 -->
+      <div v-if="activeOrders.length" class="broker-sec">
+        <div class="sec-head">
+          <span class="sec-title">
+            <span class="bk-dot"></span>
+            券商委托 {{ activeOrders.length }}
+          </span>
+        </div>
+        <div class="bk-list">
+          <div
+            v-for="o in activeOrders"
+            :key="o.sigId"
+            class="bk-row"
+            :class="`bk-${o.status}`"
+          >
+            <span class="bk-state">{{ bkLabel(o.status) }}</span>
+            <span class="bk-code">{{ o.code }}</span>
+            <span class="bk-fill">{{ o.filledVol }}/{{ o.vol }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- 待确认信号区（最优先） -->
       <div v-if="signalEvents.length" class="signal-sec">
         <div class="sec-head">
@@ -494,5 +542,19 @@ body,
 .sg-dot {
   width: 8px; height: 8px; border-radius: 50%; background: #ffb13d;
   box-shadow: 0 0 6px rgba(255,177,61,.8);
+}
+
+/* v2.6 活跃券商委托 */
+.broker-sec { border-bottom: 1px solid rgba(106,166,232,.2); flex-shrink: 0; }
+.bk-list { padding-bottom: 4px; }
+.bk-row { display: flex; align-items: center; gap: 8px; padding: 5px 16px; font-size: 11px; }
+.bk-row .bk-state { font-weight: 800; color: #6aa6e8; min-width: 56px; }
+.bk-row .bk-code { color: #e6ecf5; font-variant-numeric: tabular-nums; }
+.bk-row .bk-fill { color: #97a0b2; font-variant-numeric: tabular-nums; }
+.bk-submitting .bk-state { color: #97a0b2; }
+.bk-part_filled .bk-state { color: #ffb13d; }
+.bk-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: #6aa6e8; margin-right: 5px;
 }
 </style>

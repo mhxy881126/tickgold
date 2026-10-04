@@ -40,6 +40,16 @@ export function widgetDefOf(id: string): WidgetDef | undefined {
   return MAP.get(id);
 }
 
+/** 动态注册微件定义（插件系统用），同 id 覆盖。 */
+export function addWidgetDef(def: WidgetDef): void {
+  MAP.set(def.id, def);
+}
+
+/** 动态移除微件定义（插件卸载用）。 */
+export function removeWidgetDef(id: string): void {
+  MAP.delete(id);
+}
+
 export function hasSingleton(items: { def: string }[], defId: string): boolean {
   const def = MAP.get(defId);
   return !!def?.singleton && items.some((i) => i.def === defId);

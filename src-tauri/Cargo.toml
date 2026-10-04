@@ -1,6 +1,6 @@
 [package]
 name = "tickgold"
-version = "2.4.3"
+version = "2.6.0"
 description = "TickGold - 专业交易者跨平台 A 股盯盘终端"
 authors = ["tickgold"]
 edition = "2021"
@@ -38,6 +38,10 @@ tauri-plugin-autostart = "2.5.1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 keyring = "2.3"
 tokio-stream = "0.1"
+
+# ===== v2.6 插件生态：QuickJS 运行时；券商/插件资源 URL 解析 =====
+rquickjs = { version = "0.14.0", features = ["macro", "loader", "futures", "parallel"] }
+url = "2.5.8"
 
 # macOS 透明窗口（灵动岛毛玻璃）需要私有 API
 [target.'cfg(target_os = "macos")'.dependencies]
