@@ -1,0 +1,21 @@
+name: extract-pubkey
+on: workflow_dispatch
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: pnpm install --frozen-lockfile || pnpm install
+      - name: Extract public key from signing private key
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -e
+          printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" > /tmp/key.key
+          echo "=== EXTRACTED PUBLIC KEY (copy the base64 block below) ==="
+          pnpm tauri signer extract --private-key /tmp/key.key --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" --no-color
+          echo "=== END ==="
