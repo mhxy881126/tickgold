@@ -50,7 +50,9 @@
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "installMode": "currentUser",
-        "installerHooks": "./windows/hooks.nsh"
+        "installerHooks": "./windows/hooks.nsh",
+        "createDesktopShortcut": "always",
+        "createStartMenuShortcut": true
       }
     }
   },
