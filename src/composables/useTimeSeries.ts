@@ -209,6 +209,34 @@ async function refreshCounts() {
   tsStatus.indexRows = await f("SELECT COUNT(*) c FROM ts_index");
   tsStatus.sectorRows = await f("SELECT COUNT(*) c FROM ts_sector");
   tsStatus.dayRows = await f("SELECT COUNT(*) c FROM ts_day");
+
+  // 回查最近一次采集时间，避免"有数据但显示尚未采集"的误导
+  const lastTs = async (table: string, dayCol = "day") => {
+    try {
+      const rows = await db().select<{ last_ts: number | null }[]>(
+        `SELECT MAX(ts) AS last_ts FROM ${table}`
+      );
+      return rows[0]?.last_ts ?? 0;
+    } catch {
+      return 0;
+    }
+  };
+  if (!tsStatus.lastMarketTs) tsStatus.lastMarketTs = await lastTs("ts_market");
+  if (!tsStatus.lastIndexTs) tsStatus.lastIndexTs = await lastTs("ts_index");
+  if (!tsStatus.lastSectorTs) tsStatus.lastSectorTs = await lastTs("ts_sector");
+
+  // 回查今日是否已收盘归档
+  try {
+    const today = dayStr(new Date());
+    const rows = await db().select<{ c: number }[]>(
+      "SELECT COUNT(*) AS c FROM ts_day WHERE day = ?",
+      [today]
+    );
+    if ((rows[0]?.c ?? 0) > 0) {
+      tsStatus.todayDaily = true;
+      dailyDoneDay = today;
+    }
+  } catch { /* ignore */ }
 }
 
 /** 主调度：30s 一次，按时间决定动作，幂等防重复 */

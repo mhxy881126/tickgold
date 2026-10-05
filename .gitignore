@@ -37,3 +37,6 @@ src-tauri/.cargo/
 /.tmp/
 /pw.local.ts
 /tests/e2e/probe.spec.ts
+
+# 签名私钥备份（绝密，永不提交）
+/signing-backup/

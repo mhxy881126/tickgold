@@ -181,27 +181,51 @@ async function exportLogs() {
   }
 }
 // ===== AI 模型配置 =====
-const aiCfg = ref<AiConfig>({
+const DEFAULT_AI_CFG: AiConfig = {
   provider: "ollama",
   baseUrl: "http://localhost:11434",
   chatModel: "",
   embedModel: "",
   temperature: 0.4,
   enableAutoIndex: true,
-});
+};
+const aiCfg = ref<AiConfig>({ ...DEFAULT_AI_CFG });
 const aiLoaded = ref(false);
 const aiMsg = ref("");
 const cloudKeySet = ref(false);
 const cloudKeyInput = ref("");
 const testingAi = ref(false);
 const connResult = ref<ConnTest | null>(null);
+// 拉取到的云端可用模型列表（测试连接后自动填充）
+const availableModels = ref<string[]>([]);
+const fetchingModels = ref(false);
 
 // 快脑 / Laya 控制台
+const DEFAULT_FB_CFG: AutoExecConfigInfo = {
+  enabled: false,
+  brainMode: "rule",
+  layaUrl: "http://127.0.0.1:8788",
+  hardStopPct: -7,
+  execConfidence: 0.7,
+  watchConfidence: 0.55,
+  slippagePct: 0.1,
+  maxSinglePct: 20,
+  maxTotalPct: 60,
+  noOpenAfter: "14:55",
+  bridgeEnabled: false,
+  bridgeDefaultBroker: "",
+  bridgeBrokerPath: "",
+  bridgeDefaultAction: "copy",
+  bridgeTtlMinutes: 30,
+  bridgePriceDeviatePct: 1,
+  bridgeOrderTemplate: "",
+};
 const fbCfg = ref<AutoExecConfigInfo | null>(null);
 const fbMsg = ref("");
 const fbHealth = ref("");
 async function loadFastBrain() {
-  fbCfg.value = await autoexecGetConfig();
+  const remote = await autoexecGetConfig();
+  fbCfg.value = { ...DEFAULT_FB_CFG, ...(remote ?? {}) };
 }
 async function saveFastBrain() {
   if (!fbCfg.value) return;
@@ -227,7 +251,8 @@ async function checkLaya() {
 async function loadAiTab() {
   aiMsg.value = "";
   try {
-    aiCfg.value = await getAiConfig();
+    const remote = await getAiConfig();
+    aiCfg.value = { ...DEFAULT_AI_CFG, ...(remote ?? {}) };
     cloudKeySet.value = await getCloudKeySet();
     await loadFastBrain();
     await ensureKbListener();
@@ -254,11 +279,34 @@ async function onTestAi() {
   try {
     await saveAiConfig(aiCfg.value);
     connResult.value = await testAiConnection();
-    aiMsg.value = `连接成功 · 延迟 ${connResult.value.latencyMs}ms · 可用模型 ${connResult.value.models.length} 个`;
+    availableModels.value = connResult.value.models ?? [];
+    aiMsg.value = `连接成功 · 延迟 ${connResult.value.latencyMs}ms · 可用模型 ${connResult.value.models.length} 个，已填充到下拉框`;
   } catch (e) {
     aiMsg.value = `连接失败：${e}`;
+    availableModels.value = [];
   } finally {
     testingAi.value = false;
+  }
+}
+
+/** 单独拉取模型列表（不强制保存配置），用于手动刷新下拉选项 */
+async function onFetchModels() {
+  if (aiCfg.value.provider === "cloud" && !cloudKeySet.value) {
+    aiMsg.value = "请先填写并保存云端 API Key";
+    return;
+  }
+  fetchingModels.value = true;
+  aiMsg.value = "";
+  try {
+    await saveAiConfig(aiCfg.value);
+    const r = await testAiConnection();
+    availableModels.value = r.models ?? [];
+    aiMsg.value = `已拉取 ${r.models.length} 个模型 · 延迟 ${r.latencyMs}ms`;
+  } catch (e) {
+    aiMsg.value = `拉取失败：${e}`;
+    availableModels.value = [];
+  } finally {
+    fetchingModels.value = false;
   }
 }
 async function saveCloudKeyEv() {
@@ -317,8 +365,14 @@ async function ensureKbListener() {
 }
 async function loadKb() {
   try {
-    kbData.value = await fetchKbStats();
-    kbDocs.value = await listDocs();
+    const stats = (await fetchKbStats()) as Partial<KbStats> | null;
+    kbData.value = {
+      total: stats?.total ?? 0,
+      embedded: stats?.embedded ?? 0,
+      bytesEstimate: stats?.bytesEstimate ?? 0,
+      byType: stats?.byType ?? [],
+    };
+    kbDocs.value = (await listDocs()) ?? [];
   } catch (e) {
     aiMsg.value = `知识库加载失败：${e}`;
   }
@@ -892,17 +946,31 @@ async function toggleDev() {
 
               <div class="ai-field-row">
                 <div class="ai-field">
-                  <label>对话模型</label>
-                  <input v-model="aiCfg.chatModel" type="text" spellcheck="false" placeholder="qwen2.5:7b / gpt-4o-mini" />
+                  <label>对话模型
+                    <button v-if="aiCfg.provider === 'cloud'" type="button" class="mini-link" :disabled="fetchingModels" @click.prevent="onFetchModels">
+                      ↻ 拉取模型列表
+                    </button>
+                  </label>
+                  <input v-model="aiCfg.chatModel" type="text" spellcheck="false"
+                    :placeholder="aiCfg.provider === 'ollama' ? 'qwen2.5:7b / gpt-4o-mini' : '如 deepseek-flash，或点右侧按钮拉取'" />
+                  <div v-if="aiCfg.provider === 'cloud' && availableModels.length" class="model-chips">
+                    <button v-for="m in availableModels" :key="m" type="button"
+                      class="model-chip" :class="{ on: aiCfg.chatModel === m }"
+                      @click="aiCfg.chatModel = m">{{ m }}</button>
+                  </div>
+                  <span v-if="aiCfg.provider === 'cloud' && availableModels.length" class="field-hint">
+                    已检测到 {{ availableModels.length }} 个模型，点上方芯片快速选择
+                  </span>
                 </div>
                 <div class="ai-field">
                   <label>嵌入模型</label>
-                  <input v-model="aiCfg.embedModel" type="text" spellcheck="false" placeholder="bge-m3 / text-embedding-3-small" />
+                  <input v-model="aiCfg.embedModel" type="text" spellcheck="false"
+                    placeholder="bge-m3 / text-embedding-3-small（仅知识库用；DeepSeek 无嵌入接口）" />
                 </div>
               </div>
 
               <div class="ai-field">
-                <label>温度 Temperature：{{ aiCfg.temperature.toFixed(1) }}</label>
+                <label>温度 Temperature：{{ (aiCfg.temperature ?? 0.4).toFixed(1) }}</label>
                 <input v-model.number="aiCfg.temperature" type="range" min="0" max="1" step="0.1" />
               </div>
 
@@ -1346,7 +1414,23 @@ async function toggleDev() {
 .ai-provider { align-self: flex-start; margin-bottom: 4px; }
 .ai-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 13px; }
 .ai-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.ai-field label { font-size: 11.5px; font-weight: 600; color: var(--text-dim); }
+.ai-field label { font-size: 11.5px; font-weight: 600; color: var(--text-dim); display: flex; align-items: center; gap: 8px; }
+.mini-link {
+  margin-left: auto; font-size: 10.5px; font-weight: 500; cursor: pointer;
+  background: transparent; border: 1px solid var(--border); color: var(--accent-2);
+  padding: 2px 8px; border-radius: 5px; font-family: inherit;
+}
+.mini-link:hover:not(:disabled) { background: var(--bg-hover); }
+.mini-link:disabled { opacity: 0.5; cursor: default; }
+.field-hint { font-size: 10.5px; color: #26d07c; margin-top: 2px; }
+.model-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.model-chip {
+  font-size: 11px; padding: 4px 10px; border-radius: 12px; cursor: pointer;
+  background: var(--bg-hover); border: 1px solid var(--border); color: var(--text);
+  font-family: "JetBrains Mono", monospace;
+}
+.model-chip:hover { border-color: var(--accent-2); color: var(--accent-2); }
+.model-chip.on { background: var(--accent-2); color: #fff; border-color: var(--accent-2); }
 .ai-field input[type="text"],
 .ai-field input[type="password"] {
   padding: 8px 11px; font-size: 12px; color: var(--text);
