@@ -80,6 +80,7 @@ export const DOCK_GROUPS: DockGroup[] = [
       { id: "evolution", label: "进化回灌", icon: "M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z", desc: "决策自动打标 + 版本胜率/盈亏比回灌", star: true },
       { id: "signalbridge", label: "信号确认桥", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 5h2v6h-2zm0 8h2v2h-2z", desc: "BUY/SELL 信号人工确认 + 生成券商指令", star: true },
       { id: "strategy", label: "策略库", icon: "M12 2l9 5-9 5-9-5zm-9 10l9 5 9-5", desc: "龙头/1进2/抄底策略版本化管理" },
+      { id: "sieve", label: "连板选股器", icon: "M12 2l9 5-9 5-9-5zm-9 10l9 5 9-5", desc: "N进N+1打板龙头打分", star: true },
       { id: "screener", label: "条件选股", icon: "M4 5h3v14H4zm6.5 5h3v9h-3zM17 9h3v10h-3z", desc: "技术/基本面智能选股" },
       { id: "trade", label: "模拟交易", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1c1.7.3 3 1.4 3 3.1 0 1.9-1.5 2.8-3.4 2.8-1.2 0-2.1-.4-2.6-1l1.2-1c.3.4.8.7 1.5.7.8 0 1.3-.3 1.3-.8s-.4-.8-1.5-1c-1.6-.4-3.2-1-3.2-2.9 0-1.6 1.3-2.7 3-3V5h2zm-1 11h2v2h-2z", desc: "虚拟资金 T+1 练盘" },
       { id: "journal", label: "盯盘日记", icon: "M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1zm3 5h8v1.5H8zm0 4h8v1.5H8zm0 4h5v1.5H8z", desc: "交易复盘记录" },
