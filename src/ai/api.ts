@@ -194,6 +194,8 @@ export interface AutoExecConfigInfo {
   bridgeTtlMinutes: number;
   bridgePriceDeviatePct: number;
   bridgeOrderTemplate: string;
+  indicatorsEnabled?: Record<string, boolean>;
+  liveEnabled?: boolean;
 }
 
 export interface DecisionLogInfo {

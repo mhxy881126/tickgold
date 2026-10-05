@@ -155,6 +155,8 @@ onMounted(async () => {
   await loadOrderQuote();
   await loadAiCfg();
   qtimer = window.setInterval(loadOrderQuote, 3000);
+  // 每5秒刷新一次AI配置（设置保存后同步）
+  window.setInterval(loadAiCfg, 5000);
 });
 onBeforeUnmount(() => {
   if (qtimer) clearInterval(qtimer);
@@ -178,13 +180,21 @@ onBeforeUnmount(() => {
       <button class="reset" @click="resetAccount">重置</button>
     </div>
 
-    <!-- 快脑自动执行 -->
-    <div class="ai-ctl" :class="{ on: aiCfg?.enabled }">
+    <!-- 快脑自动执行（醒目状态条） -->
+    <div class="ai-ctl" :class="{ on: aiCfg?.enabled, live: aiCfg?.liveEnabled }">
       <span class="ai-dot" />
-      <span class="ai-title">快脑自动执行</span>
-      <span class="ai-mode">{{ aiCfg?.brainMode === "laya" ? "Laya 模型" : "规则脑" }}</span>
-      <span class="ai-hint">信号 → 风控 → 执行 → 记录 全自动（参数见 设置·快脑控制台）</span>
-      <button class="ai-toggle" :disabled="aiBusy" @click="toggleAi">
+      <div class="ai-info">
+        <div class="ai-title-row">
+          <span class="ai-title">🤖 自动交易机器人</span>
+          <span class="ai-badge" :class="{ live: aiCfg?.liveEnabled }">
+            {{ aiCfg?.liveEnabled ? '实盘模式' : '模拟模式' }}
+          </span>
+        </div>
+        <div class="ai-hint">
+          {{ aiCfg?.enabled ? `运行中 · ${aiCfg?.brainMode === 'cloud_llm' ? '云端大模型' : '规则脑'} · 每5秒扫描` : '已停用 · 点启用开始自动交易' }}
+        </div>
+      </div>
+      <button class="ai-toggle" :class="{ on: aiCfg?.enabled }" :disabled="aiBusy" @click="toggleAi">
         {{ aiCfg?.enabled ? "停用" : "启用" }}
       </button>
       <button class="ai-stop" :disabled="aiBusy" @click="emergencyStop">急停</button>
@@ -381,21 +391,34 @@ tr.cur { background: #16233a; }
 .up { color: #f23645; } .down { color: #0ecb81; }
 
 /* 快脑控制条 */
-.ai-ctl { display: flex; align-items: center; gap: 9px; background: var(--bg-panel);
-  border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; flex-shrink: 0; font-size: 11px; }
-.ai-ctl.on { border-color: var(--accent); }
-.ai-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); flex: none; }
-.ai-ctl.on .ai-dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
-.ai-title { font-weight: 700; color: var(--text); }
-.ai-mode { color: var(--accent); border: 1px solid var(--border); border-radius: 5px;
-  padding: 1px 7px; font-size: 10px; }
-.ai-hint { flex: 1; color: var(--text-dim); font-size: 10.5px; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap; }
-.ai-toggle { padding: 4px 14px; font-size: 11px; border-radius: 6px; cursor: pointer;
-  background: transparent; color: var(--accent); border: 1px solid var(--accent); }
-.ai-toggle:hover { background: var(--accent); color: #11151c; }
-.ai-stop { padding: 4px 12px; font-size: 11px; border-radius: 6px; cursor: pointer;
-  background: transparent; color: #f23645; border: 1px solid #f23645; }
+.ai-ctl { display: flex; align-items: center; gap: 12px; background: var(--bg-panel);
+  border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; flex-shrink: 0; font-size: 11px;
+  transition: all .2s; }
+.ai-ctl.on { border-color: #26d07c; background: rgba(38,208,124,.06); }
+.ai-ctl.on.live { border-color: #f23645; background: rgba(242,54,69,.08); }
+.ai-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--text-dim); flex: none; }
+.ai-ctl.on .ai-dot {
+  background: #26d07c; box-shadow: 0 0 12px #26d07c;
+  animation: pulse 2s ease-in-out infinite;
+}
+.ai-ctl.on.live .ai-dot { background: #f23645; box-shadow: 0 0 12px #f23645; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.ai-info { flex: 1; min-width: 0; }
+.ai-title-row { display: flex; align-items: center; gap: 8px; }
+.ai-title { font-weight: 700; color: var(--text); font-size: 13px; }
+.ai-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px;
+  background: rgba(38,208,124,.15); color: #26d07c; }
+.ai-badge.live { background: rgba(242,54,69,.15); color: #f23645; }
+.ai-hint { color: var(--text-dim); font-size: 10.5px; margin-top: 2px; }
+.ai-toggle { padding: 6px 18px; font-size: 12px; border-radius: 6px; cursor: pointer;
+  background: transparent; color: #26d07c; border: 1px solid #26d07c; font-weight: 600; }
+.ai-toggle.on { background: #26d07c; color: #11151c; }
+.ai-toggle:hover { opacity: .85; }
+.ai-stop { padding: 6px 14px; font-size: 12px; border-radius: 6px; cursor: pointer;
+  background: transparent; color: #f23645; border: 1px solid #f23645; font-weight: 600; }
 .ai-stop:hover { background: #f23645; color: #fff; }
 .ai-toggle:disabled, .ai-stop:disabled { opacity: .5; cursor: default; }
 .ai-tag { display: inline-block; margin-left: 4px; font-size: 9px; color: var(--accent);

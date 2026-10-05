@@ -139,8 +139,10 @@ async function removeSessionEv(id: number, e: Event) {
   e.stopPropagation();
   await removeSession(id);
 }
-function relTime(ts: number): string {
+function relTime(ts: number | undefined | null): string {
+  if (!ts) return "";
   const d = new Date(ts);
+  if (isNaN(d.getTime())) return "";
   const now = new Date();
   if (d.toDateString() === now.toDateString())
     return d.toTimeString().slice(0, 5);
@@ -282,15 +284,19 @@ async function askExample(q: string) {
             v-for="s in sessions"
             :key="s.id"
             class="side-item"
-            :class="{ active: s.id === currentId }"
+            :class="{ active: s.id === currentId, running: s.id === currentId && streaming }"
             @click="pickSession(s.id)"
           >
-            <span class="si-title">{{ s.title || "新对话" }}</span>
-            <span class="si-meta">
-              <span class="si-time">{{ relTime(s.lastAt) }}</span>
-              <span class="si-del" title="删除" @click="removeSessionEv(s.id, $event)">
-                <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5" /></svg>
+            <span class="si-dot" />
+            <span class="si-text">
+              <span class="si-title">{{ s.title || "新对话" }}</span>
+              <span class="si-meta">
+                <span class="si-time">{{ relTime(s.lastAt) }}</span>
+                <span v-if="s.id === currentId && streaming" class="si-running">生成中…</span>
               </span>
+            </span>
+            <span class="si-del" title="删除" @click="removeSessionEv(s.id, $event)">
+              <svg viewBox="0 0 24 24" width="12"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5" /></svg>
             </span>
           </button>
         </div>
@@ -362,7 +368,7 @@ async function askExample(q: string) {
 
           <!-- 消息流 -->
           <div
-            v-for="m in messages"
+            v-for="m in messages.filter(x => x.role !== 'tool')"
             :key="`${m.role}-${m.id}-${m.createdAt}`"
             class="msg-row"
             :class="m.role"
@@ -510,9 +516,9 @@ async function askExample(q: string) {
 .side-item {
   width: 100%;
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 8px 9px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
   margin-bottom: 2px;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -524,6 +530,25 @@ async function askExample(q: string) {
   background: var(--bg-hover);
   border-color: var(--border-light);
 }
+.side-item.running {
+  border-color: var(--accent-2);
+  background: rgba(212,175,55,.08);
+}
+.si-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex: none;
+}
+.side-item.running .si-dot {
+  background: var(--accent-2);
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%,100% { opacity: 1; box-shadow: 0 0 0 0 rgba(212,175,55,.5); }
+  50% { opacity: .6; box-shadow: 0 0 0 4px rgba(212,175,55,0); }
+}
+.si-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .si-title {
   font-size: 12px;
   color: var(--text);
@@ -534,16 +559,24 @@ async function askExample(q: string) {
 .si-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
 }
 .si-time {
   font-size: 10.5px;
   color: var(--text-dim);
 }
+.si-running {
+  font-size: 10px;
+  color: var(--accent-2);
+}
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .si-del {
   opacity: 0;
   display: flex;
   transition: opacity 0.15s;
+  flex: none;
+  padding-top: 2px;
 }
 .si-del svg {
   width: 13px;

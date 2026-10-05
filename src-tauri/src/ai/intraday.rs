@@ -101,6 +101,50 @@ pub fn assemble_features(input: &IntradayInput) -> Value {
     })
 }
 
+/// 计算 EMA（指数移动平均）
+fn ema(values: &[f64], period: usize) -> Vec<f64> {
+    if values.is_empty() { return vec![]; }
+    let k = 2.0 / (period as f64 + 1.0);
+    let mut out = Vec::with_capacity(values.len());
+    let mut prev = values[0];
+    out.push(prev);
+    for &v in &values[1..] {
+        prev = v * k + prev * (1.0 - k);
+        out.push(prev);
+    }
+    out
+}
+
+/// MACD: 返回 (dif, dea, macd_hist)，dif=EMA12-EMA26, dea=EMA9(dif)
+pub fn calc_macd(closes: &[f64]) -> (f64, f64, f64) {
+    if closes.len() < 35 { return (0.0, 0.0, 0.0); }
+    let ema12 = ema(closes, 12);
+    let ema26 = ema(closes, 26);
+    let difs: Vec<f64> = closes.iter().enumerate().map(|(i, _)| ema12[i] - ema26[i]).collect();
+    let deas = ema(&difs, 9);
+    let n = closes.len() - 1;
+    let dif = difs[n];
+    let dea = deas[n];
+    let hist = (dif - dea) * 2.0;
+    (dif, dea, hist)
+}
+
+/// RSI(14): 返回 0~100
+pub fn calc_rsi(closes: &[f64], period: usize) -> f64 {
+    if closes.len() < period + 1 { return 50.0; }
+    let mut gains = 0.0;
+    let mut losses = 0.0;
+    for i in 1..=period {
+        let chg = closes[closes.len() - period - 1 + i] - closes[closes.len() - period - 2 + i];
+        if chg > 0.0 { gains += chg; } else { losses -= chg; }
+    }
+    let avg_gain = gains / period as f64;
+    let avg_loss = losses / period as f64;
+    if avg_loss < 1e-9 { return 100.0; }
+    let rs = avg_gain / avg_loss;
+    100.0 - 100.0 / (1.0 + rs)
+}
+
 /// 刷新市场上下文：指数 / 涨停池 / 炸板池 / 主力净流入榜；各子任务独立失败，返回尽力版。
 pub async fn refresh_market_ctx() -> MarketCtx {
     let mut ctx = MarketCtx::default();

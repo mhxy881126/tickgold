@@ -56,6 +56,7 @@ import {
 import type { AiConfig, ConnTest, KbStats, IndexProgress } from "../ai/types";
 import type { AutoExecConfigInfo } from "../ai/api";
 import { ISLAND_SKINS, getIslandSkin, setIslandSkin, applyIslandSkin, ISLAND_SKIN_EVENT, type IslandSkinId } from "../lib/islandSkins";
+import { usePaperStore } from "../stores/paper";
 
 defineProps<{ open: boolean }>();
 const emit = defineEmits<{ "update:open": [boolean]; "replay-onboarding": [] }>();
@@ -129,7 +130,7 @@ async function toggleAutoStart(v: boolean) {
 }
 void loadAutoStart();
 
-type Tab = "appearance" | "data" | "ai" | "broker" | "plugins" | "logs" | "about";
+type Tab = "appearance" | "data" | "ai" | "knowledge" | "broker" | "plugins" | "logs" | "about";
 const tab = ref<Tab>("appearance");
 function pick(id: ThemeId) {
   setTheme(id);
@@ -229,7 +230,36 @@ const DEFAULT_FB_CFG: AutoExecConfigInfo = {
   bridgeTtlMinutes: 30,
   bridgePriceDeviatePct: 1,
   bridgeOrderTemplate: "",
+  indicatorsEnabled: {},
 };
+
+// 规则脑 12 个指标定义
+const indicatorList = [
+  { key: "pct", name: "涨跌幅", desc: "当天涨跌 0~7% 最健康，太高追高风险大" },
+  { key: "speed5m", name: "5分钟涨速", desc: "最近5分钟涨得快=资金涌入" },
+  { key: "volumeRatio", name: "量比", desc: "1.5~3倍最佳，>5倍可能出货" },
+  { key: "turnover", name: "换手率", desc: "3~9%活跃，>18%过热" },
+  { key: "distToLimit", name: "距涨停距离", desc: "越接近涨停越强" },
+  { key: "pullback", name: "分时回撤", desc: "从高点回落越少越强" },
+  { key: "blastCount", name: "炸板次数", desc: "从涨停跌开，0次最好" },
+  { key: "marketEmotion", name: "市场情绪", desc: "全市场涨停温度，>70分情绪好" },
+  { key: "indexChg", name: "指数环境", desc: "大盘涨它也涨成功率高" },
+  { key: "themeRank", name: "题材排名", desc: "所属板块今天涨前几名" },
+  { key: "catalystFreshness", name: "催化新鲜度", desc: "刚出的利好比旧消息好" },
+  { key: "mainNetInflowYi", name: "主力净流入", desc: "大单买入越多越涨" },
+  { key: "macdHist", name: "MACD 金叉", desc: "DIF>DEA 金叉看多，死叉看空" },
+  { key: "rsi14", name: "RSI 14日", desc: "40~65健康，>75超买该卖，<30超卖" },
+];
+
+function toggleIndicator(key: string) {
+  if (!fbCfg.value) return;
+  if (!fbCfg.value.indicatorsEnabled) fbCfg.value.indicatorsEnabled = {};
+  const cur = fbCfg.value.indicatorsEnabled[key] !== false; // 默认 true
+  fbCfg.value.indicatorsEnabled[key] = !cur;
+}
+
+const paper = usePaperStore();
+
 const fbCfg = ref<AutoExecConfigInfo | null>(null);
 const fbMsg = ref("");
 const fbHealth = ref("");
@@ -544,18 +574,19 @@ async function bReleaseKill() {
   }
 }
 async function bSeed() {
-  const { code, vol, price } = seedForm;
-  if (!code.trim()) return bFlash("请填写代码");
+  let code = seedForm.code.trim();
+  if (!code) code = "600519";
   try {
-    await mockSeedPosition(code.trim(), vol, price);
-    bFlash(`已注入模拟持仓 ${code} ${vol} 股`);
+    await paper.load();
+    await paper.buy(code, code, seedForm.price, seedForm.vol);
+    bFlash(`已注入模拟持仓 ${code} ${seedForm.vol} 股 @ ${seedForm.price}`);
   } catch (e) {
     bFlash(String(e));
   }
 }
 async function bMockReset() {
   try {
-    await mockReset();
+    await paper.reset();
     bFlash("模拟账户已重置");
   } catch (e) {
     bFlash(String(e));
@@ -683,6 +714,10 @@ async function toggleDev() {
             <button class="nav-item" :class="{ on: tab === 'ai' }" @click="pickTab('ai')">
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2zM9 21h6M10 17v4M14 17v4" /></svg>
               AI 模型
+            </button>
+            <button class="nav-item" :class="{ on: tab === 'knowledge' }" @click="pickTab('knowledge')">
+              <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z" /></svg>
+              知识库
             </button>
             <button class="nav-item" :class="{ on: tab === 'broker' }" @click="pickTab('broker')">
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M3 6l9-3 9 3v12l-9 3-9-3V6zm9 1.5L6 9.5v5l6 2 6-2v-5l-6-2zM7 15h2v2H7v-2zm8 0h2v2h-2v-2z" /></svg>
@@ -876,104 +911,17 @@ async function toggleDev() {
 
             <!-- AI 模型配置 -->
             <div v-else-if="tab === 'ai'" class="ai-tab">
-              <!-- 快脑盘中决策引擎 -->
-              <template v-if="fbCfg">
-                <div class="section-title">快脑盘中决策引擎</div>
-                <div class="section-sub">规则脑零依赖、默认可用、可解释；Laya 为本地决策模型 sidecar，不可达时自动降级规则脑</div>
-                <div class="seg ai-provider">
-                  <button type="button" class="seg-btn" :class="{ on: fbCfg.brainMode === 'rule' }" @click="fbCfg.brainMode = 'rule'">规则脑</button>
-                  <button type="button" class="seg-btn" :class="{ on: fbCfg.brainMode === 'laya' }" @click="fbCfg.brainMode = 'laya'">Laya 模型</button>
-                </div>
-
-                <div class="ai-field" style="margin-top:12px">
-                  <label>Laya 服务地址</label>
-                  <div class="fb-urlrow">
-                    <input v-model="fbCfg.layaUrl" type="text" spellcheck="false" placeholder="http://127.0.0.1:8788" />
-                    <button type="button" class="logs-btn" @click="checkLaya">健康检查</button>
-                  </div>
-                  <span v-if="fbHealth" class="fb-health">{{ fbHealth }}</span>
-                </div>
-
-                <div class="fb-params">
-                  <div class="ai-field">
-                    <label>硬止损 %：{{ fbCfg.hardStopPct }}</label>
-                    <input v-model.number="fbCfg.hardStopPct" type="range" min="-15" max="-3" step="0.5" />
-                  </div>
-                  <div class="ai-field">
-                    <label>执行置信度：{{ fbCfg.execConfidence }}</label>
-                    <input v-model.number="fbCfg.execConfidence" type="range" min="0.55" max="0.95" step="0.05" />
-                  </div>
-                  <div class="ai-field">
-                    <label>观察置信度：{{ fbCfg.watchConfidence }}</label>
-                    <input v-model.number="fbCfg.watchConfidence" type="range" min="0.4" max="0.75" step="0.05" />
-                  </div>
-                  <div class="ai-field">
-                    <label>滑点 %：{{ fbCfg.slippagePct }}</label>
-                    <input v-model.number="fbCfg.slippagePct" type="range" min="0" max="0.5" step="0.05" />
-                  </div>
-                  <div class="ai-field">
-                    <label>单票仓位上限 %：{{ fbCfg.maxSinglePct }}</label>
-                    <input v-model.number="fbCfg.maxSinglePct" type="range" min="5" max="50" step="1" />
-                  </div>
-                  <div class="ai-field">
-                    <label>总仓位上限 %：{{ fbCfg.maxTotalPct }}</label>
-                    <input v-model.number="fbCfg.maxTotalPct" type="range" min="20" max="100" step="5" />
-                  </div>
-                </div>
-                <div class="ai-field">
-                  <label>禁止开仓时间（之后只卖不买）</label>
-                  <input v-model="fbCfg.noOpenAfter" type="text" spellcheck="false" placeholder="14:55" />
-                </div>
-                <div class="bridge-box">
-                  <div class="bridge-title">
-                    <span>信号人工确认桥（不自动下单）</span>
-                    <button type="button" class="switch" :class="{ on: fbCfg.bridgeEnabled }" @click="fbCfg.bridgeEnabled = !fbCfg.bridgeEnabled"><span class="knob"></span></button>
-                  </div>
-                  <div class="section-sub">双脑 BUY/SELL 信号落待确认单，人工改价改量后生成券商指令，可唤起券商软件；真实成交由你完成</div>
-                  <div class="bridge-grid">
-                    <label class="ai-field"><span>默认券商</span>
-                      <input v-model="fbCfg.bridgeDefaultBroker" type="text" spellcheck="false" placeholder="同花顺" /></label>
-                    <label class="ai-field grow2"><span>券商软件路径（.exe / .app）</span>
-                      <input v-model="fbCfg.bridgeBrokerPath" type="text" spellcheck="false" placeholder="留空则不唤起" /></label>
-                  </div>
-                  <div class="bridge-grid">
-                    <label class="ai-field"><span>有效期(分钟)：{{ fbCfg.bridgeTtlMinutes }}</span>
-                      <input v-model.number="fbCfg.bridgeTtlMinutes" type="range" min="5" max="240" step="5" /></label>
-                    <label class="ai-field"><span>价偏提示%：{{ fbCfg.bridgePriceDeviatePct }}</span>
-                      <input v-model.number="fbCfg.bridgePriceDeviatePct" type="range" min="0.2" max="5" step="0.1" /></label>
-                    <label class="ai-field"><span>默认动作</span>
-                      <select v-model="fbCfg.bridgeDefaultAction">
-                        <option value="copy">复制指令</option>
-                        <option value="export">仅生成</option>
-                        <option value="hotkey">唤起券商</option>
-                      </select></label>
-                  </div>
-                  <div class="bridge-grid">
-                    <label class="ai-field grow2"><span>下单指令模板（留空 = 内置默认）</span>
-                      <textarea v-model="fbCfg.bridgeOrderTemplate" class="bridge-tpl" rows="2" spellcheck="false"
-                        placeholder="{side} {code} {name} 价格 {price} 数量 {vol} · {broker}"></textarea>
-                      <span class="tpl-hint">占位符：{side} {sideEn} {code} {name} {price} {vol} {amount} {broker} {date}；未识别的占位符会原样保留</span>
-                    </label>
-                    <button type="button" class="logs-btn" @click="fbCfg.bridgeOrderTemplate = ''">恢复默认</button>
-                  </div>
-                </div>
-                <div class="ai-actions">
-                  <button type="button" class="logs-btn primary" @click="saveFastBrain">保存快脑参数</button>
-                  <span v-if="fbMsg" class="ai-msg" :class="{ ok: fbMsg.includes('已保存') }">{{ fbMsg }}</span>
-                </div>
-                <div class="fb-divider"></div>
-              </template>
-
-              <div class="section-title">模型提供方</div>
-              <div class="section-sub">本地 Ollama 数据不出本机；云端为 OpenAI 兼容接口，需 API Key</div>
+              <!-- 第一步：选 AI 模型 -->
+              <div class="section-title">① AI 模型</div>
+              <div class="section-sub">选本地或云端模型，用于智能问答和选股分析</div>
               <div class="seg ai-provider">
                 <button type="button" class="seg-btn" :class="{ on: aiCfg.provider === 'ollama' }" @click="aiCfg.provider = 'ollama'">本地 Ollama</button>
-                <button type="button" class="seg-btn" :class="{ on: aiCfg.provider === 'cloud' }" @click="aiCfg.provider = 'cloud'">云端兼容</button>
+                <button type="button" class="seg-btn" :class="{ on: aiCfg.provider === 'cloud' }" @click="aiCfg.provider = 'cloud'">云端 API</button>
               </div>
 
               <div class="ai-field">
                 <label>接口地址 Base URL</label>
-                <input v-model="aiCfg.baseUrl" type="text" spellcheck="false" :placeholder="aiCfg.provider === 'ollama' ? 'http://localhost:11434' : 'https://api.openai.com/v1'" />
+                <input v-model="aiCfg.baseUrl" type="text" spellcheck="false" :placeholder="aiCfg.provider === 'ollama' ? 'http://localhost:11434' : 'https://api.deepseek.com/v1'" />
               </div>
 
               <div class="ai-field-row">
@@ -984,37 +932,156 @@ async function toggleDev() {
                     </button>
                   </label>
                   <input v-model="aiCfg.chatModel" type="text" spellcheck="false"
-                    :placeholder="aiCfg.provider === 'ollama' ? 'qwen2.5:7b / gpt-4o-mini' : '如 deepseek-flash，或点右侧按钮拉取'" />
+                    :placeholder="aiCfg.provider === 'ollama' ? 'qwen2.5:7b' : '如 deepseek-chat'" />
                   <div v-if="aiCfg.provider === 'cloud' && availableModels.length" class="model-chips">
                     <button v-for="m in availableModels" :key="m" type="button"
                       class="model-chip" :class="{ on: aiCfg.chatModel === m }"
                       @click="aiCfg.chatModel = m">{{ m }}</button>
                   </div>
-                  <span v-if="aiCfg.provider === 'cloud' && availableModels.length" class="field-hint">
-                    已检测到 {{ availableModels.length }} 个模型，点上方芯片快速选择
-                  </span>
                 </div>
                 <div class="ai-field">
-                  <label>嵌入模型</label>
+                  <label>嵌入模型（知识库用）</label>
                   <input v-model="aiCfg.embedModel" type="text" spellcheck="false"
-                    placeholder="bge-m3 / text-embedding-3-small（仅知识库用；DeepSeek 无嵌入接口）" />
+                    placeholder="bge-m3 / text-embedding-3-small" />
                 </div>
-              </div>
-
-              <div class="ai-field">
-                <label>温度 Temperature：{{ (aiCfg.temperature ?? 0.4).toFixed(1) }}</label>
-                <input v-model.number="aiCfg.temperature" type="range" min="0" max="1" step="0.1" />
               </div>
 
               <template v-if="aiCfg.provider === 'cloud'">
-                <div class="section-title" style="margin-top:18px">云端 API Key</div>
-                <div class="ai-keyrow">
-                  <span v-if="cloudKeySet" class="key-ok">已设置（保存在本机，仅用于请求）</span>
-                  <input v-else v-model="cloudKeyInput" type="password" placeholder="粘贴 API Key（sk-…）" />
-                  <button v-if="cloudKeySet" type="button" class="logs-btn" @click="clearCloudKeyEv">清除</button>
-                  <button v-else type="button" class="logs-btn" :disabled="!cloudKeyInput.trim()" @click="saveCloudKeyEv">保存密钥</button>
+                <div class="ai-field">
+                  <label>API Key</label>
+                  <div class="ai-keyrow">
+                    <span v-if="cloudKeySet" class="key-ok">✓ 已设置</span>
+                    <input v-else v-model="cloudKeyInput" type="password" placeholder="粘贴 API Key（sk-…）" />
+                    <button v-if="cloudKeySet" type="button" class="logs-btn" @click="clearCloudKeyEv">清除</button>
+                    <button v-else type="button" class="logs-btn" :disabled="!cloudKeyInput.trim()" @click="saveCloudKeyEv">保存密钥</button>
+                  </div>
                 </div>
               </template>
+
+              <div class="ai-actions">
+                <button type="button" class="logs-btn" :disabled="testingAi" @click="onTestAi">{{ testingAi ? "测试中…" : "测试连接" }}</button>
+                <button type="button" class="logs-btn primary" @click="saveAiTab">保存模型配置</button>
+                <span v-if="aiMsg" class="ai-msg" :class="{ ok: /成功|已保存/.test(aiMsg) }">{{ aiMsg }}</span>
+              </div>
+
+              <!-- 第二步：盘中决策引擎 -->
+              <template v-if="fbCfg">
+                <div class="section-title" style="margin-top:24px">② 盘中决策引擎</div>
+                <div class="section-sub">自动扫描自选股信号，规则脑默认可用；Laya 是更强的本地模型（可选）</div>
+                <div class="seg ai-provider">
+                  <button type="button" class="seg-btn" :class="{ on: fbCfg.brainMode === 'rule' }" @click="fbCfg.brainMode = 'rule'">技术指标规则脑</button>
+                  <button type="button" class="seg-btn" :class="{ on: fbCfg.brainMode === 'cloud_llm' }" @click="fbCfg.brainMode = 'cloud_llm'">云端大模型</button>
+                </div>
+
+                <div v-if="fbCfg.brainMode === 'cloud_llm'" class="section-sub" style="margin-top:8px; color: var(--accent-2)">
+                  💡 使用上方配置的云端大模型（DeepSeek/GPT等）自动判断买卖信号，API Key 在 ① AI模型 里设置
+                </div>
+
+                <!-- 规则脑指标说明 + 开关 -->
+                <div v-if="fbCfg.brainMode === 'rule'" class="rule-indicators">
+                  <div class="ri-title">📊 规则脑指标开关（关掉=该指标不参与打分）</div>
+                  <div class="ri-grid">
+                    <div v-for="ind in indicatorList" :key="ind.key" class="ri-item" :class="{ off: !fbCfg.indicatorsEnabled?.[ind.key] }">
+                      <div class="ri-head">
+                        <b>{{ ind.name }}</b>
+                        <button type="button" class="switch sm" :class="{ on: fbCfg.indicatorsEnabled?.[ind.key] !== false }"
+                          @click="toggleIndicator(ind.key)">
+                          <span class="knob"></span>
+                        </button>
+                      </div>
+                      <span>{{ ind.desc }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <template v-if="fbCfg.brainMode === 'laya'">
+                  <div class="ai-field" style="margin-top:12px">
+                    <label>Laya 服务地址</label>
+                    <div class="fb-urlrow">
+                      <input v-model="fbCfg.layaUrl" type="text" spellcheck="false" placeholder="http://127.0.0.1:8788" />
+                      <button type="button" class="logs-btn" @click="checkLaya">健康检查</button>
+                    </div>
+                    <span v-if="fbHealth" class="fb-health">{{ fbHealth }}</span>
+                  </div>
+                </template>
+
+                <!-- 折叠：高级参数 -->
+                <details class="bk-advanced" style="margin-top:14px">
+                  <summary>高级参数（止损/仓位/置信度）</summary>
+                  <div class="fb-params" style="margin-top:10px">
+                    <div class="ai-field">
+                      <label>硬止损 %：{{ fbCfg.hardStopPct }}</label>
+                      <input v-model.number="fbCfg.hardStopPct" type="range" min="-15" max="-3" step="0.5" />
+                    </div>
+                    <div class="ai-field">
+                      <label>执行置信度：{{ fbCfg.execConfidence }}</label>
+                      <input v-model.number="fbCfg.execConfidence" type="range" min="0.55" max="0.95" step="0.05" />
+                    </div>
+                    <div class="ai-field">
+                      <label>观察置信度：{{ fbCfg.watchConfidence }}</label>
+                      <input v-model.number="fbCfg.watchConfidence" type="range" min="0.4" max="0.75" step="0.05" />
+                    </div>
+                    <div class="ai-field">
+                      <label>滑点 %：{{ fbCfg.slippagePct }}</label>
+                      <input v-model.number="fbCfg.slippagePct" type="range" min="0" max="0.5" step="0.05" />
+                    </div>
+                    <div class="ai-field">
+                      <label>单票仓位上限 %：{{ fbCfg.maxSinglePct }}</label>
+                      <input v-model.number="fbCfg.maxSinglePct" type="range" min="5" max="50" step="1" />
+                    </div>
+                    <div class="ai-field">
+                      <label>总仓位上限 %：{{ fbCfg.maxTotalPct }}</label>
+                      <input v-model.number="fbCfg.maxTotalPct" type="range" min="20" max="100" step="5" />
+                    </div>
+                  </div>
+                  <div class="ai-field" style="margin-top:10px">
+                    <label>禁止开仓时间（之后只卖不买）</label>
+                    <input v-model="fbCfg.noOpenAfter" type="text" spellcheck="false" placeholder="14:55" />
+                  </div>
+                </details>
+
+                <!-- 折叠：信号确认桥 -->
+                <details class="bk-advanced" style="margin-top:14px">
+                  <summary>信号人工确认桥（不自动下单）</summary>
+                  <div class="bridge-box" style="margin-top:10px; border:none; padding:0; background:transparent">
+                    <div class="bridge-title">
+                      <span>启用信号确认桥</span>
+                      <button type="button" class="switch" :class="{ on: fbCfg.bridgeEnabled }" @click="fbCfg.bridgeEnabled = !fbCfg.bridgeEnabled"><span class="knob"></span></button>
+                    </div>
+                    <div class="section-sub">信号落待确认单，人工改价后生成券商指令，可唤起券商软件</div>
+                    <div class="bridge-grid" style="margin-top:10px">
+                      <label class="ai-field"><span>默认券商</span>
+                        <input v-model="fbCfg.bridgeDefaultBroker" type="text" spellcheck="false" placeholder="同花顺" /></label>
+                      <label class="ai-field grow2"><span>券商软件路径</span>
+                        <input v-model="fbCfg.bridgeBrokerPath" type="text" spellcheck="false" placeholder="留空则不唤起" /></label>
+                    </div>
+                    <div class="bridge-grid">
+                      <label class="ai-field"><span>有效期(分钟)：{{ fbCfg.bridgeTtlMinutes }}</span>
+                        <input v-model.number="fbCfg.bridgeTtlMinutes" type="range" min="5" max="240" step="5" /></label>
+                      <label class="ai-field"><span>默认动作</span>
+                        <select v-model="fbCfg.bridgeDefaultAction">
+                          <option value="copy">复制指令</option>
+                          <option value="export">仅生成</option>
+                          <option value="hotkey">唤起券商</option>
+                        </select></label>
+                    </div>
+                  </div>
+                </details>
+
+                <div class="ai-actions" style="margin-top:14px">
+                  <button type="button" class="logs-btn primary" @click="saveFastBrain">保存决策引擎参数</button>
+                  <span v-if="fbMsg" class="ai-msg" :class="{ ok: fbMsg.includes('已保存') }">{{ fbMsg }}</span>
+                </div>
+              </template>
+
+            </div>
+
+            <!-- 知识库（独立 tab）-->
+            <div v-else-if="tab === 'knowledge'" class="ai-tab">
+              <div class="section-title">📚 知识库</div>
+              <div class="section-sub">
+                导入你的研报、笔记、新闻 PDF，AI 问答时会自动参考这些资料。不用可以忽略。
+              </div>
 
               <div class="startup-row" style="margin-top:16px">
                 <div class="startup-info">
@@ -1024,43 +1091,37 @@ async function toggleDev() {
                 <button type="button" class="switch" :class="{ on: aiCfg.enableAutoIndex }" @click="aiCfg.enableAutoIndex = !aiCfg.enableAutoIndex"><span class="knob"></span></button>
               </div>
 
-              <div class="ai-actions">
-                <button type="button" class="logs-btn" :disabled="testingAi" @click="onTestAi">{{ testingAi ? "测试中…" : "测试连接" }}</button>
-                <button type="button" class="logs-btn primary" @click="saveAiTab">保存配置</button>
-                <span v-if="aiMsg" class="ai-msg" :class="{ ok: /成功|已保存/.test(aiMsg) }">{{ aiMsg }}</span>
-              </div>
-              <div class="section-title" style="margin-top:24px">知识库</div>
-              <div class="section-sub">本地切块与向量索引，是「知识库语义检索」的数据来源</div>
-              <div class="dc-stats kb-stats">
+              <div class="dc-stats kb-stats" style="margin-top:16px">
                 <div class="dc-stat"><b>{{ kbData.total }}</b><span>总分块</span></div>
                 <div class="dc-stat"><b>{{ kbData.embedded }}</b><span>已嵌入</span></div>
-                <div class="dc-stat"><b>{{ kbSizeText }}</b><span>估算体积</span></div>
+                <div class="dc-stat"><b>{{ kbSizeText }}</b><span>体积</span></div>
                 <div class="dc-stat"><b>{{ kbDocs.length }}</b><span>文档数</span></div>
               </div>
-              <div v-if="kbData.byType.length" class="kb-kinds">
-                <span v-for="t in kbData.byType" :key="t[0]" class="kb-kind">{{ kbTypeName(t[0]) }} · {{ t[1] }}</span>
-              </div>
+
               <div v-if="kbIndexing" class="kb-prog-wrap">
                 <div class="kb-prog-label">
                   {{ kbProgress.phase === 'embed' ? '向量嵌入中' : '资料收集中' }} · {{ kbProgress.done }}/{{ kbProgress.total }}
-                  <span v-if="kbProgress.error" class="kb-prog-err">{{ kbProgress.error }}</span>
                 </div>
                 <div class="kb-prog"><div class="kb-prog-bar" :style="{ width: kbProgPct + '%' }"></div></div>
               </div>
-              <div class="ai-actions kb-actions">
-                <button type="button" class="logs-btn" :disabled="kbBusy" @click="onImportDocs">导入文档</button>
-                <button type="button" class="logs-btn" :disabled="kbBusy" @click="onReindex">重建嵌入</button>
-                <button type="button" class="logs-btn" :disabled="kbBusy" @click="onIndexToday">入库今日</button>
+
+              <div class="ai-actions kb-actions" style="margin-top:16px">
+                <button type="button" class="logs-btn primary" :disabled="kbBusy" @click="onImportDocs">📄 导入文档</button>
+                <button type="button" class="logs-btn" :disabled="kbBusy" @click="onIndexToday">📥 入库今日</button>
+                <button type="button" class="logs-btn" :disabled="kbBusy" @click="onReindex">🔄 重建嵌入</button>
               </div>
-              <div class="kb-docs">
-                <div v-if="!kbDocs.length" class="logs-empty">暂无文档，点击「导入文档」或「入库今日」</div>
+
+              <div class="kb-docs" style="margin-top:16px">
+                <div v-if="!kbDocs.length" class="logs-empty" style="padding:30px 0; text-align:center">
+                  📭 暂无文档<br>
+                  <span style="font-size:11px; color:var(--text-dim)">点上方"导入文档"上传研报/笔记，或"入库今日"自动收当日资料</span>
+                </div>
                 <div v-for="d in kbDocs" :key="d[0]" class="kb-doc">
                   <span class="kbd-name" :title="d[0]">{{ d[0] }}</span>
                   <span class="kbd-chunks">{{ d[1] }} 块</span>
-                  <button type="button" class="kbd-del" title="删除该文档" @click="onDeleteDoc(d[0])">✕</button>
+                  <button type="button" class="kbd-del" title="删除" @click="onDeleteDoc(d[0])">✕</button>
                 </div>
               </div>
-              <div class="ai-tip">嵌入模型用于知识库语义检索；模型输出仅供参考，不构成投资建议。</div>
             </div>
 
             <!-- 券商交易（v2.6）-->
@@ -1125,9 +1186,15 @@ async function toggleDev() {
 
               <!-- 第三步：实盘开关（醒目警示） -->
               <div class="section-title" style="margin-top:20px">③ 实盘委托</div>
-              <div v-if="bForm" class="bk-live-card" :class="{ on: bForm.liveEnabled }">
+              <div v-if="bForm && bForm.kind === 'mock'" class="bk-live-card disabled">
                 <div>
-                  <div class="bk-live-title">{{ bForm.liveEnabled ? '🔴 实盘已开启' : '⚪ 当前为模拟模式' }}</div>
+                  <div class="bk-live-title">⚪ 当前为模拟模式</div>
+                  <div class="section-sub">模拟交易不涉及真实委托。如需实盘，请先在上方选择「QMT 实盘」</div>
+                </div>
+              </div>
+              <div v-else-if="bForm" class="bk-live-card" :class="{ on: bForm.liveEnabled }">
+                <div>
+                  <div class="bk-live-title">{{ bForm.liveEnabled ? '🔴 实盘已开启' : '⚪ 实盘关闭' }}</div>
                   <div class="section-sub">{{ bForm.liveEnabled ? '信号确认后会提交真实委托，资金有风险' : '开启后已确认信号可能提交真实委托' }}</div>
                 </div>
                 <button type="button" class="switch" :class="{ on: bForm.liveEnabled }" @click="toggleLive(!bForm.liveEnabled)">
@@ -1155,26 +1222,13 @@ async function toggleDev() {
                 </div>
 
                 <!-- 模拟工具 -->
-                <div class="section-title" style="margin-top:18px">模拟工具</div>
-                <div class="section-sub">注入"昨日持仓"以联调卖出 / 止损；重置清空模拟账户</div>
-                <div class="bridge-grid">
-                  <label class="ai-field"><span>代码</span>
-                    <input v-model="seedForm.code" type="text" spellcheck="false" placeholder="600519" /></label>
-                  <label class="ai-field"><span>数量</span>
-                    <input v-model.number="seedForm.vol" type="number" step="100" /></label>
-                  <label class="ai-field"><span>成本价</span>
-                    <input v-model.number="seedForm.price" type="number" step="0.01" /></label>
-                </div>
-                <div v-if="bForm" class="bk-actions">
-                  <button type="button" class="logs-btn" @click="bSeed">注入模拟持仓</button>
-                  <label class="ai-field" style="margin-left:12px"><span>初始资金</span>
-                    <input v-model.number="bForm.mockInitCash" type="number" step="10000" /></label>
-                  <button type="button" class="logs-btn" @click="bMockReset">重置模拟账户</button>
-                </div>
+                <div class="section-title" style="margin-top:18px">模拟账户</div>
+                <div class="section-sub">买卖操作在左侧「模拟交易」卡片里直接进行。这里只有重置功能。</div>
                 <div v-if="bForm" class="bk-actions" style="margin-top:10px">
+                  <button type="button" class="logs-btn danger" @click="bMockReset">清空模拟账户（回到100万）</button>
                   <label class="ai-field">
                     <input v-model="bForm.mockAllowAnytime" type="checkbox" />
-                    模拟允许任意时间（休市 / 周末可联调）
+                    休市/周末也能买卖（联调用）
                   </label>
                 </div>
 
@@ -1619,12 +1673,31 @@ async function toggleDev() {
   background: rgba(255,255,255,.02); margin-top: 10px;
 }
 .bk-live-card.on { border-color: #f23645; background: rgba(242,54,69,.08); }
+.bk-live-card.disabled { opacity: 0.6; }
 .bk-live-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
 .bk-advanced summary {
   cursor: pointer; font-size: 13px; color: var(--accent-2);
   padding: 8px 0; user-select: none;
 }
 .bk-advanced summary:hover { color: var(--text); }
+
+/* 规则脑指标说明 */
+.rule-indicators {
+  margin-top: 14px; padding: 12px; border-radius: 10px;
+  background: rgba(255,255,255,.03); border: 1px solid var(--border);
+}
+.ri-title { font-size: 12px; font-weight: 600; margin-bottom: 10px; color: var(--accent-2); }
+.ri-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ri-item {
+  padding: 8px; border-radius: 6px; background: rgba(255,255,255,.02);
+  font-size: 11px; line-height: 1.4;
+}
+.ri-item b { display: block; color: var(--text); margin-bottom: 2px; font-size: 11.5px; }
+.ri-item span { color: var(--text-dim); }
+.ri-item.off { opacity: 0.45; }
+.ri-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
+.switch.sm { width: 28px; height: 16px; }
+.switch.sm .knob { width: 12px; height: 12px; }
 .bk-radio input { accent-color: var(--accent); }
 .bk-live-on { color: #ff5a6a; font-weight: 700; }
 </style>

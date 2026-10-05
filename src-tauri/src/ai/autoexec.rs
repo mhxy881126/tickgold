@@ -35,6 +35,7 @@ pub struct AutoExecConfig {
     pub bridge_ttl_minutes: i64,      // 待确认信号有效期（分钟）
     pub bridge_price_deviate_pct: f64,// 参考价偏离提示阈值（%）
     pub bridge_order_template: String,  // 自定义下单指令模板（空=内置默认）
+    pub indicators_enabled: std::collections::HashMap<String, bool>,  // 规则脑指标开关
 }
 
 impl Default for AutoExecConfig {
@@ -57,8 +58,20 @@ impl Default for AutoExecConfig {
             bridge_ttl_minutes: 30,
             bridge_price_deviate_pct: 1.5,
             bridge_order_template: String::new(),
+            indicators_enabled: default_indicators(),
         }
     }
+}
+
+/// 规则脑 12 个指标默认全启用。
+fn default_indicators() -> std::collections::HashMap<String, bool> {
+    let m: std::collections::HashMap<String, bool> = [
+        ("pct", true), ("speed5m", true), ("volumeRatio", true), ("turnover", true),
+        ("distToLimit", true), ("pullback", true), ("blastCount", true), ("marketEmotion", true),
+        ("indexChg", true), ("themeRank", true), ("catalystFreshness", true), ("mainNetInflowYi", true),
+        ("macdHist", true), ("rsi14", true),
+    ].iter().map(|(k, v)| (k.to_string(), *v)).collect();
+    m
 }
 
 /// 共享控制句柄（manage）。
@@ -638,15 +651,39 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
             }
 
             let side = if pos.is_some() { "sell" } else { "buy" };
-            let features = intraday::assemble_features(&IntradayInput {
+            let mut features = intraday::assemble_features(&IntradayInput {
                 code: item.code.clone(),
                 quote: q,
                 prev_price_5m: price_5m_ago(&hist, &item.code),
                 holding_pct,
                 ctx: &ctx,
             });
+            // 拉日K线算 MACD/RSI（失败给中性值）
+            if let Ok(kbars) = market::get_kline(item.code.clone(), 101, 60).await {
+                let closes: Vec<f64> = kbars.iter().map(|k| k.close).collect();
+                let (dif, dea, macd_hist) = intraday::calc_macd(&closes);
+                let rsi = intraday::calc_rsi(&closes, 14);
+                if let Some(f) = features.as_object_mut() {
+                    f.insert("macdDif".into(), json!(dif));
+                    f.insert("macdDea".into(), json!(dea));
+                    f.insert("macdHist".into(), json!(macd_hist));
+                    f.insert("rsi14".into(), json!(rsi));
+                }
+            }
             let pack = json!({"side":side,"features":features,"code":item.code,"name":item.name});
-            let d = fastbrain::fast_decide(pack, &cfg.brain_mode, &cfg.laya_url).await;
+            // 读取云端 LLM 配置（如果 brain_mode=cloud_llm）
+            let cloud = if cfg.brain_mode == "cloud_llm" {
+                let aidb = crate::ai::vectordb::open(&data_dir.join("ai.db")).ok();
+                aidb.as_ref().and_then(|db| {
+                    let ai_cfg = crate::ai::config::load_config(&db.0).ok()?;
+                    let key = crate::ai::config::SecretStore::get(&crate::ai::config::KeyringSecret {
+                        service: "tickgold.ai.cloud-key".to_string(),
+                        user: "default".to_string(),
+                    }).ok().flatten()?;
+                    Some((ai_cfg.base_url, key, ai_cfg.chat_model))
+                })
+            } else { None };
+            let d = fastbrain::fast_decide(pack, &cfg.brain_mode, &cfg.laya_url, cloud, Some(&cfg.indicators_enabled)).await;
 
             match d.label.as_str() {
                 "BUY" if pos.is_none() => {
