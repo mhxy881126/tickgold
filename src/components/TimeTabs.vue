@@ -54,8 +54,8 @@ const weekday = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 36px;
-  flex: none;
+  flex: 1;
+  min-width: 0;
   padding: 0 4px;
   position: relative;
   z-index: 2;

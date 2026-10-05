@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>卡片工作台改版 · 4 版方案对比</title>
+<style>
+:root{
+  --bg:#0a0d13; --panel:#10151f; --panel2:#141a26; --panel3:#0d121b;
+  --line:#202838; --line2:#1a212e;
+  --gold:#d4af37; --gold2:#e8c96a; --blue:#4ea1ff; --red:#f23645; --green:#08db94; --purple:#b07cff;
+  --t:#e7ecf4; --m:#8b94a3; --dim:#5a6472;
+  --mono:"SF Mono","Consolas","Roboto Mono",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:radial-gradient(1200px 520px at 72% -12%,#15202f 0%,var(--bg) 56%);
+  color:var(--t);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased;padding:40px 24px 80px}
+.wrap{max-width:1280px;margin:0 auto}
+/* head */
+.kicker{font-size:11px;letter-spacing:2.4px;color:var(--gold2);border:1px solid rgba(212,175,55,.35);
+  border-radius:999px;padding:5px 15px;background:rgba(212,175,55,.06);display:inline-block}
+h1{font-size:32px;font-weight:800;margin:18px 0 10px}
+h1 .g{background:linear-gradient(90deg,var(--gold2),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{color:var(--m);max-width:780px}
+.lead b{color:var(--t)}
+/* pain points */
+.pains{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:30px 0}
+.pain{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.pain .pn{font-size:11px;color:var(--red);font-weight:700;letter-spacing:1px}
+.pain h3{font-size:14px;margin:6px 0 6px;color:var(--t)}
+.pain p{font-size:12px;color:var(--m)}
+/* section title */
+.stitle{font-size:20px;font-weight:800;margin:36px 0 16px;display:flex;align-items:center;gap:10px}
+.stitle::before{content:'';width:4px;height:18px;background:var(--gold);border-radius:2px}
+/* scheme grid */
+.schemes{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+.sch{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;
+  transition:all .2s;display:flex;flex-direction:column;text-decoration:none;color:var(--t)}
+.sch:hover{border-color:var(--gold);transform:translateY(-2px);box-shadow:0 18px 40px -20px rgba(212,175,55,.25)}
+.sch .thumb{height:200px;background:#0b1018;position:relative;border-bottom:1px solid var(--line2);overflow:hidden}
+.sch .body{padding:16px}
+.sch .tag{display:inline-block;font-size:10px;padding:2px 8px;border-radius:99px;margin-bottom:8px;font-weight:700}
+.sch h3{font-size:16px;margin-bottom:6px}
+.sch .en{font-size:11px;color:var(--dim);font-family:var(--mono);margin-bottom:10px}
+.sch p{font-size:12px;color:var(--m);margin-bottom:10px}
+.sch ul{list-style:none;font-size:11.5px;color:var(--m)}
+.sch li{padding:3px 0 3px 16px;position:relative}
+.sch li::before{content:'▸';position:absolute;left:0;color:var(--gold2)}
+.sch .who{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line2);font-size:11px;color:var(--dim)}
+.sch .who b{color:var(--gold2)}
+/* thumbnails - mini mock layouts */
+.mini{position:absolute;inset:0;padding:10px;font-size:8px;font-family:var(--mono)}
+/* A: dock left */
+.mA{display:grid;grid-template-columns:14px 1fr;grid-template-rows:14px 1fr 14px;gap:3px;background:#0c111a;height:100%}
+.mA .mt{grid-column:1/3;background:#0a0e15;border-bottom:1px solid #1a212e;display:flex;align-items:center;padding:0 5px;color:#8b94a3}
+.mA .md{background:#0c111a;border-right:1px solid #1a212e;display:flex;flex-direction:column;align-items:center;padding-top:4px;gap:3px}
+.mA .md i{width:8px;height:8px;border-radius:2px;background:#2a333f}
+.mA .md i.on{background:#d4af37}
+.mA .mm{display:grid;grid-template-columns:1fr 40px;grid-template-rows:1fr 30px;gap:3px;padding:4px}
+.mA .mm .c{background:#141a26;border:1px solid #202838;border-radius:2px}
+.mA .mm .c.gold{border-color:#d4af37}
+.mA .mm .r{grid-column:1/3;background:#141a26;border:1px solid #202838;border-radius:2px}
+.mA .mb{grid-column:1/3;background:#0a0e15;border-top:1px solid #1a212e;display:flex;align-items:center;gap:3px;padding:0 5px}
+.mA .mb i{height:6px;width:24px;background:#1a2436;border-radius:2px}
+.mA .mb i.on{background:#d4af37}
+/* B: superbar */
+.mB{display:grid;grid-template-rows:18px 1fr;height:100%}
+.mB .sb{background:linear-gradient(90deg,#15202f,#0c111a);border-bottom:1px solid #1a212e;
+  display:flex;align-items:center;gap:4px;padding:0 5px;color:#8b94a3}
+.mB .sb .g{color:#e8c96a;font-weight:700}
+.mB .sb .t{width:18px;height:6px;background:#1a2436;border-radius:1px}
+.mB .sb .t.on{background:rgba(212,175,55,.3);outline:1px solid #d4af37}
+.mB .sc{display:grid;grid-template-columns:1fr 30px;grid-template-rows:1fr 24px;gap:3px;padding:4px;background:#0d121b}
+.mB .sc .c{background:#141a26;border:1px solid #202838;border-radius:2px}
+.mB .sc .zone{border:1px dashed #d4af37;background:rgba(212,175,55,.08);border-radius:2px;
+  display:flex;align-items:center;justify-content:center;color:rgba(212,175,55,.7)}
+.mB .sc .r{grid-column:1/3}
+/* C: canvas */
+.mC{background:radial-gradient(circle,#1c2432 1px,transparent 1px);background-size:8px 8px;
+  background-color:#070a10;position:relative;height:100%}
+.mC .cb{position:absolute;background:#141a26;border:1px solid #202838;border-radius:2px;box-shadow:0 4px 12px rgba(0,0,0,.5)}
+.mC .cb.sel{border-color:#d4af37}
+.mC .pill{position:absolute;top:6px;left:50%;transform:translateX(-50%);width:60%;height:12px;
+  background:rgba(20,26,38,.9);border:1px solid #202838;border-radius:6px}
+.mC .mini{position:absolute;right:6px;bottom:20px;width:24px;height:14px;background:#0f141d;border:1px solid #202838;border-radius:2px}
+.mC .dock{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);display:flex;gap:3px}
+.mC .dock i{width:10px;height:10px;background:#141a26;border:1px solid #202838;border-radius:2px}
+.mC .dock i.on{border-color:#d4af37}
+/* D: splitter */
+.mD{display:grid;grid-template-columns:30px 1fr;height:100%}
+.mD .nav{background:#0c111a;border-right:1px solid #1a212e;padding:3px;display:flex;flex-direction:column;gap:2px}
+.mD .nav i{height:4px;background:#1a2436;border-radius:1px}
+.mD .nav i.on{background:rgba(212,175,55,.4);border-left:1px solid #d4af37}
+.mD .main{display:grid;grid-template-columns:1fr 22px;grid-template-rows:10px 1fr 28px;gap:2px;padding:3px;background:#0d121b}
+.mD .tabs{grid-column:1/3;display:flex;gap:2px;padding:0 2px}
+.mD .tabs i{height:8px;background:#0f141d;border:1px solid #1a212e;border-bottom:none;border-radius:2px 2px 0 0;width:30px}
+.mD .tabs i.on{background:#141a26;border-top:1px solid #d4af37}
+.mD .pane{background:#141a26;border:1px solid #202838;border-radius:2px}
+.mD .gutter{background:#1a212e;cursor:col-resize}
+.mD .hs{grid-column:1/3;background:#141a26;border:1px solid #202838;border-radius:2px}
+/* compare table */
+.cmp{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
+.cmp th,.cmp td{padding:10px 12px;border:1px solid var(--line2);text-align:left;vertical-align:top}
+.cmp th{background:var(--panel2);color:var(--gold2);font-weight:700;font-size:11.5px}
+.cmp td:first-child{color:var(--dim);font-weight:600;background:var(--panel2);width:110px}
+.cmp td .ok{color:var(--green)} .cmp td .mid{color:var(--gold2)} .cmp td .low{color:var(--dim)}
+/* recommendation */
+.rec{margin-top:30px;background:linear-gradient(135deg,rgba(212,175,55,.08),rgba(212,175,55,.02));
+  border:1px solid rgba(212,175,55,.35);border-radius:14px;padding:22px}
+.rec h3{color:var(--gold2);font-size:16px;margin-bottom:10px}
+.rec p{color:var(--t);font-size:13px;margin-bottom:8px}
+.rec .steps{background:#0a0e15;border-radius:8px;padding:12px 14px;margin-top:10px;font-size:12px;color:var(--m)}
+.rec .steps b{color:var(--gold2)}
+a.sch{display:flex}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="kicker">WORKBENCH REVAMP · 4 PROPOSALS</span>
+  <h1>卡片工作台改版 · <span class="g">4 版方案对比</span></h1>
+  <p class="lead">
+    针对你提的两个痛点——<b>① 卡片自定义编排不好用</b>、<b>② 菜单功能 / 卡片切换不好用</b>，
+    我对照当前实现（顶栏 + 指数条 + Mega 导航 + 场景模板 + 时段 tabs 共 5 层横条、main/side 两分区粗粒度拖拽、聚焦态右侧小 rail）
+    出了 4 版差异化高保真原型。每版都能直接点开看完整效果。
+  </p>
+
+  <!-- 痛点回顾 -->
+  <div class="pains">
+    <div class="pain">
+      <div class="pn">痛点 1 · 卡片编排</div>
+      <h3>只有 main / side 两分区，落点粗</h3>
+      <p>拖拽只能落到左 7/12 或右 5/12，before/after 两档；要真正自由摆放必须进"布局"菜单切模式，操作深。</p>
+    </div>
+    <div class="pain">
+      <div class="pn">痛点 2 · 菜单层级</div>
+      <h3>5 层横条堆叠，语义重叠</h3>
+      <p>顶栏 / 指数条 / Mega 功能 tabs / 场景模板 chips / 时段 tabs——垂直吃掉 ~180px，功能、场景、时段三组控件职责模糊。</p>
+    </div>
+    <div class="pain">
+      <div class="pn">痛点 3 · 卡片切换</div>
+      <h3>聚焦态 rail 又小又硬切</h3>
+      <p>右侧 rail 只有文字小条、无卡片预览、无键盘切换提示，多卡时找不到当前在哪张。</p>
+    </div>
+  </div>
+
+  <!-- 4 版方案 -->
+  <div class="stitle">4 版方案 · 点开看完整高保真原型</div>
+  <div class="schemes">
+
+    <a class="sch" href="revamp-A-dock.html" target="_blank">
+      <div class="thumb">
+        <div class="mini mA">
+          <div class="mt">TickGold · 指数 · 时段分段 · 搜索 · 状态</div>
+          <div class="md"><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="mm">
+            <div class="c gold"></div><div class="c"></div>
+            <div class="r"></div>
+          </div>
+          <div class="mb"><i class="on"></i><i></i><i></i><i></i><i>＋</i></div>
+        </div>
+      </div>
+      <div class="body">
+        <span class="tag" style="background:rgba(212,175,55,.15);color:var(--gold2)">RECOMMENDED</span>
+        <h3>方案 A · 左侧 Dock + 底部 Tab 流</h3>
+        <div class="en">VSCode / Linear 风</div>
+        <p>把 Mega 横条收成左侧 56px 竖排 icon dock，场景/时段合并为顶栏右侧分段控件。</p>
+        <ul>
+          <li>菜单：分类常驻左侧，点击即出面板，告别悬停 mega</li>
+          <li>编排：保留主区网格，一键切换"布局模式"按钮上移到场景行</li>
+          <li>切换：底部 Chrome 风 Tab 流，可拖排序、中键关闭、Ctrl+数字直达</li>
+        </ul>
+        <div class="who">适合：<b>大多数老用户</b>，改动最平滑，学习成本最低</div>
+      </div>
+    </a>
+
+    <a class="sch" href="revamp-B-superbar.html" target="_blank">
+      <div class="thumb">
+        <div class="mini mB">
+          <div class="sb"><span class="g">TG</span><span class="t on"></span><span class="t"></span><span class="t"></span><span class="t"></span><span class="t"></span><span class="t"></span></div>
+          <div class="sc">
+            <div class="c"></div>
+            <div class="zone">槽位</div>
+            <div class="r"></div>
+          </div>
+        </div>
+      </div>
+      <div class="body">
+        <span class="tag" style="background:rgba(78,161,255,.15);color:var(--blue)">MOST COMPACT</span>
+        <h3>方案 B · 超级顶栏 + 槽位吸附</h3>
+        <div class="en">紧凑融合风</div>
+        <p>5 层横条压成 1 条 44px 超级顶栏，垂直省出 ~110px 全部还给图表。</p>
+        <ul>
+          <li>菜单：指数 ticker + 功能 tabs + 场景 chips 全在一条</li>
+          <li>编排：拖卡片即显 6 个虚线槽位（左大/右列/底部通栏），所见即所得</li>
+          <li>切换：右侧 rail 升级带卡片缩略图，←/→ 键淡入滑动</li>
+        </ul>
+        <div class="who">适合：<b>屏幕小、想最大化看盘面积</b>的用户</div>
+      </div>
+    </a>
+
+    <a class="sch" href="revamp-C-canvas.html" target="_blank">
+      <div class="thumb">
+        <div class="mini mC">
+          <div class="pill"></div>
+          <div class="cb sel" style="left:14%;top:24%;width:40%;height:50%"></div>
+          <div class="cb" style="left:58%;top:24%;width:22%;height:22%"></div>
+          <div class="cb" style="left:58%;top:50%;width:22%;height:24%"></div>
+          <div class="cb" style="left:14%;top:78%;width:22%;height:18%"></div>
+          <div class="mini"></div>
+          <div class="dock"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+        </div>
+      </div>
+      <div class="body">
+        <span class="tag" style="background:rgba(176,124,255,.15);color:var(--purple)">MOST FLEXIBLE</span>
+        <h3>方案 C · 无限画布 + 悬浮工具栏</h3>
+        <div class="en">Figma / Notion 风</div>
+        <p>彻底去掉横条，卡片像 Figma 一样自由浮在点格画布上，可叠放、可缩放。</p>
+        <ul>
+          <li>菜单：点 + 出环形 radial 菜单，围绕光标展开，手不离鼠标</li>
+          <li>编排：绝对自由布局 + 右下角小地图全局导航 + 视图书签存场景</li>
+          <li>切换：底部 macOS Dock 风切换条，hover 放大预览</li>
+        </ul>
+        <div class="who">适合：<b>重度 DIY 用户、多屏拼接</b>，但学习成本最高</div>
+      </div>
+    </a>
+
+    <a class="sch" href="revamp-D-splitter.html" target="_blank">
+      <div class="thumb">
+        <div class="mini mD">
+          <div class="nav"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="main">
+            <div class="tabs"><i class="on"></i><i></i><i></i></div>
+            <div class="pane"></div>
+            <div class="gutter"></div>
+            <div class="hs"></div>
+          </div>
+        </div>
+      </div>
+      <div class="body">
+        <span class="tag" style="background:rgba(242,54,69,.15);color:var(--red)">POWER USERS</span>
+        <h3>方案 D · 导航树 + Splitter 分栏</h3>
+        <div class="en">通达信 / Bloomberg 风</div>
+        <p>左侧 180px 常驻两级功能树，主区像 VSCode 一样自由 splitter 分栏。</p>
+        <ul>
+          <li>菜单：分类→功能两级树常驻，不用悬停，一眼找得到</li>
+          <li>编排：gutter 横竖拖拽分栏，自己画比例，每栏独立滚动</li>
+          <li>切换：每栏 Chrome 风 Tab，中键关闭、Ctrl+Tab 切换</li>
+        </ul>
+        <div class="who">适合：<b>专业交易员、卡片极多</b>的资深用户</div>
+      </div>
+    </a>
+  </div>
+
+  <!-- 对比矩阵 -->
+  <div class="stitle">对比矩阵</div>
+  <table class="cmp">
+    <thead>
+      <tr>
+        <th>维度</th><th>A · Dock 侧栏</th><th>B · 超级顶栏</th><th>C · 画布工作台</th><th>D · 分栏终端</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>菜单可见性</td><td><span class="ok">高（常驻 dock）</span></td><td><span class="mid">中（一条 tabs）</span></td><td><span class="low">低（悬浮 pill）</span></td><td><span class="ok">高（左树常驻）</span></td></tr>
+      <tr><td>垂直空间利用</td><td>省 ~90px</td><td><span class="ok">省 ~110px</span></td><td><span class="ok">省 ~130px</span></td><td>省 ~70px</td></tr>
+      <tr><td>卡片编排自由度</td><td><span class="mid">中（网格+槽位）</span></td><td><span class="ok">高（6 槽位吸附）</span></td><td><span class="ok">极高（自由浮窗）</span></td><td><span class="ok">高（splitter）</span></td></tr>
+      <tr><td>编排学习成本</td><td><span class="ok">低</span></td><td><span class="ok">低</span></td><td><span class="low">高</span></td><td><span class="mid">中</span></td></tr>
+      <tr><td>卡片切换效率</td><td><span class="ok">高（Tab 流）</span></td><td><span class="mid">中（rail 缩略图）</span></td><td><span class="mid">中（Dock hover）</span></td><td><span class="ok">高（Tab + Ctrl+Tab）</span></td></tr>
+      <tr><td>多卡片上限</td><td>~12 张舒适</td><td>~10 张</td><td><span class="ok">无上限（小地图）</span></td><td><span class="ok">无上限（多栏多 Tab）</span></td></tr>
+      <tr><td>与现有代码契合</td><td><span class="ok">高（改动最小）</span></td><td><span class="mid">中（改顶栏+拖拽）</span></td><td><span class="low">低（重写布局引擎）</span></td><td><span class="mid">中（引入 splitter）</span></td></tr>
+      <tr><td>适合人群</td><td>大多数老用户</td><td>小屏/紧凑党</td><td>DIY 重度用户</td><td>专业交易员</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 推荐 -->
+  <div class="rec">
+    <h3>💡 推荐路径</h3>
+    <p>
+      <b>主推 A 作为下一代工作台主干</b>：它在"菜单好找、编排够用、切换顺手"三者间最均衡，
+      且对现有 App.vue / LayoutMenu / useWorkbench 改动最小——Mega 导航改成 dock、底部加 Tab 流、
+      场景 chips 合并进顶栏右侧分段，2-3 周可落地。
+    </p>
+    <p>
+      <b>B 的"槽位吸附"编排体验建议作为独立增强吸收进 A</b>：不管最终布局形态如何，
+      拖拽时显示 6 个虚线槽位这件事本身就是痛点 1 的直接解药，值得单独做。
+    </p>
+    <p>
+      <b>C / D 作为远期方向</b>：C 适合未来做大屏/多屏拼接模式，D 适合给专业用户做"交易员模式"开关。
+    </p>
+    <div class="steps">
+      <b>下一步可选：</b>
+      ① 你点上面 4 个缩略图看完整原型，圈出喜欢的元素；
+      ② 我把 A + B 槽位吸附合并成一份可落地的设计规格（含交互细节、动画时长、键盘快捷键表）；
+      ③ 直接进入代码改造。
+    </div>
+  </div>
+</div>
+</body>
+</html>

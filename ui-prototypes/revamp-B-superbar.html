@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>方案 B · 超级顶栏 + 槽位吸附</title>
+<style>
+:root{
+  --bg:#0a0d13; --panel:#10151f; --panel2:#141a26; --panel3:#0d121b;
+  --line:#202838; --line2:#1a212e;
+  --gold:#d4af37; --gold2:#e8c96a; --blue:#4ea1ff; --red:#f23645; --green:#08db94; --purple:#b07cff;
+  --t:#e7ecf4; --m:#8b94a3; --dim:#5a6472;
+  --mono:"SF Mono","Consolas","Roboto Mono",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#05070b;color:var(--t);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  font-size:12px;-webkit-font-smoothing:antialiased;padding:24px}
+.label{max-width:1440px;margin:0 auto 10px;display:flex;align-items:baseline;gap:12px}
+.label h1{font-size:18px;color:var(--gold2)}
+.label .sub{color:var(--m);font-size:12px}
+.label .tag{margin-left:auto;font-size:10px;color:var(--blue);border:1px solid rgba(78,161,255,.4);
+  padding:2px 8px;border-radius:99px}
+/* ===== mock window ===== */
+.mock{max-width:1440px;height:820px;margin:0 auto;background:var(--bg);border:1px solid var(--line);
+  border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 80px -30px #000}
+/* SUPER TOPBAR 44px - 一条融合所有 */
+.superbar{height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 12px;
+  background:linear-gradient(180deg,#0f1520,#0c111a);border-bottom:1px solid var(--line2)}
+.brand{font-weight:800;color:var(--gold2);font-size:13px;letter-spacing:.5px;flex:none}
+.ticker{display:flex;gap:14px;overflow:hidden;white-space:nowrap;font-family:var(--mono);font-size:10.5px;flex:none}
+.ticker .it b{color:var(--t);font-weight:600;margin-right:4px}
+.up{color:var(--red)} .dn{color:var(--green)}
+.vdiv{width:1px;height:20px;background:var(--line2);flex:none}
+/* 功能 tabs 内嵌 */
+.tabs{display:flex;gap:2px;flex:none}
+.tabs .tb{font-size:11.5px;color:var(--m);padding:4px 10px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:5px}
+.tabs .tb svg{width:13px;height:13px}
+.tabs .tb.on{color:var(--gold2);background:rgba(212,175,55,.12)}
+/* 场景 chips */
+.scenes{display:flex;gap:4px;flex:none}
+.scenes .s{font-size:10.5px;color:var(--m);padding:3px 9px;border-radius:5px;cursor:pointer;border:1px solid transparent}
+.scenes .s.on{color:var(--gold2);border-color:rgba(212,175,55,.4);background:rgba(212,175,55,.08)}
+/* 搜索 */
+.srch{flex:1;max-width:220px;height:26px;margin-left:auto;background:#0a0e15;border:1px solid var(--line);
+  border-radius:6px;color:var(--dim);font-size:11px;display:flex;align-items:center;padding:0 9px;gap:6px}
+.st{color:var(--dim);font-size:10.5px;font-family:var(--mono);flex:none}
+.wc{display:flex;gap:10px;color:var(--dim);flex:none}
+/* workspace */
+.ws{flex:1;display:flex;min-height:0;position:relative}
+/* canvas with drop zones visible (拖拽中状态) */
+.canvas{flex:1;position:relative;padding:10px;display:grid;gap:8px;
+  grid-template-columns:1fr 300px;grid-template-rows:1fr 170px}
+/* 槽位（虚线占位，拖拽时浮现） */
+.zone{border:1.5px dashed rgba(212,175,55,.55);border-radius:10px;background:rgba(212,175,55,.04);
+  position:relative;display:flex;align-items:center;justify-content:center;
+  color:rgba(212,175,55,.7);font-size:11px;font-weight:600}
+.zone::after{content:attr(data-tag);position:absolute;top:6px;left:8px;font-size:9.5px;color:rgba(212,175,55,.55);font-weight:400}
+.zone.hover{background:rgba(212,175,55,.14);border-style:solid;box-shadow:inset 0 0 0 1px var(--gold)}
+/* card */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;
+  flex-direction:column;min-height:0;overflow:hidden}
+.card.chart{grid-row:span 1}
+.card.side{grid-row:span 1}
+.card.watch{grid-column:span 2}
+.chd{height:28px;flex:none;display:flex;align-items:center;gap:7px;padding:0 10px;
+  border-bottom:1px solid var(--line2);font-size:11px;font-weight:700;color:var(--m)}
+.chd .dot{width:6px;height:6px;border-radius:2px;background:var(--gold2)}
+.chd .acts{margin-left:auto;display:flex;gap:8px;color:var(--dim);font-weight:400;font-size:10px}
+.cbd{flex:1;min-height:0;overflow:hidden;position:relative}
+/* fake chart */
+.kline .row1{display:flex;align-items:baseline;gap:10px;padding:8px 10px 0}
+.kline .nm{font-size:13px;color:var(--t);font-weight:700}
+.kline .cd{font-size:10px;color:var(--dim);font-family:var(--mono)}
+.kline .px{font-size:20px;color:var(--red);font-weight:800;font-family:var(--mono)}
+.kline .chg{font-size:11px;color:var(--red);font-family:var(--mono)}
+.kk{width:100%;height:calc(100% - 28px)}
+/* radar */
+.radar{padding:10px}
+.radar .nums{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
+.radar .n{background:#0c111a;border:1px solid var(--line2);border-radius:7px;padding:6px;text-align:center}
+.radar .n .v{font-size:16px;font-weight:800;font-family:var(--mono)}
+.radar .n .k{font-size:9px;color:var(--dim)}
+.radar .n.red .v{color:var(--red)}
+.tl{font-size:10.5px;color:var(--dim);padding:3px 0;border-bottom:1px dashed var(--line2);display:flex;gap:8px}
+.tl .tm{font-family:var(--mono);flex:none;width:38px}
+.tl .tx{color:var(--t)}
+/* watchlist */
+.wl{width:100%;border-collapse:collapse;font-size:11px;font-family:var(--mono)}
+.wl th{text-align:right;color:var(--dim);font-weight:600;padding:4px 10px;border-bottom:1px solid var(--line2);font-size:10px}
+.wl th:first-child,.wl td:first-child{text-align:left}
+.wl td{padding:4px 10px;text-align:right;border-bottom:1px solid #141b27}
+.wl td.name{font-family:inherit;color:var(--t)}
+/* 拖拽中的悬浮卡片 */
+.dragging-card{position:absolute;width:340px;height:200px;left:520px;top:180px;z-index:10;
+  background:#16202e;border:1px solid var(--gold);border-radius:10px;box-shadow:0 24px 60px rgba(0,0,0,.6);
+  transform:rotate(2deg);opacity:.95;display:flex;flex-direction:column}
+.dragging-card .h{height:26px;display:flex;align-items:center;padding:0 10px;font-size:11px;
+  color:var(--gold2);border-bottom:1px solid var(--line2);font-weight:700}
+.dragging-card .b{flex:1;padding:8px;font-size:10.5px;color:var(--m)}
+.drag-hint{position:absolute;left:520px;top:390px;z-index:10;background:var(--gold);color:#0a0d13;
+  font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.5)}
+/* 右侧 rail 卡片切换 */
+.rail{width:180px;flex:none;background:#0c111a;border-left:1px solid var(--line2);
+  padding:8px 6px;display:flex;flex-direction:column;gap:6px;overflow-y:auto}
+.rail .rh{font-size:10px;color:var(--dim);padding:2px 6px 6px;letter-spacing:1px}
+.ri{display:flex;gap:8px;padding:6px;border-radius:8px;cursor:pointer;border:1px solid transparent;align-items:center}
+.ri:hover{background:#16202e}
+.ri.on{background:#1a2436;border-color:rgba(212,175,55,.4)}
+.ri .thumb{width:36px;height:26px;border-radius:4px;flex:none;background:#0a0e15;border:1px solid var(--line2);
+  position:relative;overflow:hidden}
+.ri .thumb svg{width:100%;height:100%}
+.ri .ti{flex:1;min-width:0}
+.ri .t1{font-size:11px;color:var(--t);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ri .t2{font-size:9.5px;color:var(--dim);margin-top:1px}
+.ri .bar{width:3px;align-self:stretch;border-radius:2px}
+/* callout */
+.note{position:absolute;background:var(--blue);color:#fff;font-size:10px;font-weight:700;
+  padding:3px 8px;border-radius:5px;box-shadow:0 4px 14px rgba(0,0,0,.5);z-index:20}
+.note::after{content:'';position:absolute;border:5px solid transparent}
+.n1{top:54px;left:50%;transform:translateX(-50%)}
+.n2{bottom:120px;left:30%}
+.n2::after{bottom:-11px;left:50%;transform:translateX(-50%);border-top-color:var(--blue)}
+.n3{top:120px;right:196px}
+.n3::after{right:-11px;top:12px;border-left-color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="label">
+  <h1>方案 B · 超级顶栏 + 拖拽槽位吸附</h1>
+  <span class="sub">5 层横条压成 1 条 44px 超级顶栏；拖卡片时画布浮现 6 个虚线槽位，所见即所得</span>
+  <span class="tag">MOST COMPACT</span>
+</div>
+
+<div class="mock">
+  <!-- 超级顶栏 -->
+  <div class="superbar">
+    <span class="brand">TickGold</span>
+    <div class="ticker">
+      <span class="it"><b>上证</b><span class="up">3200 +1.2%</span></span>
+      <span class="it"><b>深成</b><span class="dn">10200 -0.2%</span></span>
+      <span class="it"><b>创业</b><span class="up">2010 +1.1%</span></span>
+    </div>
+    <div class="vdiv"></div>
+    <div class="tabs">
+      <div class="tb on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>大盘</div>
+      <div class="tb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/></svg>盯盘</div>
+      <div class="tb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8"/></svg>情绪</div>
+      <div class="tb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>板块</div>
+      <div class="tb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4h10v4H7zM5 8h14v12H5z"/></svg>个股</div>
+      <div class="tb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>交易</div>
+    </div>
+    <div class="vdiv"></div>
+    <div class="scenes">
+      <div class="s on">极简看盘</div>
+      <div class="s">盘中盯盘</div>
+      <div class="s">开盘竞价</div>
+      <div class="s">盘后复盘</div>
+    </div>
+    <div class="srch">🔍 搜索 / 命令</div>
+    <span class="st">● 实时 · 10:32</span>
+    <div class="wc"><span>—</span><span>▢</span><span>✕</span></div>
+  </div>
+
+  <div class="ws">
+    <!-- 画布：拖拽中，槽位全亮 -->
+    <div class="canvas">
+      <!-- 左上：图表卡 -->
+      <div class="card chart kline">
+        <div class="chd"><span class="dot"></span>K线图 · 贵州茅台
+          <div class="acts"><span>⛶</span><span>⚙</span><span>✕</span></div>
+        </div>
+        <div class="cbd">
+          <div class="row1">
+            <span class="nm">贵州茅台</span><span class="cd">600519</span>
+            <span class="px">1680.00</span><span class="chg">+1.20%</span>
+          </div>
+          <svg class="kk" viewBox="0 0 600 260" preserveAspectRatio="none">
+            <path d="M20 200 L60 180 L100 190 L140 150 L180 160 L220 120 L260 130 L300 100 L340 110 L380 80 L420 90 L460 60 L500 70 L540 45 L580 55"
+                  fill="none" stroke="#f23645" stroke-width="1.6"/>
+            <g fill="#08db94">
+              <rect x="40" y="240" width="14" height="18"/><rect x="140" y="235" width="14" height="23"/>
+              <rect x="240" y="238" width="14" height="20"/><rect x="340" y="232" width="14" height="26"/>
+              <rect x="440" y="235" width="14" height="23"/><rect x="540" y="228" width="14" height="30"/>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <!-- 右上：槽位（hover 高亮，表示要放这里） -->
+      <div class="zone hover" data-tag="槽位 · 右上">
+        松手即吸附到此处
+      </div>
+
+      <!-- 底部通栏：自选股卡 -->
+      <div class="card watch">
+        <div class="chd"><span class="dot" style="background:var(--blue)"></span>自选股
+          <div class="acts"><span>⛶</span><span>⚙</span><span>✕</span></div>
+        </div>
+        <div class="cbd" style="overflow:auto">
+          <table class="wl">
+            <thead><tr><th>名称</th><th>最新</th><th>涨跌幅</th><th>换手</th></tr></thead>
+            <tbody>
+              <tr><td class="name">宁德时代 300750</td><td>189.00</td><td class="up">+2.10%</td><td>1.2%</td></tr>
+              <tr><td class="name">贵州茅台 600519</td><td>1680.00</td><td class="up">+1.20%</td><td>0.8%</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 被拖拽的卡片（浮在中间） -->
+      <div class="dragging-card">
+        <div class="h">⠿ 涨停雷达（拖动中…）</div>
+        <div class="b">拖到任意虚线槽位松手<br/>· 左大 / 右列 / 底部通栏<br/>· 自动磁吸对齐<br/>· 按 Esc 取消</div>
+      </div>
+      <div class="drag-hint">→ 将吸附到「右上槽位」</div>
+    </div>
+
+    <!-- 右侧 rail 卡片切换（带缩略图） -->
+    <aside class="rail">
+      <div class="rh">正在打开的卡片</div>
+      <div class="ri on">
+        <span class="bar" style="background:var(--gold2)"></span>
+        <div class="thumb"><svg viewBox="0 0 36 26"><path d="M2 20 L8 16 L14 18 L20 10 L26 12 L34 5" stroke="#f23645" fill="none" stroke-width="1.5"/></svg></div>
+        <div class="ti"><div class="t1">K线图</div><div class="t2">贵州茅台 · 日K</div></div>
+      </div>
+      <div class="ri">
+        <span class="bar" style="background:var(--red)"></span>
+        <div class="thumb"><svg viewBox="0 0 36 26"><circle cx="18" cy="13" r="9" stroke="#f23645" fill="none" stroke-width="1.5"/></svg></div>
+        <div class="ti"><div class="t1">涨停雷达</div><div class="t2">全市场扫描中</div></div>
+      </div>
+      <div class="ri">
+        <span class="bar" style="background:var(--blue)"></span>
+        <div class="thumb"><svg viewBox="0 0 36 26"><rect x="3" y="6" width="30" height="2" fill="#4ea1ff"/><rect x="3" y="12" width="30" height="2" fill="#4ea1ff"/><rect x="3" y="18" width="20" height="2" fill="#4ea1ff"/></svg></div>
+        <div class="ti"><div class="t1">自选股</div><div class="t2">4 只 · 实时</div></div>
+      </div>
+      <div class="ri">
+        <span class="bar" style="background:var(--purple)"></span>
+        <div class="thumb"><svg viewBox="0 0 36 26"><rect x="4" y="4" width="10" height="10" fill="#b07cff"/><rect x="18" y="4" width="14" height="7" fill="#b07cff" opacity=".6"/><rect x="4" y="17" width="28" height="6" fill="#b07cff" opacity=".4"/></svg></div>
+        <div class="ti"><div class="t1">板块热力</div><div class="t2">28 个板块</div></div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="note n1">① 超级顶栏：指数 + 功能 + 场景 全部收进 44px，垂直省出 ~110px</div>
+  <div class="note n2">② 拖拽槽位吸附：拖卡片即显 6 个虚线槽位，所见即所得，告别"靠猜分区"</div>
+  <div class="note n3">③ 切换 rail 升级：每项带卡片缩略图，←/→ 键切换淡入滑动</div>
+</div>
+</body>
+</html>

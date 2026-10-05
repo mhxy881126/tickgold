@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>方案 A · 左侧 Dock 导航版</title>
+<style>
+:root{
+  --bg:#0a0d13; --panel:#10151f; --panel2:#141a26; --panel3:#0d121b;
+  --line:#202838; --line2:#1a212e;
+  --gold:#d4af37; --gold2:#e8c96a; --blue:#4ea1ff; --red:#f23645; --green:#08db94; --purple:#b07cff;
+  --t:#e7ecf4; --m:#8b94a3; --dim:#5a6472;
+  --mono:"SF Mono","Consolas","Roboto Mono",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#05070b;color:var(--t);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  font-size:12px;-webkit-font-smoothing:antialiased;padding:24px}
+.label{max-width:1440px;margin:0 auto 10px;display:flex;align-items:baseline;gap:12px}
+.label h1{font-size:18px;color:var(--gold2)}
+.label .sub{color:var(--m);font-size:12px}
+.label .tag{margin-left:auto;font-size:10px;color:var(--gold2);border:1px solid rgba(212,175,55,.4);
+  padding:2px 8px;border-radius:99px}
+/* ===== mock window 1440x820 ===== */
+.mock{max-width:1440px;height:820px;margin:0 auto;background:var(--bg);border:1px solid var(--line);
+  border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 80px -30px #000}
+/* topbar 36px */
+.topbar{height:36px;flex:none;display:flex;align-items:center;gap:10px;padding:0 12px;
+  background:#0c111a;border-bottom:1px solid var(--line2)}
+.brand{font-weight:800;color:var(--gold2);font-size:13px;letter-spacing:.5px}
+.ticker{flex:1;display:flex;gap:18px;overflow:hidden;white-space:nowrap;font-family:var(--mono);font-size:11px}
+.ticker .it b{color:var(--t);font-weight:600;margin-right:5px}
+.up{color:var(--red)} .dn{color:var(--green)}
+.seg{display:flex;background:#0a0e15;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{background:transparent;border:none;color:var(--m);padding:4px 10px;font-size:11px;cursor:pointer;border-right:1px solid var(--line2)}
+.seg button:last-child{border-right:none}
+.seg button.on{background:rgba(212,175,55,.15);color:var(--gold2)}
+.srch{width:200px;height:24px;background:#0a0e15;border:1px solid var(--line);border-radius:6px;
+  color:var(--dim);font-size:11px;display:flex;align-items:center;padding:0 9px;gap:6px}
+.st{color:var(--dim);font-size:11px;font-family:var(--mono)}
+.wc{display:flex;gap:8px;color:var(--dim)}
+.wc i{width:12px;height:12px;display:inline-block}
+/* body: dock + main */
+.body{flex:1;display:flex;min-height:0}
+/* left dock 56px */
+.dock{width:56px;flex:none;background:#0c111a;border-right:1px solid var(--line2);
+  display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:2px}
+.dock .d{width:42px;height:44px;border-radius:9px;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:3px;color:var(--dim);cursor:pointer;position:relative;transition:all .15s}
+.dock .d svg{width:19px;height:19px}
+.dock .d span{font-size:9px;line-height:1}
+.dock .d.on{color:var(--gold2);background:rgba(212,175,55,.1)}
+.dock .d.on::before{content:'';position:absolute;left:-8px;top:8px;bottom:8px;width:3px;
+  background:var(--gold);border-radius:0 3px 3px 0}
+.dock .d:hover{color:var(--t)}
+.dock .sep{width:28px;height:1px;background:var(--line2);margin:6px 0}
+/* main */
+.main{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--panel3)}
+/* scene chip row 30px */
+.scene{height:30px;flex:none;display:flex;align-items:center;gap:6px;padding:0 12px;
+  border-bottom:1px solid var(--line2);background:#0b1018}
+.scene .lab{color:var(--dim);font-size:10px;margin-right:4px}
+.scene .sc{font-size:11px;color:var(--m);padding:3px 10px;border-radius:6px;cursor:pointer;
+  border:1px solid transparent;display:flex;align-items:center;gap:4px}
+.scene .sc.on{color:var(--gold2);background:rgba(212,175,55,.1);border-color:rgba(212,175,55,.35)}
+.scene .tools{margin-left:auto;display:flex;gap:6px}
+.scene .tool{font-size:10.5px;color:var(--m);padding:3px 9px;border:1px solid var(--line);
+  border-radius:6px;cursor:pointer;background:var(--panel)}
+.scene .tool.hot{color:var(--gold2);border-color:rgba(212,175,55,.4)}
+/* card grid */
+.grid{flex:1;display:grid;grid-template-columns:1fr 320px;grid-template-rows:1fr 200px;
+  gap:8px;padding:8px;min-height:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;
+  flex-direction:column;min-height:0;overflow:hidden;position:relative}
+.card.c-chart{grid-row:span 1}
+.card.c-side{grid-row:span 1}
+.card.c-watch{grid-column:span 2}
+.chd{height:28px;flex:none;display:flex;align-items:center;gap:7px;padding:0 10px;
+  border-bottom:1px solid var(--line2);font-size:11px;font-weight:700;color:var(--m)}
+.chd .dot{width:6px;height:6px;border-radius:2px;background:var(--gold2)}
+.chd .acts{margin-left:auto;display:flex;gap:8px;color:var(--dim);font-weight:400;font-size:10px}
+.chd .acts span{cursor:pointer}
+.cbd{flex:1;min-height:0;overflow:hidden;position:relative}
+/* fake chart */
+.kline{position:absolute;inset:0;padding:8px 10px}
+.kline .row1{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
+.kline .nm{font-size:13px;color:var(--t);font-weight:700}
+.kline .cd{font-size:10px;color:var(--dim);font-family:var(--mono)}
+.kline .px{font-size:22px;color:var(--red);font-weight:800;font-family:var(--mono)}
+.kline .chg{font-size:11px;color:var(--red);font-family:var(--mono)}
+.kline .meta{margin-left:auto;display:flex;gap:14px;font-size:10px;color:var(--m);font-family:var(--mono)}
+.kline .meta b{color:var(--t);font-weight:600}
+.kk{width:100%;height:calc(100% - 30px)}
+/* side card: radar */
+.radar{padding:10px}
+.radar .nums{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+.radar .n{background:#0c111a;border:1px solid var(--line2);border-radius:7px;padding:7px;text-align:center}
+.radar .n .v{font-size:18px;font-weight:800;font-family:var(--mono)}
+.radar .n .k{font-size:9.5px;color:var(--dim)}
+.radar .n.red .v{color:var(--red)} .radar .n.green .v{color:var(--green)}
+.tl{font-size:10.5px;color:var(--dim);padding:4px 0;border-bottom:1px dashed var(--line2);display:flex;gap:8px}
+.tl .tm{font-family:var(--mono);color:var(--dim);flex:none;width:38px}
+.tl .tx{color:var(--t)}
+/* watchlist table */
+.wl{width:100%;border-collapse:collapse;font-size:11px;font-family:var(--mono)}
+.wl th{text-align:right;color:var(--dim);font-weight:600;padding:4px 10px;border-bottom:1px solid var(--line2);font-size:10px}
+.wl th:first-child,.wl td:first-child{text-align:left}
+.wl td{padding:4px 10px;text-align:right;border-bottom:1px solid #141b27}
+.wl td.name{font-family:inherit;color:var(--t)}
+.wl tr:hover td{background:#16202e}
+/* bottom tab strip (卡片切换优化) */
+.tabstrip{height:34px;flex:none;background:#0c111a;border-top:1px solid var(--line2);
+  display:flex;align-items:stretch;padding:0 8px;gap:4px;overflow-x:auto}
+.ts{display:flex;align-items:center;gap:6px;padding:0 12px;font-size:11px;color:var(--m);
+  border-right:1px solid var(--line2);cursor:pointer;position:relative;white-space:nowrap;min-width:0}
+.ts .bar{width:3px;height:14px;border-radius:2px;flex:none}
+.ts.on{color:var(--t);background:#141b27}
+.ts.on::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--gold)}
+.ts .x{color:var(--dim);font-size:10px;margin-left:2px}
+.ts.add{color:var(--dim);padding:0 10px;align-self:center}
+/* callout annotations */
+.note{position:absolute;background:#d4af37;color:#0a0d13;font-size:10px;font-weight:700;
+  padding:3px 8px;border-radius:5px;box-shadow:0 4px 14px rgba(0,0,0,.5);z-index:5}
+.note::after{content:'';position:absolute;border:5px solid transparent}
+.note.n-dock{left:70px;top:120px}
+.note.n-dock::after{left:-11px;top:10px;border-right-color:#d4af37}
+.note.n-tab{bottom:46px;right:20px}
+.note.n-tab::after{right:60px;bottom:-11px;border-top-color:#d4af37}
+.note.n-scene{top:38px;left:50%}
+.note.n-scene::after{left:40px;top:-11px;border-bottom-color:#d4af37}
+</style>
+</head>
+<body>
+<div class="label">
+  <h1>方案 A · 左侧 Dock 导航 + 底部卡片 Tab 流</h1>
+  <span class="sub">把顶部 5 层横条压成 2 层：功能分类沉到左侧竖排 dock，场景/时段收成顶栏右侧分段控件</span>
+  <span class="tag">RECOMMENDED</span>
+</div>
+
+<div class="mock">
+  <!-- 顶栏：brand + 指数 ticker + 时段分段 + 搜索 + 状态 -->
+  <div class="topbar">
+    <span class="brand">TickGold</span>
+    <div class="ticker">
+      <span class="it"><b>上证</b><span class="up">3200.00 +1.20%</span></span>
+      <span class="it"><b>深成</b><span class="dn">10200.00 -0.20%</span></span>
+      <span class="it"><b>创业</b><span class="up">2010.00 +1.10%</span></span>
+      <span class="it"><b>北证</b><span class="up">1120.33 +0.84%</span></span>
+      <span class="it"><b>沪深300</b><span class="up">3980.12 +0.66%</span></span>
+    </div>
+    <div class="seg">
+      <button>盘前</button><button class="on">早盘</button><button>午盘</button><button>尾盘</button><button>复盘</button>
+    </div>
+    <div class="srch">🔍 搜索代码 / 名称 / 拼音</div>
+    <span class="st">● 实时 · 4 只 · 10:32:11</span>
+    <div class="wc"><i>—</i><i>▢</i><i>✕</i></div>
+  </div>
+
+  <div class="body">
+    <!-- 左侧 Dock -->
+    <nav class="dock">
+      <div class="d on">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        <span>大盘</span>
+      </div>
+      <div class="d">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>
+        <span>盯盘</span>
+      </div>
+      <div class="d">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>
+        <span>情绪</span>
+      </div>
+      <div class="d">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
+        <span>板块</span>
+      </div>
+      <div class="d">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4h10v4H7zM5 8h14v12H5z"/></svg>
+        <span>个股</span>
+      </div>
+      <div class="sep"></div>
+      <div class="d">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+        <span>交易</span>
+      </div>
+      <div class="d">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 00-2-1.2L14 3h-4l-.5 2.6a7 7 0 00-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 005 12a7 7 0 00.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 002 1.2L10 21h4l.5-2.6a7 7 0 002-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0019 12z"/></svg>
+        <span>设置</span>
+      </div>
+    </nav>
+
+    <!-- 主区 -->
+    <div class="main">
+      <!-- 场景模板行 -->
+      <div class="scene">
+        <span class="lab">场景</span>
+        <div class="sc on">◫ 极简看盘</div>
+        <div class="sc">◉ 盘中盯盘</div>
+        <div class="sc">⚡ 开盘竞价</div>
+        <div class="sc">📊 盘后复盘</div>
+        <div class="sc">⌗ 条件选股</div>
+        <div class="tools">
+          <div class="tool hot">⊞ 切换布局模式</div>
+          <div class="tool">⤓ 保存当前布局</div>
+        </div>
+      </div>
+
+      <!-- 卡片网格 -->
+      <div class="grid">
+        <div class="card c-chart">
+          <div class="chd"><span class="dot"></span>K线图 · 贵州茅台
+            <div class="acts"><span>⛶</span><span>⚙</span><span>✕</span></div>
+          </div>
+          <div class="cbd kline">
+            <div class="row1">
+              <span class="nm">贵州茅台</span><span class="cd">600519</span>
+              <span class="px">1680.00</span><span class="chg">+20.16 +1.20%</span>
+              <span class="meta"><span>今开 <b>1680</b></span><span>最高 <b>1696</b></span><span>最低 <b>1663</b></span><span>成交量 <b>1.2万手</b></span></span>
+            </div>
+            <svg class="kk" viewBox="0 0 600 280" preserveAspectRatio="none">
+              <line x1="0" y1="70" x2="600" y2="70" stroke="#f23645" stroke-dasharray="4 3" stroke-width="1"/>
+              <path d="M20 200 L60 180 L100 190 L140 150 L180 160 L220 120 L260 130 L300 100 L340 110 L380 80 L420 90 L460 60 L500 70 L540 45 L580 55"
+                    fill="none" stroke="#f23645" stroke-width="1.6"/>
+              <path d="M20 230 L60 225 L100 228 L140 220 L180 222 L220 215 L260 218 L300 210 L340 213 L380 205 L420 208 L460 200 L500 203 L540 195 L580 198"
+                    fill="none" stroke="#d4af37" stroke-width="1.2" opacity=".7"/>
+              <g fill="#08db94">
+                <rect x="40" y="240" width="14" height="25"/><rect x="90" y="235" width="14" height="30"/>
+                <rect x="140" y="238" width="14" height="27"/><rect x="190" y="232" width="14" height="33"/>
+                <rect x="240" y="236" width="14" height="29"/><rect x="290" y="230" width="14" height="35"/>
+                <rect x="340" y="233" width="14" height="32"/><rect x="390" y="228" width="14" height="37"/>
+                <rect x="440" y="231" width="14" height="34"/><rect x="490" y="226" width="14" height="39"/>
+              </g>
+            </svg>
+          </div>
+        </div>
+
+        <div class="card c-side">
+          <div class="chd"><span class="dot" style="background:var(--red)"></span>涨停雷达
+            <div class="acts"><span>⛶</span><span>⚙</span><span>✕</span></div>
+          </div>
+          <div class="cbd radar">
+            <div class="nums">
+              <div class="n red"><div class="v">0</div><div class="k">涨停</div></div>
+              <div class="n green"><div class="v">0</div><div class="k">跌停</div></div>
+              <div class="n red"><div class="v">0%</div><div class="k">炸板率</div></div>
+            </div>
+            <div class="tl"><span class="tm">10:31</span><span class="tx">半导体板块异动拉升，中芯国际涨超 4%</span></div>
+            <div class="tl"><span class="tm">10:28</span><span class="tx">机器人概念走强，埃斯顿涨停</span></div>
+            <div class="tl"><span class="tm">10:15</span><span class="tx">北向资金净流入 23.4 亿</span></div>
+          </div>
+        </div>
+
+        <div class="card c-watch">
+          <div class="chd"><span class="dot" style="background:var(--blue)"></span>自选股
+            <div class="acts"><span>⛶</span><span>⚙</span><span>✕</span></div>
+          </div>
+          <div class="cbd" style="overflow:auto">
+            <table class="wl">
+              <thead><tr><th>名称</th><th>最新</th><th>涨跌幅</th><th>换手</th><th>成交额</th></tr></thead>
+              <tbody>
+                <tr><td class="name">宁德时代 300750</td><td>189.00</td><td class="up">+2.10%</td><td>1.2%</td><td>18.2亿</td></tr>
+                <tr><td class="name">贵州茅台 600519</td><td>1680.00</td><td class="up">+1.20%</td><td>0.8%</td><td>20.1亿</td></tr>
+                <tr><td class="name">中国平安 601318</td><td>48.00</td><td class="up">+0.30%</td><td>0.5%</td><td>8.4亿</td></tr>
+                <tr><td class="name">平安银行 000001</td><td>12.30</td><td class="dn">-0.50%</td><td>0.6%</td><td>3.2亿</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部卡片切换 Tab 流 -->
+      <div class="tabstrip">
+        <div class="ts on"><span class="bar" style="background:var(--gold2)"></span>K线图 · 贵州茅台<span class="x">✕</span></div>
+        <div class="ts"><span class="bar" style="background:var(--red)"></span>涨停雷达<span class="x">✕</span></div>
+        <div class="ts"><span class="bar" style="background:var(--blue)"></span>自选股<span class="x">✕</span></div>
+        <div class="ts"><span class="bar" style="background:var(--purple)"></span>板块热力<span class="x">✕</span></div>
+        <div class="ts add">＋ 打开卡片</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 标注 -->
+  <div class="note n-dock">① 功能分类沉为左侧 Dock：常驻可见，点击即出面板，不再悬停 mega</div>
+  <div class="note n-scene">② 场景 / 时段合并：场景变 chip 行，收成分段控件，省 2 行横条</div>
+  <div class="note n-tab">③ 卡片切换变底部 Tab 流：可拖拽排序、中键关闭、Ctrl+数字直达</div>
+</div>
+</body>
+</html>

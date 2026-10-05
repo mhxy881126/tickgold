@@ -1,7 +1,7 @@
 .app {
   display: grid;
-  grid-template-rows: 38px 32px 44px 1fr;
-  grid-template-columns: 1fr;
+  grid-template-rows: 38px 1fr;
+  grid-template-columns: 56px 1fr;
   height: 100vh;
   background: var(--bg);
   color: var(--text);
@@ -9,7 +9,7 @@
 
 /* 顶栏 */
 .topbar {
-  grid-column: 1;
+  grid-column: 1 / -1;
   display: flex; align-items: center; gap: 14px;
   padding: 0 0 0 12px; background: var(--bg-panel); border-bottom: 1px solid var(--border);
 }
@@ -34,6 +34,17 @@
 
 /* 指数条 */
 .idx-row { grid-column: 1; }
+
+/* 右侧主区容器（指数条 + 工作台） */
+.app-main {
+  grid-row: 2;
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
 
 /* ===== Mega 功能导航 ===== */
 .mega-nav {
@@ -93,6 +104,21 @@
 }
 .palette-btn:hover { border-color: var(--accent); }
 /* 场景模板栏（V3 亮点：一键切换盯盘布局） */
+/* 场景 + 时段合并为一行 */
+.scene-time-row {
+  display: flex; align-items: center; gap: 6px; height: 38px; flex: none;
+  padding: 0 4px; position: relative; z-index: 2;
+}
+.scene-time-row > .scene-bar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0; height: auto;
+}
+.scene-time-sep {
+  width: 1px; height: 18px; background: var(--border); margin: 0 6px; flex: none;
+}
+.scene-time-row > .timetabs {
+  flex: 1; min-width: 0;
+}
 .scene-bar {
   display: flex; align-items: center; gap: 6px; height: 38px; flex: none;
   padding: 0 4px; position: relative; z-index: 2;
@@ -244,6 +270,7 @@
 /* 工作台 */
 .workspace {
   position: relative;
+  flex: 1;
   min-width: 0;
   min-height: 0;
   padding: 10px 12px 12px;
@@ -347,37 +374,39 @@
 }
 .free-leave { animation: cardOut 0.25s cubic-bezier(0.4, 0, 0.6, 1) both; z-index: 5; }
 
-/* 分区落点高亮 */
-.zone-hint {
+/* ===== 槽位吸附：拖拽时浮现 4 个象限槽位 ===== */
+.drop-slot {
   position: absolute;
   pointer-events: none;
   opacity: 0;
-  border: 1px dashed #3a4657;
+  border: 1.5px dashed rgba(212, 175, 55, 0.35);
   border-radius: 10px;
-  background: rgba(80, 110, 160, 0.04);
+  background: rgba(212, 175, 55, 0.03);
   transition: opacity 0.15s, background 0.15s, border-color 0.15s;
   z-index: 6;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 8px;
 }
-.workspace.dragging .zone-hint {
-  opacity: 1;
+.drop-slot span {
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  color: rgba(212, 175, 55, 0.5);
+  background: rgba(10, 13, 19, 0.6);
+  padding: 2px 8px; border-radius: 5px;
 }
-.zone-hint.active {
-  border-color: #4ea1ff;
+.workspace.dragging .drop-slot { opacity: 1; }
+.drop-slot.active {
+  border-color: var(--accent, #d4af37);
   border-style: solid;
-  background: rgba(78, 161, 255, 0.1);
+  background: rgba(212, 175, 55, 0.12);
+  box-shadow: inset 0 0 0 1px var(--accent, #d4af37);
 }
-.zone-main {
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: calc(100% * 7 / 12 - 6px);
-}
-.zone-side {
-  top: 0;
-  bottom: 0;
-  right: 0;
-  width: calc(100% * 5 / 12 - 6px);
-}
+.drop-slot.active span { color: var(--accent-2, #e8c96a); }
+
+/* 4 象限：主区 7/12 宽，侧栏 5/12 宽；各分上下两半 */
+.slot-main-top    { top: 0; left: 0; width: calc(100% * 7 / 12 - 6px); height: calc(50% - 6px); }
+.slot-main-bottom { bottom: 0; left: 0; width: calc(100% * 7 / 12 - 6px); height: calc(50% - 6px); }
+.slot-side-top    { top: 0; right: 0; width: calc(100% * 5 / 12 - 6px); height: calc(50% - 6px); }
+.slot-side-bottom { bottom: 0; right: 0; width: calc(100% * 5 / 12 - 6px); height: calc(50% - 6px); }
 
 /* 卡片插入线（落在锚点卡片的顶/底缘，位于 gap 中） */
 .card-slot.drop-before::before,
@@ -468,11 +497,11 @@ html[data-motion="balanced"] .card-leave { animation-name: cardOutLite; }
 }
 .focus-backdrop.closing { animation: fOut 0.3s ease both; }
 .focus-target {
-  position: fixed; left: 12px; top: 124px; right: 306px; bottom: 12px;
+  position: fixed; left: 68px; top: 132px; right: 306px; bottom: 54px;
   visibility: hidden; pointer-events: none;
 }
 .focus-rail {
-  position: fixed; top: 124px; right: 12px; bottom: 12px; width: 282px; z-index: 80;
+  position: fixed; top: 132px; right: 12px; bottom: 54px; width: 282px; z-index: 80;
   display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding: 8px;
   pointer-events: none;
   background: color-mix(in srgb, var(--bg-panel) 92%, transparent);

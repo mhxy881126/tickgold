@@ -9,6 +9,8 @@ import SettingsDialog from "./components/SettingsDialog.vue";
 import ShortcutDialog from "./components/ShortcutDialog.vue";
 import OnboardingDialog from "./components/OnboardingDialog.vue";
 import LayoutMenu from "./components/LayoutMenu.vue";
+import SideDock from "./components/SideDock.vue";
+import CardTabStrip from "./components/CardTabStrip.vue";
 import ShortTermSpider from "./components/ShortTermSpider.vue";
 import LimitRadar from "./components/LimitRadar.vue";
 import WatchList from "./components/WatchList.vue";
@@ -53,8 +55,6 @@ import AlertToast from "./components/alert/AlertToast.vue";
 import { startTimeSeries } from "./composables/useTimeSeries";
 import { startCollector } from "./composables/useCollector";
 import { playAlert } from "./utils/sound";
-import { DOCK_GROUPS } from "./lib/dock";
-import type { DockGroup, DockItem } from "./lib/dock";
 import { initPluginSystem } from "./plugin/register";
 
 const wl = useWatchlistStore();
@@ -165,6 +165,20 @@ function onCtxAction(a: string) {
   ctxMenu.value = null;
 }
 
+// ===== 槽位吸附：拖拽中实时算鼠标纵向偏置（top / bottom）=====
+const dragYRatio = ref(0.5);
+const dragYBias = computed<"top" | "bottom">(() =>
+  dragYRatio.value < 0.5 ? "top" : "bottom"
+);
+function onDragMoveBias(e: PointerEvent) {
+  if (!bench.dragId.value) return;
+  const ws = document.querySelector(".ws-body");
+  if (!ws) return;
+  const r = ws.getBoundingClientRect();
+  if (e.clientY < r.top || e.clientY > r.bottom) return;
+  dragYRatio.value = (e.clientY - r.top) / r.height;
+}
+
 // ===== 关闭卡片 toast（5s 自动消失）=====
 const undoToast = ref(false);
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -202,22 +216,6 @@ const cardGridStyle = computed<Record<string, string>>(() => {
   return { gridTemplateRows: !gl.time && gl.scroll ? `repeat(${gl.rows}, 132px)` : "" };
 });
 
-// ===== Mega 菜单：悬停分类 → 展开多列面板 =====
-const megaKey = ref<string | null>(null);
-const megaGroup = computed<DockGroup | null>(
-  () => DOCK_GROUPS.find((g) => g.name === megaKey.value) ?? null
-);
-function megaOpen(g: DockGroup) {
-  megaKey.value = g.name;
-}
-function megaClose() {
-  megaKey.value = null;
-}
-function pickMega(it: DockItem) {
-  toggleCard(it.id);
-  megaKey.value = null;
-}
-
 // ===== 对话框状态 =====
 const showUpdate = ref(false);
 const showSettings = ref(false);
@@ -232,6 +230,13 @@ function toggleCard(id: CardId) {
   }
   if (bench.isFocused.value) addAndFocus(id);
   else bench.open(id);
+}
+
+// 底部 Tab 流点击：当前卡 → 退出聚焦；未聚焦 → 进入聚焦；聚焦他卡 → 切换
+function onTabActivate(id: CardId) {
+  if (bench.focusId.value === id) exitFocus();
+  else if (bench.isFocused.value) switchFocus(id);
+  else enterFocus(id);
 }
 
 // ===== 命令面板（Ctrl / ⌘ + K）=====
@@ -381,6 +386,8 @@ onMounted(async () => {
 
   // —— 命令面板内部导航（全局快捷键由 useActions 派发）——
   window.addEventListener("keydown", onPaletteKey);
+  // —— 槽位吸附：拖拽中实时算纵向偏置 ——
+  window.addEventListener("pointermove", onDragMoveBias);
 
   // —— 事件监听 ——
   try {
@@ -426,6 +433,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   unlistenFns.forEach((f) => f());
   window.removeEventListener("keydown", onPaletteKey);
+  window.removeEventListener("pointermove", onDragMoveBias);
 });
 </script>
 
@@ -487,60 +495,13 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <!-- 左侧 Dock：功能分类竖排导航（替代原顶部 Mega 横条） -->
+    <SideDock @toggle="toggleCard" @palette="openPalette" />
+
+    <!-- 右侧主区：指数条 + 工作台 -->
+    <div class="app-main">
     <!-- 指数条 -->
     <Indices class="idx-row" />
-
-    <!-- Mega 功能导航：分类标签 + 悬停展开面板 -->
-    <div class="mega-nav" @mouseleave="megaClose()">
-      <div class="mega-tabs">
-        <button
-          v-for="g in DOCK_GROUPS"
-          :key="g.name"
-          type="button"
-          class="mega-tab"
-          :class="{ on: megaKey === g.name }"
-          @mouseenter="megaOpen(g)"
-          @focus="megaOpen(g)"
-        >
-          <svg viewBox="0 0 24 24" class="mt-ic"><path fill="currentColor" :d="g.icon" /></svg>
-          <span>{{ g.name }}</span>
-        </button>
-
-        <div class="mega-right">
-          <button class="palette-btn" type="button" @click="openPalette">
-            <svg viewBox="0 0 24 24" class="pb-ic"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 10-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1114 9.5 4.5 4.5 0 019.5 14z" /></svg>
-            <span class="pb-tx">命令</span>
-            <kbd class="pb-k">Ctrl K</kbd>
-          </button>
-        </div>
-      </div>
-
-      <Transition name="mpanel">
-        <div v-if="megaGroup" class="mega-panel" :key="megaGroup.name">
-          <div class="mp-head">
-            <h3>{{ megaGroup.name }}</h3>
-            <span>{{ megaGroup.items.length }} 个功能 · 点击打开卡片</span>
-          </div>
-          <div class="mp-grid">
-            <button
-              v-for="it in megaGroup.items"
-              :key="it.id"
-              type="button"
-              class="mp-item"
-              :class="{ on: bench.isOpen(it.id) }"
-              @click="pickMega(it)"
-            >
-              <span class="mpi-ic">
-                <svg viewBox="0 0 24 24"><path fill="currentColor" :d="it.icon" /></svg>
-              </span>
-              <span class="mpi-t">{{ it.label }}</span>
-              <span class="mpi-d">{{ it.desc }}</span>
-              <svg v-if="it.star" class="mpi-star" viewBox="0 0 24 24"><path fill="currentColor" d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
-            </button>
-          </div>
-        </div>
-      </Transition>
-    </div>
 
     <!-- 工作台主区域 -->
     <main
@@ -551,23 +512,25 @@ onBeforeUnmount(() => {
       <Transition name="welcome">
         <WelcomeBoard v-if="bench.openCards.value.length === 0" />
       </Transition>
-      <!-- 场景模板栏：一键切换盯盘布局（V3 亮点） -->
-      <div class="scene-bar">
-        <span class="scene-label">场景模板</span>
-        <button
-          v-for="sc in SCENES"
-          :key="sc.id"
-          type="button"
-          class="scene-chip"
-          :class="{ on: bench.sceneId.value === sc.id }"
-          @click="bench.applyScene(sc)"
-        >
-          <svg viewBox="0 0 24 24"><path fill="currentColor" :d="sc.icon" /></svg>
-          <span>{{ sc.label }}</span>
-        </button>
+      <!-- 场景 + 时段合并为一行，省一行垂直空间 -->
+      <div class="scene-time-row">
+        <div class="scene-bar">
+          <span class="scene-label">场景模板</span>
+          <button
+            v-for="sc in SCENES"
+            :key="sc.id"
+            type="button"
+            class="scene-chip"
+            :class="{ on: bench.sceneId.value === sc.id }"
+            @click="bench.applyScene(sc)"
+          >
+            <svg viewBox="0 0 24 24"><path fill="currentColor" :d="sc.icon" /></svg>
+            <span>{{ sc.label }}</span>
+          </button>
+        </div>
+        <div class="scene-time-sep"></div>
+        <TimeTabs :active="bench.timeMode.value" @select="bench.enterTimeMode($event)" />
       </div>
-      <!-- 时段切换栏（透明沉浸，无浮条边框） -->
-      <TimeTabs :active="bench.timeMode.value" @select="bench.enterTimeMode($event)" />
 
       <div class="ws-body" :class="{ free: bench.freeMode.value }">
 
@@ -658,15 +621,23 @@ onBeforeUnmount(() => {
 
       <!-- ===== 自动布局：分区 + 装箱网格（默认） ===== -->
       <template v-else>
-      <!-- 分区落点高亮（拖拽时显示，不参与卡片动画） -->
+      <!-- 槽位吸附：拖拽时浮现 4 个象限槽位，提示落点 -->
       <div
-        class="zone-hint zone-main"
-        :class="{ active: bench.dropHint.value?.zone === 'main' }"
-      ></div>
+        class="drop-slot slot-main-top"
+        :class="{ active: bench.dropHint.value?.zone === 'main' && dragYBias === 'top' }"
+      ><span>主区 · 上</span></div>
       <div
-        class="zone-hint zone-side"
-        :class="{ active: bench.dropHint.value?.zone === 'side' }"
-      ></div>
+        class="drop-slot slot-main-bottom"
+        :class="{ active: bench.dropHint.value?.zone === 'main' && dragYBias === 'bottom' }"
+      ><span>主区 · 下 / 通栏</span></div>
+      <div
+        class="drop-slot slot-side-top"
+        :class="{ active: bench.dropHint.value?.zone === 'side' && dragYBias === 'top' }"
+      ><span>侧栏 · 上</span></div>
+      <div
+        class="drop-slot slot-side-bottom"
+        :class="{ active: bench.dropHint.value?.zone === 'side' && dragYBias === 'bottom' }"
+      ><span>侧栏 · 下</span></div>
 
       <!-- 卡片网格 -->
       <TransitionGroup
@@ -771,7 +742,16 @@ onBeforeUnmount(() => {
         </div>
       </template>
       </div>
+
+      <!-- 底部卡片 Tab 流：列出所有已开卡片，点击聚焦 / 中键关闭 -->
+      <CardTabStrip
+        v-if="bench.openCards.value.length > 0"
+        @activate="onTabActivate"
+        @close="bench.close"
+        @add="openPalette"
+      />
     </main>
+    </div><!-- /.app-main -->
 
     <!-- 关闭卡片撤销 toast -->
     <Transition name="toast">
