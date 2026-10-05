@@ -1735,6 +1735,26 @@ pub fn run() {
                             CREATE INDEX IF NOT EXISTS idx_signal_audit_sig ON signal_audit(sig_id);",
                             kind: MigrationKind::Up,
                         },
+                        Migration {
+                            version: 46,
+                            description: "create plugin registry / kv / audit tables",
+                            sql: "CREATE TABLE IF NOT EXISTS plugin_registry(
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                plugin_id TEXT UNIQUE, name TEXT, version TEXT,
+                                api_version INTEGER, builtin INTEGER, source_path TEXT,
+                                enabled INTEGER, signed INTEGER, signature TEXT, hash TEXT,
+                                permissions TEXT, status TEXT, error_msg TEXT,
+                                installed_at INTEGER, updated_at INTEGER);
+                             CREATE TABLE IF NOT EXISTS plugin_kv(
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                plugin_id TEXT, key TEXT, value TEXT, updated_at INTEGER,
+                                UNIQUE(plugin_id, key));
+                             CREATE TABLE IF NOT EXISTS plugin_audit(
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                plugin_id TEXT, action TEXT, method TEXT, detail TEXT,
+                                created_at INTEGER);",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),

@@ -103,7 +103,7 @@ const current = computed<DockGroup | null>(
   align-items: center;
   padding: 8px 0;
   gap: 2px;
-  z-index: 45;
+  z-index: 90;
 }
 .dock-btn {
   width: 46px; height: 46px;

@@ -1,7 +1,7 @@
-﻿[package]
+[package]
 name = "tickgold"
-version = "2.7.4"
-description = "TickGold - 涓撲笟浜ゆ槗鑰呰法骞冲彴 A 鑲＄洴鐩樼粓绔?
+version = "2.7.5"
+description = "TickGold - 专业交易者跨平台 A 股盯盘终端"
 authors = ["tickgold"]
 edition = "2021"
 

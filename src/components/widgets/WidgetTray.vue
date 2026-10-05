@@ -2,7 +2,8 @@
 import { WIDGET_DEFS } from "./registry";
 
 // 微件托盘：点击添加（singleton 已存在的禁用）
-defineProps<{ present: string[] }>();
+// WIDGET_DEFS 是 reactive，插件 addWidgetDef 时自动出现在这里
+const props = defineProps<{ present: string[] }>();
 const emit = defineEmits<{ add: [defId: string] }>();
 </script>
 
@@ -15,8 +16,8 @@ const emit = defineEmits<{ add: [defId: string] }>();
         :key="d.id"
         type="button"
         class="wt-btn"
-        :disabled="!!d.singleton && present.includes(d.id)"
-        :title="d.singleton && present.includes(d.id) ? '该微件每卡仅一个' : d.title"
+        :disabled="!!d.singleton && props.present.includes(d.id)"
+        :title="d.singleton && props.present.includes(d.id) ? '该微件每卡仅一个' : d.title"
         @click="emit('add', d.id)"
       >
         <span class="wt-ic">+</span>
