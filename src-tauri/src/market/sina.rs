@@ -118,9 +118,8 @@ pub async fn sectors(kind: &str) -> Result<Vec<Sector>, String> {
 
 /// 板块成分股
 pub async fn sector_stocks(category: &str, kind: &str) -> Result<Vec<Value>, String> {
-    let fl = if kind == "concept" { "1" } else { "0" };
     let url = format!(
-        "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/MoneyFlow.ssl_bkzj_zjlrqs?page=1&num=50&sort=changeratio&asc=0&bankuai=ssl_hy&fenlei={fl}&category={category}"
+        "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page=1&num=50&sort=changepercent&asc=0&node={category}"
     );
     let arr: Vec<Value> = http()
         .get(&url)
