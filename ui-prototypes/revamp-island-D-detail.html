@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>D · 交互卡片风 · 高保真</title>
+<style>
+  :root {
+    --bg: #0a0d13; --panel: #11151d; --line: #1e2430;
+    --gold: #d4af37; --gold-soft: #e8c96a;
+    --up: #f23645; --down: #08db94;
+    --text: #e8eaed; --muted: #8a919e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 13px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    padding: 32px;
+  }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .sub { color: var(--muted); margin-bottom: 24px; font-size: 12px; }
+  .row { display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap; }
+  .demo { text-align: center; }
+  .demo .label { color: var(--muted); font-size: 11px; margin-bottom: 10px; letter-spacing: 1px; }
+  .stage {
+    background: linear-gradient(135deg, #1a2535 0%, #2a3a50 100%);
+    border-radius: 12px; padding: 30px 20px; min-width: 340px;
+    display: flex; justify-content: center;
+  }
+
+  /* ===== D 版主体 ===== */
+  .island {
+    width: 320px;
+    background: linear-gradient(180deg, #1a1f2e 0%, #0d1018 100%);
+    border: 1px solid rgba(212,175,55,.35);
+    border-radius: 18px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.5), 0 0 0 1px rgba(0,0,0,.3);
+    overflow: hidden;
+  }
+  /* 收起态 */
+  .pill {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; cursor: pointer;
+    transition: background .15s;
+  }
+  .pill:hover { background: rgba(255,255,255,.03); }
+  .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold), #8a6d1f);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #000; flex-shrink: 0;
+  }
+  .info { flex: 1; min-width: 0; }
+  .info .n { font-size: 12px; color: var(--text); }
+  .info .p { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .chg { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .chg.up { color: var(--up); }
+  .chg.down { color: var(--down); }
+  .chev { color: var(--muted); font-size: 10px; transition: transform .2s; }
+  .island.expanded .chev { transform: rotate(180deg); }
+
+  /* 展开态 */
+  .body { border-top: 1px solid rgba(212,175,55,.15); padding: 12px; }
+  .tabs {
+    display: flex; gap: 4px; background: rgba(0,0,0,.35);
+    padding: 3px; border-radius: 8px; margin-bottom: 12px;
+  }
+  .tab {
+    flex: 1; text-align: center; font-size: 11px; padding: 5px 4px;
+    border-radius: 6px; color: var(--muted); cursor: pointer;
+    transition: all .15s;
+  }
+  .tab.active { background: rgba(212,175,55,.2); color: var(--gold-soft); }
+  .tab .count { opacity: .7; margin-left: 2px; }
+
+  /* 预警列表 */
+  .alert-list { display: flex; flex-direction: column; gap: 2px; }
+  .alert-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 6px; border-radius: 6px; cursor: pointer;
+    transition: background .1s;
+  }
+  .alert-row:hover { background: rgba(255,255,255,.04); }
+  .alert-row .dir { font-size: 12px; width: 14px; text-align: center; }
+  .alert-row .dir.up { color: var(--up); }
+  .alert-row .dir.down { color: var(--down); }
+  .alert-row .desc { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .alert-row .desc .stock { color: var(--text); font-weight: 500; margin-right: 4px; }
+  .alert-row .val { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .alert-row .val.up { color: var(--up); }
+  .alert-row .val.down { color: var(--down); }
+
+  /* 信号 tab */
+  .sig-row {
+    padding: 8px; background: rgba(212,175,55,.06); border-radius: 8px;
+    margin-bottom: 6px; border-left: 3px solid var(--gold);
+  }
+  .sig-row .head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+  .sig-row .head .side { color: var(--up); font-weight: 600; }
+  .sig-row .head .side.sell { color: var(--down); }
+  .sig-row .meta { font-size: 11px; color: var(--muted); }
+
+  /* 委托 tab */
+  .order-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 6px; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 12px;
+  }
+  .order-row:last-child { border: none; }
+  .order-row .st { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: rgba(212,175,55,.15); color: var(--gold-soft); }
+
+  /* 底部操作 */
+  .actions { display: flex; gap: 6px; margin-top: 12px; }
+  .btn {
+    flex: 1; padding: 7px; text-align: center; font-size: 12px;
+    border-radius: 8px; background: rgba(255,255,255,.06); color: var(--text);
+    cursor: pointer; transition: background .1s;
+  }
+  .btn:hover { background: rgba(255,255,255,.1); }
+  .btn.primary { background: var(--gold); color: #000; font-weight: 600; }
+  .btn.primary:hover { background: var(--gold-soft); }
+</style>
+</head>
+<body>
+  <h1>D · 交互卡片风 · 高保真</h1>
+  <div class="sub">收起态轮播自选股 · 展开后 tabs 切预警/信号/委托 · 底部操作按钮</div>
+
+  <div class="row">
+    <div class="demo">
+      <div class="label">收起态（轮播自选股）</div>
+      <div class="stage">
+        <div class="island">
+          <div class="pill">
+            <div class="avatar">平</div>
+            <div class="info">
+              <div class="n">中国平安</div>
+              <div class="p">53.29</div>
+            </div>
+            <span class="chg up">+1.50%</span>
+            <span class="chev">▼</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo">
+      <div class="label">展开态 · 预警 tab</div>
+      <div class="stage">
+        <div class="island expanded">
+          <div class="pill">
+            <div class="avatar">平</div>
+            <div class="info">
+              <div class="n">中国平安</div>
+              <div class="p">53.29</div>
+            </div>
+            <span class="chg up">+1.50%</span>
+            <span class="chev">▼</span>
+          </div>
+          <div class="body">
+            <div class="tabs">
+              <div class="tab active">预警<span class="count">4</span></div>
+              <div class="tab">信号<span class="count">1</span></div>
+              <div class="tab">委托<span class="count">2</span></div>
+            </div>
+            <div class="alert-list">
+              <div class="alert-row">
+                <span class="dir up">↑</span>
+                <span class="desc"><span class="stock">平安银行</span>突破压力位</span>
+                <span class="val up">+1.94%</span>
+              </div>
+              <div class="alert-row">
+                <span class="dir up">↑</span>
+                <span class="desc"><span class="stock">贵州茅台</span>放量拉升</span>
+                <span class="val up">+1.86%</span>
+              </div>
+              <div class="alert-row">
+                <span class="dir up">↑</span>
+                <span class="desc"><span class="stock">宁德时代</span>站上均线</span>
+                <span class="val up">+1.50%</span>
+              </div>
+              <div class="alert-row">
+                <span class="dir down">↓</span>
+                <span class="desc"><span class="stock">某科技</span>跌破支撑</span>
+                <span class="val down">-2.31%</span>
+              </div>
+            </div>
+            <div class="actions">
+              <div class="btn">查看全部</div>
+              <div class="btn primary">一键置顶</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo">
+      <div class="label">展开态 · 信号 tab</div>
+      <div class="stage">
+        <div class="island expanded">
+          <div class="pill">
+            <div class="avatar">平</div>
+            <div class="info">
+              <div class="n">中国平安</div>
+              <div class="p">53.29</div>
+            </div>
+            <span class="chg up">+1.50%</span>
+            <span class="chev">▼</span>
+          </div>
+          <div class="body">
+            <div class="tabs">
+              <div class="tab">预警<span class="count">4</span></div>
+              <div class="tab active">信号<span class="count">1</span></div>
+              <div class="tab">委托<span class="count">2</span></div>
+            </div>
+            <div class="sig-row">
+              <div class="head"><span>宁德时代</span><span class="side">买入</span></div>
+              <div class="meta">AI 信号 · 187.20 · 量能放大 · 14:28</div>
+            </div>
+            <div class="actions">
+              <div class="btn">忽略</div>
+              <div class="btn primary">一键下单</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo">
+      <div class="label">展开态 · 委托 tab</div>
+      <div class="stage">
+        <div class="island expanded">
+          <div class="pill">
+            <div class="avatar">平</div>
+            <div class="info">
+              <div class="n">中国平安</div>
+              <div class="p">53.29</div>
+            </div>
+            <span class="chg up">+1.50%</span>
+            <span class="chev">▼</span>
+          </div>
+          <div class="body">
+            <div class="tabs">
+              <div class="tab">预警<span class="count">4</span></div>
+              <div class="tab">信号<span class="count">1</span></div>
+              <div class="tab active">委托<span class="count">2</span></div>
+            </div>
+            <div class="order-row">
+              <span>中国平安 买入 100股</span>
+              <span class="st">已报</span>
+            </div>
+            <div class="order-row">
+              <span>宁德时代 卖出 200股</span>
+              <span class="st">部分成交</span>
+            </div>
+            <div class="actions">
+              <div class="btn">撤全部</div>
+              <div class="btn primary">打开交易</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

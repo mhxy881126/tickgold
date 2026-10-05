@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>灵动岛改版 · 第二辑 E/F/G/H</title>
+<style>
+  :root {
+    --bg: #0a0d13; --panel: #11151d; --line: #1e2430;
+    --gold: #d4af37; --gold-soft: #e8c96a;
+    --up: #f23645; --down: #08db94;
+    --text: #e8eaed; --muted: #8a919e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 13px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    padding: 32px; min-height: 100vh;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .sub { color: var(--muted); margin-bottom: 28px; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .card h2 { font-size: 15px; margin-bottom: 4px; }
+  .card .tag {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    background: rgba(212,175,55,.15); color: var(--gold-soft); margin-left: 8px; vertical-align: middle;
+  }
+  .card .desc { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+  .stage {
+    background: linear-gradient(135deg, #1a2535 0%, #2a3a50 100%);
+    border-radius: 10px; padding: 28px 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 14px; min-height: 280px;
+  }
+  .label { color: rgba(255,255,255,.5); font-size: 11px; letter-spacing: 1px; }
+
+  /* ========== E 版：股票机大字版 ========== */
+  .island-e .pill {
+    background: #000; padding: 6px 14px; gap: 10px;
+    border-left: 3px solid var(--up); /* 涨跌色条 */
+    align-items: baseline;
+  }
+  .island-e .code { color: var(--muted); font-size: 11px; font-family: "Consolas", monospace; }
+  .island-e .big {
+    font-size: 22px; font-weight: 800; color: var(--up);
+    font-variant-numeric: tabular-nums; letter-spacing: -1px;
+  }
+  .island-e .pct { font-size: 13px; font-weight: 700; color: var(--up); }
+  .island-e .expand {
+    width: 280px; background: #000; border-radius: 4px; /* 直角 */
+    padding: 0; overflow: hidden;
+    border: 1px solid #222;
+  }
+  .island-e .tape-row {
+    display: grid; grid-template-columns: 70px 1fr 70px 60px;
+    padding: 8px 12px; font-size: 12px;
+    border-bottom: 1px solid #1a1a1a;
+    font-variant-numeric: tabular-nums;
+    font-family: "Consolas", "Microsoft YaHei", monospace;
+  }
+  .island-e .tape-row.head { color: var(--muted); font-size: 10px; background: #111; }
+  .island-e .tape-row .up { color: var(--up); text-align: right; }
+  .island-e .tape-row .down { color: var(--down); text-align: right; }
+
+  /* ========== F 版：横向滚动 ticker 条 ========== */
+  .island-f .pill {
+    background: #000; padding: 6px 0; gap: 0;
+    border-radius: 4px; overflow: hidden;
+    width: 420px; position: relative;
+    mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+  }
+  .island-f .ticker {
+    display: flex; gap: 24px; white-space: nowrap;
+    animation: scroll 18s linear infinite;
+    font-size: 12px; font-variant-numeric: tabular-nums;
+  }
+  .island-f .ticker span b { color: var(--up); margin-left: 4px; }
+  .island-f .ticker span.g b { color: var(--down); }
+  @keyframes scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+  .island-f .expand {
+    width: 380px; background: #000; border-radius: 8px; padding: 12px;
+    border: 1px solid #222;
+  }
+  .island-f .head { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-bottom: 10px; }
+  .island-f .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .island-f .col-title { font-size: 11px; color: var(--gold-soft); margin-bottom: 6px; }
+  .island-f .li { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; }
+  .island-f .li .u { color: var(--up); }
+  .island-f .li .d { color: var(--down); }
+
+  /* ========== G 版：垂直窄条风（贴右边缘） ========== */
+  .island-g .stage { flex-direction: row; justify-content: space-between; }
+  .island-g .col { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+  .island-g .pill {
+    background: #000; padding: 10px 6px; border-radius: 12px;
+    flex-direction: column; gap: 4px; writing-mode: horizontal-tb;
+    border: 1px solid rgba(212,175,55,.3);
+  }
+  .island-g .pill .n { font-size: 10px; color: var(--muted); }
+  .island-g .pill .p { font-size: 13px; font-weight: 700; }
+  .island-g .pill .c { font-size: 11px; color: var(--up); font-weight: 600; }
+  .island-g .expand {
+    width: 200px; background: #000; border-radius: 12px; padding: 10px;
+    border: 1px solid rgba(212,175,55,.3);
+  }
+  .island-g .expand h3 { font-size: 11px; color: var(--gold-soft); margin-bottom: 8px; text-align: center; }
+  .island-g .item {
+    padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 11px;
+  }
+  .island-g .item:last-child { border: none; }
+  .island-g .item .row { display: flex; justify-content: space-between; }
+  .island-g .item .pct { color: var(--up); font-weight: 600; }
+
+  /* ========== H 版：通知横幅风 ========== */
+  .island-h .stage { position: relative; overflow: hidden; min-height: 320px; }
+  .island-h .banner {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    background: rgba(15,18,25,.95); backdrop-filter: blur(20px);
+    border: 1px solid rgba(242,54,69,.5);
+    border-left: 4px solid var(--up);
+    border-radius: 12px; padding: 10px 16px;
+    display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 8px 32px rgba(242,54,69,.2);
+    width: 380px;
+    animation: slideDown .4s ease;
+  }
+  @keyframes slideDown { 0% { transform: translate(-50%, -100%); opacity: 0; } 100% { transform: translate(-50%, 0); opacity: 1; } }
+  .island-h .icon {
+    width: 32px; height: 32px; border-radius: 50%; background: var(--up);
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+  }
+  .island-h .body { flex: 1; }
+  .island-h .body .t { font-size: 12px; color: var(--muted); }
+  .island-h .body .m { font-size: 13px; font-weight: 600; }
+  .island-h .body .m b { color: var(--up); }
+  .island-h .time { color: var(--muted); font-size: 11px; }
+  .island-h .expand {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    background: rgba(15,18,25,.95); backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 12px;
+    width: 380px;
+  }
+  .island-h .expand .title { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .island-h .expand .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; }
+  .island-h .expand .row .u { color: var(--up); }
+</style>
+</head>
+<body>
+  <h1>悬浮灵动岛 · 第二辑（E/F/G/H）</h1>
+  <div class="sub">跟第一辑 A-D 不重复 · 更激进的形态探索</div>
+
+  <div class="grid">
+
+    <!-- E 版：股票机大字版 -->
+    <div class="card island-e">
+      <h2>E · 股票机大字版 <span class="tag">钱龙复古</span></h2>
+      <div class="desc">直角 + 等宽字体 + 左侧涨跌色条，像老派股票机。展开是完整报价 tape 表。</div>
+      <div class="stage">
+        <div class="label">— 收起态 —</div>
+        <div class="pill">
+          <span class="code">601318</span>
+          <span class="big">53.29</span>
+          <span class="pct">+1.50%</span>
+        </div>
+        <div class="label">— 展开态 —</div>
+        <div class="expand">
+          <div class="tape-row head"><span>代码</span><span>名称</span><span style="text-align:right">现价</span><span style="text-align:right">涨幅</span></div>
+          <div class="tape-row"><span>000001</span><span>平安银行</span><span style="text-align:right">12.34</span><span class="up">+1.94%</span></div>
+          <div class="tape-row"><span>600519</span><span>贵州茅台</span><span style="text-align:right">1688.0</span><span class="up">+1.86%</span></div>
+          <div class="tape-row"><span>300750</span><span>宁德时代</span><span style="text-align:right">187.2</span><span class="up">+1.50%</span></div>
+          <div class="tape-row"><span>601318</span><span>中国平安</span><span style="text-align:right">53.29</span><span class="up">+1.50%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- F 版：横向滚动 ticker -->
+    <div class="card island-f">
+      <h2>F · 横向 Ticker 条 <span class="tag">跑马灯</span></h2>
+      <div class="desc">像财经新闻跑马灯，所有自选股横向无缝滚动，鼠标悬停暂停。展开分两列看涨跌榜。</div>
+      <div class="stage">
+        <div class="label">— 收起态（自动滚动）—</div>
+        <div class="pill">
+          <div class="ticker">
+            <span>上证指数 <b>3287 +0.82%</b></span>
+            <span>深证成指 <b>10456 +1.13%</b></span>
+            <span>平安银行 <b>12.34 +1.94%</b></span>
+            <span>贵州茅台 <b>1688 +1.86%</b></span>
+            <span class="g">某科技 <b>23.4 -2.31%</b></span>
+            <span>宁德时代 <b>187.2 +1.50%</b></span>
+            <!-- 复制一份做无缝滚动 -->
+            <span>上证指数 <b>3287 +0.82%</b></span>
+            <span>深证成指 <b>10456 +1.13%</b></span>
+            <span>平安银行 <b>12.34 +1.94%</b></span>
+          </div>
+        </div>
+        <div class="label">— 展开态 —</div>
+        <div class="expand">
+          <div class="head"><span>涨幅榜 TOP</span><span>跌幅榜 TOP</span></div>
+          <div class="cols">
+            <div>
+              <div class="col-title">▲ 涨幅前 4</div>
+              <div class="li"><span>平安银行</span><span class="u">+1.94%</span></div>
+              <div class="li"><span>贵州茅台</span><span class="u">+1.86%</span></div>
+              <div class="li"><span>宁德时代</span><span class="u">+1.50%</span></div>
+              <div class="li"><span>中国平安</span><span class="u">+1.50%</span></div>
+            </div>
+            <div>
+              <div class="col-title">▼ 跌幅前 4</div>
+              <div class="li"><span>某科技</span><span class="d">-2.31%</span></div>
+              <div class="li"><span>某医药</span><span class="d">-1.87%</span></div>
+              <div class="li"><span>某能源</span><span class="d">-1.24%</span></div>
+              <div class="li"><span>某地产</span><span class="d">-0.98%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- G 版：垂直窄条风 -->
+    <div class="card island-g">
+      <h2>G · 垂直窄条风 <span class="tag">贴右缘</span></h2>
+      <div class="desc">不占顶部空间，贴屏幕右边缘竖排堆叠。展开是窄长面板，适合带鱼屏/超宽屏。</div>
+      <div class="stage">
+        <div class="col">
+          <div class="label">— 收起态（贴右缘）—</div>
+          <div class="pill">
+            <span class="n">平安银行</span>
+            <span class="p">12.34</span>
+            <span class="c">+1.94%</span>
+          </div>
+          <div class="label">— 展开态 —</div>
+          <div class="expand">
+            <h3>异动提醒</h3>
+            <div class="item">
+              <div class="row"><span>平安银行</span><span class="pct">+1.94%</span></div>
+            </div>
+            <div class="item">
+              <div class="row"><span>贵州茅台</span><span class="pct">+1.86%</span></div>
+            </div>
+            <div class="item">
+              <div class="row"><span>宁德时代</span><span class="pct">+1.50%</span></div>
+            </div>
+            <div class="item">
+              <div class="row"><span>中国平安</span><span class="pct">+1.50%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- H 版：通知横幅风 -->
+    <div class="card island-h">
+      <h2>H · 通知横幅风 <span class="tag">临时弹出</span></h2>
+      <div class="desc">不是常驻胶囊，是有异动时从顶部滑下的通知横幅，3 秒后自动收回。底部常驻一个小条看历史。</div>
+      <div class="stage">
+        <div class="banner">
+          <div class="icon">↑</div>
+          <div class="body">
+            <div class="t">智能异动提醒</div>
+            <div class="m">平安银行 放量突破 <b>+1.94%</b></div>
+          </div>
+          <div class="time">刚刚</div>
+        </div>
+        <div style="height:60px"></div>
+        <div class="expand">
+          <div class="title">最近 5 条异动</div>
+          <div class="row"><span>14:32 平安银行 突破</span><span class="u">+1.94%</span></div>
+          <div class="row"><span>14:28 贵州茅台 拉升</span><span class="u">+1.86%</span></div>
+          <div class="row"><span>14:15 宁德时代 站上均线</span><span class="u">+1.50%</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

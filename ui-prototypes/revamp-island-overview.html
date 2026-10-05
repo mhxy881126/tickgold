@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>灵动岛改版 · 4 版方案对比</title>
+<style>
+  :root {
+    --bg: #0a0d13;
+    --panel: #11151d;
+    --line: #1e2430;
+    --gold: #d4af37;
+    --gold-soft: #e8c96a;
+    --up: #f23645;
+    --down: #08db94;
+    --text: #e8eaed;
+    --muted: #8a919e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    padding: 32px;
+    min-height: 100vh;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .sub { color: var(--muted); margin-bottom: 28px; font-size: 13px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px;
+  }
+  .card h2 { font-size: 15px; margin-bottom: 4px; }
+  .card .tag {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    background: rgba(212,175,55,.15); color: var(--gold-soft); margin-left: 8px;
+    vertical-align: middle;
+  }
+  .card .desc { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+  .stage {
+    background: linear-gradient(135deg, #1a2535 0%, #2a3a50 100%);
+    border-radius: 10px;
+    padding: 28px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    min-height: 280px;
+  }
+  .label { color: rgba(255,255,255,.5); font-size: 11px; letter-spacing: 1px; }
+
+  /* ========== 通用胶囊基础 ========== */
+  .pill {
+    display: flex; align-items: center; gap: 10px;
+    background: #000;
+    border-radius: 999px;
+    padding: 8px 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  }
+
+  /* ========== A 版：数据流风（多股横排） ========== */
+  .island-a .pill {
+    gap: 0; padding: 6px 14px;
+    border: 1px solid rgba(212,175,55,.3);
+  }
+  .island-a .stock {
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 12px;
+    border-right: 1px solid rgba(255,255,255,.08);
+  }
+  .island-a .stock:last-child { border-right: none; }
+  .island-a .name { color: var(--muted); font-size: 12px; }
+  .island-a .px { color: var(--text); font-weight: 600; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .island-a .chg.up { color: var(--up); font-size: 12px; font-weight: 600; }
+  .island-a .chg.down { color: var(--down); font-size: 12px; font-weight: 600; }
+  .island-a .expand {
+    width: 260px; background: #000; border-radius: 16px; padding: 14px;
+    border: 1px solid rgba(212,175,55,.3);
+  }
+  .island-a .expand-head { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 12px; }
+  .island-a .expand-head .badge { color: var(--gold-soft); }
+  .island-a .row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 4px; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 12px;
+  }
+  .island-a .row:last-child { border: none; }
+  .island-a .row .n { color: var(--text); }
+  .island-a .row .c { color: var(--up); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* ========== B 版：玻璃拟态 + 迷你 K 线 ========== */
+  .island-b .pill {
+    background: rgba(20,24,32,.72);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,.12);
+    padding: 8px 18px;
+    gap: 12px;
+  }
+  .island-b .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--up); box-shadow: 0 0 8px var(--up); }
+  .island-b .name { font-size: 13px; font-weight: 500; }
+  .island-b .px { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .island-b .chg { color: var(--up); font-size: 12px; font-weight: 600; }
+  .island-b .spark { width: 60px; height: 22px; }
+  .island-b .expand {
+    width: 320px; background: rgba(20,24,32,.85); backdrop-filter: blur(24px);
+    border: 1px solid rgba(255,255,255,.12); border-radius: 18px; padding: 16px;
+  }
+  .island-b .head { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 13px; }
+  .island-b .head .live { color: var(--up); display: flex; align-items: center; gap: 5px; font-size: 11px; }
+  .island-b .head .live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--up); animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+  .island-b .big { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+  .island-b .big .p { font-size: 26px; font-weight: 700; }
+  .island-b .big .c { color: var(--up); font-weight: 600; }
+  .island-b .big .spk { flex: 1; height: 36px; }
+  .island-b .list { display: flex; flex-direction: column; gap: 6px; }
+  .island-b .li { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); padding: 4px 6px; border-radius: 6px; }
+  .island-b .li:hover { background: rgba(255,255,255,.05); color: var(--text); }
+  .island-b .li .c { color: var(--up); }
+
+  /* ========== C 版：极简数字风 ========== */
+  .island-c .pill {
+    background: #000; padding: 6px 14px; gap: 8px;
+    border-radius: 8px; /* 非全圆角，更锐利 */
+    box-shadow: 0 4px 16px rgba(0,0,0,.5);
+  }
+  .island-c .time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .island-c .sep { color: rgba(255,255,255,.15); }
+  .island-c .big-px { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
+  .island-c .chg.up { color: var(--up); font-size: 12px; font-weight: 700; }
+  .island-c .expand {
+    width: 280px; background: #000; border-radius: 12px; padding: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .island-c .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .island-c .cell { background: rgba(255,255,255,.03); padding: 8px 10px; border-radius: 8px; }
+  .island-c .cell .k { color: var(--muted); font-size: 10px; margin-bottom: 2px; }
+  .island-c .cell .v { font-size: 14px; font-weight: 600; }
+  .island-c .cell .v.up { color: var(--up); }
+  .island-c .cell .v.down { color: var(--down); }
+
+  /* ========== D 版：交互卡片风（带操作按钮） ========== */
+  .island-d .pill {
+    background: linear-gradient(135deg, #1a1f2e 0%, #0d1018 100%);
+    border: 1px solid rgba(212,175,55,.4);
+    padding: 8px 14px; gap: 10px;
+  }
+  .island-d .avatar {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold), #8a6d1f);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #000;
+  }
+  .island-d .info { display: flex; flex-direction: column; }
+  .island-d .info .n { font-size: 12px; }
+  .island-d .info .p { font-size: 13px; font-weight: 700; }
+  .island-d .chg { color: var(--up); font-size: 12px; font-weight: 600; }
+  .island-d .expand {
+    width: 300px; background: linear-gradient(180deg, #1a1f2e 0%, #0d1018 100%);
+    border: 1px solid rgba(212,175,55,.4); border-radius: 16px; padding: 14px;
+  }
+  .island-d .tabs { display: flex; gap: 4px; margin-bottom: 12px; background: rgba(0,0,0,.3); padding: 3px; border-radius: 8px; }
+  .island-d .tab { flex: 1; text-align: center; font-size: 11px; padding: 5px; border-radius: 6px; color: var(--muted); cursor: pointer; }
+  .island-d .tab.active { background: rgba(212,175,55,.2); color: var(--gold-soft); }
+  .island-d .actions { display: flex; gap: 6px; margin-top: 12px; }
+  .island-d .btn {
+    flex: 1; padding: 7px; text-align: center; font-size: 12px; border-radius: 8px;
+    background: rgba(255,255,255,.06); color: var(--text); cursor: pointer;
+  }
+  .island-d .btn.primary { background: var(--gold); color: #000; font-weight: 600; }
+  .island-d .alert-row {
+    display: flex; align-items: center; gap: 8px; padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,.05); font-size: 12px;
+  }
+  .island-d .alert-row:last-child { border: none; }
+  .island-d .alert-row .icon { color: var(--up); }
+  .island-d .alert-row .desc { flex: 1; }
+  .island-d .alert-row .val { color: var(--up); font-weight: 600; }
+</style>
+</head>
+<body>
+  <h1>悬浮灵动岛 · 4 版改版方案</h1>
+  <div class="sub">暗色金色金融风 · 每版含「收起态胶囊」+「展开态面板」</div>
+
+  <div class="grid">
+
+    <!-- A 版：数据流风 -->
+    <div class="card island-a">
+      <h2>A · 数据流风 <span class="tag">多股横排</span></h2>
+      <div class="desc">收起时同时滚动 3-4 只自选股，一眼扫完所有持仓异动，不用等轮播。</div>
+      <div class="stage">
+        <div class="label">— 收起态 —</div>
+        <div class="pill">
+          <div class="stock"><span class="name">平安银行</span><span class="px">12.34</span><span class="chg up">+1.94%</span></div>
+          <div class="stock"><span class="name">贵州茅台</span><span class="px">1688.0</span><span class="chg up">+1.86%</span></div>
+          <div class="stock"><span class="name">宁德时代</span><span class="px">187.2</span><span class="chg up">+1.50%</span></div>
+        </div>
+        <div class="label">— 展开态 —</div>
+        <div class="expand">
+          <div class="expand-head"><span>智能异动</span><span class="badge">4 只 ↑</span></div>
+          <div class="row"><span class="n">平安银行</span><span class="c">+1.94%</span></div>
+          <div class="row"><span class="n">贵州茅台</span><span class="c">+1.86%</span></div>
+          <div class="row"><span class="n">宁德时代</span><span class="c">+1.50%</span></div>
+          <div class="row"><span class="n">中国平安</span><span class="c">+1.50%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- B 版：玻璃拟态 + K线 -->
+    <div class="card island-b">
+      <h2>B · 玻璃拟态 <span class="tag">带迷你 K 线</span></h2>
+      <div class="desc">半透明磨砂玻璃质感，收起态嵌一条 sparkline 迷你走势，展开后大数字 + K 线。</div>
+      <div class="stage">
+        <div class="label">— 收起态 —</div>
+        <div class="pill">
+          <span class="dot"></span>
+          <span class="name">中国平安</span>
+          <span class="px">53.29</span>
+          <span class="chg">+1.50%</span>
+          <svg class="spark" viewBox="0 0 60 22" preserveAspectRatio="none">
+            <polyline points="0,18 8,15 16,16 24,12 32,13 40,8 48,9 60,4"
+              fill="none" stroke="#f23645" stroke-width="1.5"/>
+          </svg>
+        </div>
+        <div class="label">— 展开态 —</div>
+        <div class="expand">
+          <div class="head"><span>中国平安 601318</span><span class="live">LIVE</span></div>
+          <div class="big">
+            <span class="p">53.29</span>
+            <span class="c">+0.79 +1.50%</span>
+            <svg class="spk" viewBox="0 0 200 36" preserveAspectRatio="none">
+              <polyline points="0,30 20,28 40,30 60,22 80,24 100,18 120,20 140,14 160,16 180,10 200,8"
+                fill="none" stroke="#f23645" stroke-width="1.5"/>
+              <polygon points="0,30 20,28 40,30 60,22 80,24 100,18 120,20 140,14 160,16 180,10 200,8 200,36 0,36"
+                fill="rgba(242,54,69,.1)"/>
+            </svg>
+          </div>
+          <div class="list">
+            <div class="li"><span>今开 52.50</span><span>最高 53.45</span><span>最低 52.30</span></div>
+            <div class="li"><span>成交 28.6 亿</span><span>换手 0.41%</span><span class="c">量比 1.32</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- C 版：极简数字风 -->
+    <div class="card island-c">
+      <h2>C · 极简数字风 <span class="tag">信息密度高</span></h2>
+      <div class="desc">去掉花哨装饰，锐利边角 + 等宽数字，像专业终端 ticker。展开是 2×2 数据格子。</div>
+      <div class="stage">
+        <div class="label">— 收起态 —</div>
+        <div class="pill">
+          <span class="time">14:32:08</span>
+          <span class="sep">|</span>
+          <span class="big-px">53.29</span>
+          <span class="chg up">+1.50%</span>
+        </div>
+        <div class="label">— 展开态 —</div>
+        <div class="expand">
+          <div class="grid2">
+            <div class="cell"><div class="k">上证指数</div><div class="v up">3,287.45 +0.82%</div></div>
+            <div class="cell"><div class="k">深证成指</div><div class="v up">10,456.2 +1.13%</div></div>
+            <div class="cell"><div class="k">涨跌家数</div><div class="v up">3,842 / 1,208</div></div>
+            <div class="cell"><div class="k">成交额</div><div class="v">8,654 亿</div></div>
+            <div class="cell"><div class="k">涨停 / 跌停</div><div class="v up">48 / 3</div></div>
+            <div class="cell"><div class="k">北向资金</div><div class="v down">-12.4 亿</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- D 版：交互卡片风 -->
+    <div class="card island-d">
+      <h2>D · 交互卡片风 <span class="tag">带操作</span></h2>
+      <div class="desc">展开后是 mini dashboard：tabs 切换预警/信号/委托，底部直接买/卖/详情，不用跳主窗口。</div>
+      <div class="stage">
+        <div class="label">— 收起态 —</div>
+        <div class="pill">
+          <div class="avatar">平</div>
+          <div class="info"><span class="n">中国平安</span><span class="p">53.29</span></div>
+          <span class="chg">+1.50%</span>
+        </div>
+        <div class="label">— 展开态 —</div>
+        <div class="expand">
+          <div class="tabs">
+            <div class="tab active">预警 4</div>
+            <div class="tab">信号 1</div>
+            <div class="tab">委托 2</div>
+          </div>
+          <div class="alert-row">
+            <span class="icon">↑</span>
+            <span class="desc">平安银行 突破压力位</span>
+            <span class="val">+1.94%</span>
+          </div>
+          <div class="alert-row">
+            <span class="icon">↑</span>
+            <span class="desc">贵州茅台 放量拉升</span>
+            <span class="val">+1.86%</span>
+          </div>
+          <div class="alert-row">
+            <span class="icon">↑</span>
+            <span class="desc">宁德时代 站上均线</span>
+            <span class="val">+1.50%</span>
+          </div>
+          <div class="actions">
+            <div class="btn">查看详情</div>
+            <div class="btn primary">一键置顶</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

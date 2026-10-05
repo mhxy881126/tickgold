@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -9,6 +9,9 @@ import { useWatchlistStore } from "../stores/watchlist";
 import { brokerListOrders } from "../broker/api";
 import type { BrokerOrderInfo } from "../broker/api";
 import type { Quote } from "../api/types";
+import { applyIslandSkin, ISLAND_SKIN_EVENT } from "../lib/islandSkins";
+import { usePaperStore, type PaperOrder } from "../stores/paper";
+import { listRules } from "../alert/repo";
 
 const wl = useWatchlistStore();
 const win = getCurrentWindow();
@@ -23,6 +26,7 @@ const errMsg = ref("");
 // 预警事件（最新在前，最多保留 20 条）
 const alertEvents = ref<AlertEvent[]>([]);
 const alertMode = ref(true); // 折叠态有预警时优先展示预警
+const enabledRuleCount = ref(0); // 已启用预警规则数（用于空态提示）
 let pollTimer: number | null = null;
 let rotateTimer: number | null = null;
 let unlistenAlert: (() => void) | null = null;
@@ -45,23 +49,34 @@ interface SignalEvent {
 const signalEvents = ref<SignalEvent[]>([]);
 const signalMode = ref(true);
 
-// 活跃券商委托（报单中 / 已报 / 部分成交）
+// 模拟交易委托（最近 10 笔）
+const paper = usePaperStore();
+const recentOrders = ref<PaperOrder[]>([]);
+// 实盘券商活跃委托
 const activeOrders = ref<BrokerOrderInfo[]>([]);
 function bkLabel(s: string): string {
   return (
-    { submitting: "报单中", submitted: "已报", part_filled: "部分成交" } as Record<string, string>
+    { submitting: "报单中", submitted: "已报", part_filled: "部分成交", filled: "已成", cancelled: "已撤", rejected: "已拒" } as Record<string, string>
   )[s] || s;
 }
 async function syncOrders() {
   try {
-    const all = await brokerListOrders(null);
+    // 模拟交易委托（本地 SQLite）
+    await paper.load();
+    recentOrders.value = [...paper.orders].slice(0, 10);
+    // 实盘券商活跃委托（如果连了）
+    const all = await brokerListOrders(null).catch(() => [] as BrokerOrderInfo[]);
     activeOrders.value = all.filter((o) =>
-      ["submitting", "submitted", "part_filled"].includes(o.status),
+      ["submitting", "submitted", "part_filled", "filled"].includes(o.status),
     );
-  } catch {
-    /* 忽略：未初始化不阻断 */
+  } catch (e) {
+    console.error("sync orders failed", e);
   }
 }
+
+// ===== D 版：tabs 分段控制器 =====
+type TabId = "alert" | "signal" | "order";
+const activeTab = ref<TabId>("alert");
 
 const current = computed(() => quotes.value[idx.value] ?? null);
 const latestAlert = computed(() => alertEvents.value[0] ?? null);
@@ -72,6 +87,9 @@ function cls(pct: number) {
   if (pct < 0) return "down";
   return "flat";
 }
+
+// ===== 皮肤（已移至 设置-外观） =====
+// 启动时读 localStorage 应用皮肤即可，切换在 SettingsDialog 里完成
 
 async function refresh() {
   try {
@@ -107,13 +125,56 @@ function rotate() {
 
 async function toggleExpand() {
   expanded.value = !expanded.value;
-  const h = expanded.value ? 340 : 52;
+  const h = expanded.value ? 400 : 52;
   await win.setSize(new LogicalSize(320, h));
 }
 
 function backToQuotes() {
   alertMode.value = false;
   signalMode.value = false;
+}
+
+// ===== 底部按钮实际功能 =====
+// 预警 tab
+function openAllAlerts() {
+  emit("island:open-card", "alert");
+  if (expanded.value) toggleExpand();
+}
+function pinTopAlert() {
+  if (!latestAlert.value) return;
+  emit("island:select", latestAlert.value.code);
+  if (expanded.value) toggleExpand();
+}
+// 信号 tab
+async function dismissSignal() {
+  if (!latestSignal.value) return;
+  const sid = latestSignal.value.sigId;
+  signalEvents.value = signalEvents.value.filter((s) => s.sigId !== sid);
+  try {
+    const { signalReject } = await import("../ai/api");
+    const numId = parseInt(sid, 10);
+    if (!isNaN(numId)) await signalReject(numId, "手动忽略");
+  } catch (e) {
+    console.error("signal reject failed", e);
+  }
+}
+function oneClickTrade() {
+  emit("island:open-card", "signalbridge");
+  if (expanded.value) toggleExpand();
+}
+// 委托 tab
+async function cancelAllOrders() {
+  try {
+    const { brokerKillSwitch } = await import("../broker/api");
+    await brokerKillSwitch(true);
+    void syncOrders();
+  } catch (e) {
+    console.error("cancel all failed", e);
+  }
+}
+function openTrade() {
+  emit("island:open-card", "trade");
+  if (expanded.value) toggleExpand();
 }
 
 function pick(q: Quote) {
@@ -161,8 +222,29 @@ function fmtHM(t: number): string {
   });
 }
 
+async function fetchRuleCount() {
+  try {
+    const rules = await listRules();
+    enabledRuleCount.value = rules.filter((r) => r.enabled).length;
+  } catch (e) {
+    console.error("fetch rule count failed", e);
+  }
+}
+
+// 收起态显示内容优先级：信号 > 预警 > 正常行情
+const collapsedMode = computed<"signal" | "alert" | "quote" | "empty" | "loading" | "error">(() => {
+  if (phase.value === "error") return "error";
+  if (phase.value === "loading") return "loading";
+  if (signalMode.value && latestSignal.value) return "signal";
+  if (alertMode.value && latestAlert.value) return "alert";
+  if (phase.value === "ready" && current.value) return "quote";
+  return "empty";
+});
+
 onMounted(async () => {
+  applyIslandSkin();
   await refresh();
+  void fetchRuleCount();
   pollTimer = window.setInterval(refresh, 3000);
   rotateTimer = window.setInterval(rotate, 3000);
 
@@ -171,6 +253,7 @@ onMounted(async () => {
     const e = ev.payload;
     alertEvents.value = [e, ...alertEvents.value].slice(0, 20);
     alertMode.value = true;
+    activeTab.value = "alert";
     if (!expanded.value) toggleExpand();
   });
 
@@ -184,6 +267,7 @@ onMounted(async () => {
     const s = { ...ev.payload, time: Date.now() };
     signalEvents.value = [s, ...signalEvents.value].slice(0, 20);
     signalMode.value = true;
+    activeTab.value = "signal";
     if (!expanded.value) toggleExpand();
     void syncSignals();
   });
@@ -202,6 +286,11 @@ onMounted(async () => {
   await listen("broker:event", () => void syncOrders());
   await listen("broker:sidecar", () => void syncOrders());
   await listen("broker:kill", () => void syncOrders());
+
+  // 主窗口切换灵动岛皮肤：立即重新应用
+  await listen(ISLAND_SKIN_EVENT, () => {
+    applyIslandSkin();
+  });
 });
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer);
@@ -216,157 +305,156 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="island" :class="{ open: expanded }">
-    <!-- 折叠态 -->
-    <div v-if="!expanded" class="bar" data-tauri-drag-region>
-      <!-- 待确认信号胶囊（最优先） -->
-      <template v-if="signalMode && latestSignal">
-        <div class="sg-pill" :class="latestSignal.side === 'BUY' ? 'buy' : 'sell'" data-tauri-drag-region>
-          {{ latestSignal.side === "BUY" ? "买" : "卖" }}
+    <!-- ===== 收起态 ===== -->
+    <div v-if="!expanded" class="pill" data-tauri-drag-region @click="toggleExpand">
+      <!-- 信号 -->
+      <template v-if="collapsedMode === 'signal' && latestSignal">
+        <div class="avatar" :class="latestSignal.side === 'BUY' ? 'buy' : 'sell'">
+          {{ latestSignal.name.slice(0, 1) }}
         </div>
-        <div class="al-nm" data-tauri-drag-region>{{ latestSignal.name }}</div>
-        <div class="sg-info" data-tauri-drag-region>
-          {{ latestSignal.price.toFixed(2) }}<span v-if="latestSignal.vol"> · {{ latestSignal.vol }}</span>
+        <div class="info">
+          <div class="n">{{ latestSignal.name }}</div>
+          <div class="p">{{ latestSignal.price.toFixed(2) }}</div>
         </div>
-        <button class="mini-btn" title="看行情" @click.stop="backToQuotes">⚡</button>
-        <button class="chev" title="展开" @click.stop="toggleExpand">⌄</button>
+        <span class="chg" :class="latestSignal.side === 'BUY' ? 'up' : 'down'">
+          {{ latestSignal.side === "BUY" ? "买入" : "卖出" }}
+        </span>
       </template>
 
-      <!-- 预警胶囊 -->
-      <template v-else-if="alertMode && latestAlert">
-        <div class="bell" :class="latestAlert.tone" data-tauri-drag-region>
-          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C8.63 5.36 7 7.92 7 11v5l-2 2v1h14v-1l-2-2z"/></svg>
+      <!-- 预警 -->
+      <template v-else-if="collapsedMode === 'alert' && latestAlert">
+        <div class="avatar" :class="latestAlert.tone">{{ latestAlert.name.slice(0, 1) }}</div>
+        <div class="info">
+          <div class="n">{{ latestAlert.name }}</div>
+          <div class="p">{{ latestAlert.price.toFixed(2) }}</div>
         </div>
-        <div class="al-nm" data-tauri-drag-region>{{ latestAlert.name }}</div>
-        <div class="al-lb" :class="latestAlert.tone" data-tauri-drag-region>{{ latestAlert.label }}</div>
-        <div class="al-px" :class="latestAlert.tone" data-tauri-drag-region>{{ latestAlert.price.toFixed(2) }}</div>
-        <button class="mini-btn" title="看行情" @click.stop="backToQuotes">⚡</button>
-        <button class="chev" title="展开" @click.stop="toggleExpand">⌄</button>
+        <span class="chg" :class="latestAlert.tone">{{ latestAlert.label }}</span>
       </template>
 
       <!-- 正常行情 -->
-      <template v-else-if="phase === 'ready' && current">
-        <div class="icon" data-tauri-drag-region>⚡</div>
-        <div class="nm" data-tauri-drag-region>{{ current.name }}</div>
-        <div class="px" :class="cls(current.pct)" data-tauri-drag-region>{{ current.price.toFixed(2) }}</div>
-        <div class="pct" :class="cls(current.pct)" data-tauri-drag-region>
-          {{ current.pct > 0 ? "+" : "" }}{{ current.pct.toFixed(2) }}%
+      <template v-else-if="collapsedMode === 'quote' && current">
+        <div class="avatar">{{ current.name.slice(0, 1) }}</div>
+        <div class="info">
+          <div class="n">{{ current.name }}</div>
+          <div class="p">{{ current.price.toFixed(2) }}</div>
         </div>
-        <button class="chev" title="展开" @click.stop="toggleExpand">⌄</button>
+        <span class="chg" :class="cls(current.pct)">
+          {{ current.pct > 0 ? "+" : "" }}{{ current.pct.toFixed(2) }}%
+        </span>
       </template>
 
-      <!-- 空自选 -->
-      <div v-else-if="phase === 'ready'" class="status-line" data-tauri-drag-region>
-        <span class="sl-ico">★</span><span>暂无自选 · 主窗口添加</span>
-      </div>
-      <!-- 失败可重试 -->
-      <div v-else-if="phase === 'error'" class="status-line err" @click.stop="retry">
-        <span>加载失败 · 点击重试</span>
-      </div>
-      <!-- 加载中 -->
+      <!-- 空/加载/错误 -->
       <div v-else class="status-line" data-tauri-drag-region>
-        <span class="sl-spin"></span><span>加载中…</span>
+        <span v-if="collapsedMode === 'loading'" class="sl-spin"></span>
+        <span>{{ collapsedMode === 'error' ? '加载失败·点击重试' : collapsedMode === 'empty' ? '暂无自选' : '加载中…' }}</span>
       </div>
+
+      <span class="chev">⌄</span>
     </div>
 
-    <!-- 展开态 -->
+    <!-- ===== 展开态 ===== -->
     <div v-else class="open-wrap">
-      <!-- v2.6 活跃券商委托 -->
-      <div v-if="activeOrders.length" class="broker-sec">
-        <div class="sec-head">
-          <span class="sec-title">
-            <span class="bk-dot"></span>
-            券商委托 {{ activeOrders.length }}
+      <!-- 头部：当前股票 + 收起按钮 -->
+      <div class="head" data-tauri-drag-region>
+        <div class="head-left" v-if="current">
+          <div class="avatar sm">{{ current.name.slice(0, 1) }}</div>
+          <span class="head-name">{{ current.name }}</span>
+          <span class="head-px">{{ current.price.toFixed(2) }}</span>
+          <span class="chg" :class="cls(current.pct)">
+            {{ current.pct > 0 ? "+" : "" }}{{ current.pct.toFixed(2) }}%
           </span>
         </div>
-        <div class="bk-list">
-          <div
-            v-for="o in activeOrders"
-            :key="o.sigId"
-            class="bk-row"
-            :class="`bk-${o.status}`"
-          >
-            <span class="bk-state">{{ bkLabel(o.status) }}</span>
-            <span class="bk-code">{{ o.code }}</span>
-            <span class="bk-fill">{{ o.filledVol }}/{{ o.vol }}</span>
-          </div>
-        </div>
+        <button class="chev up" title="收起" @click.stop="toggleExpand">⌃</button>
       </div>
 
-      <!-- 待确认信号区（最优先） -->
-      <div v-if="signalEvents.length" class="signal-sec">
-        <div class="sec-head">
-          <span class="sec-title">
-            <span class="sg-dot"></span>
-            待确认信号 {{ signalEvents.length }}
-          </span>
-        </div>
-        <div class="signal-list">
-          <div
-            v-for="s in signalEvents"
-            :key="s.sigId"
-            class="signal-row"
-            :class="s.side === 'BUY' ? 'buy' : 'sell'"
-            @click="pickSignal(s)"
-          >
-            <span class="sr-side">{{ s.side === "BUY" ? "买入" : "卖出" }}</span>
-            <span class="sr-nm">{{ s.name }}</span>
-            <span class="sr-px">{{ s.price.toFixed(2) }}</span>
-            <span v-if="s.vol" class="sr-vol">x{{ s.vol }}</span>
-            <span class="sr-src">{{ s.source }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- 预警区 -->
-      <div v-if="alertEvents.length" class="alert-sec">
-        <div class="sec-head">
-          <span class="sec-title">
-            <span class="bell-ico">
-              <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C8.63 5.36 7 7.92 7 11v5l-2 2v1h14v-1l-2-2z"/></svg>
-            </span>
-            预警 {{ alertEvents.length }}
-          </span>
-        </div>
-        <div class="alert-list">
-          <div
-            v-for="(e, i) in alertEvents"
-            :key="i"
-            class="alert-row"
-            :class="e.tone"
-            @click="pickAlert(e)"
-          >
-            <span class="ar-bar"></span>
-            <span class="ar-time">{{ fmtHM(e.time) }}</span>
-            <span class="ar-lb">{{ e.label }}</span>
-            <span class="ar-msg">{{ e.name }} {{ e.price.toFixed(2) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- 自选行情区 -->
-      <div class="quote-head" data-tauri-drag-region @click="toggleExpand">
-        <span class="head-title">
-          <span class="head-icon">⚡</span>
-          智能异动提醒
-        </span>
-        <span class="head-right">
-          <span class="head-count">{{ quotes.length }} 只</span>
-          <button class="chev up" title="收起">⌃</button>
-        </span>
-      </div>
-      <div class="open-list">
+      <!-- tabs 分段控制器 -->
+      <div class="tabs">
         <div
-          v-for="q in quotes"
-          :key="q.code"
-          class="row"
-          :class="{ active: current && q.code === current.code }"
-          @click="pick(q)"
+          class="tab"
+          :class="{ active: activeTab === 'alert' }"
+          @click="activeTab = 'alert'"
+        >预警<span class="count">{{ alertEvents.length }}</span></div>
+        <div
+          class="tab"
+          :class="{ active: activeTab === 'signal' }"
+          @click="activeTab = 'signal'"
+        >信号<span class="count">{{ signalEvents.length }}</span></div>
+        <div
+          class="tab"
+          :class="{ active: activeTab === 'order' }"
+          @click="activeTab = 'order'"
+        >委托<span class="count">{{ recentOrders.length }}</span></div>
+      </div>
+
+      <!-- 预警列表 -->
+      <div v-if="activeTab === 'alert'" class="tab-body">
+        <div
+          v-for="(e, i) in alertEvents"
+          :key="i"
+          class="alert-row"
+          @click="pickAlert(e)"
         >
-          <span class="arrow" :class="cls(q.pct)">{{ q.pct > 0 ? "↑" : "↓" }}</span>
-          <span class="rnm">{{ q.name }}</span>
-          <span class="rpct" :class="cls(q.pct)">{{ q.pct > 0 ? "+" : "" }}{{ q.pct.toFixed(2) }}%</span>
+          <span class="dir" :class="e.tone">{{ e.tone === 'up' ? '↑' : '↓' }}</span>
+          <span class="desc"><b>{{ e.name }}</b> {{ e.label }}</span>
+          <span class="val" :class="e.tone">{{ e.price.toFixed(2) }}</span>
         </div>
-        <div v-if="quotes.length === 0" class="empty">主窗口添加自选股</div>
+        <div v-if="alertEvents.length === 0" class="empty">
+          暂无触发预警<br><span style="opacity:.6">已启用 {{ enabledRuleCount }} 条规则，运行中</span>
+        </div>
+      </div>
+
+      <!-- 信号列表 -->
+      <div v-else-if="activeTab === 'signal'" class="tab-body">
+        <div
+          v-for="s in signalEvents"
+          :key="s.sigId"
+          class="sig-row"
+          :class="s.side === 'BUY' ? 'buy' : 'sell'"
+          @click="pickSignal(s)"
+        >
+          <div class="sig-head">
+            <span class="sig-name">{{ s.name }}</span>
+            <span class="sig-side">{{ s.side === "BUY" ? "买入" : "卖出" }}</span>
+          </div>
+          <div class="sig-meta">{{ s.source }} · {{ s.price.toFixed(2) }}<span v-if="s.vol"> · ×{{ s.vol }}</span></div>
+        </div>
+        <div v-if="signalEvents.length === 0" class="empty">暂无待确认信号</div>
+      </div>
+
+      <!-- 委托列表：模拟 + 实盘分组 -->
+      <div v-else class="tab-body">
+        <div class="order-group-title">模拟交易</div>
+        <div v-for="o in recentOrders" :key="o.id" class="order-row">
+          <span class="ord-code">
+            <span :class="o.side === 'buy' ? 'up' : 'down'">{{ o.side === 'buy' ? '买' : '卖' }}</span>
+            {{ o.name }} {{ o.vol }}股
+          </span>
+          <span class="ord-st">{{ bkLabel(o.status) }}</span>
+        </div>
+        <div v-if="recentOrders.length === 0" class="empty-sm">暂无模拟委托</div>
+
+        <div class="order-group-title">实盘交易</div>
+        <div v-for="o in activeOrders" :key="o.sigId" class="order-row">
+          <span class="ord-code">{{ o.code }} {{ o.filledVol }}/{{ o.vol }}</span>
+          <span class="ord-st live">{{ bkLabel(o.status) }}</span>
+        </div>
+        <div v-if="activeOrders.length === 0" class="empty-sm">未连接实盘</div>
+      </div>
+
+      <!-- 底部操作：按 tab 切换 -->
+      <div class="actions">
+        <template v-if="activeTab === 'alert'">
+          <div class="btn" @click="openAllAlerts">查看全部</div>
+          <div class="btn primary" @click="pinTopAlert">一键置顶</div>
+        </template>
+        <template v-else-if="activeTab === 'signal'">
+          <div class="btn" @click="dismissSignal">忽略</div>
+          <div class="btn primary" @click="oneClickTrade">一键下单</div>
+        </template>
+        <template v-else>
+          <div class="btn" @click="cancelAllOrders">撤全部</div>
+          <div class="btn primary" @click="openTrade">打开交易</div>
+        </template>
       </div>
     </div>
   </div>
@@ -387,174 +475,151 @@ body,
 .island {
   height: 100%;
   font-size: 13px;
-  color: #e6edf3;
+  color: #e8eaed;
   user-select: none;
+  --bg-from: #1a1f2e;
+  --bg-to: #0d1018;
+  --border: rgba(212,175,55,.35);
+  --accent: #d4af37;
+  --accent-soft: #e8c96a;
+  --avatar-from: #d4af37;
+  --avatar-to: #8a6d1f;
 }
 
-/* 折叠态 */
-.bar {
+/* ===== 收起态胶囊 ===== */
+.pill {
   height: 52px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 0 14px;
-  background: linear-gradient(135deg, #1a1500 0%, #2a2000 100%);
-  border: 1px solid #ffd700;
+  background: linear-gradient(135deg, var(--bg-from), var(--bg-to));
+  border: 1px solid var(--border);
   border-radius: 999px;
-  animation: pulse-gold 2s ease-in-out infinite;
+  cursor: pointer;
+  transition: box-shadow .2s;
 }
-@keyframes pulse-gold {
-  0%, 100% { box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
-  50% { box-shadow: 0 4px 30px rgba(255, 215, 0, 0.3); }
-}
-.icon {
-  width: 22px; height: 22px;
-  background: linear-gradient(135deg, #ffd700, #ffaa00);
-  border-radius: 50%;
+.pill:hover { box-shadow: 0 8px 32px rgba(0,0,0,.5); }
+
+.avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--avatar-from), var(--avatar-to));
   display: flex; align-items: center; justify-content: center;
-  font-size: 12px; color: #000; font-weight: 700;
+  font-size: 12px; font-weight: 700; color: #000; flex-shrink: 0;
 }
-.nm { font-weight: 600; max-width: 80px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #ffd700; }
-.px { font-variant-numeric: tabular-nums; font-weight: 600; }
-.pct { font-variant-numeric: tabular-nums; margin-left: auto; font-weight: 600; }
+.avatar.sm { width: 20px; height: 20px; font-size: 10px; }
+.avatar.buy { background: linear-gradient(135deg, #f23645, #8a1a25); color: #fff; }
+.avatar.sell { background: linear-gradient(135deg, #08db94, #0a5f3f); color: #fff; }
+.avatar.up { background: linear-gradient(135deg, #f23645, #8a1a25); color: #fff; }
+.avatar.down { background: linear-gradient(135deg, #08db94, #0a5f3f); color: #fff; }
+
+.info { flex: 1; min-width: 0; }
+.info .n { font-size: 11px; color: #8a919e; }
+.info .p { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.chg { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chg.up { color: #f23645; }
+.chg.down { color: #08db94; }
+.chg.flat { color: #8a919e; }
+
 .chev {
-  background: transparent; border: none; color: #ffd700;
-  font-size: 16px; cursor: pointer; padding: 2px 4px; line-height: 1;
-}
-.chev:hover { color: #ffaa00; }
-.mini-btn {
-  background: transparent; border: 1px solid rgba(255,215,0,.4); color: #ffd700;
-  border-radius: 50%; width: 20px; height: 20px; font-size: 10px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; padding: 0;
+  background: transparent; border: none; color: var(--accent);
+  font-size: 14px; cursor: pointer; padding: 2px 4px; line-height: 1;
 }
 
-/* 预警胶囊 */
-.bell { color: #ff5a5a; display: flex; }
-.bell.down { color: #ff7043; }
-.al-nm { font-weight: 700; max-width: 76px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.al-lb { font-size: 11px; font-weight: 700; }
-.al-lb.up { color: #ff5a5a; }
-.al-lb.down { color: #ff7043; }
-.al-px { font-variant-numeric: tabular-nums; font-weight: 700; margin-left: auto; }
-.al-px.up { color: #ff5a5a; }
-.al-px.down { color: #ff7043; }
-
-/* 状态行 */
 .status-line {
-  width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
-  color: #ffd700;
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
+  color: var(--accent); font-size: 12px;
 }
-.status-line.err { cursor: pointer; color: #ff8a98; }
-.sl-ico { color: #ffd700; }
 .sl-spin {
-  width: 12px; height: 12px; border: 2px solid rgba(255,215,0,.3);
-  border-top-color: #ffd700; border-radius: 50%; animation: ispin .8s linear infinite;
+  width: 12px; height: 12px; border: 2px solid rgba(212,175,55,.3);
+  border-top-color: var(--accent); border-radius: 50%; animation: ispin .8s linear infinite;
 }
 @keyframes ispin { to { transform: rotate(360deg); } }
 
-/* 展开态 */
+/* ===== 展开态 ===== */
 .open-wrap {
-  height: 340px;
+  height: 400px;
+  box-sizing: border-box;
   display: flex; flex-direction: column;
-  background: linear-gradient(135deg, #1a1500 0%, #2a2000 100%);
-  border: 1px solid #ffd700;
-  border-radius: 28px;
+  background: linear-gradient(180deg, var(--bg-from), var(--bg-to));
+  border: 1px solid var(--border);
+  border-radius: 18px;
   overflow: hidden;
+  padding: 12px;
 }
 
-/* 预警区 */
-.alert-sec { border-bottom: 1px solid rgba(255,215,0,.2); flex-shrink: 0; }
-.sec-head { padding: 10px 16px 4px; }
-.sec-title { display: flex; align-items: center; gap: 6px; color: #ffd700; font-size: 12px; font-weight: 700; }
-.bell-ico { color: #ff5a5a; display: flex; }
-.alert-list { max-height: 118px; overflow-y: auto; padding-bottom: 4px; }
+.head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.head-left { display: flex; align-items: center; gap: 8px; }
+.head-name { font-size: 12px; color: #e8eaed; }
+.head-px { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.tabs {
+  display: flex; gap: 4px; background: rgba(0,0,0,.35);
+  padding: 3px; border-radius: 8px; margin-bottom: 10px;
+}
+.tab {
+  flex: 1; text-align: center; font-size: 11px; padding: 5px 4px;
+  border-radius: 6px; color: #8a919e; cursor: pointer;
+  transition: all .15s;
+}
+.tab.active { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent-soft); }
+.tab .count { opacity: .7; margin-left: 2px; }
+
+.tab-body { flex: 1; overflow-y: auto; }
+
 .alert-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 16px; cursor: pointer; position: relative;
+  padding: 7px 6px; border-radius: 6px; cursor: pointer;
 }
-.alert-row:hover { background: rgba(255,215,0,.07); }
-.ar-bar { width: 3px; height: 22px; border-radius: 2px; background: #ff5a5a; flex-shrink: 0; }
-.alert-row.down .ar-bar { background: #ff7043; }
-.ar-time { color: #8b98a5; font-size: 10px; font-variant-numeric: tabular-nums; width: 38px; }
-.ar-lb { font-size: 11px; font-weight: 700; width: 58px; color: #ff5a5a; }
-.alert-row.down .ar-lb { color: #ff7043; }
-.ar-msg { font-size: 11px; color: #c9d1d9; margin-left: auto; font-variant-numeric: tabular-nums; }
+.alert-row:hover { background: rgba(255,255,255,.04); }
+.alert-row .dir { font-size: 12px; width: 14px; text-align: center; }
+.alert-row .dir.up { color: #f23645; }
+.alert-row .dir.down { color: #08db94; }
+.alert-row .desc { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alert-row .desc b { color: #e8eaed; margin-right: 4px; }
+.alert-row .val { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.alert-row .val.up { color: #f23645; }
+.alert-row .val.down { color: #08db94; }
 
-/* 行情区 */
-.quote-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 16px; cursor: pointer; flex-shrink: 0;
+.sig-row {
+  padding: 8px; background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-radius: 8px; margin-bottom: 6px;
+  border-left: 3px solid var(--accent);
 }
-.head-right { display: flex; align-items: center; gap: 8px; }
-.head-title { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #ffd700; }
-.head-icon {
-  width: 20px; height: 20px;
-  background: linear-gradient(135deg, #ffd700, #ffaa00);
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; color: #000; font-weight: 700;
-}
-.head-count {
-  background: linear-gradient(135deg, #ffd700, #ffaa00);
-  color: #000; font-size: 10px; font-weight: 600;
-  padding: 2px 8px; border-radius: 10px;
-}
-.open-list { flex: 1; overflow-y: auto; padding-bottom: 8px; }
-.row { display: flex; align-items: center; gap: 8px; padding: 7px 16px; cursor: pointer; }
-.row:hover { background: rgba(255, 215, 0, 0.08); }
-.row.active { background: rgba(255, 215, 0, 0.15); }
-.arrow { font-size: 12px; width: 16px; text-align: center; }
-.rnm { max-width: 110px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.rpct { font-variant-numeric: tabular-nums; margin-left: auto; width: 72px; text-align: right; }
-.empty { text-align: center; color: #ffd700; padding: 30px 10px; font-size: 12px; }
+.sig-row .sig-head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+.sig-row .sig-side { color: #f23645; font-weight: 600; }
+.sig-row.sell .sig-side { color: #08db94; }
+.sig-row .sig-meta { font-size: 11px; color: #8a919e; }
 
-.up { color: #ef5350; }
-.down { color: #26a69a; }
-.flat { color: #8b98a5; }
-
-/* 待确认信号胶囊 */
-.sg-pill {
-  font-weight: 800; font-size: 11px; width: 22px; height: 22px;
-  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+.order-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 6px; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 12px;
 }
-.sg-pill.buy { background: #ff3b46; color: #fff; }
-.sg-pill.sell { background: #1fbf75; color: #fff; }
-.sg-info {
-  font-variant-numeric: tabular-nums; font-weight: 700;
-  margin-left: auto; color: #ffd700; font-size: 12px;
+.order-row:last-child { border: none; }
+.order-group-title {
+  font-size: 10px; color: var(--accent-soft); opacity: .7;
+  padding: 8px 4px 4px; letter-spacing: 1px;
+}
+.empty-sm { text-align: center; color: #8a919e; font-size: 11px; padding: 6px; }
+.ord-st.live { background: rgba(242,54,69,.2); color: #f23645; }
+.ord-st {
+  font-size: 10px; padding: 1px 6px; border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent-soft);
 }
 
-/* 展开态 待确认信号区 */
-.signal-sec { border-bottom: 1px solid rgba(255,215,0,.2); flex-shrink: 0; }
-.signal-list { max-height: 128px; overflow-y: auto; padding-bottom: 4px; }
-.signal-row { display: flex; align-items: center; gap: 8px; padding: 6px 16px; cursor: pointer; }
-.signal-row:hover { background: rgba(255,215,0,.07); }
-.sr-side { font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 5px; }
-.signal-row.buy .sr-side { background: #ff3b46; color: #fff; }
-.signal-row.sell .sr-side { background: #1fbf75; color: #fff; }
-.sr-nm { font-size: 11px; color: #c9d1d9; }
-.sr-px { font-size: 11px; color: #ffd700; font-variant-numeric: tabular-nums; margin-left: auto; }
-.sr-vol { font-size: 10px; color: #8b98a5; font-variant-numeric: tabular-nums; }
-.sr-src {
-  font-size: 10px; color: #8b98a5; border: 1px solid rgba(255,215,0,.25);
-  border-radius: 5px; padding: 0 5px;
-}
-.sg-dot {
-  width: 8px; height: 8px; border-radius: 50%; background: #ffb13d;
-  box-shadow: 0 0 6px rgba(255,177,61,.8);
-}
+.empty { text-align: center; color: #8a919e; padding: 30px 10px; font-size: 12px; }
 
-/* v2.6 活跃券商委托 */
-.broker-sec { border-bottom: 1px solid rgba(106,166,232,.2); flex-shrink: 0; }
-.bk-list { padding-bottom: 4px; }
-.bk-row { display: flex; align-items: center; gap: 8px; padding: 5px 16px; font-size: 11px; }
-.bk-row .bk-state { font-weight: 800; color: #6aa6e8; min-width: 56px; }
-.bk-row .bk-code { color: #e6ecf5; font-variant-numeric: tabular-nums; }
-.bk-row .bk-fill { color: #97a0b2; font-variant-numeric: tabular-nums; }
-.bk-submitting .bk-state { color: #97a0b2; }
-.bk-part_filled .bk-state { color: #ffb13d; }
-.bk-dot {
-  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-  background: #6aa6e8; margin-right: 5px;
+.actions { display: flex; gap: 6px; margin-top: 10px; }
+.btn {
+  flex: 1; padding: 7px; text-align: center; font-size: 12px;
+  border-radius: 8px; background: rgba(255,255,255,.06); color: #e8eaed;
+  cursor: pointer; transition: background .1s;
 }
+.btn:hover { background: rgba(255,255,255,.1); }
+.btn.primary { background: var(--accent); color: #000; font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.1); }
 </style>

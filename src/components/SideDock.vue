@@ -19,10 +19,16 @@ function openGroup(g: DockGroup) {
 }
 function scheduleClose() {
   if (hoverTimer.value) window.clearTimeout(hoverTimer.value);
-  hoverTimer.value = window.setTimeout(() => { activeGroup.value = null; }, 180);
+  hoverTimer.value = window.setTimeout(() => { activeGroup.value = null; }, 280);
 }
 function cancelClose() {
   if (hoverTimer.value) { window.clearTimeout(hoverTimer.value); hoverTimer.value = null; }
+}
+// 鼠标离开 Dock 时：如果是移向浮出面板（relatedTarget 在 .dock-panel 内），不关闭
+function onDockLeave(e: MouseEvent) {
+  const rt = e.relatedTarget as Node | null;
+  if (rt && (rt as HTMLElement).closest?.(".dock-panel")) return;
+  scheduleClose();
 }
 function pick(it: DockItem) {
   emit("toggle", it.id);
@@ -35,7 +41,7 @@ const current = computed<DockGroup | null>(
 </script>
 
 <template>
-  <aside class="side-dock" @mouseleave="scheduleClose">
+  <aside class="side-dock" @mouseleave="onDockLeave">
     <button
       v-for="g in DOCK_GROUPS"
       :key="g.name"

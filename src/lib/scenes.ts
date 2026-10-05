@@ -40,12 +40,20 @@ const BENTO: Partial<Record<CardId, BentoPos>> = {
   news: { col: 1, colEnd: 13, row: 3, rowEnd: 4 },
 };
 const TIME_CARDS: CardId[] = ["sectorheat", "radar", "spider", "news"];
+// 盘后复盘：把 news（盘中快讯）换成 reviewtimeline（复盘时间线）
+const REVIEW_CARDS: CardId[] = ["sectorheat", "radar", "spider", "reviewtimeline"];
+const REVIEW_BENTO: Partial<Record<CardId, BentoPos>> = {
+  sectorheat: { col: 1, colEnd: 9, row: 1, rowEnd: 3 },
+  radar: { col: 9, colEnd: 13, row: 1, rowEnd: 2 },
+  spider: { col: 9, colEnd: 13, row: 2, rowEnd: 3 },
+  reviewtimeline: { col: 1, colEnd: 13, row: 3, rowEnd: 4 },
+};
 export const TIME_PRESETS: TimePreset[] = [
   { id: "auction", label: "集合竞价", from: "09:15", to: "09:30", cards: TIME_CARDS, bento: BENTO },
   { id: "morning", label: "早盘 9:30", from: "09:30", to: "11:30", cards: TIME_CARDS, bento: BENTO },
   { id: "midday", label: "午盘", from: "11:30", to: "14:30", cards: TIME_CARDS, bento: BENTO },
   { id: "tail", label: "尾盘 14:30", from: "14:30", to: "15:00", cards: TIME_CARDS, bento: BENTO },
-  { id: "review", label: "盘后复盘", from: "15:00", to: "09:15", cards: TIME_CARDS, bento: BENTO },
+  { id: "review", label: "盘后复盘", from: "15:00", to: "09:15", cards: REVIEW_CARDS, bento: REVIEW_BENTO },
 ];
 
 /// 根据时间判断当前 A 股时段

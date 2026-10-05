@@ -398,7 +398,9 @@ onMounted(async () => {
         pickStock(c);
       }),
       await listen<string>("island:open-card", (e) => {
-        bench.open(e.payload as CardId);
+        const cid = e.payload as CardId;
+        bench.open(cid);
+        bench.focus(cid); // 打开后直接聚焦到主区
       }),
       await listen("bridge:focus", () => {
         if (!bench.isOpen("signalbridge")) bench.open("signalbridge");

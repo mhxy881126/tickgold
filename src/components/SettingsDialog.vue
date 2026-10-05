@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit as tauriEmit } from "@tauri-apps/api/event";
 import { useTheme, type ThemeId } from "../composables/useTheme";
 import { useAccessibility } from "../composables/useAccessibility";
 import { useMotion } from "../composables/useMotion";
@@ -55,6 +55,7 @@ import {
 } from "../ai/api";
 import type { AiConfig, ConnTest, KbStats, IndexProgress } from "../ai/types";
 import type { AutoExecConfigInfo } from "../ai/api";
+import { ISLAND_SKINS, getIslandSkin, setIslandSkin, applyIslandSkin, ISLAND_SKIN_EVENT, type IslandSkinId } from "../lib/islandSkins";
 
 defineProps<{ open: boolean }>();
 const emit = defineEmits<{ "update:open": [boolean]; "replay-onboarding": [] }>();
@@ -66,6 +67,15 @@ const { theme, setTheme, THEMES } = useTheme();
 const { zoom, highContrast, setZoom, setHighContrast, ZOOM_LEVELS } = useAccessibility();
 const { tier: motionTier, setTier: setMotionTier, MOTION_TIERS } = useMotion();
 const skinsApi = useSkins();
+
+// 灵动岛皮肤
+const islandSkin = ref<IslandSkinId>(getIslandSkin());
+function pickIslandSkin(id: IslandSkinId) {
+  islandSkin.value = id;
+  setIslandSkin(id);
+  applyIslandSkin(); // 主窗口自己也应用（虽然主窗口不一定用这些变量，但保持一致）
+  tauriEmit(ISLAND_SKIN_EVENT, id); // 通知灵动岛窗口
+}
 
 // 皮肤预览色块：表面 / 左条渐变 / 辉光
 function skinSw(s: import("../lib/skin").SkinSpec): string[] {
@@ -778,6 +788,28 @@ async function toggleDev() {
                 <span v-if="skinMsg" class="skin-msg">{{ skinMsg }}</span>
               </div>
 
+              <div class="section-title" style="margin-top:22px">灵动岛皮肤</div>
+              <div class="section-sub">悬浮灵动岛的配色主题，选择后立即生效</div>
+              <div class="theme-grid">
+                <button
+                  v-for="s in ISLAND_SKINS"
+                  :key="s.id"
+                  type="button"
+                  class="theme-card"
+                  :class="{ on: islandSkin === s.id }"
+                  @click="pickIslandSkin(s.id)"
+                >
+                  <span class="tc-preview">
+                    <i class="swatch" :style="{ background: s.vars['--accent'] }"></i>
+                    <i class="swatch" :style="{ background: s.vars['--bg-from'] }"></i>
+                  </span>
+                  <span class="tc-info">
+                    <span class="tc-name">{{ s.label }}</span>
+                    <span class="tc-desc">{{ s.desc }}</span>
+                  </span>
+                </button>
+              </div>
+
               <div class="section-title" style="margin-top:22px">显示与可访问性</div>
               <div class="section-sub">界面缩放与高对比，选择后立即生效并记住</div>
               <div class="startup-row">
@@ -1033,39 +1065,43 @@ async function toggleDev() {
 
             <!-- 券商交易（v2.6）-->
             <div v-else-if="tab === 'broker'" class="broker-tab">
-              <!-- 状态行 -->
-              <div class="bk-statusbar">
-                <span class="bk-chip" :class="{ on: bStatus?.connected }">
-                  {{ bStatus?.connected ? "已连接" : "未连接" }} · {{ bStatus?.kind }}
-                </span>
-                <span v-if="bStatus?.killSwitch" class="bk-chip kill">Kill Switch 已触发</span>
-                <button type="button" class="logs-btn" @click="refreshBStatus">刷新状态</button>
+              <!-- 顶部状态卡片 -->
+              <div class="bk-status-card">
+                <div class="bk-status-row">
+                  <span class="bk-chip" :class="{ on: bStatus?.kind === 'mock' || bStatus?.connected }">
+                    <template v-if="bForm && bForm.kind === 'mock'">
+                      ⚪ 模拟交易 · 已就绪（本地虚拟资金，无需连接）
+                    </template>
+                    <template v-else>
+                      {{ bStatus?.connected ? "● QMT 已连接" : "○ QMT 未连接" }}
+                    </template>
+                  </span>
+                  <button type="button" class="logs-btn" @click="refreshBStatus">刷新</button>
+                </div>
+                <div v-if="bStatus?.killSwitch" class="bk-kill-warn">
+                  ⚠ Kill Switch 已触发 —— 所有交易通道已断开
+                  <button type="button" class="logs-btn danger" @click="bReleaseKill">解除</button>
+                </div>
               </div>
 
-              <!-- 紧急停止 -->
-              <div class="section-title" style="margin-top:16px">紧急停止 Kill Switch</div>
-              <div class="section-sub">立即断开券商通道，任何模型或流程不得拦截</div>
-              <div class="bk-actions">
-                <button type="button" class="logs-btn danger" @click="bKill(false)">紧急停止（断开）</button>
-                <button type="button" class="logs-btn danger" @click="bKill(true)">紧急停止 + 全撤</button>
-                <button v-if="bStatus?.killSwitch" type="button" class="logs-btn" @click="bReleaseKill">解除 Kill Switch</button>
+              <!-- 第一步：选模式 -->
+              <div class="section-title" style="margin-top:20px">① 选择交易模式</div>
+              <div v-if="bForm" class="bk-mode-grid">
+                <label class="bk-mode-card" :class="{ on: bForm.kind === 'mock' }">
+                  <input v-model="bForm.kind" type="radio" value="mock" />
+                  <div class="bk-mode-name">模拟交易</div>
+                  <div class="bk-mode-desc">无需券商环境，本地虚拟资金，适合练手联调</div>
+                </label>
+                <label class="bk-mode-card" :class="{ on: bForm.kind === 'qmt' }">
+                  <input v-model="bForm.kind" type="radio" value="qmt" />
+                  <div class="bk-mode-name">QMT 实盘</div>
+                  <div class="bk-mode-desc">连接本机 miniQMT + xtquant，可提交真实委托</div>
+                </label>
               </div>
 
-              <!-- 适配器 -->
-              <div class="section-title" style="margin-top:20px">券商适配器</div>
-              <div class="section-sub">默认「模拟」，无需券商环境即可离线联调；QMT 需本机 miniQMT 极简登录 + xtquant</div>
-              <div v-if="bForm" class="bk-actions">
-                <label class="bk-radio"><input v-model="bForm.kind" type="radio" value="mock" /> 模拟（默认）</label>
-                <label class="bk-radio"><input v-model="bForm.kind" type="radio" value="qmt" /> QMT / xtquant</label>
-              </div>
-              <div class="bk-actions">
-                <button type="button" class="logs-btn primary" @click="bConnect">连接</button>
-                <button type="button" class="logs-btn" @click="bDisconnect">断开</button>
-              </div>
-
-              <!-- QMT 环境 -->
+              <!-- QMT 配置（选了 QMT 才显示） -->
               <template v-if="bForm && bForm.kind === 'qmt'">
-                <div class="section-title" style="margin-top:18px">QMT 环境</div>
+                <div class="section-title" style="margin-top:16px">QMT 连接参数</div>
                 <div class="bridge-grid">
                   <label class="ai-field"><span>Python 路径</span>
                     <input v-model="bForm.pythonPath" type="text" spellcheck="false" placeholder="python.exe（已装 xtquant）" /></label>
@@ -1078,56 +1114,78 @@ async function toggleDev() {
                 </div>
               </template>
 
-              <!-- 实盘开关 -->
-              <div class="section-title" style="margin-top:20px">实盘交易</div>
-              <div class="section-sub">默认关闭；开启后已确认信号可能提交真实委托</div>
-              <div v-if="bForm" class="bk-actions">
+              <!-- 第二步：连接（仅 QMT 模式需要） -->
+              <template v-if="bForm && bForm.kind === 'qmt'">
+                <div class="section-title" style="margin-top:20px">② 连接</div>
+                <div class="bk-actions">
+                  <button type="button" class="logs-btn primary big" @click="bConnect">连接通道</button>
+                  <button type="button" class="logs-btn" @click="bDisconnect">断开</button>
+                </div>
+              </template>
+
+              <!-- 第三步：实盘开关（醒目警示） -->
+              <div class="section-title" style="margin-top:20px">③ 实盘委托</div>
+              <div v-if="bForm" class="bk-live-card" :class="{ on: bForm.liveEnabled }">
+                <div>
+                  <div class="bk-live-title">{{ bForm.liveEnabled ? '🔴 实盘已开启' : '⚪ 当前为模拟模式' }}</div>
+                  <div class="section-sub">{{ bForm.liveEnabled ? '信号确认后会提交真实委托，资金有风险' : '开启后已确认信号可能提交真实委托' }}</div>
+                </div>
                 <button type="button" class="switch" :class="{ on: bForm.liveEnabled }" @click="toggleLive(!bForm.liveEnabled)">
                   <span class="knob"></span>
                 </button>
-                <span :class="{ 'bk-live-on': bForm.liveEnabled }">
-                  {{ bForm.liveEnabled ? "实盘已开启" : "实盘关闭（模拟）" }}
-                </span>
               </div>
 
-              <!-- 风控参数 -->
-              <div class="section-title" style="margin-top:20px">风控参数</div>
-              <div v-if="bForm" class="bridge-grid">
-                <label class="ai-field"><span>单票上限%：{{ bForm.maxSinglePct }}</span>
-                  <input v-model.number="bForm.maxSinglePct" type="range" min="5" max="100" step="1" /></label>
-                <label class="ai-field"><span>总仓位上限%：{{ bForm.maxTotalPct }}</span>
-                  <input v-model.number="bForm.maxTotalPct" type="range" min="10" max="100" step="5" /></label>
-              </div>
-              <div v-if="bForm" class="bridge-grid">
-                <label class="ai-field"><span>禁止开仓时间</span>
-                  <input v-model="bForm.noOpenAfter" type="text" spellcheck="false" placeholder="14:55" /></label>
-                <label class="ai-field"><span>预留费用%：{{ bForm.feePct }}</span>
-                  <input v-model.number="bForm.feePct" type="range" min="0" max="1" step="0.01" /></label>
-              </div>
+              <!-- 折叠：高级设置 -->
+              <details class="bk-advanced" style="margin-top:20px">
+                <summary>高级设置（风控参数 / 模拟工具 / 紧急停止）</summary>
 
-              <!-- 模拟工具 -->
-              <div class="section-title" style="margin-top:20px">模拟工具</div>
-              <div class="section-sub">注入"昨日持仓"以联调卖出 / 止损；重置清空模拟账户</div>
-              <div class="bridge-grid">
-                <label class="ai-field"><span>代码</span>
-                  <input v-model="seedForm.code" type="text" spellcheck="false" placeholder="600519" /></label>
-                <label class="ai-field"><span>数量</span>
-                  <input v-model.number="seedForm.vol" type="number" step="100" /></label>
-                <label class="ai-field"><span>成本价</span>
-                  <input v-model.number="seedForm.price" type="number" step="0.01" /></label>
-              </div>
-              <div v-if="bForm" class="bk-actions">
-                <button type="button" class="logs-btn" @click="bSeed">注入模拟持仓</button>
-                <label class="ai-field" style="margin-left:12px"><span>初始资金</span>
-                  <input v-model.number="bForm.mockInitCash" type="number" step="10000" /></label>
-                <button type="button" class="logs-btn" @click="bMockReset">重置模拟账户</button>
-              </div>
-              <div v-if="bForm" class="bk-actions" style="margin-top:14px">
-                <label class="ai-field">
-                  <input v-model="bForm.mockAllowAnytime" type="checkbox" />
-                  模拟允许任意时间（休市 / 周末可联调）
-                </label>
-              </div>
+                <!-- 风控参数 -->
+                <div class="section-title" style="margin-top:14px">风控参数</div>
+                <div v-if="bForm" class="bridge-grid">
+                  <label class="ai-field"><span>单票上限%：{{ bForm.maxSinglePct }}</span>
+                    <input v-model.number="bForm.maxSinglePct" type="range" min="5" max="100" step="1" /></label>
+                  <label class="ai-field"><span>总仓位上限%：{{ bForm.maxTotalPct }}</span>
+                    <input v-model.number="bForm.maxTotalPct" type="range" min="10" max="100" step="5" /></label>
+                </div>
+                <div v-if="bForm" class="bridge-grid">
+                  <label class="ai-field"><span>禁止开仓时间</span>
+                    <input v-model="bForm.noOpenAfter" type="text" spellcheck="false" placeholder="14:55" /></label>
+                  <label class="ai-field"><span>预留费用%：{{ bForm.feePct }}</span>
+                    <input v-model.number="bForm.feePct" type="range" min="0" max="1" step="0.01" /></label>
+                </div>
+
+                <!-- 模拟工具 -->
+                <div class="section-title" style="margin-top:18px">模拟工具</div>
+                <div class="section-sub">注入"昨日持仓"以联调卖出 / 止损；重置清空模拟账户</div>
+                <div class="bridge-grid">
+                  <label class="ai-field"><span>代码</span>
+                    <input v-model="seedForm.code" type="text" spellcheck="false" placeholder="600519" /></label>
+                  <label class="ai-field"><span>数量</span>
+                    <input v-model.number="seedForm.vol" type="number" step="100" /></label>
+                  <label class="ai-field"><span>成本价</span>
+                    <input v-model.number="seedForm.price" type="number" step="0.01" /></label>
+                </div>
+                <div v-if="bForm" class="bk-actions">
+                  <button type="button" class="logs-btn" @click="bSeed">注入模拟持仓</button>
+                  <label class="ai-field" style="margin-left:12px"><span>初始资金</span>
+                    <input v-model.number="bForm.mockInitCash" type="number" step="10000" /></label>
+                  <button type="button" class="logs-btn" @click="bMockReset">重置模拟账户</button>
+                </div>
+                <div v-if="bForm" class="bk-actions" style="margin-top:10px">
+                  <label class="ai-field">
+                    <input v-model="bForm.mockAllowAnytime" type="checkbox" />
+                    模拟允许任意时间（休市 / 周末可联调）
+                  </label>
+                </div>
+
+                <!-- Kill Switch -->
+                <div class="section-title" style="margin-top:18px">紧急停止 Kill Switch</div>
+                <div class="section-sub">立即断开券商通道，任何模型或流程不得拦截</div>
+                <div class="bk-actions">
+                  <button type="button" class="logs-btn danger" @click="bKill(false)">紧急停止（断开）</button>
+                  <button type="button" class="logs-btn danger" @click="bKill(true)">紧急停止 + 全撤</button>
+                </div>
+              </details>
 
               <div class="bk-actions" style="margin-top:16px">
                 <button type="button" class="logs-btn primary" @click="saveBroker">保存配置</button>
@@ -1532,6 +1590,41 @@ async function toggleDev() {
 .bk-chip.kill { color: #ff5a6a; border-color: #ff5a6a; font-weight: 700; }
 .bk-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
 .bk-radio { font-size: 11.5px; color: var(--text-dim); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+
+/* 重排后的券商交易 */
+.bk-status-card {
+  background: rgba(255,255,255,.03); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px;
+}
+.bk-status-row { display: flex; align-items: center; justify-content: space-between; }
+.bk-kill-warn {
+  margin-top: 10px; padding: 8px 12px; border-radius: 8px;
+  background: rgba(242,54,69,.12); border: 1px solid rgba(242,54,69,.4);
+  color: #f23645; font-size: 12px; display: flex; align-items: center; justify-content: space-between;
+}
+.bk-mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.bk-mode-card {
+  border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+  cursor: pointer; transition: all .15s; display: block;
+}
+.bk-mode-card:hover { border-color: var(--accent-2); }
+.bk-mode-card.on { border-color: var(--accent-2); background: rgba(212,175,55,.08); }
+.bk-mode-card input { display: none; }
+.bk-mode-name { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.bk-mode-desc { font-size: 11px; color: var(--text-dim); line-height: 1.4; }
+.logs-btn.big { padding: 8px 24px; font-size: 13px; }
+.bk-live-card {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px; border-radius: 10px; border: 1px solid var(--border);
+  background: rgba(255,255,255,.02); margin-top: 10px;
+}
+.bk-live-card.on { border-color: #f23645; background: rgba(242,54,69,.08); }
+.bk-live-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.bk-advanced summary {
+  cursor: pointer; font-size: 13px; color: var(--accent-2);
+  padding: 8px 0; user-select: none;
+}
+.bk-advanced summary:hover { color: var(--text); }
 .bk-radio input { accent-color: var(--accent); }
 .bk-live-on { color: #ff5a6a; font-weight: 700; }
 </style>
