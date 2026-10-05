@@ -104,6 +104,11 @@ export async function fetchSectors(kind: "industry" | "concept"): Promise<Sector
   return await invoke<Sector[]>("get_sectors", { kind });
 }
 
+/** 板块成分股 */
+export async function fetchSectorStocks(category: string, kind: "industry" | "concept"): Promise<any[]> {
+  return await invoke<any[]>("get_sector_stocks", { category, kind });
+}
+
 // ===== 盘中快讯（新浪财经 7x24） =====
 export interface NewsItem {
   id: number;

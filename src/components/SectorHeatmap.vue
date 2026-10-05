@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import * as echarts from "echarts";
 import { onBeforeUnmount, onMounted, ref } from "vue";
-import { fetchSectors } from "../api/market";
+import { fetchSectors, fetchSectorStocks } from "../api/market";
 import type { Sector } from "../api/types";
+import { useWorkbench } from "../composables/useWorkbench";
 
-const emit = defineEmits<{ select: [code: string] }>();
+const emit = defineEmits<{ select: [code: string]; sector: [name: string, kind: string] }>();
+const bench = useWorkbench();
+const selectedSector = ref<Sector | null>(null);
+const stocks = ref<{ code: string; name: string; price: number; pct: number }[]>([]);
+const loadingStocks = ref(false);
 
 type Kind = "industry" | "concept";
 type SizeBy = "turnover" | "net";
@@ -102,32 +107,40 @@ function render() {
           breadcrumb: {
             show: true,
             bottom: 6,
-            itemStyle: { color: "#222a35", borderColor: "#333c48", borderWidth: 1 },
-            emphasisItemStyle: { color: "#3a4553" },
-            textStyle: { color: "#c9d1d9", fontSize: 10 },
+            itemStyle: { color: "rgba(20,25,35,.9)", borderColor: "#d4af37", borderWidth: 1 },
+            emphasisItemStyle: { color: "rgba(40,50,65,.95)" },
+            textStyle: { color: "#d4af37", fontSize: 11, fontWeight: "600" },
           },
-          animationDuration: 400,
+          animationDuration: 600,
           squareRatio: 0.62,
           label: {
             show: true,
-            visibleMin: 150,
+            visibleMin: 100,
             formatter: (p: any) => {
               const d = p.data as Cell;
               const cp = d._pct;
-              const head = `{n|${d.name}}\n{v|${cp >= 0 ? "+" : ""}${cp.toFixed(2)}%}`;
-              if (d._big) {
-                const net = d._net / 1e8;
-                return head + `\n{m|净${net >= 0 ? "+" : ""}${net.toFixed(1)}亿}`;
-              }
-              return head;
+              const arrow = cp >= 0 ? "▲" : "▼";
+              return `{n|${d.name}}\n{v|${arrow}${Math.abs(cp).toFixed(2)}%}`;
             },
             rich: {
-              n: { color: "#fff", fontSize: 11, lineHeight: 15, fontWeight: "600" },
-              v: { color: "rgba(255,255,255,.88)", fontSize: 10, lineHeight: 13 },
-              m: { color: "rgba(255,255,255,.62)", fontSize: 9, lineHeight: 12 },
+              n: { color: "#fff", fontSize: 13, lineHeight: 18, fontWeight: "700", textShadowColor: "rgba(0,0,0,.6)", textShadowBlur: 4 },
+              v: { color: "rgba(255,255,255,.95)", fontSize: 11, lineHeight: 15, fontWeight: "600" },
             },
           },
-          itemStyle: { borderColor: "#0d1117", borderWidth: 2, gapWidth: 2 },
+          itemStyle: {
+            borderColor: "rgba(13,17,23,.8)",
+            borderWidth: 3,
+            gapWidth: 3,
+            borderRadius: 8,
+          },
+          emphasis: {
+            itemStyle: {
+              borderColor: "#d4af37",
+              borderWidth: 2,
+              shadowBlur: 20,
+              shadowColor: "rgba(212,175,55,.4)",
+            },
+          },
           upperLabel: { show: false },
           data,
         },
@@ -143,6 +156,8 @@ async function load() {
     sectors = await fetchSectors(kind.value);
     render();
     updated.value = hhmmss(new Date());
+    // 数据加载后确保 resize 铺满容器
+    requestAnimationFrame(() => chart?.resize());
   } catch (e) {
     errMsg.value = "板块加载失败";
     console.error("sectorHeat", e);
@@ -166,8 +181,23 @@ function resize() {
 onMounted(() => {
   if (elRef.value) chart = echarts.init(elRef.value);
   chart?.on("click", (p: any) => {
-    const lead = p.data?._lead;
-    if (lead && lead.length >= 8) emit("select", lead.slice(2));
+    console.log("[sectorheat] click", p.name);
+    if (p?.name) {
+      const sec = sectors.find((s) => s.name === p.name);
+      if (sec) {
+        selectedSector.value = sec;
+        loadingStocks.value = true;
+        stocks.value = [];
+        fetchSectorStocks(sec.code, kind.value).then((arr) => {
+          stocks.value = (arr || []).slice(0, 30).map((x: any) => ({
+            code: (x.symbol || x.code || "").replace(/^(sh|sz)/, ""),
+            name: x.name || x.stockname || "",
+            price: parseFloat(x.trade || x.price || 0),
+            pct: parseFloat(x.changeratio || x.changepercent || 0),
+          })).filter((s: any) => s.code);
+        }).catch(() => {}).finally(() => (loadingStocks.value = false));
+      }
+    }
   });
   load();
   timer = window.setInterval(load, 15000);
@@ -196,10 +226,39 @@ onBeforeUnmount(() => {
       </div>
       <span class="upd">{{ updated }}</span>
     </div>
-    <div class="canvas-wrap">
-      <div ref="elRef" class="canvas"></div>
-      <div class="hint">滚轮缩放 · 拖拽平移 · 点击板块查看领涨股</div>
-      <div v-if="errMsg" class="err-mask">{{ errMsg }}</div>
+    <div class="main">
+      <div class="canvas-wrap">
+        <div ref="elRef" class="canvas"></div>
+        <div class="hint">滚轮缩放 · 拖拽平移 · 点击板块查看成分股</div>
+        <div v-if="errMsg" class="err-mask">{{ errMsg }}</div>
+      </div>
+      <div class="side">
+        <template v-if="selectedSector">
+          <div class="sec-head">
+            <div class="sec-name">{{ selectedSector.name }}</div>
+            <div class="sec-pct" :class="selectedSector.changePct >= 0 ? 'up' : 'down'">
+              {{ selectedSector.changePct >= 0 ? '+' : '' }}{{ selectedSector.changePct.toFixed(2) }}%
+            </div>
+          </div>
+          <div class="sec-info">
+            <span>净流入 <b :class="selectedSector.netAmount >= 0 ? 'up' : 'down'">{{ (selectedSector.netAmount / 1e8).toFixed(1) }}亿</b></span>
+            <span>领涨 <b>{{ selectedSector.leadName }}</b></span>
+          </div>
+          <div class="stocks">
+            <div v-if="loadingStocks" class="empty">加载中...</div>
+            <div v-else-if="stocks.length === 0" class="empty">暂无成分股数据</div>
+            <div v-for="s in stocks" :key="s.code" class="stock-row" @click="emit('select', s.code)">
+              <span class="s-name">{{ s.name }}</span>
+              <span class="s-code">{{ s.code }}</span>
+              <span class="s-pct" :class="s.pct >= 0 ? 'up' : 'down'">{{ s.pct >= 0 ? '+' : '' }}{{ s.pct.toFixed(2) }}%</span>
+            </div>
+          </div>
+        </template>
+        <div v-else class="side-empty">
+          <div class="icon">◈</div>
+          <div>点击左侧板块<br>查看成分股</div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -216,7 +275,8 @@ onBeforeUnmount(() => {
 .group button.on { background: rgba(212,175,55,.16); border-color: #d4af37; color: #e8c66a; }
 .upd { font-size: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 
-.canvas-wrap { flex: 1; position: relative; min-height: 0; }
+.main { flex: 1; display: flex; gap: 8px; min-height: 0; }
+.canvas-wrap { flex: 1.5; position: relative; min-height: 0; min-width: 0; }
 .canvas { position: absolute; inset: 0; }
 .hint {
   position: absolute; left: 8px; top: 6px; z-index: 5; pointer-events: none;
@@ -227,4 +287,41 @@ onBeforeUnmount(() => {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   color: #e0556b; font-size: 12px;
 }
+
+/* 右侧成分股面板 */
+.side {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  background: rgba(14,18,27,.6); border: 1px solid #1b2230; border-radius: 8px;
+  overflow: hidden;
+}
+.sec-head {
+  padding: 10px 12px; border-bottom: 1px solid #1b2230;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.sec-name { font-size: 14px; font-weight: 700; color: #f0f4fa; }
+.sec-pct { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sec-pct.up { color: #f04a5a; }
+.sec-pct.down { color: #26c281; }
+.sec-info {
+  padding: 8px 12px; display: flex; gap: 16px;
+  font-size: 11px; color: var(--text-dim); border-bottom: 1px solid #1b2230;
+}
+.sec-info b { color: #e0e6ed; font-weight: 600; }
+.up { color: #f04a5a; }
+.down { color: #26c281; }
+.stocks { flex: 1; overflow-y: auto; }
+.stock-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; cursor: pointer; border-bottom: 1px solid rgba(27,34,48,.5);
+  font-size: 12px; transition: background .15s;
+}
+.stock-row:hover { background: rgba(255,255,255,.04); }
+.s-name { flex: 1; color: #e0e6ed; }
+.s-code { color: var(--text-dim); font-size: 10px; }
+.s-pct { font-weight: 600; font-variant-numeric: tabular-nums; }
+.side-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; color: var(--text-dim); font-size: 12px; text-align: center;
+}
+.side-empty .icon { font-size: 28px; opacity: .3; }
 </style>

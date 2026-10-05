@@ -40,7 +40,7 @@ import SignalBridge from "./SignalBridge.vue";
 import type { CardId } from "../composables/useWorkbench";
 
 const props = defineProps<{ id: CardId; selected: string | null }>();
-defineEmits<{ select: [code: string] }>();
+defineEmits<{ select: [code: string]; sector: [name: string, kind: string] }>();
 
 // 单卡崩溃边界：捕获子卡片渲染错误，显示兜底而非整屏白屏（不影响其他卡片）
 const crashed = ref(false);
@@ -83,7 +83,7 @@ function retry() {
     <TelegraphWall v-else-if="id === 'telegraph'" @select="$emit('select', $event)" />
     <ShortTermSpider v-else-if="id === 'spider'" @select="$emit('select', $event)" />
     <SectorBoard v-else-if="id === 'sector'" @select="$emit('select', $event)" />
-    <SectorHeatmap v-else-if="id === 'sectorheat'" @select="$emit('select', $event)" />
+    <SectorHeatmap v-else-if="id === 'sectorheat'" @select="$emit('select', $event)" @sector="(name: string, kind: string) => $emit('sector', name, kind)" />
     <SectorEvents v-else-if="id === 'sectorevent'" @select="$emit('select', $event)" />
     <Screener v-else-if="id === 'screener'" @select="$emit('select', $event)" />
     <NewsFlash v-else-if="id === 'news'" />

@@ -82,6 +82,7 @@ function reset() {
   loadMore();
 }
 watch(tab, reset);
+
 onMounted(() => {
   measureScroll(scrollEl.value);
   reset();
@@ -120,7 +121,7 @@ function metricCls(q: RankRow) {
 
 <template>
   <div class="rank">
-    <!-- 顶部密集 Tab（8 项，自动换行） -->
+    <!-- 顶部密集 Tab（9 项，自动换行） -->
     <div class="tabs">
       <button
         v-for="t in tabs"
@@ -161,13 +162,16 @@ function metricCls(q: RankRow) {
             :style="{ height: ROW_H + 'px' }"
             @click="emit('select', list[index]!.code)"
           >
-            <span class="rk">{{ index + 1 }}</span>
+            <span class="rk" :class="{'rk-gold': index===0, 'rk-silver': index===1, 'rk-bronze': index===2}">{{ index + 1 }}</span>
             <span class="name-cell">
               <span class="nm">{{ list[index]!.name }}</span>
               <span class="code">{{ list[index]!.code }}</span>
             </span>
             <AnimatedNumber tag="span" class="price" :class="signCls(list[index]!.pct)" :value="list[index]!.price" kind="price" />
-            <AnimatedNumber tag="span" class="pct" :class="signCls(list[index]!.pct)" :value="list[index]!.pct" kind="pct" />
+            <span class="pct-cell">
+              <AnimatedNumber tag="span" class="pct" :class="signCls(list[index]!.pct)" :value="list[index]!.pct" kind="pct" />
+              <div class="pct-bar" :class="signCls(list[index]!.pct)" :style="{width: Math.min(Math.abs(list[index]!.pct)*10, 100)+'%'}"></div>
+            </span>
             <AnimatedNumber
               tag="span"
               class="metric"
@@ -236,7 +240,7 @@ function metricCls(q: RankRow) {
 .h-rk     { width: 34px; flex-shrink: 0; }
 .h-name   { flex: 1; min-width: 0; }
 .h-price  { width: 62px; flex-shrink: 0; text-align: right; }
-.h-pct    { width: 66px; flex-shrink: 0; text-align: right; }
+.h-pct    { width: 90px; flex-shrink: 0; text-align: right; }
 .h-metric { width: 78px; flex-shrink: 0; text-align: right; }
 .h-watch  { width: 26px; flex-shrink: 0; text-align: center; }
 
@@ -255,8 +259,11 @@ function metricCls(q: RankRow) {
 
 .rk {
   width: 34px; flex-shrink: 0; text-align: left;
-  font-size: 11px; color: #5d6878;
+  font-size: 11px; color: #5d6878; font-weight: 600;
 }
+.rk-gold   { color: #ffd700; }
+.rk-silver { color: #c0c0c0; }
+.rk-bronze { color: #cd7f32; }
 
 /* 名称 + 代码（min-width:0 + ellipsis） */
 .name-cell { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; }
@@ -267,7 +274,11 @@ function metricCls(q: RankRow) {
 .code { flex-shrink: 0; font-size: 10px; color: #5d6878; }
 
 .price { width: 62px; flex-shrink: 0; text-align: right; font-size: 12px; }
-.pct   { width: 66px; flex-shrink: 0; text-align: right; font-size: 12px; font-weight: 600; }
+.pct-cell { width: 90px; flex-shrink: 0; text-align: right; position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.pct   { font-size: 12px; font-weight: 600; }
+.pct-bar { position: absolute; left: 0; top: 50%; transform: translateY(-50%); height: 14px; border-radius: 2px; opacity: 0.25; z-index: 0; }
+.pct-bar.up   { background: #f23645; }
+.pct-bar.down { background: #08db98; }
 .metric { width: 78px; flex-shrink: 0; text-align: right; font-size: 12px; }
 
 /* 涨跌色：涨红 / 跌绿 / 平灰 */

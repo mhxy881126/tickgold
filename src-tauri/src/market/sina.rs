@@ -116,7 +116,23 @@ pub async fn sectors(kind: &str) -> Result<Vec<Sector>, String> {
     Ok(out)
 }
 
-/// period: 1/5/15/30/60 分钟, 101 日, 102 周, 103 月
+/// 板块成分股
+pub async fn sector_stocks(category: &str, kind: &str) -> Result<Vec<Value>, String> {
+    let fl = if kind == "concept" { "1" } else { "0" };
+    let url = format!(
+        "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/MoneyFlow.ssl_bkzj_zjlrqs?page=1&num=50&sort=changeratio&asc=0&bankuai=ssl_hy&fenlei={fl}&category={category}"
+    );
+    let arr: Vec<Value> = http()
+        .get(&url)
+        .header("Referer", "https://finance.sina.com.cn/")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(arr)
+}
 pub async fn kline(code: &str, period: i64, count: i64) -> Result<Vec<KBar>, String> {
     let scale = match period {
         1 | 5 | 15 | 30 | 60 => period,

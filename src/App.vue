@@ -328,6 +328,19 @@ function pickStock(code: string, name?: string) {
 function onSelect(code: string) {
   pickStock(code);
 }
+function onSectorPick(name: string, kind: string) {
+  // 打开板块行情卡片并聚焦，展示该板块成分股
+  if (bench.isOpen("sector")) {
+    if (bench.isFocused.value) {
+      if (bench.focusId.value !== "sector") switchFocus("sector");
+    } else {
+      enterFocus("sector");
+    }
+  } else {
+    bench.open("sector");
+    nextTick(() => enterFocus("sector"));
+  }
+}
 function onSearchSelect(code: string, name: string) {
   pickStock(code, name);
 }
@@ -335,6 +348,16 @@ function onSearchSelect(code: string, name: string) {
 const unlistenFns: (() => void)[] = [];
 
 onMounted(async () => {
+  // 板块热力图点击 → 打开板块行情卡片
+  window.addEventListener("open-sector-card", () => {
+    if (bench.isOpen("sector")) {
+      bench.focusId.value = "sector";
+    } else {
+      bench.open("sector");
+      nextTick(() => (bench.focusId.value = "sector"));
+    }
+  });
+
   // —— 平台、版本与窗口最大化状态 ——
   await initPlatform();
 
@@ -615,6 +638,7 @@ onBeforeUnmount(() => {
                 :id="id"
                 :selected="selected"
                 @select="onSelect"
+                @sector="onSectorPick"
               />
             </CardShell>
           </div>

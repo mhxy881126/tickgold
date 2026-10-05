@@ -111,7 +111,7 @@ async function scrollToBottom() {
   if (el && stickBottom.value) el.scrollTop = el.scrollHeight;
 }
 watch(
-  () => messages.value.map((m) => `${m.content.length}:${m.tools.length}`).join("|"),
+  () => messages.value.map((m) => `${(m.content||'').length}:${(m.tools||[]).length}`).join("|"),
   () => {
     if (stickBottom.value) void scrollToBottom();
   }
@@ -376,7 +376,7 @@ async function askExample(q: string) {
             <div v-if="m.role === 'user'" class="user-bubble">{{ m.content }}</div>
             <div v-else class="assistant">
               <!-- 工具回合 -->
-              <div v-if="m.tools.length" class="tool-stack">
+              <div v-if="(m.tools && m.tools.length)" class="tool-stack">
                 <div
                   v-for="t in m.tools"
                   :key="t.callId"
@@ -403,7 +403,7 @@ async function askExample(q: string) {
                 <span class="dots"><span /><span /><span /></span>
               </div>
               <!-- 引用 -->
-              <div v-if="m.factRefs.length" class="refs">
+              <div v-if="(m.factRefs && m.factRefs.length)" class="refs">
                 <button
                   v-for="(r, k) in m.factRefs"
                   :key="k"

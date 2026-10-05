@@ -477,6 +477,13 @@ pub async fn get_sectors(kind: String) -> Result<Vec<Sector>, String> {
         .map_err(|_| "板块: 超时".to_string())?
 }
 
+/// 板块成分股
+pub async fn get_sector_stocks(category: String, kind: String) -> Result<Vec<serde_json::Value>, String> {
+    tokio::time::timeout(Duration::from_secs(10), sina::sector_stocks(&category, &kind))
+        .await
+        .map_err(|_| "板块成分: 超时".to_string())?
+}
+
 /// 盘中快讯：新浪 7x24（page 从 1 开始）
 pub async fn get_news_flash(page: i64, size: i64) -> Result<Vec<NewsItem>, String> {
     tokio::time::timeout(

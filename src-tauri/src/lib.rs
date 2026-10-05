@@ -61,6 +61,11 @@ async fn get_sectors(kind: String) -> Result<Vec<market::Sector>, String> {
 }
 
 #[tauri::command]
+async fn get_sector_stocks(category: String, kind: String) -> Result<Vec<serde_json::Value>, String> {
+    market::get_sector_stocks(category, kind).await
+}
+
+#[tauri::command]
 async fn get_stock_theme_tags(
     codes: Vec<String>,
 ) -> Result<Vec<market::eastmoney::StockThemeTags>, String> {
@@ -1802,6 +1807,10 @@ pub fn run() {
             }
             // ===== 主窗口：标题栏融入工作台 =====
             if let Some(main) = app.get_webview_window("main") {
+                // 启动时强制显示并聚焦（防止上次关闭时被 hide）
+                let _ = main.unminimize();
+                let _ = main.show();
+                let _ = main.set_focus();
                 // 显式设置图标，确保 Windows 任务栏正确显示
                 if let Some(icon) = app.default_window_icon().cloned() {
                     let _ = main.set_icon(icon);
@@ -1843,39 +1852,78 @@ pub fn run() {
                 let _ = island.set_position(LogicalPosition::new(x, 12.0));
             }
 
-            // ===== 系统托盘：勾选式菜单，分别控制主窗口 / 灵动岛显隐 =====
-            // with_id(manager, id, text, enabled, checked, accelerator)
+            // ===== 系统托盘 =====
+            // 菜单结构：
+            //   ☑ 主窗口
+            //   ☑ 灵动岛
+            //   ─────────
+            //   打开设置
+            //   暂停预警
+            //   ─────────
+            //   关于 TickGold
+            //   退出 TickGold
             let main_item =
-                CheckMenuItem::with_id(app, "toggle_main", "主窗口", true, true, None::<&str>)?;
+                CheckMenuItem::with_id(app, "toggle_main", "📊 主窗口", true, true, None::<&str>)?;
             let island_item = CheckMenuItem::with_id(
                 app,
                 "toggle_island",
-                "灵动岛",
+                "🏝️ 灵动岛",
                 true,
                 true,
                 None::<&str>,
             )?;
-            let sep = PredefinedMenuItem::separator(app)?;
-            let quit = MenuItem::with_id(app, "quit", "退出 TickGold", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&main_item, &island_item, &sep, &quit])?;
+            let sep1 = PredefinedMenuItem::separator(app)?;
+            let settings_item = MenuItem::with_id(app, "open_settings", "⚙️ 打开设置", true, None::<&str>)?;
+            let pause_item = CheckMenuItem::with_id(app, "pause_alert", "⏸️ 暂停预警", true, false, None::<&str>)?;
+            let sep2 = PredefinedMenuItem::separator(app)?;
+            let about_item = MenuItem::with_id(app, "about", "ℹ️ 关于 TickGold", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "🚪 退出 TickGold", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[
+                &main_item, &island_item,
+                &sep1,
+                &settings_item, &pause_item,
+                &sep2,
+                &about_item, &quit,
+            ])?;
 
-            // 菜单项内部为 Arc，克隆句柄供事件闭包使用
             let main_c = main_item.clone();
             let island_c = island_item.clone();
             let main_c2 = main_item.clone();
 
+            let main_c = main_item.clone();
+            let island_c = island_item.clone();
+            let main_c2 = main_item.clone();
+
+            let tray_icon = app.default_window_icon().cloned().expect("no default window icon");
             TrayIconBuilder::with_id("main-tray")
-                .tooltip("TickGold · 金睛盯盘 (Alt+` 老板键)")
+                .icon(tray_icon)
+                .tooltip("TickGold · 金睛盯盘\n左键：显示/隐藏主窗口")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "toggle_main" => toggle_window(app, "main", &main_c),
                     "toggle_island" => toggle_window(app, "island", &island_c),
+                    "open_settings" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.emit("open-settings", ());
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "pause_alert" => {
+                        // TODO: 切换预警暂停状态
+                    }
+                    "about" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.emit("show-about", ());
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
                     "quit" => app.exit(0),
                     _ => {}
                 })
                 .on_tray_icon_event(move |tray, event| {
-                    // 左键单击托盘图标：切换主窗口显隐
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
@@ -1899,6 +1947,7 @@ pub fn run() {
             get_orderbook,
             get_trades,
             get_sectors,
+            get_sector_stocks,
             get_stock_theme_tags,
             get_screener,
             search_stocks,
