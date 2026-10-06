@@ -658,16 +658,84 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                 holding_pct,
                 ctx: &ctx,
             });
-            // 拉日K线算 MACD/RSI（失败给中性值）
+            // 拉日K线算深度技术指标（失败给中性值）
             if let Ok(kbars) = market::get_kline(item.code.clone(), 101, 60).await {
                 let closes: Vec<f64> = kbars.iter().map(|k| k.close).collect();
+                let highs: Vec<f64> = kbars.iter().map(|k| k.high).collect();
+                let lows: Vec<f64> = kbars.iter().map(|k| k.low).collect();
+                let volumes: Vec<f64> = kbars.iter().map(|k| k.volume as f64).collect();
+
+                // MACD
                 let (dif, dea, macd_hist) = intraday::calc_macd(&closes);
+                // RSI 14日
                 let rsi = intraday::calc_rsi(&closes, 14);
+
+                // 均线 MA5 / MA10 / MA20 / MA60
+                let ma5 = if closes.len() >= 5 { closes.iter().rev().take(5).sum::<f64>() / 5.0 } else { closes.last().copied().unwrap_or(0.0) };
+                let ma10 = if closes.len() >= 10 { closes.iter().rev().take(10).sum::<f64>() / 10.0 } else { closes.last().copied().unwrap_or(0.0) };
+                let ma20 = if closes.len() >= 20 { closes.iter().rev().take(20).sum::<f64>() / 20.0 } else { closes.last().copied().unwrap_or(0.0) };
+                let ma60 = if closes.len() >= 60 { closes.iter().rev().take(60).sum::<f64>() / 60.0 } else { closes.last().copied().unwrap_or(0.0) };
+
+                // 均线排列：多头排列 = MA5 > MA10 > MA20（上涨趋势）
+                let ma_bullish = ma5 > ma10 && ma10 > ma20;
+                // 空头排列 = MA5 < MA10 < MA20（下跌趋势）
+                let ma_bearish = ma5 < ma10 && ma10 < ma20;
+
+                // 最近20天最高/最低（支撑位/压力位）
+                let recent20_high = highs.iter().rev().take(20).fold(f64::MIN, |a, &b| a.max(b));
+                let recent20_low = lows.iter().rev().take(20).fold(f64::MAX, |a, &b| a.min(b));
+                let current_price = closes.last().copied().unwrap_or(0.0);
+                // 距压力位距离（%）
+                let dist_to_resistance = if recent20_high > 0.0 { (recent20_high - current_price) / recent20_high * 100.0 } else { 0.0 };
+                // 距支撑位距离（%）
+                let dist_to_support = if recent20_low > 0.0 { (current_price - recent20_low) / recent20_low * 100.0 } else { 0.0 };
+
+                // K线形态判断（最近一根K线）
+                if let (Some(prev), Some(cur)) = (kbars.iter().rev().nth(1), kbars.iter().rev().nth(0)) {
+                    let body = cur.close - cur.open; // 实体大小
+                    let upper_shadow = cur.high - cur.close.max(cur.open); // 上影线
+                    let lower_shadow = cur.close.min(cur.open) - cur.low; // 下影线
+                    let body_size = body.abs();
+                    let total_range = cur.high - cur.low;
+
+                    // 锤子线：下影线很长（>2倍实体），上影线很短
+                    let is_hammer = lower_shadow > 2.0 * body_size && upper_shadow < body_size * 0.5 && body_size > 0.0;
+                    // 上吊线：跟锤子线形状一样，但出现在下跌趋势中（看涨反转）
+                    // 看涨吞没：今天阳线实体完全包住昨天阴线实体
+                    let is_bullish_engulfing = body > 0.0 && prev.close < prev.open && cur.open <= prev.close && cur.close >= prev.open;
+                    // 看跌吞没：今天阴线实体完全包住昨天阳线实体
+                    let is_bearish_engulfing = body < 0.0 && prev.close > prev.open && cur.open >= prev.close && cur.close <= prev.open;
+                    // 十字星：开盘价≈收盘价
+                    let is_doji = body_size < total_range * 0.1;
+
+                    if let Some(f) = features.as_object_mut() {
+                        f.insert("klineIsHammer".into(), json!(is_hammer));
+                        f.insert("klineIsBullishEngulfing".into(), json!(is_bullish_engulfing));
+                        f.insert("klineIsBearishEngulfing".into(), json!(is_bearish_engulfing));
+                        f.insert("klineIsDoji".into(), json!(is_doji));
+                    }
+                }
+
+                // 量能：今天成交量 vs 20天平均量
+                let vol20_avg = if volumes.len() >= 20 { volumes.iter().rev().skip(1).take(20).sum::<f64>() / 20.0 } else { volumes.last().copied().unwrap_or(1.0) };
+                let vol_ratio_20 = if vol20_avg > 0.0 { volumes.last().copied().unwrap_or(0.0) / vol20_avg } else { 1.0 };
+
                 if let Some(f) = features.as_object_mut() {
                     f.insert("macdDif".into(), json!(dif));
                     f.insert("macdDea".into(), json!(dea));
                     f.insert("macdHist".into(), json!(macd_hist));
                     f.insert("rsi14".into(), json!(rsi));
+                    f.insert("ma5".into(), json!(ma5));
+                    f.insert("ma10".into(), json!(ma10));
+                    f.insert("ma20".into(), json!(ma20));
+                    f.insert("ma60".into(), json!(ma60));
+                    f.insert("maBullish".into(), json!(ma_bullish));
+                    f.insert("maBearish".into(), json!(ma_bearish));
+                    f.insert("recent20High".into(), json!(recent20_high));
+                    f.insert("recent20Low".into(), json!(recent20_low));
+                    f.insert("distToResistancePct".into(), json!(dist_to_resistance));
+                    f.insert("distToSupportPct".into(), json!(dist_to_support));
+                    f.insert("volRatio20".into(), json!(vol_ratio_20));
                 }
             }
             let pack = json!({"side":side,"features":features,"code":item.code,"name":item.name});

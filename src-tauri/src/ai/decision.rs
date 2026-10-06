@@ -345,6 +345,13 @@ pub fn build_pack(data_dir: &Path, date: Option<&str>) -> Result<Value, String> 
         Some(d) => d.to_string(),
         None => latest_day(&c)?,
     };
+    
+    // 读取当日作战计划
+    let plan = read_today_plan(&c, &date).unwrap_or_default();
+    
+    // 读取当日决策日志
+    let decision_logs = read_today_decision_logs(&c, &date).unwrap_or_default();
+    
     Ok(json!({
         "date": date,
         "generatedAt": crate::ai::now_millis(),
@@ -358,8 +365,82 @@ pub fn build_pack(data_dir: &Path, date: Option<&str>) -> Result<Value, String> 
         "recentCatalysts": catalysts(&c).unwrap_or_default(),
         "multiBoardStocks": multiboard(&c, &date).unwrap_or_default(),
         "positions": positions(&c).unwrap_or_default(),
-        "watchCount": watch_count(&c).unwrap_or(0)
+        "watchCount": watch_count(&c).unwrap_or(0),
+        "todayPlan": plan,
+        "todayDecisionLogs": decision_logs,
     }))
+}
+
+/// 读取当日作战计划
+fn read_today_plan(c: &rusqlite::Connection, date: &str) -> Result<Value, String> {
+    // 查 plan 表，找到当日的计划
+    let plan_id: i64 = c.query_row(
+        "SELECT id FROM plan WHERE plan_date=?1 LIMIT 1",
+        [date],
+        |r| r.get(0),
+    ).unwrap_or(0);
+    
+    if plan_id == 0 {
+        return Ok(json!({ "exists": false, "instructions": [] }));
+    }
+    
+    // 读计划基本信息
+    let (title, market_view): (String, String) = c.query_row(
+        "SELECT title, market_view FROM plan WHERE id=?1",
+        [plan_id],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    ).unwrap_or((String::new(), String::new()));
+    
+    // 读计划指令
+    let mut stmt = c.prepare(
+        "SELECT tier, code, name, condition, action FROM plan_instruction WHERE plan_id=?1 ORDER BY sort",
+    ).map_err(|e| e.to_string())?;
+    let instructions = stmt.query_map([plan_id], |r| {
+        Ok(json!({
+            "tier": r.get::<_, String>(0)?,
+            "code": r.get::<_, String>(1)?,
+            "name": r.get::<_, String>(2)?,
+            "condition": r.get::<_, String>(3)?,
+            "action": r.get::<_, String>(4)?,
+        }))
+    }).map_err(|e| e.to_string())?;
+    
+    let mut list = vec![];
+    for ins in instructions {
+        list.push(ins.map_err(|e| e.to_string())?);
+    }
+    
+    Ok(json!({
+        "exists": true,
+        "title": title,
+        "marketView": market_view,
+        "instructions": list,
+    }))
+}
+
+/// 读取当日决策日志
+fn read_today_decision_logs(c: &rusqlite::Connection, date: &str) -> Result<Value, String> {
+    let mut stmt = c.prepare(
+        "SELECT code, name, label, confidence, mode, action, features FROM decision_log WHERE trade_date=?1 ORDER BY id DESC LIMIT 20",
+    ).map_err(|e| e.to_string())?;
+    let logs = stmt.query_map([date], |r| {
+        Ok(json!({
+            "code": r.get::<_, String>(0)?,
+            "name": r.get::<_, String>(1)?,
+            "label": r.get::<_, String>(2)?,
+            "confidence": r.get::<_, f64>(3)?,
+            "mode": r.get::<_, String>(4)?,
+            "action": r.get::<_, String>(5)?,
+            "features": r.get::<_, String>(6).unwrap_or_default(),
+        }))
+    }).map_err(|e| e.to_string())?;
+    
+    let mut list = vec![];
+    for log in logs {
+        list.push(log.map_err(|e| e.to_string())?);
+    }
+    
+    Ok(json!(list))
 }
 
 #[cfg(test)]

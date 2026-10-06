@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>科技感蜘蛛 - 3 个版本对比</title>
+<style>
+  body { background: #0a0a0a; color: #fff; font-family: monospace; padding: 20px; }
+  .container { display: flex; gap: 30px; flex-wrap: wrap; }
+  .version { border: 1px solid #333; padding: 10px; border-radius: 8px; width: 450px; }
+  .version h3 { color: #0ff; margin: 0 0 10px 0; }
+  .version p { color: #888; font-size: 12px; }
+  svg { background: #111; border-radius: 4px; }
+</style>
+</head>
+<body>
+<h2>科技感蜘蛛 - 3 个版本对比</h2>
+<div class="container">
+
+  <!-- 版本 1：视频同款（折线 + 关节圆点） -->
+  <div class="version">
+    <h3>版本 1：视频同款（折线 + 关节圆点）</h3>
+    <p>特点：青色折线腿，每个关节和腿尖都是粉色小圆点，小方块身体</p>
+    <svg width="400" height="400" viewBox="0 0 400 400">
+      <defs>
+        <filter id="glow1">
+          <feGaussianBlur stdDeviation="2" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      
+      <!-- 腿 1 -->
+      <path d="M 200 200 L 160 180 L 120 200 L 80 180 L 60 150" stroke="#00cccc" stroke-width="1.5" fill="none" filter="url(#glow1)"/>
+      <circle cx="160" cy="180" r="3" fill="#ff6699"/>
+      <circle cx="120" cy="200" r="3" fill="#ff6699"/>
+      <circle cx="80" cy="180" r="3" fill="#ff6699"/>
+      <circle cx="60" cy="150" r="4" fill="#ff6699"/>
+      
+      <!-- 腿 2 -->
+      <path d="M 200 200 L 240 180 L 280 200 L 320 180 L 340 150" stroke="#00cccc" stroke-width="1.5" fill="none" filter="url(#glow1)"/>
+      <circle cx="240" cy="180" r="3" fill="#ff6699"/>
+      <circle cx="280" cy="200" r="3" fill="#ff6699"/>
+      <circle cx="320" cy="180" r="3" fill="#ff6699"/>
+      <circle cx="340" cy="150" r="4" fill="#ff6699"/>
+      
+      <!-- 腿 3 -->
+      <path d="M 200 200 L 180 240 L 160 280 L 140 320 L 120 350" stroke="#00cccc" stroke-width="1.5" fill="none" filter="url(#glow1)"/>
+      <circle cx="180" cy="240" r="3" fill="#ff6699"/>
+      <circle cx="160" cy="280" r="3" fill="#ff6699"/>
+      <circle cx="140" cy="320" r="3" fill="#ff6699"/>
+      <circle cx="120" cy="350" r="4" fill="#ff6699"/>
+      
+      <!-- 腿 4 -->
+      <path d="M 200 200 L 220 240 L 240 280 L 260 320 L 280 350" stroke="#00cccc" stroke-width="1.5" fill="none" filter="url(#glow1)"/>
+      <circle cx="220" cy="240" r="3" fill="#ff6699"/>
+      <circle cx="240" cy="280" r="3" fill="#ff6699"/>
+      <circle cx="260" cy="320" r="3" fill="#ff6699"/>
+      <circle cx="280" cy="350" r="4" fill="#ff6699"/>
+      
+      <!-- 腿 5 -->
+      <path d="M 200 200 L 200 150 L 180 100 L 200 60 L 200 30" stroke="#00cccc" stroke-width="1.5" fill="none" filter="url(#glow1)"/>
+      <circle cx="200" cy="150" r="3" fill="#ff6699"/>
+      <circle cx="180" cy="100" r="3" fill="#ff6699"/>
+      <circle cx="200" cy="60" r="3" fill="#ff6699"/>
+      <circle cx="200" cy="30" r="4" fill="#ff6699"/>
+      
+      <!-- 腿 6 -->
+      <path d="M 200 200 L 200 250 L 220 300 L 200 340 L 200 370" stroke="#00cccc" stroke-width="1.5" fill="none" filter="url(#glow1)"/>
+      <circle cx="200" cy="250" r="3" fill="#ff6699"/>
+      <circle cx="220" cy="300" r="3" fill="#ff6699"/>
+      <circle cx="200" cy="340" r="3" fill="#ff6699"/>
+      <circle cx="200" cy="370" r="4" fill="#ff6699"/>
+      
+      <!-- 身体 -->
+      <rect x="192" y="190" width="16" height="20" fill="#004488" rx="2"/>
+      <rect x="194" y="192" width="12" height="16" fill="#0066cc"/>
+      <circle cx="200" cy="200" r="3" fill="#fff"/>
+    </svg>
+  </div>
+
+  <!-- 版本 2：更精细（更多腿 + 更复杂弯折） -->
+  <div class="version">
+    <h3>版本 2：更精细（8 条腿 + 更复杂弯折）</h3>
+    <p>特点：8 条腿，每条腿 3 个弯折，腿更细，光点更小</p>
+    <svg width="400" height="400" viewBox="0 0 400 400">
+      <defs>
+        <filter id="glow2">
+          <feGaussianBlur stdDeviation="1.5" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      
+      <!-- 8 条腿，每条 3 个弯折 -->
+      <!-- 左上 1 -->
+      <path d="M 200 200 L 170 170 L 130 190 L 90 160 L 50 130" stroke="#00dddd" stroke-width="1.2" fill="none" filter="url(#glow2)"/>
+      <circle cx="170" cy="170" r="2" fill="#ff88aa"/>
+      <circle cx="130" cy="190" r="2" fill="#ff88aa"/>
+      <circle cx="90" cy="160" r="2" fill="#ff88aa"/>
+      <circle cx="50" cy="130" r="3" fill="#ff88aa"/>
+      
+      <!-- 左上 2 -->
+      <path d="M 200 200 L 160 200 L 120 170 L 80 190 L 40 170" stroke="#00dddd" stroke-width="1.2" fill="none" filter="url(#glow2)"/>
+      <circle cx="160" cy="200" r="2" fill="#ff88aa"/>
+      <circle cx="120" cy="170" r="2" fill="#ff88aa"/>
+      <circle cx="80" cy="190" r="2" fill="#ff88aa"/>
+      <circle cx="40" cy="170" r="3" fill="#ff88aa"/>
+      
+      <!-- 右上 1 -->
+      <path d="M 200 200 L 230 170 L 270 190 L 310 160 L 350 130" stroke="#00dddd" stroke-width="1.2" fill="none" filter="url(#glow2)"/>
+      <circle cx="230" cy="170" r="2" fill="#ff88aa"/>
+      <circle cx="270" cy="190" r="2" fill="#ff88aa"/>
+      <circle cx="310" cy="160" r="2" fill="#ff88aa"/>
+      <circle cx="350" cy="130" r="3" fill="#ff88aa"/>
+      
+      <!-- 右上 2 -->
+      <path d="M 200 200 L 240 200 L 280 170 L 320 190 L 360 170" stroke="#00dddd" stroke-width="1.2" fill="none" filter="url(#glow2)"/>
+      <circle cx="240" cy="200" r="2" fill="#ff88aa"/>
+      <circle cx="280" cy="170" r="2" fill="#ff88aa"/>
+      <circle cx="320" cy="190" r="2" fill="#ff88aa"/>
+      <circle cx="360" cy="170" r="3" fill="#ff88aa"/>
+      
+      <!-- 左下 1 -->
+      <path d="M 200 200 L 170 230 L 130 210 L 90 240 L 50 270" stroke="#00dddd" stroke-width="1.2" fill="none" filter="url(#glow2)"/>
+      <circle cx="170" cy="230" r="2" fill="#ff88aa"/>
+      <circle cx="130" cy="210" r="2" fill="#ff88aa"/>
+      <circle cx="90" cy="240" r="2" fill="#ff88aa"/>
+      <circle cx="50" cy="270" r="3" fill="#ff88aa"/>
+      
+      <!-- 左下 2 -->
+      <path d="M 200 200 L 160 200 L 120 230 L 80 210 L 40 230" stroke="#00dddd" stroke-width="1.2" fill="none" filter="url(#glow2)"/>
+      <circle cx="160" cy="200" r="2" fill="#ff88aa"/>
+      <circle cx="120" cy="230" r="2" fill="#ff88aa"/>
+      <circle cx="80" cy="210" r="2" fill="#ff88aa"/>
+      <circle cx="40" cy="230" r="3" fill="#ff88aa"/>
+      
+      <!-- 右下 1 -->
+      <path d="M 200 200 L 230 230 L 270 210 L 310 240 L 350 270" stroke="#00dddd" stroke-width="1.2" fill="none" filter="url(#glow2)"/>
+      <circle cx="230" cy="230" r="2" fill="#ff88aa"/>
+      <circle cx="270" cy="210" r="2" fill="#ff88aa"/>
+      <circle cx="310" cy="240" r="2" fill="#ff88aa"/>
+      <circle cx="350" cy="270" r="3" fill="#ff88aa"/>
+      
+      <!-- 右下 2 -->
+      <path d="M 200 200 L 240 200 L 280 230 L 320 210 L 360 230" stroke="#00dddd" stroke-width="1.2" fill="none" filter="url(#glow2)"/>
+      <circle cx="240" cy="200" r="2" fill="#ff88aa"/>
+      <circle cx="280" cy="230" r="2" fill="#ff88aa"/>
+      <circle cx="320" cy="210" r="2" fill="#ff88aa"/>
+      <circle cx="360" cy="230" r="3" fill="#ff88aa"/>
+      
+      <!-- 身体 -->
+      <rect x="194" y="192" width="12" height="16" fill="#005599" rx="2"/>
+      <circle cx="200" cy="200" r="2.5" fill="#fff"/>
+    </svg>
+  </div>
+
+  <!-- 版本 3：发光版（更强发光效果） -->
+  <div class="version">
+    <h3>版本 3：发光版（更强发光 + 更亮光点）</h3>
+    <p>特点：腿更亮，光点有光晕，整体更炫</p>
+    <svg width="400" height="400" viewBox="0 0 400 400">
+      <defs>
+        <filter id="glow3">
+          <feGaussianBlur stdDeviation="3" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      
+      <!-- 6 条腿，更粗更亮 -->
+      <!-- 上 -->
+      <path d="M 200 200 L 200 140 L 180 80 L 200 40" stroke="#00ffff" stroke-width="2" fill="none" filter="url(#glow3)"/>
+      <circle cx="200" cy="140" r="4" fill="#ff4488"/>
+      <circle cx="180" cy="80" r="4" fill="#ff4488"/>
+      <circle cx="200" cy="40" r="6" fill="#ff4488"/>
+      <circle cx="200" cy="40" r="10" fill="#ff4488" opacity="0.3"/>
+      
+      <!-- 下 -->
+      <path d="M 200 200 L 200 260 L 220 320 L 200 360" stroke="#00ffff" stroke-width="2" fill="none" filter="url(#glow3)"/>
+      <circle cx="200" cy="260" r="4" fill="#ff4488"/>
+      <circle cx="220" cy="320" r="4" fill="#ff4488"/>
+      <circle cx="200" cy="360" r="6" fill="#ff4488"/>
+      <circle cx="200" cy="360" r="10" fill="#ff4488" opacity="0.3"/>
+      
+      <!-- 左 -->
+      <path d="M 200 200 L 140 200 L 80 180 L 40 200" stroke="#00ffff" stroke-width="2" fill="none" filter="url(#glow3)"/>
+      <circle cx="140" cy="200" r="4" fill="#ff4488"/>
+      <circle cx="80" cy="180" r="4" fill="#ff4488"/>
+      <circle cx="40" cy="200" r="6" fill="#ff4488"/>
+      <circle cx="40" cy="200" r="10" fill="#ff4488" opacity="0.3"/>
+      
+      <!-- 右 -->
+      <path d="M 200 200 L 260 200 L 320 180 L 360 200" stroke="#00ffff" stroke-width="2" fill="none" filter="url(#glow3)"/>
+      <circle cx="260" cy="200" r="4" fill="#ff4488"/>
+      <circle cx="320" cy="180" r="4" fill="#ff4488"/>
+      <circle cx="360" cy="200" r="6" fill="#ff4488"/>
+      <circle cx="360" cy="200" r="10" fill="#ff4488" opacity="0.3"/>
+      
+      <!-- 左上 -->
+      <path d="M 200 200 L 160 160 L 100 140 L 60 100" stroke="#00ffff" stroke-width="2" fill="none" filter="url(#glow3)"/>
+      <circle cx="160" cy="160" r="4" fill="#ff4488"/>
+      <circle cx="100" cy="140" r="4" fill="#ff4488"/>
+      <circle cx="60" cy="100" r="6" fill="#ff4488"/>
+      <circle cx="60" cy="100" r="10" fill="#ff4488" opacity="0.3"/>
+      
+      <!-- 右下 -->
+      <path d="M 200 200 L 240 240 L 300 260 L 340 300" stroke="#00ffff" stroke-width="2" fill="none" filter="url(#glow3)"/>
+      <circle cx="240" cy="240" r="4" fill="#ff4488"/>
+      <circle cx="300" cy="260" r="4" fill="#ff4488"/>
+      <circle cx="340" cy="300" r="6" fill="#ff4488"/>
+      <circle cx="340" cy="300" r="10" fill="#ff4488" opacity="0.3"/>
+      
+      <!-- 身体（发光版） -->
+      <circle cx="200" cy="200" r="20" fill="#0088ff" opacity="0.2"/>
+      <circle cx="200" cy="200" r="15" fill="#0088ff" opacity="0.3"/>
+      <rect x="192" y="192" width="16" height="16" fill="#0066dd" rx="3"/>
+      <circle cx="200" cy="200" r="4" fill="#fff"/>
+    </svg>
+  </div>
+
+</div>
+
+<div style="margin-top: 30px; padding: 15px; background: #1a1a1a; border-radius: 8px;">
+  <h3>你选哪个版本最像视频里的？</h3>
+  <p>告诉我版本号（1/2/3），或者告诉我哪里还要改。</p>
+</div>
+
+</body>
+</html>

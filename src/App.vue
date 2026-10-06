@@ -46,6 +46,7 @@ import { useCardMount } from "./composables/useCardMount";
 import { createRootMarketContext, provideMarketContext } from "./composables/useMarketContext";
 import { usePip } from "./composables/usePip";
 import WidgetCanvas from "./components/widgets/WidgetCanvas.vue";
+import SpiderOverlay from "./components/SpiderOverlay.vue";
 import { useCommandPalette } from "./composables/useCommandPalette";
 import { useActions } from "./composables/useActions";
 import { useBuiltinActions } from "./composables/useBuiltinActions";
@@ -223,14 +224,21 @@ const showSettings = ref(false);
 const showShortcuts = ref(false);
 const showOnboarding = ref(false);
 
-// 统一卡片开关：聚焦态打开新卡 → 直接作为主卡（addAndFocus）
+// 统一卡片开关
 function toggleCard(id: CardId) {
   if (bench.isOpen(id)) {
-    bench.close(id);
+    // 已打开：如果不是当前主卡，就切为主卡；如果已经是主卡，就关闭
+    if (!bench.freeMode.value && bench.glassActive.value === id) {
+      bench.close(id);
+    } else if (!bench.freeMode.value) {
+      bench.setGlassActive(id);
+    } else {
+      bench.close(id);
+    }
     return;
   }
-  if (bench.isFocused.value) addAndFocus(id);
-  else bench.open(id);
+  // 新打开：主卡+导航模式下自动设为主卡
+  bench.open(id);
 }
 
 // ===== 玻璃浮岛：按 Dock 分组聚合已开卡片 =====
@@ -262,8 +270,14 @@ function onNavPick(id: CardId) {
   }
 }
 
-// 底部 Tab 流点击：当前卡 → 退出聚焦；未聚焦 → 进入聚焦；聚焦他卡 → 切换
+// 底部 Tab 流点击
 function onTabActivate(id: CardId) {
+  // 主卡+导航模式：直接切主卡
+  if (!bench.freeMode.value) {
+    bench.setGlassActive(id);
+    return;
+  }
+  // 自由布局：聚焦逻辑
   if (bench.focusId.value === id) exitFocus();
   else if (bench.isFocused.value) switchFocus(id);
   else enterFocus(id);
@@ -340,16 +354,17 @@ function onPaletteKey(e: KeyboardEvent) {
   }
 }
 
-// ===== 联动：选中股票 → K线进入主干聚焦大区域（非弹窗） =====
+// ===== 联动：选中股票 → K线进入主卡大区域 =====
 function pickStock(code: string, name?: string) {
   selected.value = code;
   if (name && !wl.codes.includes(code)) wl.add(code, name);
-  // 玻璃浮岛模式：直接把主卡切到右侧卡片导航里的 K线图，不弹 Bento 聚焦 rail
-  if (bench.layoutMode.value === "glass") {
+  // 主卡+导航模式：直接把主卡切到 K线图
+  if (!bench.freeMode.value) {
     if (!bench.isOpen("chart")) bench.open("chart");
     bench.setGlassActive("chart");
     return;
   }
+  // 自由布局：使用聚焦模式
   if (bench.isOpen("chart")) {
     if (bench.isFocused.value) {
       if (bench.focusId.value !== "chart") switchFocus("chart");
@@ -365,13 +380,13 @@ function onSelect(code: string) {
   pickStock(code);
 }
 function onSectorPick(name: string, kind: string) {
-  // 玻璃浮岛模式：直接切主卡到板块行情，不弹 Bento 聚焦 rail
-  if (bench.layoutMode.value === "glass") {
+  // 主卡+导航模式：直接切主卡到板块行情
+  if (!bench.freeMode.value) {
     if (!bench.isOpen("sector")) bench.open("sector");
     bench.setGlassActive("sector");
     return;
   }
-  // 打开板块行情卡片并聚焦，展示该板块成分股
+  // 自由布局：打开板块行情卡片并聚焦
   if (bench.isOpen("sector")) {
     if (bench.isFocused.value) {
       if (bench.focusId.value !== "sector") switchFocus("sector");
@@ -389,11 +404,27 @@ function onSearchSelect(code: string, name: string) {
 
 const unlistenFns: (() => void)[] = [];
 
+// AI 爬虫机器人
+const spiderRef = ref<InstanceType<typeof SpiderOverlay> | null>(null);
+
 onMounted(async () => {
+  // 快捷键：Ctrl+Shift+S 启动/停止爬虫机器人
+  window.addEventListener("keydown", (e) => {
+    if (e.ctrlKey && e.shiftKey && e.key === "S") {
+      e.preventDefault();
+      if (spiderRef.value) {
+        if (spiderRef.value.running) {
+          spiderRef.value.stop();
+        } else {
+          spiderRef.value.start();
+        }
+      }
+    }
+  });
   // 板块热力图点击 → 打开板块行情卡片
   window.addEventListener("open-sector-card", () => {
-    // 玻璃浮岛模式：直接切主卡，不进 Bento 聚焦
-    if (bench.layoutMode.value === "glass") {
+    // 主卡+导航模式：直接切主卡
+    if (!bench.freeMode.value) {
       if (!bench.isOpen("sector")) bench.open("sector");
       bench.setGlassActive("sector");
       return;
@@ -471,7 +502,12 @@ onMounted(async () => {
       await listen<string>("island:open-card", (e) => {
         const cid = e.payload as CardId;
         bench.open(cid);
-        bench.focus(cid); // 打开后直接聚焦到主区
+        // 主卡+导航模式：打开后直接设为主卡
+        if (!bench.freeMode.value) {
+          bench.setGlassActive(cid);
+        } else {
+          bench.focus(cid); // 自由布局：聚焦到主区
+        }
       }),
       await listen("bridge:focus", () => {
         if (!bench.isOpen("signalbridge")) bench.open("signalbridge");
@@ -532,20 +568,8 @@ onBeforeUnmount(() => {
           <span>{{ sc.label }}</span>
         </button>
       </div>
-      <div class="layout-mode-toggle">
-        <button
-          type="button"
-          class="lmt-btn"
-          :class="{ on: bench.layoutMode.value === 'bento' }"
-          @click="bench.setLayoutMode('bento')"
-        >▦ Bento</button>
-        <button
-          type="button"
-          class="lmt-btn"
-          :class="{ on: bench.layoutMode.value === 'glass' }"
-          @click="bench.setLayoutMode('glass')"
-        >⬡ 玻璃浮岛</button>
-      </div>
+      <!-- 布局已统一为主卡+右导航 -->
+
       <SearchBox @select="onSearchSelect" />
       <div class="status">
         <span :class="quotes.polling ? 'dot on' : 'dot'"></span>
@@ -615,10 +639,10 @@ onBeforeUnmount(() => {
         <TimeTabs :active="bench.timeMode.value" @select="bench.enterTimeMode($event)" />
       </div>
 
-      <div class="ws-body" :class="{ free: bench.freeMode.value, glass: bench.layoutMode.value === 'glass' }">
+      <div class="ws-body" :class="{ free: bench.freeMode.value, glass: true }">
 
-      <!-- ===== 玻璃浮岛模式：主卡占满 + 右边缘磁吸导航 ===== -->
-      <template v-if="bench.layoutMode.value === 'glass'">
+      <!-- ===== 主卡+右导航布局（Bento / 玻璃浮岛通用） ===== -->
+      <template v-if="!bench.freeMode.value">
         <div class="glass-layout">
         <div class="glass-master">
           <CardShell
@@ -786,111 +810,8 @@ onBeforeUnmount(() => {
         </TransitionGroup>
       </template>
 
-      <!-- ===== 自动布局：分区 + 装箱网格（默认） ===== -->
-      <template v-else>
-      <!-- 槽位吸附：拖拽时浮现 4 个象限槽位，提示落点 -->
-      <div
-        class="drop-slot slot-main-top"
-        :class="{ active: bench.dropHint.value?.zone === 'main' && dragYBias === 'top' }"
-      ><span>主区 · 上</span></div>
-      <div
-        class="drop-slot slot-main-bottom"
-        :class="{ active: bench.dropHint.value?.zone === 'main' && dragYBias === 'bottom' }"
-      ><span>主区 · 下 / 通栏</span></div>
-      <div
-        class="drop-slot slot-side-top"
-        :class="{ active: bench.dropHint.value?.zone === 'side' && dragYBias === 'top' }"
-      ><span>侧栏 · 上</span></div>
-      <div
-        class="drop-slot slot-side-bottom"
-        :class="{ active: bench.dropHint.value?.zone === 'side' && dragYBias === 'bottom' }"
-      ><span>侧栏 · 下</span></div>
-
-      <!-- 卡片网格 -->
-      <TransitionGroup
-        tag="div"
-        class="card-grid"
-        :class="{
-          'time-mode': bench.timeMode.value !== null,
-          scroll: bench.gridLayout.value.scroll,
-        }"
-        :style="cardGridStyle"
-        enter-active-class="card-enter"
-        leave-active-class="card-leave"
-        move-class="card-move"
-        @dragover="onGridDragOver"
-        @drop="bench.applyDrop()"
-      >
-        <div
-          v-for="id in bench.openCards.value"
-          :key="id"
-          class="card-slot"
-          :data-card-id="id"
-          :ref="(el: any) => cardMount.observeSlot(el, id)"
-          :class="{
-            'drop-before': dropPos(id) === 'before',
-            'drop-after': dropPos(id) === 'after',
-            'live-src': bench.dragId.value === id,
-          }"
-          :style="[ bench.layout.value[id], { '--i': String(Math.min(bench.openCards.value.indexOf(id), 6)) } ]"
-        >
-          <div v-if="bench.dragId.value === id" class="drag-ghost"></div>
-          <CardShell
-            v-if="true"
-            :card-id="id"
-            :title="CARD_META[id].title"
-            :accent="CARD_META[id].accent"
-            :dragging="bench.dragId.value === id"
-            :focused="bench.focusId.value === id"
-            :collapsed="bench.isCollapsed(id)"
-            :resizable="bench.focusId.value === null && !bench.isCollapsed(id)"
-            :span="bench.cardSpanOf(id).w"
-            :rspan="bench.cardSpanOf(id).h"
-            :refresh="bench.cardRefreshOf(id)"
-            :color="bench.cardCustom.value[id]?.color ?? ''"
-            :look-vars="bench.cardStyleVars(id)"
-            :look="bench.cardLook(id)"
-            :cfg-open-signal="bench.openCfgId.value === id"
-            :popoutable="bench.isWidgetCard(id)"
-            :popout-on="pip.isOpen({ kind: 'card', cardId: id })"
-            @close="bench.close(id)"
-            @focus="enterFocus(id)"
-            @restore="exitFocus"
-            @pdrag="(e: PointerEvent) => bench.pointerDragStart(id, e)"
-            @menu="(p) => onCardMenu(id, p)"
-            @cfg-consumed="bench.openCfgId.value = null"
-            @collapse="bench.toggleCollapse(id)"
-            @color="(c: string) => bench.setCardColor(id, c)"
-            @refresh="(n: number) => bench.setCardRefresh(id, n)"
-            @resize="(w: number, h: number) => bench.resizeCard(id, w, h)"
-            @look="(p) => bench.setCardLook(id, p)"
-            @pin="bench.togglePin(id)"
-            @lock="bench.toggleLock(id)"
-            @tag="(t: string) => bench.setCardTag(id, t)"
-            @resetlook="bench.resetCardLook(id)"
-            @resetwidgets="bench.resetCardWidgets(id)"
-            @popout="pip.openPip({ kind: 'card', cardId: id })"
-          >
-            <WidgetCanvas
-              v-if="bench.isWidgetCard(id)"
-              :id="id"
-              :editing="false"
-              @popout="(c: CardId, w: string) => pip.openPip({ kind: 'widget', cardId: c, widgetId: w })"
-            />
-            <CardContent
-              v-else
-              :id="id"
-              :selected="selected"
-              :compact="bench.isFocused.value ? id !== bench.focusId.value && bench.timeMode.value !== null : bench.timeMode.value !== null"
-              @select="onSelect"
-            />
-          </CardShell>
-        </div>
-      </TransitionGroup>
-      </template>
-
-      <!-- 卡片聚焦 overlay：遮罩 + 主区目标 + 右侧快速切换栏（与卡片同处 ws-body 层叠上下文）-->
-      <template v-if="overlayShow">
+      <!-- 卡片聚焦 overlay：仅自由布局下使用 -->
+      <template v-if="overlayShow && bench.freeMode.value">
         <div class="focus-backdrop" :class="{ closing: focusClosing }" @click="exitFocus"></div>
         <div class="focus-target" ref="focusTargetEl"></div>
         <div class="focus-rail" :class="{ closing: focusClosing }">
@@ -992,6 +913,9 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </Transition>
+
+    <!-- AI 爬虫机器人全局覆盖层 -->
+    <SpiderOverlay ref="spiderRef" />
   </div>
 </template>
 

@@ -37,7 +37,9 @@ export type CardId =
   | "decisionlog"
   | "evolution"
   | "signalbridge"
-  | "sieve";
+  | "sieve"
+  | "spiderbot"
+  | "performance";
 
 export type Zone = "main" | "side";
 
@@ -85,6 +87,8 @@ export const CARD_META: Record<CardId, CardMeta> = {
   evolution: { title: "进化回灌", accent: "#1dbe7d", kind: "chart" },
   signalbridge: { title: "信号确认桥", accent: "#ffb13d", kind: "chart" },
   sieve: { title: "连板选股器", accent: "#ffd76a", kind: "chart" },
+  spiderbot: { title: "AI 爬虫机器人", accent: "#00ffd5", kind: "chart" },
+  performance: { title: "绩效分析", accent: "#00ff64", kind: "chart" },
 };
 
 // ===== 卡片个性化（V1 单卡设置 / V3 场景模板）=====

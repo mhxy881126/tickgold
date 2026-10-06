@@ -134,6 +134,23 @@ impl RuleBrain {
             (w("macdHist", 0.8), lin(fget(f, "macdHist"), -0.5, 0.5)),
             // RSI 40~65 健康区间
             (w("rsi14", 0.7), peak(fget(f, "rsi14"), 30.0, 55.0, 75.0)),
+            // ===== K线深度分析（买入加分项）=====
+            // 均线多头排列：MA5>MA10>MA20 = 强上涨趋势
+            (w("maBullish", 1.0), lin(fget(f, "maBullish"), 0.0, 1.0)),
+            // 均线空头排列：反过来 = 减分
+            (w("maBearish", 0.8), lin_inv(fget(f, "maBearish"), 0.0, 1.0)),
+            // 距支撑位近：离20天最低点近 = 安全
+            (w("distToSupportPct", 0.7), lin_inv(fget(f, "distToSupportPct"), 0.0, 10.0)),
+            // 距压力位远：离20天最高点远 = 空间大
+            (w("distToResistancePct", 0.6), lin(fget(f, "distToResistancePct"), 0.0, 10.0)),
+            // 锤子线：下影线长 = 见底信号
+            (w("klineIsHammer", 0.9), lin(fget(f, "klineIsHammer"), 0.0, 1.0)),
+            // 看涨吞没：阳包阴 = 反转信号
+            (w("klineIsBullishEngulfing", 1.0), lin(fget(f, "klineIsBullishEngulfing"), 0.0, 1.0)),
+            // 看跌吞没：阴包阳 = 见顶信号（减分）
+            (w("klineIsBearishEngulfing", 0.9), lin_inv(fget(f, "klineIsBearishEngulfing"), 0.0, 1.0)),
+            // 放量：今天量比20天平均大 = 资金涌入
+            (w("volRatio20", 0.7), peak(fget(f, "volRatio20"), 0.8, 1.5, 3.0)),
         ];
 
         let sell_items: Vec<(f64, f64)> = vec![
@@ -145,6 +162,15 @@ impl RuleBrain {
             (w("indexChg", 0.7), lin_inv(fget(f, "indexChg"), -2.0, 1.0)),
             // RSI>75 超买该卖
             (w("rsi14", 0.6), lin_inv(fget(f, "rsi14"), 50.0, 80.0)),
+            // ===== K线深度分析（卖出加分项）=====
+            // 均线空头排列：下跌趋势 = 该卖
+            (w("maBearish", 1.0), lin(fget(f, "maBearish"), 0.0, 1.0)),
+            // 看跌吞没：阴包阳 = 见顶信号，该卖
+            (w("klineIsBearishEngulfing", 1.1), lin(fget(f, "klineIsBearishEngulfing"), 0.0, 1.0)),
+            // 看涨吞没：阳包阴 = 不该卖（减分）
+            (w("klineIsBullishEngulfing", 0.8), lin_inv(fget(f, "klineIsBullishEngulfing"), 0.0, 1.0)),
+            // 离支撑位远：跌太多了，离支撑位还远，还要跌
+            (w("distToSupportPct", 0.6), lin(fget(f, "distToSupportPct"), 0.0, 15.0)),
         ];
 
         let probs: Value = if side == "sell" || holding > 0.0 {

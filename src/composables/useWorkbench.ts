@@ -76,17 +76,15 @@ function createWorkbench() {
   // v1 微件布局：有 widgets 的卡走 WidgetCanvas 渲染，无则 legacy CardContent
   const cardWidgets = ref<Partial<Record<CardId, CardWidgets>>>({});
   const sceneId = ref<string | null>(null);
-  // 布局模式：bento = 平铺网格；glass = 玻璃浮岛（主卡占满 + 右边缘导航）
+  // 布局模式：bento = 主卡+右导航（默认）；glass = 玻璃浮岛（主卡占满 + 右边缘导航）
   const layoutMode = ref<"bento" | "glass">("bento");
   // 玻璃岛模式下当前主卡
   const glassActive = ref<CardId | null>(null);
   function setLayoutMode(m: "bento" | "glass") {
     layoutMode.value = m;
-    if (m === "glass") {
-      // 进入玻璃岛：默认第一张卡为主卡
-      if (!glassActive.value || !openCards.value.includes(glassActive.value)) {
-        glassActive.value = openCards.value[0] ?? null;
-      }
+    // 进入主卡+导航模式：默认第一张卡为主卡
+    if (!glassActive.value || !openCards.value.includes(glassActive.value)) {
+      glassActive.value = openCards.value[0] ?? null;
     }
   }
   function setGlassActive(id: CardId) {
@@ -182,17 +180,26 @@ function createWorkbench() {
   }
 
   function open(id: CardId) {
-    if (timeMode.value) timeMode.value = null; // 手动加卡 → 退出固定 Bento，回到自由网格
+    if (timeMode.value) timeMode.value = null; // 手动加卡 → 退出固定 Bento
     if (!openCards.value.includes(id)) {
       pushUndo();
       openCards.value.push(id);
       if (freeMode.value) placeNewFree(id);
+      // 主卡+导航模式：新打开的卡片自动设为主卡
+      if (!freeMode.value) {
+        glassActive.value = id;
+      }
+    } else {
+      // 已打开的卡片再次点击：设为主卡
+      if (!freeMode.value) {
+        glassActive.value = id;
+      }
     }
   }
   function close(id: CardId) {
-    if (timeMode.value) timeMode.value = null; // Bento 被改动 → 回到自由网格
+    if (timeMode.value) timeMode.value = null; // Bento 被改动
     if (focusId.value !== null) {
-      // 聚焦态关闭任意卡：先清内联定位、整体回到网格，杜绝叠层
+      // 聚焦态关闭任意卡：先清内联定位
       clearSlotInline();
       focusId.value = null;
     }
@@ -200,6 +207,10 @@ function createWorkbench() {
     lastClosed.value = { id };
     openCards.value = openCards.value.filter((c) => c !== id);
     if (freeMode.value) delete freeRects.value[id];
+    // 关闭主卡后自动切换到下一张
+    if (!freeMode.value && glassActive.value === id) {
+      glassActive.value = openCards.value[0] ?? null;
+    }
   }
   function toggle(id: CardId) {
     openCards.value.includes(id) ? close(id) : open(id);
@@ -235,6 +246,10 @@ function createWorkbench() {
     cardWidgets.value = {};
     sceneId.value = null;
     openCards.value = [...p.cards];
+    // 主卡+导航模式：时段切换后默认第一张为主卡
+    if (!freeMode.value) {
+      glassActive.value = p.cards[0] ?? null;
+    }
   }
   function exitTimeMode() {
     timeMode.value = null;
@@ -587,6 +602,10 @@ function createWorkbench() {
     });
     cardWidgets.value = wm;
     openCards.value = [...scene.cards];
+    // 主卡+导航模式：场景切换后默认第一张为主卡
+    if (!freeMode.value) {
+      glassActive.value = scene.cards[0] ?? null;
+    }
   }
   function saveCurrentAsScene() {
     void saveNamedLayout("我的场景 " + new Date().toLocaleString());
@@ -641,6 +660,10 @@ function createWorkbench() {
       cardWidgets.value = widgetsMap;
       sceneId.value = null;
       openCards.value = ids;
+      // 主卡+导航模式：恢复后默认第一张为主卡
+      if (!freeMode.value) {
+        glassActive.value = ids[0] ?? null;
+      }
     } catch {
       /* ignore */
     }

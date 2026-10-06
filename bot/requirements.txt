@@ -1,0 +1,5 @@
+# 窗口枚举/激活用 ctypes 直接调 Win32，无需 pygetwindow（Python 3.14 装不上）
+mss>=9.0.1
+Pillow>=10.0.0
+# 可选：OCR。装不上不影响截屏+标注，脚本会自动降级
+rapidocr-onnxruntime>=1.3.0

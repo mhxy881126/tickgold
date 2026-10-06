@@ -1,103 +1,124 @@
 <template>
   <div class="ev">
-    <!-- 顶部工具栏 -->
-    <div class="ev-bar">
-      <div class="ev-params">
-        <label>止损% <input v-model.number="cfg.stopPct" type="number" step="0.5" /></label>
-        <label>止盈% <input v-model.number="cfg.targetPct" type="number" step="0.5" /></label>
-        <label>周期 <input v-model.number="cfg.horizon" type="number" min="1" max="5" step="1" /></label>
-        <label class="ev-chk"><input v-model="cfg.includeWatch" type="checkbox" />含观察</label>
-      </div>
-      <div class="ev-actions">
-        <span v-if="lastMsg" class="ev-msg">{{ lastMsg }}</span>
-        <button class="ev-btn" :disabled="running" @click="run(false)">
-          {{ running ? '打标中…' : '运行打标' }}
-        </button>
-        <button class="ev-btn ghost" :disabled="running" @click="confirmForce">全量重算</button>
-        <button class="ev-btn ghost" @click="doCheck(false)">数据校验</button>
-        <button class="ev-btn ghost danger" @click="confirmCleanup">清理过期</button>
+    <!-- 顶部说明 -->
+    <div class="ev-intro">
+      <div class="ev-intro-title">🧠 机器人进化实验室</div>
+      <div class="ev-intro-desc">
+        机器人做过的每一个决策（买/卖/观察），过几天回头看：<b>对了还是错了？</b>
+        攒多了就能知道：机器人到底行不行，哪些策略好用，哪些要改。
       </div>
     </div>
 
-    <!-- 校验横幅 -->
-    <div v-if="check" class="ev-check" :class="{ bad: check.issues > 0 }">
+    <!-- 参数设置 -->
+    <div class="ev-section">
+      <div class="ev-section-title">📏 评判标准（怎么算对、怎么算错）</div>
+      <div class="ev-params">
+        <div class="ev-param">
+          <div class="ev-param-label">涨多少算对</div>
+          <div class="ev-param-input">
+            <input v-model.number="cfg.targetPct" type="number" step="0.5" />%
+          </div>
+          <div class="ev-param-hint">比如：涨 10% 以上，说明买对了</div>
+        </div>
+        <div class="ev-param">
+          <div class="ev-param-label">跌多少算错</div>
+          <div class="ev-param-input">
+            <input v-model.number="cfg.stopPct" type="number" step="0.5" />%
+          </div>
+          <div class="ev-param-hint">比如：跌 7% 以上，说明买错了</div>
+        </div>
+        <div class="ev-param">
+          <div class="ev-param-label">等几天看结果</div>
+          <div class="ev-param-input">
+            <input v-model.number="cfg.horizon" type="number" min="1" max="5" step="1" />天
+          </div>
+          <div class="ev-param-hint">做完决策后，等几天再判断对错</div>
+        </div>
+        <div class="ev-param ev-chk">
+          <label>
+            <input v-model="cfg.includeWatch" type="checkbox" />
+            连"观察"的信号一起评判
+          </label>
+        </div>
+      </div>
+      <div class="ev-save-row">
+        <button class="ev-btn save-btn" @click="saveCfg">💾 保存设置</button>
+        <span v-if="cfgSaved" class="ev-saved-tip">✅ 已保存</span>
+      </div>
+    </div>
+
+    <!-- 操作按钮 -->
+    <div class="ev-section">
+      <div class="ev-section-title">🎬 开始分析</div>
+      <div class="ev-actions">
+        <button class="ev-btn primary" :disabled="running" @click="run(false)">
+          {{ running ? '⏳ 分析中...' : '🔍 分析历史决策' }}
+        </button>
+        <button class="ev-btn ghost" :disabled="running" @click="confirmForce">
+          🔄 全部重新分析
+        </button>
+        <button class="ev-btn ghost" @click="doCheck(false)">
+          ✅ 检查数据
+        </button>
+        <button class="ev-btn ghost danger" @click="confirmCleanup">
+          🗑️ 清理旧数据
+        </button>
+      </div>
+      <div v-if="lastMsg" class="ev-msg">{{ lastMsg }}</div>
+    </div>
+
+    <!-- 数据状态 -->
+    <div v-if="check" class="ev-status" :class="{ bad: check.issues > 0 }">
       <template v-if="check.issues > 0">
-        发现 {{ check.issues }} 项待处理：缺标签 {{ check.missingLabelStale }} · 零周期
-        {{ check.horizonZero }} · 孤儿标签 {{ check.orphanLabels }} · 未登记模型
-        {{ check.missingModelRegistry }}
+        ⚠️ 有 {{ check.issues }} 个问题需要处理
       </template>
-      <template v-else>链路一致性正常（决策 {{ check.totalDecisions }} / 标签 {{ check.totalLabels }}）</template>
-      <span v-if="check.cleanup" class="ev-cleaned">
-        已清理：孤儿 {{ check.deletedOrphan }} · 旧标签 {{ check.deletedOldLabels }} · 旧决策
-        {{ check.deletedOldDecisions }}
-      </span>
+      <template v-else>
+        ✅ 数据正常：共 {{ check.totalDecisions }} 个决策，{{ check.totalLabels }} 个已评判
+      </template>
     </div>
 
     <!-- Tab -->
     <div class="ev-tabs">
       <button :class="{ on: tab === 'stats' }" @click="tab = 'stats'">
-        效果对照 <em>{{ stats?.totalLabels ?? 0 }}</em>
+        📊 机器人战绩 <em>{{ stats?.totalLabels ?? 0 }}</em>
       </button>
-      <button :class="{ on: tab === 'labels' }" @click="tab = 'labels'">标签明细</button>
-      <div v-if="tab === 'labels'" class="ev-filter">
-        <button
-          v-for="f in filters"
-          :key="f.v"
-          :class="{ on: verdictFilter === f.v }"
-          @click="setFilter(f.v)"
-        >
-          {{ f.t }}
-        </button>
-      </div>
+      <button :class="{ on: tab === 'labels' }" @click="tab = 'labels'">
+        📋 决策明细
+      </button>
     </div>
 
-    <!-- 效果对照 -->
+    <!-- 机器人战绩 -->
     <div v-if="tab === 'stats'" class="ev-scroll">
       <div v-if="!stats || !stats.groups.length" class="ev-empty">
-        暂无效果数据，点击「运行打标」对历史决策回灌后续走势
+        <div class="ev-empty-icon">📭</div>
+        <div class="ev-empty-title">还没有战绩数据</div>
+        <div class="ev-empty-desc">
+          1. 先让机器人跑几天，攒一些决策<br/>
+          2. 过几天（等"评判周期"到了）<br/>
+          3. 点上面的"分析历史决策"按钮<br/>
+          4. 就能看到机器人的胜率、盈亏比了
+        </div>
       </div>
-      <table v-else class="ev-table">
-        <thead>
-          <tr>
-            <th>模型版本</th>
-            <th>策略</th>
-            <th class="r">样本</th>
-            <th class="r">胜率</th>
-            <th class="r">平均收益</th>
-            <th class="r">均盈</th>
-            <th class="r">均亏</th>
-            <th class="r">盈亏比</th>
-            <th class="r">期望</th>
-            <th class="r">止盈</th>
-            <th class="r">止损</th>
-            <th class="r">误买</th>
-            <th class="r">卖飞</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="g in stats.groups" :key="g.modelVersion + g.strategy">
-            <td class="ev-mv">{{ g.modelVersion || '—' }}</td>
-            <td>{{ g.strategy || '默认' }}</td>
-            <td class="r">{{ g.samples }}</td>
-            <td class="r">
-              <span class="ev-wr">
-                <i class="ev-wr-track"><i :style="wrStyle(g.winRate)" /></i>
-                <b :class="wrCls(g.winRate)">{{ g.winRate.toFixed(1) }}%</b>
-              </span>
-            </td>
-            <td class="r" :class="retCls(g.avgRet)">{{ signed(g.avgRet) }}</td>
-            <td class="r up">{{ signed(g.avgWin) }}</td>
-            <td class="r k">{{ g.avgLoss.toFixed(2) }}</td>
-            <td class="r">{{ g.profitFactor === null ? '∞' : g.profitFactor.toFixed(2) }}</td>
-            <td class="r" :class="retCls(g.expectancy)">{{ signed(g.expectancy) }}</td>
-            <td class="r">{{ g.hitTarget }}</td>
-            <td class="r">{{ g.hitStop }}</td>
-            <td class="r k">{{ g.falsePositive }}</td>
-            <td class="r k">{{ g.sellTooEarly }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="ev-note">{{ stats?.note }} 调参仅产出统计依据，参数变更须人工批准。</p>
+      
+      <!-- 统计卡片 -->
+      <div v-else class="ev-cards">
+        <div class="ev-card">
+          <div class="ev-card-num">{{ stats.totalLabels }}</div>
+          <div class="ev-card-label">已评判决策</div>
+        </div>
+        <div class="ev-card">
+          <div class="ev-card-num">{{ stats.groups[0]?.winRate ?? 0 }}%</div>
+          <div class="ev-card-label">胜率</div>
+        </div>
+        <div class="ev-card">
+          <div class="ev-card-num">{{ stats.groups[0]?.profitFactor ?? 0 }}</div>
+          <div class="ev-card-label">盈亏比</div>
+        </div>
+        <div class="ev-card">
+          <div class="ev-card-num">{{ stats.groups[0]?.expectancy ?? 0 }}%</div>
+          <div class="ev-card-label">每次期望收益</div>
+        </div>
+      </div>
     </div>
 
     <!-- 标签明细 -->
@@ -170,6 +191,31 @@ const cfg = reactive<EvolutionConfigInfo>({
   horizon: 5,
   includeWatch: true,
 });
+const cfgSaved = ref(false);
+
+// 从 localStorage 读取配置
+function loadCfg() {
+  try {
+    const saved = localStorage.getItem("evolution_cfg");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      Object.assign(cfg, parsed);
+    }
+  } catch {}
+}
+
+// 保存配置到 localStorage
+function saveCfg() {
+  localStorage.setItem("evolution_cfg", JSON.stringify(cfg));
+  cfgSaved.value = true;
+  setTimeout(() => { cfgSaved.value = false; }, 2000);
+}
+
+// 页面加载时读取配置
+onMounted(() => {
+  loadCfg();
+});
+
 const tab = ref<"stats" | "labels">("stats");
 const stats = ref<EvolutionStatsInfo | null>(null);
 const labels = ref<TradeLabelInfo[]>([]);
@@ -279,8 +325,183 @@ onMounted(async () => {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+/* 顶部说明 */
+.ev-intro {
+  padding: 12px;
+  background: linear-gradient(135deg, rgba(0,255,213,0.05), rgba(90,160,255,0.05));
+  border: 1px solid rgba(0,255,213,0.2);
+  border-radius: 10px;
+}
+.ev-intro-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent-2, #00ffd5);
+  margin-bottom: 6px;
+}
+.ev-intro-desc {
+  font-size: 13px;
+  color: var(--text-dim, #8892a8);
+  line-height: 1.6;
+}
+.ev-intro-desc b {
+  color: var(--text, #e0e6f0);
+}
+
+/* 区块 */
+.ev-section {
+  padding: 12px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border, #2a3344);
+  border-radius: 10px;
+}
+.ev-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text, #e0e6f0);
+  margin-bottom: 10px;
+}
+
+/* 参数 */
+.ev-params {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ev-param {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ev-param-label {
+  font-size: 12px;
+  color: var(--text-dim, #8892a8);
+}
+.ev-param-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ev-param-input input {
+  width: 60px;
+  padding: 6px 8px;
+  background: var(--bg-input, #1a2233);
+  border: 1px solid var(--border, #2a3344);
+  border-radius: 6px;
+  color: var(--text, #e0e6f0);
+  font-size: 14px;
+}
+.ev-param-hint {
+  font-size: 11px;
+  color: var(--text-dim, #666e80);
+}
+.ev-chk {
+  display: flex;
+  align-items: center;
+  padding-top: 24px;
+}
+.ev-chk label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text, #e0e6f0);
+}
+
+/* 操作按钮 */
+.ev-actions {
+  display: flex;
   gap: 8px;
-  padding: 10px;
+  flex-wrap: wrap;
+}
+.ev-btn.primary {
+  background: var(--accent-2, #00ffd5);
+  color: #000;
+  font-weight: 600;
+}
+
+/* 保存设置 */
+.ev-save-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, #2a3344);
+}
+.ev-btn.save-btn {
+  background: var(--accent, #5aa0ff);
+  color: #fff;
+  font-size: 13px;
+}
+.ev-saved-tip {
+  font-size: 13px;
+  color: #00ff64;
+}
+
+/* 数据状态 */
+.ev-status {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: rgba(0,255,100,0.1);
+  border: 1px solid rgba(0,255,100,0.3);
+  color: #00ff64;
+}
+.ev-status.bad {
+  background: rgba(255,100,100,0.1);
+  border-color: rgba(255,100,100,0.3);
+  color: #ff6464;
+}
+
+/* 空状态 */
+.ev-empty {
+  padding: 40px 20px;
+  text-align: center;
+}
+.ev-empty-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+.ev-empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text, #e0e6f0);
+  margin-bottom: 12px;
+}
+.ev-empty-desc {
+  font-size: 13px;
+  color: var(--text-dim, #8892a8);
+  line-height: 2;
+}
+
+/* 统计卡片 */
+.ev-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 20px;
+}
+.ev-card {
+  padding: 16px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border, #2a3344);
+  border-radius: 10px;
+  text-align: center;
+}
+.ev-card-num {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent-2, #00ffd5);
+  margin-bottom: 4px;
+}
+.ev-card-label {
+  font-size: 12px;
+  color: var(--text-dim, #8892a8);
 }
 
 /* 工具栏 */

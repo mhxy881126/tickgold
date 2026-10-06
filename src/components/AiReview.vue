@@ -32,6 +32,7 @@ const scopeMeta: Record<string, { label: string; color: string }> = {
   market: { label: "市场", color: "#d4af37" },
   theme: { label: "题材", color: "#5aa0ff" },
   stock: { label: "个股", color: "#ff5a6a" },
+  trade: { label: "交易", color: "#00ffd5" },
 };
 
 const filtered = computed(() =>

@@ -97,6 +97,21 @@ pub async fn run_review(
 
     // 待生成清单：(scope, subject, focus_json)
     let mut jobs: Vec<(String, String, Value)> = vec![("market".into(), String::new(), pack.clone())];
+    
+    // 新增：交易复盘（对比当日计划 vs 实际交易）
+    if pack["todayPlan"]["exists"].as_bool().unwrap_or(false) || pack["todayDecisionLogs"].as_array().map(|a| !a.is_empty()).unwrap_or(false) {
+        jobs.push((
+            "trade".into(),
+            "当日交易复盘".into(),
+            json!({
+                "date": &date,
+                "todayPlan": pack["todayPlan"],
+                "todayDecisionLogs": pack["todayDecisionLogs"],
+                "positions": pack["positions"],
+                "market": pack["market"],
+            }),
+        ));
+    }
     for t in pack["activeThemes"].as_array().cloned().unwrap_or_default().iter().take(5) {
         let name = t["name"].as_str().unwrap_or("").to_string();
         jobs.push((
@@ -158,6 +173,7 @@ pub async fn run_review(
         let role_desc = match scope.as_str() {
             "market" => "复盘当日全市场情绪、指数、板块与涨停结构。".to_string(),
             "theme" => format!("聚焦题材「{subject}」的所处阶段、龙头梯队与催化。"),
+            "trade" => "对比当日作战计划与实际交易，找出偏差，分析原因，给出改进建议。".to_string(),
             _ => format!("聚焦个股 {subject} 的涨停结构、资金与所处题材。"),
         };
         let user = serde_json::to_string(&focus).unwrap_or_default();

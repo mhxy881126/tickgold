@@ -251,6 +251,15 @@ const indicatorList = [
   { key: "mainNetInflowYi", name: "主力净流入", desc: "大单买入越多越涨" },
   { key: "macdHist", name: "MACD 金叉", desc: "DIF>DEA 金叉看多，死叉看空" },
   { key: "rsi14", name: "RSI 14日", desc: "40~65健康，>75超买该卖，<30超卖" },
+  // K线深度分析
+  { key: "maBullish", name: "均线多头排列", desc: "MA5>MA10>MA20=上涨趋势，强" },
+  { key: "maBearish", name: "均线空头排列", desc: "MA5<MA10<MA20=下跌趋势，弱" },
+  { key: "distToSupportPct", name: "距支撑位", desc: "离20天最低点越近越安全" },
+  { key: "distToResistancePct", name: "距压力位", desc: "离20天最高点越远空间越大" },
+  { key: "klineIsHammer", name: "锤子线形态", desc: "下影线长=见底信号，看涨" },
+  { key: "klineIsBullishEngulfing", name: "看涨吞没", desc: "今天阳包阴=反转信号" },
+  { key: "klineIsBearishEngulfing", name: "看跌吞没", desc: "今天阴包阳=见顶信号" },
+  { key: "volRatio20", name: "20天量比", desc: "今天量 vs 20天均量，放量涨好" },
 ];
 
 function toggleIndicator(key: string) {
@@ -258,6 +267,20 @@ function toggleIndicator(key: string) {
   if (!fbCfg.value.indicatorsEnabled) fbCfg.value.indicatorsEnabled = {};
   const cur = fbCfg.value.indicatorsEnabled[key] !== false; // 默认 true
   fbCfg.value.indicatorsEnabled[key] = !cur;
+}
+
+// 战法列表
+const strategyList = [
+  { key: "oversold", name: "超跌抄底", desc: "股票跌太多了，抄底买入" },
+  { key: "leader", name: "龙头战法", desc: "买板块里最强的龙头股" },
+  { key: "firstToSecond", name: "1进2", desc: "首板涨停后，第二天博弈二板" },
+];
+
+function toggleStrategy(key: string) {
+  if (!fbCfg.value) return;
+  if (!fbCfg.value.strategiesEnabled) fbCfg.value.strategiesEnabled = {};
+  const cur = fbCfg.value.strategiesEnabled[key] !== false; // 默认 true
+  fbCfg.value.strategiesEnabled[key] = !cur;
 }
 
 const paper = usePaperStore();
@@ -983,7 +1006,7 @@ async function toggleDev() {
                 <div v-if="fbCfg.brainMode === 'rule'" class="rule-indicators">
                   <div class="ri-title">📊 规则脑指标开关（关掉=该指标不参与打分）</div>
                   <div class="ri-grid">
-                    <div v-for="ind in indicatorList" :key="ind.key" class="ri-item" :class="{ off: !fbCfg.indicatorsEnabled?.[ind.key] }">
+                    <div v-for="ind in indicatorList" :key="ind.key" class="ri-item" :class="{ off: fbCfg.indicatorsEnabled?.[ind.key] === false }">
                       <div class="ri-head">
                         <b>{{ ind.name }}</b>
                         <button type="button" class="switch sm" :class="{ on: fbCfg.indicatorsEnabled?.[ind.key] !== false }"
@@ -992,6 +1015,21 @@ async function toggleDev() {
                         </button>
                       </div>
                       <span>{{ ind.desc }}</span>
+                    </div>
+                  </div>
+
+                  <!-- 选择战法 -->
+                  <div class="ri-title" style="margin-top:16px">🎯 选择战法（关掉=该战法不发出信号）</div>
+                  <div class="ri-grid">
+                    <div v-for="s in strategyList" :key="s.key" class="ri-item" :class="{ off: fbCfg.strategiesEnabled?.[s.key] === false }">
+                      <div class="ri-head">
+                        <b>{{ s.name }}</b>
+                        <button type="button" class="switch sm" :class="{ on: fbCfg.strategiesEnabled?.[s.key] !== false }"
+                          @click="toggleStrategy(s.key)">
+                          <span class="knob"></span>
+                        </button>
+                      </div>
+                      <span>{{ s.desc }}</span>
                     </div>
                   </div>
                 </div>
@@ -1323,7 +1361,7 @@ async function toggleDev() {
               <div class="ab-logo">TG</div>
               <div class="ab-name">TickGold</div>
               <div class="ab-desc">开源跨平台 A 股盯盘终端</div>
-              <div class="ab-ver">v{{ curVersion || "2.7.11" }}</div>
+              <div class="ab-ver">v{{ curVersion || "2.10.0" }}</div>
               <div class="ab-tech">Tauri 2.0 · Rust · Vue 3 · TypeScript · ECharts</div>
               <div class="ab-actions">
                 <button type="button" class="ab-primary" @click="emit('check-update')">检查更新</button>

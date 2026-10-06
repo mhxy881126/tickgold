@@ -124,12 +124,20 @@ onMounted(() => {
 
 <template>
   <div class="sp">
+    <!-- 顶部说明 -->
+    <div class="sp-intro">
+      <div class="sp-intro-title">📚 策略库</div>
+      <div class="sp-intro-desc">
+        机器人的<b>交易手册</b>——告诉它"遇到这种股票就买，那种就卖"。开启自动交易后，机器人会按这些规则自动找股票。
+      </div>
+    </div>
+
     <div class="sp-head">
-      <div class="sp-title">策略库</div>
-      <button class="sp-btn" @click="reload">刷新</button>
+      <button class="sp-btn" @click="reload">🔄 刷新</button>
     </div>
 
     <div class="sp-body">
+      <!-- 左边：策略列表 -->
       <div class="sp-list">
         <div
           v-for="g in grouped"
@@ -140,61 +148,79 @@ onMounted(() => {
         >
           <span class="sp-name">{{ g.current?.name ?? g.key }}</span>
           <span class="sp-meta">
-            {{ g.current?.builtin ? "内置" : "自定义" }} · v{{ g.current?.version }} ·
-            {{ g.count }} 版
+            {{ g.current?.builtin ? "内置" : "自定义" }} · v{{ g.current?.version }}
           </span>
         </div>
       </div>
 
+      <!-- 右边：策略详情 -->
       <div class="sp-detail" v-if="current && spec">
         <template v-if="!editing">
           <div class="sp-d-head">
             <span class="sp-d-name">{{ current.name }}</span>
             <div class="sp-actions">
-              <button class="sp-mini" @click="startClone">克隆</button>
-              <button class="sp-mini" @click="startEdit">编辑</button>
+              <button class="sp-mini" @click="startClone">📋 克隆</button>
+              <button class="sp-mini" @click="startEdit">✏️ 编辑</button>
               <button class="sp-mini" @click="showHistory = !showHistory">
-                版本 {{ versions.length }}
+                📜 版本 {{ versions.length }}
               </button>
             </div>
           </div>
           <div class="sp-note" v-if="current.note">{{ current.note }}</div>
 
-          <div class="sp-sec">适用环境</div>
-          <div class="sp-val">{{ spec.marketRegime }}</div>
-
-          <div class="sp-sec">入场条件</div>
-          <div class="sp-kv">
-            <span v-for="(v, k) in spec.entry" :key="k">
-              <b>{{ k }}</b><i>{{ v }}</i>
-            </span>
+          <!-- 适用环境 -->
+          <div class="sp-sec-card">
+            <div class="sp-sec-title">🌤️ 适用环境</div>
+            <div class="sp-val">{{ spec.marketRegime }}</div>
           </div>
 
-          <div class="sp-sec">仓位管理（%）</div>
-          <div class="sp-kv">
-            <span><b>初始</b><i>{{ spec.position.initial }}</i></span>
-            <span><b>加仓</b><i>{{ spec.position.add }}</i></span>
-            <span><b>上限</b><i>{{ spec.position.max }}</i></span>
+          <!-- 入场条件 -->
+          <div class="sp-sec-card">
+            <div class="sp-sec-title">🎯 入场条件</div>
+            <div class="sp-kv">
+              <span v-for="(v, k) in spec.entry" :key="k">
+                <b>{{ k }}</b><i>{{ v }}</i>
+              </span>
+            </div>
           </div>
 
-          <div class="sp-sec">止盈 / 止损</div>
-          <div class="sp-kv">
-            <span>
-              <b>止盈{{ spec.takeProfit.pct != null ? `(${spec.takeProfit.pct}%)` : "" }}</b>
-              <i>{{ spec.takeProfit.rule }}</i>
-            </span>
-            <span>
-              <b>止损{{ spec.stopLoss.pct != null ? `(${spec.stopLoss.pct}%)` : "" }}</b>
-              <i>{{ spec.stopLoss.rule }}</i>
-            </span>
+          <!-- 仓位管理 -->
+          <div class="sp-sec-card">
+            <div class="sp-sec-title">💰 仓位管理（%）</div>
+            <div class="sp-kv">
+              <span><b>初始</b><i>{{ spec.position.initial }}</i></span>
+              <span><b>加仓</b><i>{{ spec.position.add }}</i></span>
+              <span><b>上限</b><i>{{ spec.position.max }}</i></span>
+            </div>
           </div>
 
-          <div class="sp-sec">持有周期</div>
-          <div class="sp-val">{{ spec.holdingPeriod }}</div>
+          <!-- 止盈止损 -->
+          <div class="sp-sec-card">
+            <div class="sp-sec-title">🎚️ 止盈 / 止损</div>
+            <div class="sp-kv">
+              <span>
+                <b>止盈{{ spec.takeProfit.pct != null ? `(${spec.takeProfit.pct}%)` : "" }}</b>
+                <i>{{ spec.takeProfit.rule }}</i>
+              </span>
+              <span>
+                <b>止损{{ spec.stopLoss.pct != null ? `(${spec.stopLoss.pct}%)` : "" }}</b>
+                <i>{{ spec.stopLoss.rule }}</i>
+              </span>
+            </div>
+          </div>
 
-          <div class="sp-sec">排除条件</div>
-          <div class="sp-tags">
-            <span v-for="(e, i) in spec.exclude" :key="i">{{ e }}</span>
+          <!-- 持有周期 -->
+          <div class="sp-sec-card">
+            <div class="sp-sec-title">⏰ 持有周期</div>
+            <div class="sp-val">{{ spec.holdingPeriod }}</div>
+          </div>
+
+          <!-- 排除条件 -->
+          <div class="sp-sec-card">
+            <div class="sp-sec-title">🚫 排除条件</div>
+            <div class="sp-tags">
+              <span v-for="(e, i) in spec.exclude" :key="i">{{ e }}</span>
+            </div>
           </div>
 
           <template v-if="showHistory">
@@ -245,7 +271,43 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.sp { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.sp { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; font-size: 12px; padding: 12px; overflow-y: auto; }
+
+/* 顶部说明 */
+.sp-intro {
+  padding: 12px;
+  background: linear-gradient(135deg, rgba(255,200,100,0.05), rgba(255,100,100,0.05));
+  border: 1px solid rgba(255,200,100,0.2);
+  border-radius: 10px;
+}
+.sp-intro-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent, #ffc864);
+  margin-bottom: 6px;
+}
+.sp-intro-desc {
+  font-size: 13px;
+  color: var(--text-dim, #8892a8);
+  line-height: 1.6;
+}
+.sp-intro-desc b {
+  color: #ffc864;
+}
+
+/* 详情卡片 */
+.sp-sec-card {
+  padding: 12px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.sp-sec-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent, #ffc864);
+  margin-bottom: 8px;
+}
 .sp-head { display: flex; align-items: center; justify-content: space-between; }
 .sp-title { font-weight: 700; color: var(--text, #e6ecf5); }
 .sp-btn {

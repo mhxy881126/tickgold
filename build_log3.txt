@@ -1,0 +1,102 @@
+warning: unused variable: `reason`
+   --> src\ai\fastbrain.rs:343:13
+    |
+343 |         let reason = parsed["reason"].as_str().unwrap_or("").to_string();
+    |             ^^^^^^ help: if this is intentional, prefix it with an underscore: `_reason`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `kind`
+   --> src\market\sina.rs:120:44
+    |
+120 | pub async fn sector_stocks(category: &str, kind: &str) -> Result<Vec<Value>, String> {
+    |                                            ^^^^ help: if this is intentional, prefix it with an underscore: `_kind`
+
+warning: unused variable: `main_c`
+    --> src\lib.rs:1890:17
+     |
+1890 |             let main_c = main_item.clone();
+     |                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_main_c`
+
+warning: unused variable: `island_c`
+    --> src\lib.rs:1891:17
+     |
+1891 |             let island_c = island_item.clone();
+     |                 ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_island_c`
+
+warning: unused variable: `main_c2`
+    --> src\lib.rs:1892:17
+     |
+1892 |             let main_c2 = main_item.clone();
+     |                 ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_main_c2`
+
+warning: function `build_order_text` is never used
+   --> src\ai\bridge.rs:100:8
+    |
+100 | pub fn build_order_text(
+    |        ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: struct `MemSecret` is never constructed
+  --> src\ai\config.rs:59:12
+   |
+59 | pub struct MemSecret(pub Arc<Mutex<Option<String>>>);
+   |            ^^^^^^^^^
+
+warning: associated function `new` is never used
+  --> src\ai\config.rs:61:12
+   |
+60 | impl MemSecret {
+   | -------------- associated function in this implementation
+61 |     pub fn new() -> Self {
+   |            ^^^
+
+warning: function `buy_score` is never used
+  --> src\ai\fastbrain.rs:73:4
+   |
+73 | fn buy_score(f: &Value) -> f64 {
+   |    ^^^^^^^^^
+
+warning: function `sell_score` is never used
+  --> src\ai\fastbrain.rs:91:4
+   |
+91 | fn sell_score(f: &Value) -> f64 {
+   |    ^^^^^^^^^^
+
+warning: field `id` is never read
+   --> src\ai\vectordb.rs:168:9
+    |
+167 | pub struct ChunkHit {
+    |            -------- field in this struct
+168 |     pub id: i64,
+    |         ^^
+
+warning: function `get_cursor` is never used
+   --> src\ai\vectordb.rs:415:8
+    |
+415 | pub fn get_cursor(
+    |        ^^^^^^^^^^
+
+warning: function `set_cursor` is never used
+   --> src\ai\vectordb.rs:429:8
+    |
+429 | pub fn set_cursor(
+    |        ^^^^^^^^^^
+
+warning: method `kill` is never used
+  --> src\broker\sidecar.rs:36:18
+   |
+35 | impl SidecarHandle {
+   | ------------------ method in this implementation
+36 |     pub async fn kill(&self) {
+   |                  ^^^^
+
+warning: function `rank` is never used
+   --> src\market\eastmoney.rs:185:14
+    |
+185 | pub async fn rank(sort: &str, pz: i64) -> Result<Vec<Quote>, String> {
+    |              ^^^^
+
+warning: `tickgold` (lib) generated 15 warnings (run `cargo fix --lib -p tickgold` to apply 5 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.97s

@@ -32,11 +32,13 @@ import ThemeLibrary from "./ThemeLibrary.vue";
 import TradeTape from "./TradeTape.vue";
 import AiAssistant from "./AiAssistant.vue";
 import StrategyProfiles from "./StrategyProfiles.vue";
+import SpiderBot from "./SpiderBot.vue";
 import AiReview from "./AiReview.vue";
 import BattlePlan from "./BattlePlan.vue";
 import DecisionLog from "./DecisionLog.vue";
 import EvolutionStats from "./EvolutionStats.vue";
 import SignalBridge from "./SignalBridge.vue";
+import Performance from "./Performance.vue";
 import type { CardId } from "../composables/useWorkbench";
 
 const props = defineProps<{ id: CardId; selected: string | null }>();
@@ -105,6 +107,8 @@ function retry() {
     <EvolutionStats v-else-if="id === 'evolution'" />
     <SignalBridge v-else-if="id === 'signalbridge'" />
     <StrategyProfiles v-else-if="id === 'strategy'" />
+    <SpiderBot v-else-if="id === 'spiderbot'" @select="$emit('select', $event)" @switch-card="$emit('switchCard', $event)" />
+    <Performance v-else-if="id === 'performance'" />
   </template>
 </template>
 

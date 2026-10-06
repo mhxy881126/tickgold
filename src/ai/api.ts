@@ -195,6 +195,7 @@ export interface AutoExecConfigInfo {
   bridgePriceDeviatePct: number;
   bridgeOrderTemplate: string;
   indicatorsEnabled?: Record<string, boolean>;
+  strategiesEnabled?: Record<string, boolean>;
   liveEnabled?: boolean;
 }
 

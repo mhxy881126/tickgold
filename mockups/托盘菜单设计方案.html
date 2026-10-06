@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>托盘右键菜单设计方案</title>
+<style>
+:root{
+  --bg:#07080a; --panel:#0c0e12; --card:#11141a; --line:#1e2330;
+  --text:#eef2f8; --dim:#8b97a8; --gold:#e8b860; --up:#ff4d6a; --down:#00d4a0;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",sans-serif;padding:30px}
+h1{font-size:16px;color:var(--gold);margin-bottom:30px;letter-spacing:2px}
+.row{display:flex;gap:40px;flex-wrap:wrap;margin-bottom:40px;align-items:flex-start}
+.col{display:flex;flex-direction:column;gap:8px}
+.label{font-size:12px;color:var(--gold);font-weight:600;margin-bottom:4px}
+.desc{font-size:11px;color:var(--dim);line-height:1.6;max-width:220px}
+
+/* ===== 方案 A：深色玻璃菜单 ===== */
+.menu-a{
+  width:240px;background:rgba(15,18,24,.95);backdrop-filter:blur(20px);
+  border:1px solid var(--line);border-radius:12px;padding:6px;
+  box-shadow:0 8px 32px rgba(0,0,0,.5);
+}
+.menu-a .item{
+  display:flex;align-items:center;gap:10px;padding:8px 12px;
+  border-radius:8px;font-size:12px;color:var(--text);cursor:pointer;
+  transition:all .12s;
+}
+.menu-a .item:hover{background:rgba(232,184,96,.1);color:var(--gold)}
+.menu-a .item svg{width:14px;height:14px;flex-shrink:0;opacity:.7}
+.menu-a .item:hover svg{opacity:1}
+.menu-a .sep{height:1px;background:var(--line);margin:4px 8px}
+.menu-a .item.danger:hover{background:rgba(255,77,106,.12);color:var(--up)}
+.menu-a .item .badge{
+  margin-left:auto;font-size:9px;background:var(--up);color:#fff;
+  padding:1px 6px;border-radius:8px;
+}
+
+/* ===== 方案 B：紧凑列表 + 状态指示 ===== */
+.menu-b{
+  width:220px;background:var(--panel);border:1px solid var(--line);
+  border-radius:10px;padding:4px;
+  box-shadow:0 4px 20px rgba(0,0,0,.4);
+}
+.menu-b .head{
+  padding:10px 12px 8px;border-bottom:1px solid var(--line);margin-bottom:4px;
+}
+.menu-b .head .title{font-size:12px;font-weight:600;color:var(--gold)}
+.menu-b .head .sub{font-size:10px;color:var(--dim);margin-top:2px}
+.menu-b .item{
+  display:flex;align-items:center;gap:8px;padding:7px 10px;
+  border-radius:6px;font-size:11.5px;color:var(--text);cursor:pointer;
+}
+.menu-b .item:hover{background:rgba(255,255,255,.05)}
+.menu-b .item .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.menu-b .item .tag{margin-left:auto;font-size:9px;color:var(--dim)}
+.menu-b .item .on{color:var(--down)}
+
+/* ===== 方案 C：卡片式分组 ===== */
+.menu-c{
+  width:260px;background:var(--card);border:1px solid var(--line);
+  border-radius:14px;padding:10px;
+  box-shadow:0 8px 32px rgba(0,0,0,.6);
+}
+.menu-c .group-title{
+  font-size:9px;color:var(--dim);letter-spacing:2px;
+  padding:8px 8px 4px;text-transform:uppercase;
+}
+.menu-c .grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.menu-c .cell{
+  padding:10px;border-radius:8px;background:rgba(255,255,255,.03);
+  border:1px solid transparent;cursor:pointer;transition:all .15s;
+  display:flex;flex-direction:column;gap:4px;align-items:flex-start;
+}
+.menu-c .cell:hover{border-color:var(--gold);background:rgba(232,184,96,.06)}
+.menu-c .cell .ic{font-size:16px}
+.menu-c .cell .tx{font-size:11px;color:var(--text)}
+.menu-c .cell .sub{font-size:9px;color:var(--dim)}
+.menu-c .footer{
+  margin-top:8px;padding-top:8px;border-top:1px solid var(--line);
+  display:flex;gap:6px;
+}
+.menu-c .footer .btn{
+  flex:1;text-align:center;padding:6px;font-size:10px;
+  border-radius:6px;cursor:pointer;background:rgba(255,255,255,.05);color:var(--text);
+}
+.menu-c .footer .btn.primary{background:var(--gold);color:#000;font-weight:600}
+
+/* ===== 方案 D：极简 + 状态条 ===== */
+.menu-d{
+  width:200px;background:var(--panel);border:1px solid var(--line);
+  border-radius:8px;overflow:hidden;
+  box-shadow:0 4px 16px rgba(0,0,0,.4);
+}
+.menu-d .status{
+  padding:12px;border-bottom:1px solid var(--line);
+  background:linear-gradient(135deg,rgba(232,184,96,.08),transparent);
+}
+.menu-d .status .label{font-size:9px;color:var(--dim);letter-spacing:1px}
+.menu-d .status .val{font-size:14px;font-weight:600;color:var(--gold);margin-top:2px}
+.menu-d .status .chg{font-size:10px;color:var(--up);margin-top:2px}
+.menu-d .item{
+  display:flex;align-items:center;gap:8px;padding:9px 12px;
+  font-size:11.5px;color:var(--text);cursor:pointer;
+  border-bottom:1px solid rgba(30,35,48,.5);
+}
+.menu-d .item:last-child{border-bottom:none}
+.menu-d .item:hover{background:rgba(255,255,255,.04)}
+.menu-d .item .right{margin-left:auto;font-size:10px;color:var(--dim)}
+</style>
+</head>
+<body>
+<h1>托盘右键菜单 · 4 套方案</h1>
+
+<div class="row">
+  <!-- 方案 A -->
+  <div class="col">
+    <span class="label">A · 深色玻璃菜单（推荐）</span>
+    <div class="menu-a">
+      <div class="item">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 3h8v8H3V3zm10 10h8v8h-8v-8zM3 13h8v8H3v-8zm10-10h8v8h-8V3z"/></svg>
+        主窗口 <span class="badge">盯盘中</span>
+      </div>
+      <div class="item">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2L4 7v10l8 5 8-5V7l-8-5z"/></svg>
+        灵动岛
+      </div>
+      <div class="sep"></div>
+      <div class="item">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        打开设置
+      </div>
+      <div class="item">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 4h12v4H6V4zm-2 6h16v10H4V10zm4 3v4h8v-4H8z"/></svg>
+        暂停预警
+      </div>
+      <div class="sep"></div>
+      <div class="item">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
+        关于 TickGold
+      </div>
+      <div class="item danger">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        退出
+      </div>
+    </div>
+    <p class="desc">毛玻璃背景 + SVG 图标 + 红色 badge 显示"盯盘中"。hover 金色高亮。最专业。</p>
+  </div>
+
+  <!-- 方案 B -->
+  <div class="col">
+    <span class="label">B · 紧凑列表 + 状态</span>
+    <div class="menu-b">
+      <div class="head">
+        <div class="title">TickGold</div>
+        <div class="sub">v2.8.0 · 午盘盯盘中</div>
+      </div>
+      <div class="item"><span class="dot" style="background:var(--down)"></span>主窗口<span class="tag on">显示中</span></div>
+      <div class="item"><span class="dot" style="background:var(--gold)"></span>灵动岛<span class="tag">已开启</span></div>
+      <div class="item"><span class="dot" style="background:var(--dim)"></span>打开设置</div>
+      <div class="item"><span class="dot" style="background:var(--up)"></span>暂停预警<span class="tag">0 条</span></div>
+      <div class="item"><span class="dot" style="background:var(--dim)"></span>关于</div>
+      <div class="item"><span class="dot" style="background:var(--dim)"></span>退出</div>
+    </div>
+    <p class="desc">顶部显示版本和状态，每项左侧状态点。信息密度高。</p>
+  </div>
+
+  <!-- 方案 C -->
+  <div class="col">
+    <span class="label">C · 卡片式分组</span>
+    <div class="menu-c">
+      <div class="group-title">快速操作</div>
+      <div class="grid">
+        <div class="cell"><span class="ic">🪟</span><span class="tx">主窗口</span><span class="sub">显示中</span></div>
+        <div class="cell"><span class="ic">📍</span><span class="tx">灵动岛</span><span class="sub">已开启</span></div>
+        <div class="cell"><span class="ic">⚙️</span><span class="tx">设置</span><span class="sub">偏好</span></div>
+        <div class="cell"><span class="ic">🔔</span><span class="tx">预警</span><span class="sub">暂停</span></div>
+      </div>
+      <div class="footer">
+        <div class="btn primary">退出</div>
+        <div class="btn">关于</div>
+      </div>
+    </div>
+    <p class="desc">2x2 卡片网格，图标 + 文字 + 状态。最现代，但占空间大。</p>
+  </div>
+
+  <!-- 方案 D -->
+  <div class="col">
+    <span class="label">D · 极简行情条</span>
+    <div class="menu-d">
+      <div class="status">
+        <div class="label">上证指数</div>
+        <div class="val">3,135.28</div>
+        <div class="chg">-7.28 -0.23%</div>
+      </div>
+      <div class="item">显示主窗口<span class="right">⌘1</span></div>
+      <div class="item">灵动岛<span class="right">开</span></div>
+      <div class="item">暂停预警</div>
+      <div class="item">设置</div>
+      <div class="item">关于</div>
+      <div class="item" style="color:var(--up)">退出</div>
+    </div>
+    <p class="desc">顶部实时行情条 + 极简列表。盯盘时一眼看大盘。</p>
+  </div>
+</div>
+
+</body>
+</html>

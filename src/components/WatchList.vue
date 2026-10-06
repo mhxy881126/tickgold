@@ -167,6 +167,7 @@ async function moveAddGroup() {
       <div class="chip add" title="新建分组" @click="startAdd">+</div>
     </div>
 
+    <div class="table-wrap">
     <table class="list">
       <colgroup>
         <col style="width: 38%">
@@ -182,7 +183,7 @@ async function moveAddGroup() {
       </thead>
       <tbody>
         <tr
-          v-for="s in wl.currentStocks"
+          v-for="(s, i) in wl.currentStocks"
           :key="s.code"
           v-flash="qOf(s.code)?.price"
           :class="{ active: s.code === props.selected }"
@@ -214,6 +215,7 @@ async function moveAddGroup() {
         </tr>
       </tbody>
     </table>
+    </div><!-- /.table-wrap -->
     <Teleport to="body">
       <div v-if="menuCode" class="move-modal">
         <div class="mm-mask" @click="closeMoveMenu"></div>
@@ -380,4 +382,6 @@ tbody tr:hover .op { border-color: var(--border); }
 }
 .mm-addgo:hover { filter: brightness(1.08); }
 .empty { text-align: center; color: var(--text-dim); padding: 30px; font-size: 12px; }
+
+.table-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 </style>

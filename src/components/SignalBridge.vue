@@ -88,7 +88,9 @@ function initEdits() {
 async function load() {
   loading.value = true;
   try {
-    tickets.value = await signalList("all", 500);
+    const all = await signalList("all", 500);
+    // 过滤掉已清除的信号
+    tickets.value = all.filter(t => !clearedIds.value.has(t.id));
     recompute();
     initEdits();
   } catch (e) {
@@ -300,6 +302,35 @@ async function onCleanExpire() {
   }
 }
 
+// ===== 清除历史记录（前端过滤 + localStorage 记住） =====
+const clearedIds = ref<Set<number>>(new Set());
+
+// 从 localStorage 读取已清除的信号 ID
+function loadClearedIds() {
+  try {
+    const saved = localStorage.getItem("signal_bridge_cleared");
+    if (saved) {
+      clearedIds.value = new Set(JSON.parse(saved));
+    }
+  } catch {}
+}
+
+// 清除历史记录（已完成、已驳回、已过期）
+function onClearHistory() {
+  const before = tickets.value.length;
+  tickets.value = tickets.value.filter(t => {
+    // 保留待确认和已确认的，清除其他的
+    if (t.status === "pending" || t.status === "confirmed") return true;
+    clearedIds.value.add(t.id);
+    return false;
+  });
+  // 保存到 localStorage
+  localStorage.setItem("signal_bridge_cleared", JSON.stringify(Array.from(clearedIds.value)));
+  const after = tickets.value.length;
+  flash(`已清除 ${before - after} 条历史记录`);
+  recompute();
+}
+
 // ===== 手动新建 =====
 const showManual = ref(false);
 const mForm = reactive({
@@ -339,6 +370,7 @@ function confColor(c: number) {
 let timer: ReturnType<typeof setInterval> | undefined;
 const unlisteners: UnlistenFn[] = [];
 onMounted(() => {
+  loadClearedIds(); // 读取已清除的信号 ID
   void load();
   void loadBrokerPath();
   void loadOrders();
@@ -360,6 +392,14 @@ onUnmounted(() => {
 
 <template>
   <div class="sb">
+    <!-- 顶部说明 -->
+    <div class="sb-intro">
+      <div class="sb-intro-title">🌉 信号确认桥</div>
+      <div class="sb-intro-desc">
+        机器人发出的买卖信号，先落到这里，你确认后再下单。<b>不自动成交</b>，安全第一。
+      </div>
+    </div>
+
     <!-- 状态筛选 -->
     <div class="sb-tabs">
       <button
@@ -378,15 +418,18 @@ onUnmounted(() => {
 
     <!-- 工具行 -->
     <div class="sb-tools">
-      <button class="tb-btn" @click="load">{{ loading ? "刷新中…" : "刷新" }}</button>
-      <button class="tb-btn" @click="onCleanExpire">清理过期</button>
+      <button class="tb-btn" @click="load">
+        🔄 {{ loading ? "刷新中…" : "刷新" }}
+      </button>
+      <button class="tb-btn" @click="onCleanExpire">🗑️ 清理过期</button>
+      <button class="tb-btn danger" @click="onClearHistory">🧹 清除历史记录</button>
       <button class="tb-btn" @click="showManual = !showManual">
-        {{ showManual ? "收起" : "手动新建" }}
+        {{ showManual ? "收起" : "➕ 手动新建" }}
       </button>
     </div>
 
     <div class="hk-hint">
-      快捷键：<b>Enter</b> 确认最新待确认 · <b>Ctrl/⌘+Enter</b> 确认并唤起券商 · <b>R</b> 驳回 · 全局 <b>Alt+S</b> 打开信号桥
+      💡 快捷键：Enter 确认最新 · Ctrl+Enter 确认并唤起券商 · R 驳回
     </div>
 
     <!-- 手动新建表单 -->
@@ -586,7 +629,33 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   font-size: 12px;
+  gap: 10px;
+  padding: 12px;
+  overflow-y: auto;
 }
+
+/* 顶部说明 */
+.sb-intro {
+  padding: 12px;
+  background: linear-gradient(135deg, rgba(90,160,255,0.05), rgba(0,255,213,0.05));
+  border: 1px solid rgba(90,160,255,0.2);
+  border-radius: 10px;
+}
+.sb-intro-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent, #5aa0ff);
+  margin-bottom: 6px;
+}
+.sb-intro-desc {
+  font-size: 13px;
+  color: var(--text-dim, #8892a8);
+  line-height: 1.6;
+}
+.sb-intro-desc b {
+  color: #ff6464;
+}
+
 .hk-hint {
   margin: 6px 8px 0;
   padding: 5px 10px;
