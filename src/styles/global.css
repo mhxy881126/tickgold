@@ -24,20 +24,20 @@
 }
 
 html[data-theme="obsidian"] {
-  --bg: #05070b;
-  --bg-panel: #0b0f16;
-  --bg-card: #11161f;
-  --bg-card2: #0c1017;
-  --bg-hover: #16202e;
-  --border: #1d2635;
-  --border-light: #283346;
-  --text: #e9eef6;
+  --bg: #07080a;
+  --bg-panel: #0c0e12;
+  --bg-card: #11141a;
+  --bg-card2: #0d1015;
+  --bg-hover: #1a1e26;
+  --border: #1e2330;
+  --border-light: #2a3040;
+  --text: #eef2f8;
   --text-dim: #8b97a8;
-  --up: #f23645;
-  --down: #08c98a;
+  --up: #ff4d6a;
+  --down: #00d4a0;
   --flat: #8b97a8;
-  --accent: #d4af37;
-  --accent-2: #e8c96a;
+  --accent: #e8b860;
+  --accent-2: #f0cf8a;
   --blue: #4ea1ff;
 }
 

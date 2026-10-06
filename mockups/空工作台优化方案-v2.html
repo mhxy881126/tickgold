@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>空工作台优化方案 v2</title>
+<style>
+:root{
+  --bg:#07080a; --panel:#0c0e12; --card:#11141a; --line:#1e2330;
+  --text:#eef2f8; --dim:#8b97a8; --gold:#e8b860; --up:#ff4d6a; --down:#00d4a0;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",sans-serif;padding:20px}
+h1{font-size:16px;color:var(--gold);margin-bottom:20px;letter-spacing:2px}
+.section{margin-bottom:40px}
+.section h2{font-size:13px;color:var(--gold);margin-bottom:10px;letter-spacing:1px}
+.demo{
+  background:var(--bg);border:1px solid var(--line);border-radius:10px;
+  height:400px;position:relative;overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.demo-bar{
+  height:30px;flex:none;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;padding:0 12px;font-size:10px;color:var(--dim);gap:12px;
+}
+.demo-body{flex:1;position:relative;overflow:hidden;display:flex;flex-direction:column}
+
+/* ===== E：极简文字引导 ===== */
+.minimal{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+}
+.minimal .big{font-size:22px;font-weight:300;color:var(--text);letter-spacing:2px}
+.minimal .sub{font-size:12px;color:var(--dim)}
+.minimal .steps{display:flex;gap:24px;margin-top:20px}
+.step{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--dim);font-size:10px}
+.step .sn{
+  width:28px;height:28px;border-radius:50%;border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--gold);
+}
+
+/* ===== F：K线网格背景 ===== */
+.kgrid{
+  position:absolute;inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);
+  background-size:30px 30px;
+}
+.kline{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:200px;height:100px;opacity:.3;
+}
+.kline::before{
+  content:"";position:absolute;inset:0;
+  background:
+    linear-gradient(90deg, transparent 0%, rgba(255,77,106,.6) 20%, transparent 20%,
+                   transparent 40%, rgba(0,212,160,.6) 60%, transparent 60%,
+                   transparent 80%, rgba(255,77,106,.6) 100%);
+  background-size:40px 100%;
+}
+.center-tip{
+  position:relative;z-index:2;flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:6px;
+}
+
+/* ===== G：时间轴引导 ===== */
+.timeline{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:0;
+  padding:0 40px;
+}
+.tl-node{
+  display:flex;flex-direction:column;align-items:center;gap:8px;position:relative;
+}
+.tl-node .dot{
+  width:12px;height:12px;border-radius:50%;background:var(--line);
+  border:2px solid var(--dim);
+}
+.tl-node.active .dot{background:var(--gold);border-color:var(--gold);box-shadow:0 0 12px var(--gold)}
+.tl-node .tl-label{font-size:10px;color:var(--dim)}
+.tl-node.active .tl-label{color:var(--gold);font-weight:600}
+.tl-line{width:60px;height:1px;background:var(--line);margin:0 4px;margin-bottom:28px}
+
+/* ===== H：玻璃卡片堆叠 ===== */
+.stack{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:-20px;
+  position:relative;
+}
+.gcard{
+  width:180px;height:120px;border-radius:12px;padding:12px;
+  background:rgba(20,24,32,.6);backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.08);
+  position:absolute;transition:all .3s;
+}
+.gcard:nth-child(1){transform:translateX(-80px) rotate(-6deg);opacity:.5}
+.gcard:nth-child(2){transform:translateX(0) rotate(0deg);opacity:.8}
+.gcard:nth-child(3){transform:translateX(80px) rotate(6deg);opacity:.5}
+.gcard .gc-title{font-size:11px;color:var(--dim);margin-bottom:6px}
+.gcard .gc-val{font-size:20px;font-weight:700}
+.stack-text{
+  position:absolute;bottom:40px;left:50%;transform:translateX(-50%);
+  font-size:12px;color:var(--dim);text-align:center;
+}
+.stack-text b{color:var(--gold)}
+.desc{font-size:11px;color:var(--dim);line-height:1.6;margin-top:8px}
+.label{font-size:11px;color:var(--gold);font-weight:600}
+</style>
+</head>
+<body>
+<h1>空工作台 · 追加 4 套方案</h1>
+
+<!-- E -->
+<div class="section">
+  <span class="label">方案 E · 极简文字引导</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="minimal">
+      <div class="big">开始你的第一次盯盘</div>
+      <div class="sub">三步快速上手</div>
+      <div class="steps">
+        <div class="step"><div class="sn">1</div><div>左侧选功能</div></div>
+        <div class="step"><div class="sn">2</div><div>添加自选股</div></div>
+        <div class="step"><div class="sn">3</div><div>开始监控</div></div>
+      </div>
+    </div>
+  </div>
+  <p class="desc">最干净的方案——只有大字标题 + 三步引导。不抢戏，等用户开卡片后立刻消失。适合新手引导模式。</p>
+</div>
+
+<!-- F -->
+<div class="section">
+  <span class="label">方案 F · K线网格背景</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="demo-body">
+      <div class="kgrid"></div>
+      <div class="kline"></div>
+      <div class="center-tip">
+        <div style="font-size:16px;font-weight:600">从左侧 Dock 选择功能开始</div>
+        <div style="font-size:11px;color:var(--dim)">或者按 Ctrl+K 搜索卡片</div>
+      </div>
+    </div>
+  </div>
+  <p class="desc">背景加淡淡的金融网格线 + 中间一个半透明 K 线剪影。空台也有"交易终端"的氛围感，不是纯黑。</p>
+</div>
+
+<!-- G -->
+<div class="section">
+  <span class="label">方案 G · 时间轴引导</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="demo-body" style="justify-content:center">
+      <div class="timeline">
+        <div class="tl-node">
+          <div class="dot"></div>
+          <div class="tl-label">9:15 竞价</div>
+        </div>
+        <div class="tl-line"></div>
+        <div class="tl-node active">
+          <div class="dot"></div>
+          <div class="tl-label">10:00 盘中</div>
+        </div>
+        <div class="tl-line"></div>
+        <div class="tl-node">
+          <div class="dot"></div>
+          <div class="tl-label">14:30 尾盘</div>
+        </div>
+        <div class="tl-line"></div>
+        <div class="tl-node">
+          <div class="dot"></div>
+          <div class="tl-label">15:00 收盘</div>
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:30px;color:var(--dim);font-size:12px">
+        当前处于 <b style="color:var(--gold)">盘中时段</b>，打开卡片开始监控
+      </div>
+    </div>
+  </div>
+  <p class="desc">空台显示当日交易时间轴，当前时段金色高亮。告诉用户"现在该做什么"，比纯 logo 有信息量。</p>
+</div>
+
+<!-- H -->
+<div class="section">
+  <span class="label">方案 H · 玻璃卡片堆叠预览</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="stack">
+      <div class="gcard">
+        <div class="gc-title">上证指数</div>
+        <div class="gc-val" style="color:var(--up)">+0.56%</div>
+      </div>
+      <div class="gcard">
+        <div class="gc-title">涨停雷达</div>
+        <div class="gc-val" style="color:var(--up)">48 只</div>
+      </div>
+      <div class="gcard">
+        <div class="gc-title">自选股</div>
+        <div class="gc-val" style="color:var(--down)">-0.87%</div>
+      </div>
+      <div class="stack-text">
+        三张常用卡片 <b>堆叠悬浮</b>，点击展开任意一张
+      </div>
+    </div>
+  </div>
+  <p class="desc">中间放 3 张半透明玻璃卡片堆叠（倾斜叠放），hover 时散开。最炫酷，和玻璃浮岛模式视觉统一。</p>
+</div>
+
+</body>
+</html>

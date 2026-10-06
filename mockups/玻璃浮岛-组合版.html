@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>TickGold · 玻璃浮岛组合版</title>
+<style>
+:root{
+  --bg:#05060a; --bg2:#0a0c12; --panel:#0e1118;
+  --ink:#e8ecf1; --ink2:#8b94a3; --ink3:#565e6c;
+  --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.14);
+  --up:#ff4d6a; --down:#00d4a0; --gold:#e8b860;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);
+  font-family:"SF Pro Display","PingFang SC","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+  font-feature-settings:"tnum";overflow:hidden}
+.up{color:var(--up)} .down{color:var(--down)}
+.app{height:100vh;display:flex;flex-direction:column}
+.tbar{height:48px;flex:none;display:flex;align-items:center;padding:0 16px;gap:16px;
+  border-bottom:1px solid var(--line);background:rgba(0,0,0,.3);z-index:30}
+.logo{color:var(--gold);font-weight:700;letter-spacing:2px;font-size:13px}
+.tip{font-size:11px;color:var(--ink3);margin-left:auto}
+.main{flex:1;position:relative;overflow:hidden;background:
+  radial-gradient(1000px 600px at 50% 40%, rgba(232,184,96,.04), transparent 60%), var(--bg2)}
+
+/* 主卡 */
+.master{position:absolute;left:24px;top:24px;right:80px;bottom:24px;
+  display:flex;flex-direction:column;overflow:hidden;
+  background:linear-gradient(180deg, rgba(255,255,255,.04), transparent 22%),
+             linear-gradient(180deg, #17130b, #120f08);
+  border:1px solid var(--line);border-radius:10px;
+  border-color:var(--accent);
+  box-shadow:0 0 0 1.5px var(--accent), 0 0 40px color-mix(in srgb,var(--accent) 30%,transparent);
+  transition:right .35s cubic-bezier(.32,.72,0,1)}
+.master.expanded{right:300px}
+.master .card-bar{position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;
+  background:linear-gradient(180deg,var(--accent),color-mix(in srgb,var(--accent) 55%,transparent))}
+.master .ch{flex:none;display:flex;align-items:center;gap:6px;padding:10px 14px;
+  font-size:13px;color:var(--ink)}
+.master .ch .tt{font-weight:600}
+.master .cb{flex:1;padding:8px 16px 16px;overflow:hidden;position:relative;min-height:0}
+
+/* 磁吸边缘（默认 48px） */
+.edge{position:absolute;right:0;top:0;bottom:0;width:48px;z-index:20;
+  background:rgba(14,17,24,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-left:1px solid var(--line);
+  transition:width .35s cubic-bezier(.32,.72,0,1);
+  display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:8px;overflow:hidden}
+.edge:hover{width:280px}
+.edge .edge-label{font-size:10px;color:var(--ink3);letter-spacing:2px;opacity:0;transition:opacity .2s;writing-mode:vertical-rl}
+.edge:hover .edge-label{opacity:1;writing-mode:horizontal-tb;margin-bottom:6px}
+
+/* 分组容器（hover 时显示） */
+.groups{display:none;flex-direction:column;gap:8px;width:100%;padding:0 10px;overflow-y:auto}
+.edge:hover .groups{display:flex}
+.edge:hover .edge-icons{display:none}
+.edge-icons{display:flex;flex-direction:column;gap:8px;align-items:center}
+
+/* 窄条图标 */
+.ei{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:700;cursor:pointer;flex:none;
+  border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--ink2)}
+.ei.on{background:color-mix(in srgb,var(--accent) 25%,transparent);color:var(--accent);border-color:var(--accent)}
+
+/* 分组玻璃岛 */
+.group{background:rgba(20,24,32,.7);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.08);border-radius:10px;overflow:hidden;flex:none}
+.group-head{padding:7px 10px;font-size:10px;color:var(--gold);letter-spacing:2px;
+  cursor:pointer;display:flex;justify-content:space-between;align-items:center;
+  border-bottom:1px solid rgba(255,255,255,.06)}
+.group-head .arrow{transition:transform .2s}
+.group.collapsed .arrow{transform:rotate(-90deg)}
+.group.collapsed .group-body{display:none}
+.group-body{padding:5px}
+.g-item{padding:6px 9px;border-radius:6px;cursor:grab;font-size:11px;
+  display:flex;align-items:center;gap:8px;color:var(--ink2);transition:all .15s;margin-bottom:1px}
+.g-item:hover{background:rgba(255,255,255,.06);color:var(--ink)}
+.g-item.on{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+.g-item .dot{width:6px;height:6px;border-radius:50%;flex:none}
+.g-item .g-desc{font-size:9px;color:var(--ink3);margin-left:auto}
+
+/* PiP 浮窗 */
+.pip{position:absolute;width:230px;height:150px;z-index:15;cursor:grab;
+  background:rgba(20,24,32,.8);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.12);border-radius:10px;overflow:hidden;
+  transition:box-shadow .2s, border-color .2s}
+.pip:hover{box-shadow:0 0 0 1px var(--accent), 0 10px 30px rgba(0,0,0,.5);border-color:var(--accent)}
+.pip .ch{padding:5px 8px 5px 12px;font-size:10.5px;display:flex;align-items:center;gap:6px;cursor:grab}
+.pip .ch .tt{font-weight:600;flex:1}
+.pip .cb{padding:4px 10px 8px;font-size:10px;overflow:hidden}
+.pip .pip-close{width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,.4);border:0;
+  color:var(--ink2);cursor:pointer;font-size:9px}
+.pip .pip-close:hover{background:#e81123;color:#fff}
+
+.srow{display:flex;justify-content:space-between;align-items:center;font-size:10px;
+  padding:2.5px 2px;border-bottom:1px dashed rgba(255,255,255,.04)}
+.srow:last-child{border-bottom:0}
+.srow .nm{color:var(--ink)} .srow .nm small{color:var(--ink3);margin-left:3px;font-size:8px;font-family:monospace}
+.srow .pr{font-weight:600}
+
+.toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);
+  background:rgba(20,22,28,.95);border:1px solid var(--gold);color:var(--gold);
+  padding:8px 18px;border-radius:6px;font-size:12px;z-index:200;
+  opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="tbar">
+    <span class="logo">TickGold</span>
+    <span class="tip">hover 右边缘展开分组 · 点卡片切换主卡 · 拖卡片到主区变成浮窗</span>
+  </div>
+  <div class="main" id="main">
+    <div class="master" id="master">
+      <div class="card-bar"></div>
+      <div class="ch"><span class="tt" id="masterTitle">K线图</span></div>
+      <div class="cb" id="masterBody"></div>
+    </div>
+
+    <!-- 磁吸边缘 -->
+    <aside class="edge" id="edge">
+      <div class="edge-label">卡片导航</div>
+      <div class="edge-icons" id="edgeIcons"></div>
+      <div class="groups" id="groups"></div>
+    </aside>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const CARDS = {
+  chart:{title:"K线图",accent:"#2f6fed"},
+  radar:{title:"涨停雷达",accent:"#e0455a"},
+  watch:{title:"自选股",accent:"#26d07c"},
+  spider:{title:"短线精灵",accent:"#e0556b"},
+  sectorevent:{title:"板块异动",accent:"#e0556b"},
+  news:{title:"盘中快讯",accent:"#b07cff"},
+  auction:{title:"集合竞价",accent:"#ffd76a"},
+};
+const GROUPS = [
+  {name:"情绪异动",items:["radar","spider","auction","news"]},
+  {name:"板块题材",items:["sectorevent"]},
+  {name:"个股行情",items:["chart","watch"]},
+];
+
+function bodyHTML(id, small){
+  switch(id){
+    case "chart": return `
+      <div style="font-size:22px;font-weight:700;color:var(--up)">152.30 <span style="font-size:12px">+6.66 +4.56%</span></div>
+      <svg width="100%" height="85%" viewBox="0 0 700 360" preserveAspectRatio="none" style="margin-top:8px">
+        <g stroke="#ff4d6a" fill="#ff4d6a">
+          <line x1="40" y1="220" x2="40" y2="280"/><rect x="34" y="235" width="12" height="30"/>
+          <line x1="140" y1="200" x2="140" y2="270"/><rect x="134" y="220" width="12" height="35"/>
+          <line x1="240" y1="160" x2="240" y2="230"/><rect x="234" y="180" width="12" height="30"/>
+          <line x1="340" y1="120" x2="340" y2="190"/><rect x="334" y="140" width="12" height="35"/>
+          <line x1="440" y1="80" x2="440" y2="150"/><rect x="434" y="95" width="12" height="40"/>
+          <line x1="540" y1="50" x2="540" y2="120"/><rect x="534" y="65" width="12" height="35"/>
+          <line x1="640" y1="30" x2="640" y2="90"/><rect x="634" y="45" width="12" height="30"/>
+        </g>
+        <g stroke="#00d4a0" fill="none">
+          <line x1="190" y1="195" x2="190" y2="240"/><rect x="184" y="210" width="12" height="20"/>
+          <line x1="290" y1="150" x2="290" y2="195"/><rect x="284" y="165" width="12" height="18"/>
+          <line x1="390" y1="110" x2="390" y2="150"/><rect x="384" y="125" width="12" height="15"/>
+        </g>
+        <polyline points="40,260 140,245 190,240 240,220 290,210 340,190 390,175 440,150 540,120 640,90"
+          fill="none" stroke="#e8b860" stroke-width="1.2" opacity=".8"/>
+      </svg>`;
+    case "radar": return `
+      <div class="srow"><span style="color:#e0455a;font-weight:700">5板</span><span class="nm">鸿博股份</span><span class="pr up">+10.02%</span></div>
+      <div class="srow"><span style="color:#e0455a;font-weight:700">4板</span><span class="nm">拓维信息</span><span class="pr up">+10.00%</span></div>
+      <div class="srow"><span style="color:#e0455a;font-weight:700">3板</span><span class="nm">四川长虹</span><span class="pr up">+9.98%</span></div>
+      <div style="margin-top:5px;font-size:9.5px;color:var(--ink2)">涨停 <b class="up">47</b> · 炸板 <b class="down">8</b></div>`;
+    case "watch": return `
+      <div class="srow"><span class="nm">贵州茅台<small>600519</small></span><span class="pr up">1685.00 +1.23%</span></div>
+      <div class="srow"><span class="nm">中际旭创<small>300308</small></span><span class="pr up">152.30 +4.56%</span></div>
+      <div class="srow"><span class="nm">宁德时代<small>300750</small></span><span class="pr down">187.45 -0.85%</span></div>`;
+    case "spider": return `
+      <div class="srow"><span class="nm"><span class="up">▲火箭</span> 中际旭创</span><span class="pr up">+4.56%</span></div>
+      <div class="srow"><span class="nm"><span style="color:var(--gold)">●大买</span> 新易盛</span><span class="pr up">+3.88%</span></div>
+      <div class="srow"><span class="nm"><span class="up">▲火箭</span> 天孚通信</span><span class="pr up">+3.21%</span></div>`;
+    case "sectorevent": return `
+      <div class="srow"><span class="nm"><span class="up">10:24</span> CPO 概念</span><span class="pr up">+3.12%</span></div>
+      <div class="srow"><span class="nm"><span class="up">10:18</span> 算力租赁</span><span class="pr up">+2.44%</span></div>`;
+    case "news": return `
+      <div style="font-size:10px;line-height:1.8;color:var(--ink2)">
+        <div><span style="color:var(--ink3)">10:24</span> 算力板块异动拉升</div>
+        <div><span style="color:var(--ink3)">10:18</span> 央行 3800 亿 MLF</div>
+      </div>`;
+    case "auction": return `
+      <div class="srow"><span class="nm" style="color:var(--gold)">抢筹</span><span class="nm">中际旭创</span><span class="pr up">+5.2%</span></div>
+      <div class="srow"><span class="nm" style="color:var(--down)">出逃</span><span class="nm">宁德时代</span><span class="pr down">-1.8%</span></div>`;
+  }
+}
+
+let masterId = "chart";
+const main = document.getElementById("main");
+const edge = document.getElementById("edge");
+const toast = document.getElementById("toast");
+let toastTimer;
+function showToast(msg){
+  toast.textContent = msg; toast.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(()=>toast.classList.remove("show"),1800);
+}
+
+function renderMaster(){
+  const c = CARDS[masterId];
+  document.getElementById("master").style.setProperty("--accent",c.accent);
+  document.getElementById("masterTitle").textContent = c.title;
+  document.getElementById("masterBody").innerHTML = bodyHTML(masterId);
+  // 更新窄条高亮
+  document.querySelectorAll(".ei").forEach(ei=>{
+    ei.classList.toggle("on", ei.dataset.id===masterId);
+    ei.style.setProperty("--accent", CARDS[ei.dataset.id].accent);
+  });
+  document.querySelectorAll(".g-item").forEach(gi=>{
+    gi.classList.toggle("on", gi.dataset.id===masterId);
+  });
+}
+
+function renderEdge(){
+  // 窄条图标
+  const icons = document.getElementById("edgeIcons");
+  icons.innerHTML = "";
+  Object.entries(CARDS).forEach(([id,c])=>{
+    const b = document.createElement("div");
+    b.className = "ei" + (id===masterId?" on":"");
+    b.dataset.id = id;
+    b.style.setProperty("--accent",c.accent);
+    b.textContent = c.title.slice(0,1);
+    b.title = c.title;
+    b.onclick = ()=>{ masterId = id; renderMaster(); };
+    icons.appendChild(b);
+  });
+  // 分组
+  const groups = document.getElementById("groups");
+  groups.innerHTML = `<div style="font-size:10px;color:var(--ink3);letter-spacing:2px;padding:4px 6px">卡片导航</div>`;
+  for(const g of GROUPS){
+    const grp = document.createElement("div");
+    grp.className = "group";
+    grp.innerHTML = `<div class="group-head"><span>${g.name}</span><span class="arrow">▾</span></div>`;
+    const body = document.createElement("div");
+    body.className = "group-body";
+    for(const id of g.items){
+      const c = CARDS[id];
+      const it = document.createElement("div");
+      it.className = "g-item" + (id===masterId?" on":"");
+      it.dataset.id = id;
+      it.innerHTML = `<span class="dot" style="background:${c.accent}"></span>${c.title}`;
+      // 点击切换主卡
+      it.onclick = ()=>{ masterId = id; renderMaster(); };
+      // 拖拽 → 变成 PiP
+      it.onpointerdown = (e)=>startDragToPip(e, id, it);
+      body.appendChild(it);
+    }
+    grp.appendChild(body);
+    grp.querySelector(".group-head").onclick = ()=>grp.classList.toggle("collapsed");
+    groups.appendChild(grp);
+  }
+}
+
+// 从分组里拖卡片到主区 → 变成 PiP 浮窗
+function startDragToPip(e, id, sourceEl){
+  const sx = e.clientX, sy = e.clientY;
+  const c = CARDS[id];
+  let started = false;
+  let pip = null;
+  const move = (ev)=>{
+    const dx = ev.clientX - sx, dy = ev.clientY - sy;
+    if(!started && Math.hypot(dx,dy) > 12){
+      started = true;
+      // 创建 PiP
+      pip = document.createElement("div");
+      pip.className = "pip";
+      pip.style.setProperty("--accent",c.accent);
+      const mainRect = main.getBoundingClientRect();
+      pip.style.left = (ev.clientX - mainRect.left - 100) + "px";
+      pip.style.top = (ev.clientY - mainRect.top - 40) + "px";
+      pip.innerHTML = `
+        <div class="card-bar" style="position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:${c.accent}"></div>
+        <div class="ch"><span class="tt">${c.title}</span><button class="pip-close">✕</button></div>
+        <div class="cb">${bodyHTML(id)}</div>`;
+      pip.querySelector(".pip-close").onclick = (ev2)=>{ ev2.stopPropagation(); pip.remove(); };
+      // PiP 自身可拖
+      const ch = pip.querySelector(".ch");
+      ch.onpointerdown = (pe)=>{
+        const psx = pe.clientX - pip.offsetLeft;
+        const psy = pe.clientY - pip.offsetTop;
+        const pmv = (pme)=>{
+          pip.style.left = (pme.clientX - mainRect.left - psx) + "px";
+          pip.style.top = (pme.clientY - mainRect.top - psy) + "px";
+        };
+        const pup = ()=>{
+          window.removeEventListener("pointermove",pmv);
+          window.removeEventListener("pointerup",pup);
+        };
+        window.addEventListener("pointermove",pmv);
+        window.addEventListener("pointerup",pup);
+      };
+      main.appendChild(pip);
+      showToast(`「${c.title}」已弹出为画中画浮窗`);
+    }
+    if(started && pip){
+      pip.style.left = (ev.clientX - main.getBoundingClientRect().left - 100) + "px";
+      pip.style.top = (ev.clientY - main.getBoundingClientRect().top - 40) + "px";
+    }
+  };
+  const up = ()=>{
+    window.removeEventListener("pointermove",move);
+    window.removeEventListener("pointerup",up);
+  };
+  window.addEventListener("pointermove",move);
+  window.addEventListener("pointerup",up);
+}
+
+// hover edge 时 master 收窄
+edge.addEventListener("mouseenter",()=>{
+  document.getElementById("master").classList.add("expanded");
+});
+edge.addEventListener("mouseleave",()=>{
+  document.getElementById("master").classList.remove("expanded");
+});
+
+renderEdge();
+renderMaster();
+</script>
+</body>
+</html>

@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>TickGold · 卡片工作台改版 v3 · 真实卡片适配版</title>
+<style>
+:root{
+  --bg:#07080a; --bg2:#0b0d11; --panel:#0e1116;
+  --ink:#e8ecf1; --ink2:#8b94a3; --ink3:#565e6c;
+  --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.14);
+  --up:#ff4d6a; --down:#00d4a0; --gold:#e8b860; --cyan:#4dd0e1;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--ink);
+  font-family:"SF Pro Display","PingFang SC","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+  font-feature-settings:"tnum" 1; font-variant-numeric:tabular-nums;}
+body{padding:50px 24px 90px;line-height:1.5}
+.wrap{max-width:1400px;margin:0 auto}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.04;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence baseFrequency='0.9'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");}
+
+/* 封面 */
+.cover{text-align:center;margin-bottom:46px;position:relative;z-index:2}
+.kicker{font-size:11px;letter-spacing:6px;color:var(--gold);text-transform:uppercase;margin-bottom:12px}
+.cover h1{font-size:34px;font-weight:700;letter-spacing:1px}
+.cover h1 .thin{color:var(--ink3);font-weight:300}
+.cover .sub{color:var(--ink2);font-size:13px;margin-top:10px}
+.cover .meta{margin-top:16px;display:flex;justify-content:center;gap:22px;font-size:10.5px;color:var(--ink3);letter-spacing:1px}
+.cover .meta b{color:var(--ink2);font-weight:500}
+
+/* 章节 */
+.sec{margin-bottom:70px;position:relative;z-index:2}
+.sec-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.sec-num{font-size:38px;font-weight:200;color:transparent;-webkit-text-stroke:1px var(--line2);line-height:1;font-family:"SF Mono",monospace}
+.sec-title h2{font-size:22px;font-weight:600}
+.sec-title .pos{color:var(--ink2);font-size:12px;margin-top:3px}
+.sec-tags{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.stag{font-size:10px;color:var(--ink2);border:1px solid var(--line);padding:3px 9px;border-radius:3px;letter-spacing:1px}
+.stag.hot{color:var(--gold);border-color:rgba(232,184,96,.4)}
+
+/* 屏幕 */
+.stage{position:relative;border-radius:12px;overflow:hidden;
+  background:var(--bg2);border:1px solid var(--line2);
+  box-shadow:0 30px 80px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.05);}
+.sbar{height:28px;background:rgba(255,255,255,.02);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;padding:0 14px;gap:8px;font-size:10px;color:var(--ink2)}
+.sbar .dot{width:9px;height:9px;border-radius:50%}
+.sbar .brand{color:var(--gold);font-weight:600;letter-spacing:2px;font-size:10.5px}
+.sbar .url{flex:1;text-align:center;color:var(--ink3);font-family:"SF Mono",monospace;font-size:9.5px}
+
+/* 标注 */
+.ann{position:absolute;z-index:30;font-size:10.5px}
+.ann .lbl{display:inline-block;background:rgba(7,8,10,.94);border:1px solid var(--gold);
+  color:var(--gold);padding:4px 9px;border-radius:3px;font-weight:600;font-size:10px;backdrop-filter:blur(6px);
+  box-shadow:0 4px 16px rgba(0,0,0,.5)}
+.ann .lbl b{color:var(--ink);font-weight:500;margin-left:6px}
+
+.up{color:var(--up)} .down{color:var(--down)}
+
+/* ============================================================
+   主屏幕：曜石 Bento
+   ============================================================ */
+.app{height:720px;display:flex;flex-direction:column;
+  background:radial-gradient(900px 500px at 70% 0%, rgba(232,184,96,.04), transparent 60%), var(--bg2);}
+
+/* 顶栏 */
+.tbar{height:40px;flex:none;display:flex;align-items:center;padding:0 14px;gap:14px;
+  border-bottom:1px solid var(--line);background:rgba(0,0,0,.2)}
+.tbar .logo{color:var(--gold);font-weight:700;letter-spacing:2px;font-size:12px}
+.tbar .scene{display:flex;gap:4px;margin-left:10px}
+.tbar .sc{font-size:10.5px;padding:4px 11px;border-radius:5px;color:var(--ink2);cursor:pointer;border:1px solid transparent}
+.tbar .sc.on{background:var(--gold);color:#000;font-weight:700}
+.tbar .sc:not(.on):hover{background:rgba(255,255,255,.05);color:var(--ink)}
+.tbar .right{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:10.5px;color:var(--ink2)}
+.tbar .live{display:flex;align-items:center;gap:5px}
+.tbar .live i{width:6px;height:6px;border-radius:50%;background:var(--down);box-shadow:0 0 8px var(--down)}
+
+/* body */
+.abody{flex:1;display:flex;min-height:0}
+
+/* 左侧 Dock */
+.dock{width:68px;flex:none;background:var(--panel);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:2px;position:relative}
+.dg{width:54px;padding:6px 0;border-radius:8px;display:flex;flex-direction:column;align-items:center;gap:3px;
+  color:var(--ink2);cursor:pointer;position:relative;font-size:9px;letter-spacing:1px}
+.dg .ic{width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,.05);
+  display:flex;align-items:center;justify-content:center;font-size:11px}
+.dg:hover,.dg.on{color:var(--ink);background:rgba(232,184,96,.08)}
+.dg.on .ic{background:linear-gradient(135deg,var(--gold),#b8923a);color:#000}
+.dg .badge{position:absolute;top:2px;right:6px;min-width:14px;height:14px;border-radius:7px;
+  background:var(--up);color:#fff;font-size:8.5px;display:flex;align-items:center;justify-content:center;padding:0 3px;font-weight:700}
+.dsep{width:30px;height:1px;background:var(--line);margin:6px 0}
+
+/* Dock 浮出面板（hover 情绪异动） */
+.dpanel{position:absolute;left:calc(100% - 1px);top:120px;width:240px;z-index:50;
+  background:rgba(14,17,22,.97);backdrop-filter:blur(20px);
+  border:1px solid var(--line2);border-left:0;border-radius:0 10px 10px 10px;
+  padding:10px;box-shadow:20px 20px 50px rgba(0,0,0,.6)}
+.dpanel .ph{font-size:10px;color:var(--gold);letter-spacing:2px;margin:4px 6px 8px}
+.ditem{display:grid;grid-template-columns:24px 1fr;gap:8px;align-items:center;
+  padding:6px 8px;border-radius:6px;cursor:pointer;margin-bottom:2px}
+.ditem:hover{background:rgba(255,255,255,.05)}
+.ditem .dic{width:24px;height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center}
+.ditem .dt{font-size:11.5px;color:var(--ink)}
+.ditem .dd{font-size:9.5px;color:var(--ink3);margin-top:1px}
+.ditem.opened{background:rgba(232,184,96,.08)}
+.ditem.opened .dt::after{content:" · 已开";color:var(--gold);font-size:9px;margin-left:4px}
+
+/* 主区 */
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+
+/* 指数条 */
+.idxbar{height:28px;flex:none;border-bottom:1px solid var(--line);display:flex;align-items:center;
+  padding:0 14px;gap:18px;font-size:10.5px;background:rgba(0,0,0,.2)}
+.idxbar .it{display:flex;gap:6px}
+.idxbar b{font-weight:600}
+
+/* 卡片网格 12 列 */
+.grid{flex:1;display:grid;gap:8px;padding:10px;
+  grid-template-columns:repeat(12,1fr);grid-template-rows:repeat(6,1fr);
+  background-image:
+    linear-gradient(rgba(232,184,96,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(232,184,96,.03) 1px,transparent 1px);
+  background-size:calc(100%/12) calc(100%/6);}
+
+/* 卡片通用 */
+.card{background:linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.005));
+  border:1px solid var(--line);border-radius:9px;display:flex;flex-direction:column;overflow:hidden;
+  position:relative;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.card .ch{height:28px;flex:none;display:flex;align-items:center;gap:7px;padding:0 10px;
+  border-bottom:1px solid var(--line);font-size:11px;color:var(--ink)}
+.card .ch .bar{width:3px;height:12px;border-radius:2px}
+.card .ch .tt{font-weight:600;letter-spacing:.3px}
+.card .ch .more{margin-left:auto;color:var(--ink3);font-size:11px;cursor:pointer}
+.card .cb{flex:1;padding:8px 10px;overflow:hidden;position:relative}
+
+/* K 线卡 */
+.c-chart{grid-column:1/9;grid-row:1/5}
+/* 涨停雷达 */
+.c-radar{grid-column:9/13;grid-row:1/3}
+/* 短线精灵 */
+.c-spider{grid-column:9/13;grid-row:3/5}
+/* 自选股 */
+.c-watch{grid-column:1/7;grid-row:5/7}
+/* 板块异动 */
+.c-secevent{grid-column:7/13;grid-row:5/7}
+
+/* 股票行 */
+.srow{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;
+  padding:3.5px 2px;border-bottom:1px dashed rgba(255,255,255,.04)}
+.srow:last-child{border-bottom:0}
+.srow .nm{color:var(--ink)}
+.srow .nm small{color:var(--ink3);margin-left:4px;font-size:9px;font-family:"SF Mono",monospace}
+.srow .pr{font-variant-numeric:tabular-nums;font-weight:600}
+
+/* tabstrip */
+.tabstrip{height:32px;flex:none;background:var(--panel);border-top:1px solid var(--line);
+  display:flex;align-items:stretch;padding:0 8px;gap:3px}
+.tab{display:flex;align-items:center;gap:6px;padding:0 12px;font-size:11px;color:var(--ink2);
+  border-radius:6px 6px 0 0;position:relative;cursor:pointer;white-space:nowrap}
+.tab .tbar{width:3px;height:12px;border-radius:2px}
+.tab.on{color:var(--ink);background:rgba(232,184,96,.09)}
+.tab.on::after{content:"";position:absolute;left:12px;right:12px;top:0;height:2px;
+  background:linear-gradient(90deg,var(--gold),#f0d69a);border-radius:2px}
+.tab.add{color:var(--ink3);font-size:14px}
+
+/* ============================================================
+   编辑态：锚点格 + 幽灵占位 + FLIP
+   ============================================================ */
+.editing .grid{background-image:
+    linear-gradient(rgba(232,184,96,.12) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(232,184,96,.12) 1px,transparent 1px);
+  background-size:calc(100%/12) calc(100%/6);
+  background-color:rgba(232,184,96,.02)}
+.editing .c-spider{opacity:.35;filter:saturate(.5)}
+.editing .c-secevent{opacity:.35;filter:saturate(.5)}
+.editing .c-radar{box-shadow:0 20px 50px rgba(0,0,0,.6),0 0 0 1.5px var(--gold);
+  transform:scale(1.02);opacity:.95;z-index:5}
+.ghost{grid-column:1/7;grid-row:5/7;border:1.5px dashed var(--gold);border-radius:9px;
+  background:rgba(232,184,96,.08);display:flex;align-items:center;justify-content:center;
+  color:var(--gold);font-size:10px;letter-spacing:2px;z-index:4}
+
+/* ============================================================
+   玻璃浮岛版
+   ============================================================ */
+.glass-screen{height:680px;position:relative;overflow:hidden;
+  background:
+    radial-gradient(600px 400px at 15% 20%, rgba(106,80,220,.22), transparent 60%),
+    radial-gradient(700px 500px at 85% 70%, rgba(232,184,96,.15), transparent 60%),
+    radial-gradient(500px 400px at 60% 100%, rgba(77,208,225,.1), transparent 60%),
+    #08090d;}
+.gcard{position:absolute;border-radius:14px;
+  background:linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
+  backdrop-filter:blur(22px) saturate(160%);
+  border:1px solid rgba(255,255,255,.13);
+  box-shadow:0 18px 40px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.14);
+  padding:10px;display:flex;flex-direction:column;overflow:hidden}
+.gcard .gh{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:1.5px;color:var(--ink2);margin-bottom:8px}
+.gcard .gh .gd{width:5px;height:5px;border-radius:50%}
+
+/* 说明 */
+.notes-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:22px}
+.note-card{padding:14px 16px;border-left:2px solid var(--gold);background:rgba(232,184,96,.03)}
+.note-card .nh{font-size:11px;color:var(--gold);letter-spacing:2px;margin-bottom:6px;font-family:"SF Mono",monospace}
+.note-card p{font-size:11.5px;color:var(--ink2);line-height:1.6}
+.note-card p b{color:var(--ink);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="cover">
+    <div class="kicker">TickGold · Real Cards Redesign</div>
+    <h1>卡片工作台改版 <span class="thin">·</span> 真实卡片适配版</h1>
+    <div class="sub">左侧 6 大 Dock 分组 · 36 张真实卡片 · 5 个场景模板 · 原配色体系</div>
+    <div class="meta">
+      <span><b>SCENE</b> 盘中盯盘</span>
+      <span><b>CARDS</b> K线 / 涨停雷达 / 自选 / 短线精灵 / 板块异动</span>
+      <span><b>PALETTE</b> 沿用 CARD_META accent</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       屏幕 1：正常态
+       ============================================================ -->
+  <div class="sec">
+    <div class="sec-head">
+      <div class="sec-num">01</div>
+      <div class="sec-title">
+        <h2>曜石 Bento · 盘中盯盘场景</h2>
+        <div class="pos">正常态 —— 真实 12 列 Bento 布局，每张卡用原 accent 色与业务内容</div>
+      </div>
+      <div class="sec-tags">
+        <span class="stag hot">场景：盘中盯盘</span>
+        <span class="stag">12×6 栅格</span>
+        <span class="stag">5 张真实卡</span>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="sbar">
+        <span class="dot" style="background:#ff5f57"></span>
+        <span class="dot" style="background:#febc2e"></span>
+        <span class="dot" style="background:#28c840"></span>
+        <span class="brand">TICKGOLD</span>
+        <span class="url">/workbench/scene-pan</span>
+      </div>
+
+      <div class="app">
+        <!-- 顶栏：场景 chips -->
+        <div class="tbar">
+          <span class="logo">TickGold</span>
+          <div class="scene">
+            <span class="sc on">盘中盯盘</span>
+            <span class="sc">开盘竞价</span>
+            <span class="sc">盘后复盘</span>
+            <span class="sc">条件选股</span>
+            <span class="sc">极简看盘</span>
+          </div>
+          <div class="right">
+            <span class="live"><i></i>实时</span>
+            <span>128 只</span>
+            <span style="color:var(--ink3)">|</span>
+            <span>10:24:36</span>
+          </div>
+        </div>
+
+        <div class="abody">
+          <!-- 左侧 Dock：6 大分组 -->
+          <div class="dock">
+            <div class="dg on"><span class="ic">▦</span>大盘</div>
+            <div class="dg"><span class="ic">◉</span>盯盘<span class="badge">6</span></div>
+            <div class="dg"><span class="ic">⚡</span>情绪<span class="badge">3</span></div>
+            <div class="dg"><span class="ic">◈</span>板块</div>
+            <div class="dg"><span class="ic">⌖</span>个股</div>
+            <div class="dsep"></div>
+            <div class="dg"><span class="ic">⚙</span>工具<span class="badge">2</span></div>
+
+            <!-- hover 浮出：情绪异动分组的真实卡片 -->
+            <div class="dpanel">
+              <div class="ph">情绪异动 · 6 个卡片</div>
+              <div class="ditem opened">
+                <span class="dic" style="background:rgba(255,215,106,.15);color:#ffd76a">竞</span>
+                <div><div class="dt">集合竞价</div><div class="dd">高开抢筹/低开出逃排名</div></div>
+              </div>
+              <div class="ditem opened">
+                <span class="dic" style="background:rgba(224,69,90,.15);color:#e0455a">池</span>
+                <div><div class="dt">涨停池明细</div><div class="dd">封单额/封板时间/题材</div></div>
+              </div>
+              <div class="ditem opened">
+                <span class="dic" style="background:rgba(224,69,90,.15);color:#e0455a">雷</span>
+                <div><div class="dt">涨停雷达</div><div class="dd">涨停/炸板/连板/情绪</div></div>
+              </div>
+              <div class="ditem opened">
+                <span class="dic" style="background:rgba(224,85,107,.15);color:#e0556b">灵</span>
+                <div><div class="dt">短线精灵</div><div class="dd">活跃股盘中实时异动</div></div>
+              </div>
+              <div class="ditem">
+                <span class="dic" style="background:rgba(255,215,0,.15);color:#ffd700">警</span>
+                <div><div class="dt">预警管理</div><div class="dd">价格/涨跌幅触发推送</div></div>
+              </div>
+              <div class="ditem">
+                <span class="dic" style="background:rgba(176,124,255,.15);color:#b07cff">讯</span>
+                <div><div class="dt">盘中快讯</div><div class="dd">7×24 全球财经直播</div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 主区 -->
+          <div class="main">
+            <div class="idxbar">
+              <span class="it"><b>上证</b> 3285.42 <span class="up">+0.56%</span></span>
+              <span class="it"><b>深成</b> 10521.30 <span class="up">+0.82%</span></span>
+              <span class="it"><b>创业板</b> 2135.66 <span class="up">+1.24%</span></span>
+              <span class="it"><b>科创50</b> 985.20 <span class="down">-0.18%</span></span>
+            </div>
+
+            <div class="grid">
+              <!-- K线图（chart 蓝 #2f6fed） -->
+              <div class="card c-chart">
+                <div class="ch">
+                  <span class="bar" style="background:#2f6fed"></span>
+                  <span class="tt">K线图</span>
+                  <span style="color:var(--ink3);font-size:10px">· 中际旭创 300308 · 日K</span>
+                  <span class="more">⤢ ✎ ⋯</span>
+                </div>
+                <div class="cb">
+                  <div style="position:absolute;top:8px;left:10px;font-size:10px;color:var(--ink2)">
+                    <span style="color:var(--up);font-size:18px;font-weight:700">152.30</span>
+                    <span class="up" style="margin-left:8px">+6.66 +4.56%</span>
+                  </div>
+                  <svg width="100%" height="100%" viewBox="0 0 700 360" preserveAspectRatio="none">
+                    <g stroke="rgba(255,255,255,.04)"><line x1="0" y1="80" x2="700" y2="80"/><line x1="0" y1="160" x2="700" y2="160"/><line x1="0" y1="240" x2="700" y2="240"/></g>
+                    <g stroke="#ff4d6a" fill="#ff4d6a">
+                      <line x1="40" y1="220" x2="40" y2="280"/><rect x="34" y="235" width="12" height="30"/>
+                      <line x1="110" y1="200" x2="110" y2="270"/><rect x="104" y="220" width="12" height="35"/>
+                      <line x1="250" y1="160" x2="250" y2="230"/><rect x="244" y="180" width="12" height="30"/>
+                      <line x1="390" y1="120" x2="390" y2="190"/><rect x="384" y="140" width="12" height="35"/>
+                      <line x1="530" y1="80" x2="530" y2="150"/><rect x="524" y="95" width="12" height="40"/>
+                      <line x1="640" y1="50" x2="640" y2="120"/><rect x="634" y="65" width="12" height="35"/>
+                    </g>
+                    <g stroke="#00d4a0" fill="none">
+                      <line x1="180" y1="195" x2="180" y2="240"/><rect x="174" y="210" width="12" height="20"/>
+                      <line x1="320" y1="150" x2="320" y2="195"/><rect x="314" y="165" width="12" height="18"/>
+                      <line x1="460" y1="110" x2="460" y2="150"/><rect x="454" y="125" width="12" height="15"/>
+                      <line x1="580" y1="70" x2="580" y2="105"/><rect x="574" y="82" width="12" height="12"/>
+                    </g>
+                    <polyline points="40,260 110,245 180,240 250,220 320,210 390,190 460,175 530,150 580,135 640,110"
+                      fill="none" stroke="#e8b860" stroke-width="1.2" opacity=".8"/>
+                  </svg>
+                </div>
+              </div>
+
+              <!-- 涨停雷达（radar 红 #e0455a） -->
+              <div class="card c-radar">
+                <div class="ch">
+                  <span class="bar" style="background:#e0455a"></span>
+                  <span class="tt">涨停雷达</span>
+                  <span class="more">⋯</span>
+                </div>
+                <div class="cb">
+                  <div class="srow"><span class="nm" style="color:#e0455a;font-weight:700">5板</span><span class="nm">鸿博股份</span><span class="pr up">+10.02%</span></div>
+                  <div class="srow"><span class="nm" style="color:#e0455a;font-weight:700">4板</span><span class="nm">拓维信息</span><span class="pr up">+10.00%</span></div>
+                  <div class="srow"><span class="nm" style="color:#e0455a;font-weight:700">3板</span><span class="nm">四川长虹</span><span class="pr up">+9.98%</span></div>
+                  <div class="srow"><span class="nm" style="color:var(--ink3)">2板</span><span class="nm">12 只</span><span class="pr" style="color:var(--ink3)">—</span></div>
+                  <div style="margin-top:6px;display:flex;gap:8px;font-size:9.5px;color:var(--ink2)">
+                    <span>涨停 <b class="up">47</b></span>
+                    <span>炸板 <b class="down">8</b></span>
+                    <span>封板率 <b>85%</b></span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 短线精灵（spider 红 #e0556b） -->
+              <div class="card c-spider">
+                <div class="ch">
+                  <span class="bar" style="background:#e0556b"></span>
+                  <span class="tt">短线精灵</span>
+                  <span class="more">⋯</span>
+                </div>
+                <div class="cb" style="font-size:10px">
+                  <div class="srow"><span class="nm"><span style="color:var(--up)">▲火箭</span> 中际旭创</span><span class="pr up">+4.56%</span></div>
+                  <div class="srow"><span class="nm"><span style="color:var(--gold)">●大笔买入</span> 新易盛</span><span class="pr up">+3.88%</span></div>
+                  <div class="srow"><span class="nm"><span style="color:var(--up)">▲火箭</span> 天孚通信</span><span class="pr up">+3.21%</span></div>
+                  <div class="srow"><span class="nm"><span style="color:var(--down)">▼跳水</span> 宁德时代</span><span class="pr down">-0.85%</span></div>
+                </div>
+              </div>
+
+              <!-- 自选股（watch 绿 #26d07c） -->
+              <div class="card c-watch">
+                <div class="ch">
+                  <span class="bar" style="background:#26d07c"></span>
+                  <span class="tt">自选股</span>
+                  <span class="more">⋯</span>
+                </div>
+                <div class="cb" style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
+                  <div class="srow"><span class="nm">贵州茅台<small>600519</small></span><span class="pr up">1685.00 +1.23%</span></div>
+                  <div class="srow"><span class="nm">宁德时代<small>300750</small></span><span class="pr down">187.45 -0.85%</span></div>
+                  <div class="srow"><span class="nm">中际旭创<small>300308</small></span><span class="pr up">152.30 +4.56%</span></div>
+                  <div class="srow"><span class="nm">中国平安<small>601318</small></span><span class="pr up">48.20 +0.32%</span></div>
+                  <div class="srow"><span class="nm">新易盛<small>300502</small></span><span class="pr up">78.42 +3.88%</span></div>
+                  <div class="srow"><span class="nm">比亚迪<small>002594</small></span><span class="pr down">245.60 -1.12%</span></div>
+                </div>
+              </div>
+
+              <!-- 板块异动（sectorevent 红 #e0556b） -->
+              <div class="card c-secevent">
+                <div class="ch">
+                  <span class="bar" style="background:#e0556b"></span>
+                  <span class="tt">板块异动</span>
+                  <span class="more">⋯</span>
+                </div>
+                <div class="cb">
+                  <div class="srow"><span class="nm"><span style="color:var(--up)">10:24 拉升</span> CPO 概念</span><span class="pr up">+3.12%</span></div>
+                  <div class="srow"><span class="nm"><span style="color:var(--up)">10:18 拉升</span> 算力租赁</span><span class="pr up">+2.44%</span></div>
+                  <div class="srow"><span class="nm"><span style="color:var(--up)">10:05 异动</span> 半导体设备</span><span class="pr up">+1.70%</span></div>
+                  <div class="srow"><span class="nm"><span style="color:var(--down)">09:52 跳水</span> 银行</span><span class="pr down">-0.32%</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 底部 tabstrip -->
+            <div class="tabstrip">
+              <div class="tab on"><span class="tbar" style="background:#2f6fed"></span>K线图</div>
+              <div class="tab"><span class="tbar" style="background:#e0455a"></span>涨停雷达</div>
+              <div class="tab"><span class="tbar" style="background:#26d07c"></span>自选股</div>
+              <div class="tab"><span class="tbar" style="background:#e0556b"></span>短线精灵</div>
+              <div class="tab"><span class="tbar" style="background:#e0556b"></span>板块异动</div>
+              <div class="tab add">＋</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 标注 -->
+      <div class="ann" style="left:90px;top:80px"><span class="lbl">① 左侧 Dock 6 分组<b>图标 + 2 字标签，分组内已开卡片数红色 badge</b></span></div>
+      <div class="ann" style="left:170px;top:180px;width:200px"><span class="lbl">② Hover 浮出分组卡片<b>真实卡片名 + 一句话描述，已开项金色高亮</b></span></div>
+      <div class="ann" style="left:420px;top:56px"><span class="lbl">③ 场景 chips 一键切卡集<b>盘中/竞价/复盘/选股/极简，沿用 SCENES 定义</b></span></div>
+      <div class="ann" style="left:500px;top:300px"><span class="lbl">④ 卡片沿用原 accent 色条<b>K线蓝/雷达红/自选绿，一眼识别卡片域</b></span></div>
+    </div>
+
+    <div class="notes-row">
+      <div class="note-card"><div class="nh">// CARD FLOW</div><p><b>卡片编排：</b>沿用 12×6 Bento 栅格，每张卡保留 <b>CARD_META.accent</b> 色条；场景模板一键铺满，不再需要"自动/自由"二元切换。</p></div>
+      <div class="note-card"><div class="nh">// MENU & SWITCH</div><p><b>菜单切换：</b>左侧 Dock 常驻 6 分组图标+2 字标签，hover 浮出该组全部卡片（真实 label + desc），已开卡片右上角红色 badge 计数。</p></div>
+      <div class="note-card"><div class="nh">// FLIP HANDOFF</div><p><b>平滑让位：</b>切场景 / 拖卡时，卡片间用 <b>move-class</b> 过渡 0.28s 缓出，周围卡片平滑补位，无跳变。</p></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       屏幕 2：编辑态（拖拽 + 幽灵占位 + FLIP）
+       ============================================================ -->
+  <div class="sec">
+    <div class="sec-head">
+      <div class="sec-num">02</div>
+      <div class="sec-title">
+        <h2>编排态 · 拖拽幽灵占位 + FLIP 让位</h2>
+        <div class="pos">点顶栏「编排」后——全图锚点格浮现，拖卡时金色虚线幽灵框预览落点，周围卡自动后退让位</div>
+      </div>
+      <div class="sec-tags">
+        <span class="stag hot">痛点 1 · 编排</span>
+        <span class="stag hot">痛点 3 · FLIP</span>
+      </div>
+    </div>
+
+    <div class="stage editing">
+      <div class="sbar">
+        <span class="dot" style="background:#ff5f57"></span>
+        <span class="dot" style="background:#febc2e"></span>
+        <span class="dot" style="background:#28c840"></span>
+        <span class="brand">TICKGOLD</span>
+        <span class="url">/workbench/edit-mode</span>
+      </div>
+
+      <div class="app">
+        <div class="tbar">
+          <span class="logo">TickGold</span>
+          <div class="scene">
+            <span class="sc">盘中盯盘</span>
+          </div>
+          <div class="right">
+            <span style="color:var(--gold);border:1px solid var(--gold);padding:2px 10px;border-radius:4px;font-weight:700">✎ 编排中</span>
+            <span style="color:var(--ink2)">一键整理</span>
+            <span style="color:var(--down)">退出</span>
+          </div>
+        </div>
+
+        <div class="abody">
+          <div class="dock" style="opacity:.5">
+            <div class="dg on"><span class="ic">▦</span>大盘</div>
+            <div class="dg"><span class="ic">◉</span>盯盘</div>
+            <div class="dg"><span class="ic">⚡</span>情绪</div>
+            <div class="dg"><span class="ic">◈</span>板块</div>
+          </div>
+
+          <div class="main">
+            <div class="idxbar" style="opacity:.4">
+              <span class="it"><b>上证</b> 3285.42 <span class="up">+0.56%</span></span>
+            </div>
+
+            <div class="grid">
+              <div class="card c-chart">
+                <div class="ch"><span class="bar" style="background:#2f6fed"></span><span class="tt">K线图</span></div>
+                <div class="cb">
+                  <svg width="100%" height="100%" viewBox="0 0 700 360" preserveAspectRatio="none">
+                    <g stroke="#ff4d6a" fill="#ff4d6a">
+                      <line x1="40" y1="220" x2="40" y2="280"/><rect x="34" y="235" width="12" height="30"/>
+                      <line x1="250" y1="160" x2="250" y2="230"/><rect x="244" y="180" width="12" height="30"/>
+                      <line x1="530" y1="80" x2="530" y2="150"/><rect x="524" y="95" width="12" height="40"/>
+                    </g>
+                  </svg>
+                </div>
+              </div>
+
+              <!-- 被拖起的卡：涨停雷达 -->
+              <div class="card c-radar">
+                <div class="ch"><span class="bar" style="background:#e0455a"></span><span class="tt">涨停雷达</span><span class="more">⠿</span></div>
+                <div class="cb" style="font-size:10px">
+                  <div class="srow"><span class="nm">5板 · 鸿博股份</span><span class="pr up">+10.02%</span></div>
+                  <div class="srow"><span class="nm">4板 · 拓维信息</span><span class="pr up">+10.00%</span></div>
+                </div>
+              </div>
+
+              <!-- 被让位卡：半透明后退 -->
+              <div class="card c-spider">
+                <div class="ch"><span class="bar" style="background:#e0556b"></span><span class="tt">短线精灵</span></div>
+              </div>
+
+              <!-- 幽灵占位框：自选股位置 -->
+              <div class="ghost">◈ 幽灵占位 · 涨停雷达 6×2</div>
+
+              <div class="card c-watch">
+                <div class="ch"><span class="bar" style="background:#26d07c"></span><span class="tt">自选股</span></div>
+              </div>
+              <div class="card c-secevent">
+                <div class="ch"><span class="bar" style="background:#e0556b"></span><span class="tt">板块异动</span></div>
+              </div>
+            </div>
+
+            <div class="tabstrip" style="opacity:.5">
+              <div class="tab on"><span class="tbar" style="background:#2f6fed"></span>K线图</div>
+              <div class="tab"><span class="tbar" style="background:#e0455a"></span>涨停雷达</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ann" style="left:420px;top:56px"><span class="lbl">① 编排开关顶栏常驻<b>不再藏在「布局」下拉里</b></span></div>
+      <div class="ann" style="left:880px;top:180px;width:180px"><span class="lbl">② 被拖卡金色描边 + 阴影<b>其余卡自动 .35 透明后退</b></span></div>
+      <div class="ann" style="left:300px;top:500px;width:200px"><span class="lbl">③ 金色虚线幽灵框<b>实时预览落点，松手 FLIP 滑入</b></span></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       屏幕 3：玻璃浮岛版（同卡片，玻璃拟态重画）
+       ============================================================ -->
+  <div class="sec">
+    <div class="sec-head">
+      <div class="sec-num">03</div>
+      <div class="sec-title">
+        <h2>玻璃浮岛版 · 同卡片奢华重画</h2>
+        <div class="pos">同一批真实卡片，用玻璃拟态 + 空间层叠重画——主卡聚焦、辅卡后退</div>
+      </div>
+      <div class="sec-tags">
+        <span class="stag">玻璃拟态</span>
+        <span class="stag">空间层叠</span>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="sbar">
+        <span class="dot" style="background:#ff5f57"></span>
+        <span class="dot" style="background:#febc2e"></span>
+        <span class="dot" style="background:#28c840"></span>
+        <span class="brand">TICKGOLD · AERO</span>
+      </div>
+
+      <div class="glass-screen">
+        <!-- 主卡：K线图 -->
+        <div class="gcard" style="left:90px;right:200px;top:20px;height:440px;z-index:3;
+          border-color:rgba(47,111,237,.35);
+          box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 60px rgba(47,111,237,.15), inset 0 1px 0 rgba(255,255,255,.2)">
+          <div class="gh"><span class="gd" style="background:#2f6fed;box-shadow:0 0 8px #2f6fed"></span>K线图 · 中际旭创 300308<span style="margin-left:auto;color:var(--ink3)">日K</span></div>
+          <div><span style="font-size:30px;font-weight:700" class="up">152.30</span><span class="up" style="margin-left:10px;font-size:12px">+4.56%</span></div>
+          <div style="flex:1;margin-top:10px">
+            <svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="none">
+              <defs><linearGradient id="gg" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ff4d6a" stop-opacity=".3"/><stop offset="100%" stop-color="#ff4d6a" stop-opacity="0"/>
+              </linearGradient></defs>
+              <path d="M0,200 L50,190 L100,195 L150,170 L200,175 L250,140 L300,145 L350,110 L400,115 L450,80 L500,85 L550,50 L600,45 L600,260 L0,260 Z" fill="url(#gg)"/>
+              <polyline points="0,200 50,190 100,195 150,170 200,175 250,140 300,145 350,110 400,115 450,80 500,85 550,50 600,45"
+                fill="none" stroke="#ff4d6a" stroke-width="1.8"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 左辅：自选股 -->
+        <div class="gcard" style="left:10px;top:60px;width:170px;height:240px;z-index:2;opacity:.85">
+          <div class="gh"><span class="gd" style="background:#26d07c"></span>自选股</div>
+          <div style="font-size:10.5px;line-height:2;color:var(--ink2)">
+            <div style="display:flex;justify-content:space-between"><span>贵州茅台</span><span class="up">+1.23%</span></div>
+            <div style="display:flex;justify-content:space-between"><span>中际旭创</span><span class="up">+4.56%</span></div>
+            <div style="display:flex;justify-content:space-between"><span>新易盛</span><span class="up">+3.88%</span></div>
+            <div style="display:flex;justify-content:space-between"><span>宁德时代</span><span class="down">-0.85%</span></div>
+            <div style="display:flex;justify-content:space-between"><span>比亚迪</span><span class="down">-1.12%</span></div>
+          </div>
+        </div>
+
+        <!-- 右辅上：涨停雷达 -->
+        <div class="gcard" style="right:10px;top:60px;width:180px;height:180px;z-index:2;opacity:.85">
+          <div class="gh"><span class="gd" style="background:#e0455a"></span>涨停雷达</div>
+          <div style="font-size:10.5px;line-height:2;color:var(--ink2)">
+            <div style="display:flex;justify-content:space-between"><span style="color:#e0455a">5板</span><span>鸿博股份</span><span class="up">+10.02%</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#e0455a">4板</span><span>拓维信息</span><span class="up">+10.00%</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#e0455a">3板</span><span>四川长虹</span><span class="up">+9.98%</span></div>
+          </div>
+        </div>
+
+        <!-- 右辅下：短线精灵 -->
+        <div class="gcard" style="right:10px;top:260px;width:180px;height:160px;z-index:2;opacity:.7">
+          <div class="gh"><span class="gd" style="background:#e0556b"></span>短线精灵</div>
+          <div style="font-size:10.5px;line-height:1.9;color:var(--ink2)">
+            <div><span class="up">▲火箭</span> 中际旭创</div>
+            <div><span style="color:var(--gold)">●大买</span> 新易盛</div>
+            <div><span class="down">▼跳水</span> 宁德时代</div>
+          </div>
+        </div>
+
+        <!-- 底部：板块异动 -->
+        <div class="gcard" style="left:190px;bottom:14px;right:200px;height:80px;z-index:2;opacity:.8">
+          <div class="gh"><span class="gd" style="background:#e0556b"></span>板块异动</div>
+          <div style="display:flex;gap:16px;font-size:10.5px;color:var(--ink2)">
+            <span>CPO 概念 <b class="up">+3.12%</b></span>
+            <span>算力租赁 <b class="up">+2.44%</b></span>
+            <span>半导体 <b class="up">+1.70%</b></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ann" style="left:300px;top:40px"><span class="lbl">① 主卡 K线蓝辉光<b>同一张卡，玻璃拟态 + 蓝色描边</b></span></div>
+      <div class="ann" style="left:20px;top:280px"><span class="lbl">② 自选/雷达/精灵后退半透明<b>层级 2，景深拉开</b></span></div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

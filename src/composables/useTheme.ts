@@ -70,15 +70,15 @@ export const THEMES: ThemeMeta[] = [
   },
 ];
 
-const theme = ref<ThemeId>("gold");
+const theme = ref<ThemeId>("obsidian");
 
 function apply(t: ThemeId) {
   document.documentElement.setAttribute("data-theme", t);
 }
 
-/** 启动时读取已保存的主题；无记录或 web 预览时使用默认鎏金奢华 */
+/** 启动时读取已保存的主题；无记录或 web 预览时使用默认曜石 */
 async function load() {
-  let t: ThemeId = "gold";
+  let t: ThemeId = "obsidian";
   try {
     await ensureDb();
     const rows = await db().select<{ value: string }[]>(

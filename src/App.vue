@@ -35,6 +35,7 @@ import { useWatchlistStore } from "./stores/watchlist";
 import { useQuotesStore } from "./stores/quotes";
 import { useAlertStore } from "./stores/alert";
 import { useWorkbench, CARD_META, SCENES, currentTimeSlot, type CardId } from "./composables/useWorkbench";
+import { DOCK_GROUPS } from "./lib/dock";
 import { useTheme } from "./composables/useTheme";
 import { useAccessibility } from "./composables/useAccessibility";
 import { useMotion } from "./composables/useMotion";
@@ -230,6 +231,35 @@ function toggleCard(id: CardId) {
   }
   if (bench.isFocused.value) addAndFocus(id);
   else bench.open(id);
+}
+
+// ===== 玻璃浮岛：按 Dock 分组聚合已开卡片 =====
+const glassGroups = computed(() => {
+  const open = bench.openCards.value;
+  return DOCK_GROUPS
+    .map((g) => ({
+      name: g.name,
+      items: g.items.filter((it) => open.includes(it.id as CardId)),
+    }))
+    .filter((g) => g.items.length > 0);
+});
+
+// 玻璃浮岛右侧导航：所有分组都显示，可折叠
+const allGlassGroups = DOCK_GROUPS;
+const openGroups = ref<Set<string>>(new Set(DOCK_GROUPS.map(g => g.name)));
+function toggleGroup(name: string) {
+  if (openGroups.value.has(name)) openGroups.value.delete(name);
+  else openGroups.value.add(name);
+  openGroups.value = new Set(openGroups.value);
+}
+// 右侧导航点击：已开则切换主卡，未开则打开并设为主卡
+function onNavPick(id: CardId) {
+  if (bench.openCards.value.includes(id)) {
+    bench.setGlassActive(id);
+  } else {
+    bench.open(id);
+    bench.setGlassActive(id);
+  }
 }
 
 // 底部 Tab 流点击：当前卡 → 退出聚焦；未聚焦 → 进入聚焦；聚焦他卡 → 切换
@@ -467,6 +497,33 @@ onBeforeUnmount(() => {
     <!-- 顶栏 -->
     <header class="topbar" :class="{ mac: isMac }" data-tauri-drag-region>
       <div class="brand" data-tauri-drag-region>TickGold</div>
+      <div class="scene-pill-group-top">
+        <button
+          v-for="sc in SCENES"
+          :key="sc.id"
+          type="button"
+          class="scene-pill"
+          :class="{ on: bench.sceneId.value === sc.id }"
+          @click="bench.applyScene(sc)"
+        >
+          <svg viewBox="0 0 24 24"><path fill="currentColor" :d="sc.icon" /></svg>
+          <span>{{ sc.label }}</span>
+        </button>
+      </div>
+      <div class="layout-mode-toggle">
+        <button
+          type="button"
+          class="lmt-btn"
+          :class="{ on: bench.layoutMode.value === 'bento' }"
+          @click="bench.setLayoutMode('bento')"
+        >▦ Bento</button>
+        <button
+          type="button"
+          class="lmt-btn"
+          :class="{ on: bench.layoutMode.value === 'glass' }"
+          @click="bench.setLayoutMode('glass')"
+        >⬡ 玻璃浮岛</button>
+      </div>
       <SearchBox @select="onSearchSelect" />
       <div class="status">
         <span :class="quotes.polling ? 'dot on' : 'dot'"></span>
@@ -474,15 +531,9 @@ onBeforeUnmount(() => {
         <span class="sep">|</span>
         {{ Object.keys(quotes.map).length }} 只
         <span class="sep">|</span>
-        {{ quotes.lastUpdate ? new Date(quotes.lastUpdate).toLocaleTimeString() : "--:--:--" }}
-        <span class="sep">|</span>
-        <span class="ver">v{{ curVersion }}</span>
-        <span class="sep">|</span>
-        <LayoutMenu />
-        <span class="sep">|</span>
-        <button class="upd" @click="showSettings = true">设置</button>
-        <span class="sep">|</span>
-        <button class="upd" @click="showUpdate = true">检查更新</button>
+        <button class="icon-btn" title="设置" @click="showSettings = true">
+          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        </button>
       </div>
       <!-- Windows 自绘窗口控制（macOS 使用原生红绿灯） -->
       <div v-if="isWin" class="win-ctl" data-tauri-drag-region="false">
@@ -537,30 +588,98 @@ onBeforeUnmount(() => {
       <Transition name="welcome">
         <WelcomeBoard v-if="bench.openCards.value.length === 0" />
       </Transition>
-      <!-- 场景 + 时段合并为一行，省一行垂直空间 -->
-      <div class="scene-time-row">
-        <div class="scene-bar">
-          <span class="scene-label">场景模板</span>
-          <button
-            v-for="sc in SCENES"
-            :key="sc.id"
-            type="button"
-            class="scene-chip"
-            :class="{ on: bench.sceneId.value === sc.id }"
-            @click="bench.applyScene(sc)"
-          >
-            <svg viewBox="0 0 24 24"><path fill="currentColor" :d="sc.icon" /></svg>
-            <span>{{ sc.label }}</span>
-          </button>
-        </div>
-        <div class="scene-time-sep"></div>
+      <!-- 时段 Tabs 一行 -->
+      <div class="time-tabs-row">
         <TimeTabs :active="bench.timeMode.value" @select="bench.enterTimeMode($event)" />
       </div>
 
-      <div class="ws-body" :class="{ free: bench.freeMode.value }">
+      <div class="ws-body" :class="{ free: bench.freeMode.value, glass: bench.layoutMode.value === 'glass' }">
+
+      <!-- ===== 玻璃浮岛模式：主卡占满 + 右边缘磁吸导航 ===== -->
+      <template v-if="bench.layoutMode.value === 'glass'">
+        <div class="glass-layout">
+        <div class="glass-master">
+          <CardShell
+            v-if="bench.glassActive.value"
+            :card-id="bench.glassActive.value"
+            :title="CARD_META[bench.glassActive.value].title"
+            :accent="CARD_META[bench.glassActive.value].accent"
+            :focused="false"
+            :collapsed="false"
+            :refresh="bench.cardRefreshOf(bench.glassActive.value)"
+            :color="bench.cardCustom.value[bench.glassActive.value]?.color ?? ''"
+            :look-vars="bench.cardStyleVars(bench.glassActive.value)"
+            :look="bench.cardLook(bench.glassActive.value)"
+            :cfg-open-signal="bench.openCfgId.value === bench.glassActive.value"
+            :popoutable="bench.isWidgetCard(bench.glassActive.value)"
+            :popout-on="pip.isOpen({ kind: 'card', cardId: bench.glassActive.value })"
+            hide-focus
+            @close="bench.close(bench.glassActive.value!)"
+            @focus="enterFocus(bench.glassActive.value!)"
+            @restore="exitFocus"
+            @menu="(p) => onCardMenu(bench.glassActive.value!, p)"
+            @cfg-consumed="bench.openCfgId.value = null"
+            @color="(c: string) => bench.setCardColor(bench.glassActive.value!, c)"
+            @refresh="(n: number) => bench.setCardRefresh(bench.glassActive.value!, n)"
+            @look="(p) => bench.setCardLook(bench.glassActive.value!, p)"
+            @pin="bench.togglePin(bench.glassActive.value!)"
+            @lock="bench.toggleLock(bench.glassActive.value!)"
+            @tag="(t: string) => bench.setCardTag(bench.glassActive.value!, t)"
+            @resetlook="bench.resetCardLook(bench.glassActive.value!)"
+            @resetwidgets="bench.resetCardWidgets(bench.glassActive.value!)"
+            @popout="pip.openPip({ kind: 'card', cardId: bench.glassActive.value! })"
+          >
+            <WidgetCanvas
+              v-if="bench.isWidgetCard(bench.glassActive.value!)"
+              :id="bench.glassActive.value!"
+              :editing="false"
+              @popout="(c: CardId, w: string) => pip.openPip({ kind: 'widget', cardId: c, widgetId: w })"
+            />
+            <CardContent
+              v-else
+              :id="bench.glassActive.value!"
+              :selected="selected"
+              @select="onSelect"
+              @sector="onSectorPick"
+            />
+          </CardShell>
+        </div>
+        <aside class="glass-edge">
+          <div class="ge-head">
+            <div class="ge-title">卡片导航</div>
+            <div class="ge-sub">{{ bench.openCards.value.length }} 张已开</div>
+          </div>
+          <div class="ge-groups">
+            <div v-for="g in allGlassGroups" :key="g.name" class="ge-group" :class="{ open: openGroups.has(g.name) }">
+              <div class="ge-group-head" @click="toggleGroup(g.name)">
+                <span class="ge-group-icon">
+                  <svg viewBox="0 0 24 24"><path fill="currentColor" :d="g.icon" /></svg>
+                </span>
+                <span class="ge-group-name">{{ g.name }}</span>
+                <span class="ge-group-count">{{ g.items.filter(i => bench.openCards.value.includes(i.id)).length }}</span>
+                <span class="ge-group-arrow">▶</span>
+              </div>
+              <div class="ge-group-items">
+                <button
+                  v-for="item in g.items"
+                  :key="item.id"
+                  type="button"
+                  class="ge-item"
+                  :class="{ on: item.id === bench.glassActive.value, closed: !bench.openCards.value.includes(item.id) }"
+                  @click="onNavPick(item.id)"
+                >
+                  <span class="ge-dot" :style="{ background: CARD_META[item.id]?.accent || '#8b97a8' }"></span>
+                  {{ CARD_META[item.id]?.title || item.label }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </aside>
+        </div>
+      </template>
 
       <!-- ===== 自由布局：卡片绝对定位、可随意拖拽 ===== -->
-      <template v-if="bench.freeMode.value">
+      <template v-else-if="bench.freeMode.value">
         <div class="free-toolbar">
           <span class="ft-hint">自由布局：按住卡片标题栏拖动，靠近其它卡边缘自动磁吸对齐；布局已自动保存</span>
           <button class="ft-btn" @click="bench.tidyFree()">一键整理</button>
@@ -596,7 +715,7 @@ onBeforeUnmount(() => {
             :style="bench.freeCellStyle(id)"
           >
             <CardShell
-              v-if="cardMount.isMounted(id)"
+              v-if="true"
               :card-id="id"
               :title="CARD_META[id].title"
               :accent="CARD_META[id].accent"
@@ -695,7 +814,7 @@ onBeforeUnmount(() => {
         >
           <div v-if="bench.dragId.value === id" class="drag-ghost"></div>
           <CardShell
-            v-if="cardMount.isMounted(id)"
+            v-if="true"
             :card-id="id"
             :title="CARD_META[id].title"
             :accent="CARD_META[id].accent"
@@ -769,13 +888,6 @@ onBeforeUnmount(() => {
       </template>
       </div>
 
-      <!-- 底部卡片 Tab 流：列出所有已开卡片，点击聚焦 / 中键关闭 -->
-      <CardTabStrip
-        v-if="bench.openCards.value.length > 0"
-        @activate="onTabActivate"
-        @close="bench.close"
-        @add="openPalette"
-      />
     </main>
     </div><!-- /.app-main -->
 
@@ -808,7 +920,7 @@ onBeforeUnmount(() => {
     <UpdateDialog v-model:open="showUpdate" />
     <!-- 设置对话框 -->
     <AlertToast />
-    <SettingsDialog v-model:open="showSettings" @replay-onboarding="showOnboarding = true" />
+    <SettingsDialog v-model:open="showSettings" @replay-onboarding="showOnboarding = true" @check-update="showUpdate = true" />
     <ShortcutDialog v-model:open="showShortcuts" />
     <OnboardingDialog v-model:open="showOnboarding" />
 

@@ -76,6 +76,22 @@ function createWorkbench() {
   // v1 微件布局：有 widgets 的卡走 WidgetCanvas 渲染，无则 legacy CardContent
   const cardWidgets = ref<Partial<Record<CardId, CardWidgets>>>({});
   const sceneId = ref<string | null>(null);
+  // 布局模式：bento = 平铺网格；glass = 玻璃浮岛（主卡占满 + 右边缘导航）
+  const layoutMode = ref<"bento" | "glass">("bento");
+  // 玻璃岛模式下当前主卡
+  const glassActive = ref<CardId | null>(null);
+  function setLayoutMode(m: "bento" | "glass") {
+    layoutMode.value = m;
+    if (m === "glass") {
+      // 进入玻璃岛：默认第一张卡为主卡
+      if (!glassActive.value || !openCards.value.includes(glassActive.value)) {
+        glassActive.value = openCards.value[0] ?? null;
+      }
+    }
+  }
+  function setGlassActive(id: CardId) {
+    glassActive.value = id;
+  }
   function patchCustom(id: CardId, patch: Partial<CardCustom>) {
     cardCustom.value = { ...cardCustom.value, [id]: { ...cardCustom.value[id], ...patch } };
   }
@@ -811,6 +827,11 @@ function createWorkbench() {
     sceneId,
     applyScene,
     saveCurrentAsScene,
+    // 布局模式（Bento / 玻璃浮岛）
+    layoutMode,
+    glassActive,
+    setLayoutMode,
+    setGlassActive,
     // 时段驾驶舱
     timeMode,
     enterTimeMode,

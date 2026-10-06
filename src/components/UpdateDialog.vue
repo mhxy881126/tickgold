@@ -277,7 +277,7 @@ watch(
 <style scoped>
 .mask {
   position: fixed; inset: 0; background: rgba(0,0,0,.55);
-  display: flex; align-items: center; justify-content: center; z-index: 1000;
+  display: flex; align-items: center; justify-content: center; z-index: 2000;
 }
 .dlg {
   width: 420px; max-width: 92vw; border-radius: 12px; overflow: hidden;

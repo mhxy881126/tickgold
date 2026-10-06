@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>TickGold · 卡片工作台高端改版 v2</title>
+<style>
+/* ============================================================
+   设计系统 v2 —— 专业盯盘终端
+   ============================================================ */
+:root{
+  --bg:#07080a; --bg2:#0b0d11;
+  --ink:#e8ecf1; --ink2:#8b94a3; --ink3:#565e6c;
+  --line:rgba(255,255,255,.07);
+  --line2:rgba(255,255,255,.14);
+  --up:#ff4d6a; --down:#00d4a0; --gold:#e8b860; --cyan:#4dd0e1;
+  --glass:rgba(255,255,255,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--ink);
+  font-family:"SF Pro Display","PingFang SC","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+  font-feature-settings:"tnum" 1; font-variant-numeric:tabular-nums;}
+body{padding:60px 28px 100px;line-height:1.5}
+.wrap{max-width:1380px;margin:0 auto}
+
+/* 全局噪点 */
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.05;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence baseFrequency='0.9'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");}
+
+/* ============ 封面 ============ */
+.cover{text-align:center;margin-bottom:50px;position:relative;z-index:2}
+.kicker{font-size:11px;letter-spacing:6px;color:var(--gold);text-transform:uppercase;margin-bottom:14px}
+.cover h1{font-size:38px;font-weight:700;letter-spacing:1px;line-height:1.15}
+.cover h1 .thin{color:var(--ink2);font-weight:300}
+.cover .sub{color:var(--ink2);font-size:13px;margin-top:14px;letter-spacing:1px}
+.cover .meta{margin-top:20px;display:flex;justify-content:center;gap:24px;font-size:10.5px;color:var(--ink3);letter-spacing:1px}
+.cover .meta b{color:var(--ink2);font-weight:500}
+
+/* ============ 章节头 ============ */
+.sec{margin-bottom:90px;position:relative;z-index:2}
+.sec-head{display:flex;align-items:flex-end;gap:18px;margin-bottom:26px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.sec-num{font-size:42px;font-weight:200;color:transparent;-webkit-text-stroke:1px var(--line2);line-height:1;font-family:"SF Mono",monospace}
+.sec-title h2{font-size:24px;font-weight:600;letter-spacing:.5px}
+.sec-title .pos{color:var(--ink2);font-size:12.5px;margin-top:4px;letter-spacing:.5px}
+.sec-tags{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.stag{font-size:10px;color:var(--ink2);border:1px solid var(--line);padding:4px 10px;border-radius:3px;letter-spacing:1px}
+.stag.hot{color:var(--gold);border-color:rgba(232,184,96,.4)}
+
+/* ============ 屏幕 mockup 通用 ============ */
+.stage{position:relative;border-radius:14px;overflow:hidden;
+  background:var(--bg2);border:1px solid var(--line2);
+  box-shadow:0 40px 100px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.05);}
+.stage .bar{height:30px;background:rgba(255,255,255,.02);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;padding:0 14px;gap:10px;font-size:10px;color:var(--ink2);letter-spacing:.5px}
+.stage .bar .dot{width:9px;height:9px;border-radius:50%}
+.stage .bar .brand{color:var(--gold);font-weight:600;letter-spacing:2px;font-size:10.5px}
+.stage .bar .url{flex:1;text-align:center;color:var(--ink3);font-family:"SF Mono",monospace;font-size:9.5px}
+
+/* 标注（设计稿风：细线 + 标签） */
+.ann{position:absolute;z-index:30;font-size:10.5px;letter-spacing:.3px}
+.ann .lbl{display:inline-block;background:rgba(7,8,10,.92);border:1px solid var(--gold);
+  color:var(--gold);padding:4px 9px;border-radius:3px;font-weight:600;font-size:10px;
+  backdrop-filter:blur(6px);box-shadow:0 4px 16px rgba(0,0,0,.5)}
+.ann .lbl b{color:var(--ink);font-weight:500;margin-left:6px}
+.ann .line{position:absolute;background:var(--gold);opacity:.6}
+.ann.v .line{width:1px}
+.ann.h .line{height:1px}
+
+/* ============================================================
+   方案 A · 曜石终端
+   ============================================================ */
+.A .screen{height:680px;display:flex;flex-direction:column;background:
+  radial-gradient(800px 400px at 70% 0%, rgba(232,184,96,.05), transparent 60%),
+  var(--bg2);}
+/* ticker tape */
+.ticker{height:26px;flex:none;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:22px;padding:0 16px;font-size:10.5px;
+  background:rgba(0,0,0,.2);overflow:hidden;white-space:nowrap}
+.ticker .tk{display:flex;gap:6px;align-items:center}
+.ticker .tk .nm{color:var(--ink2)}
+.ticker .tk .v{font-weight:600}
+.up{color:var(--up)} .down{color:var(--down)}
+.A .body{flex:1;display:flex;min-height:0}
+
+/* 左栏：信号流 */
+.A .left{width:240px;flex:none;border-right:1px solid var(--line);display:flex;flex-direction:column}
+.A .lh{height:34px;display:flex;align-items:center;padding:0 14px;gap:8px;
+  font-size:10px;letter-spacing:2px;color:var(--ink2);border-bottom:1px solid var(--line)}
+.A .lh .live{width:6px;height:6px;border-radius:50%;background:var(--up);
+  box-shadow:0 0 8px var(--up);animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.A .signals{flex:1;overflow:hidden;padding:10px 0}
+.A .sig{display:flex;gap:10px;padding:8px 14px;border-left:2px solid transparent;position:relative}
+.A .sig + .sig::before{content:"";position:absolute;left:17px;top:-10px;width:1px;height:10px;background:var(--line)}
+.A .sig .time{font-family:"SF Mono",monospace;font-size:9.5px;color:var(--ink3);padding-top:2px;width:34px;flex:none}
+.A .sig .dot{width:6px;height:6px;border-radius:50%;margin-top:4px;flex:none}
+.A .sig .txt{font-size:10.5px;color:var(--ink2);line-height:1.4}
+.A .sig .txt b{color:var(--ink);font-weight:600}
+.A .sig.on{background:rgba(232,184,96,.06);border-left-color:var(--gold)}
+.A .sig.on .txt b{color:var(--gold)}
+
+/* 中央 K 线 */
+.A .center{flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--line)}
+.A .ch-head{height:48px;flex:none;display:flex;align-items:center;padding:0 18px;gap:14px;border-bottom:1px solid var(--line)}
+.A .ch-head .nm{font-size:16px;font-weight:600}
+.A .ch-head .code{font-size:10.5px;color:var(--ink3);font-family:"SF Mono",monospace}
+.A .ch-head .price{font-size:24px;font-weight:700;margin-left:10px;
+  text-shadow:0 0 20px rgba(255,77,106,.5)}
+.A .ch-head .chg{font-size:11px;padding:3px 8px;border-radius:3px;background:rgba(255,77,106,.12);color:var(--up)}
+.A .ch-head .stats{margin-left:auto;display:flex;gap:18px;font-size:10px;color:var(--ink2)}
+.A .ch-head .stats b{color:var(--ink);font-weight:600;margin-left:4px}
+.A .chart{flex:1;position:relative;padding:14px}
+.A .chart svg{width:100%;height:100%;display:block}
+
+/* 右栏 */
+.A .right{width:260px;flex:none;display:flex;flex-direction:column}
+.A .rh{height:34px;display:flex;align-items:center;padding:0 14px;justify-content:space-between;
+  font-size:10px;letter-spacing:2px;color:var(--ink2);border-bottom:1px solid var(--line)}
+.A .rh .grp{display:flex;gap:4px}
+.A .rh .g{padding:2px 8px;border-radius:3px;font-size:9.5px;cursor:pointer}
+.A .rh .g.on{background:var(--gold);color:#000;font-weight:700}
+.A .watch{flex:1;overflow:hidden}
+.A .wrow{display:grid;grid-template-columns:1fr 60px 50px;align-items:center;
+  padding:7px 14px;border-bottom:1px solid rgba(255,255,255,.03);cursor:pointer}
+.A .wrow:hover{background:rgba(255,255,255,.03)}
+.A .wrow .n{font-size:11.5px;font-weight:500}
+.A .wrow .n small{display:block;font-size:9px;color:var(--ink3);font-family:"SF Mono",monospace;font-weight:400}
+.A .wrow .sp{display:flex;justify-content:flex-end}
+.A .wrow .p{text-align:right;font-size:11px;font-weight:600}
+.A .wrow .p small{display:block;font-size:9px;font-weight:400}
+
+/* 底部 dock */
+.A .dock{height:46px;flex:none;border-top:1px solid var(--line);display:flex;align-items:center;
+  justify-content:center;gap:4px;background:rgba(0,0,0,.3)}
+.A .dico{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.04);
+  border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
+  font-size:9px;color:var(--ink2)}
+.A .dico.on{background:var(--gold);color:#000;border-color:var(--gold);box-shadow:0 0 16px rgba(232,184,96,.5)}
+
+/* ============================================================
+   方案 B · 玻璃浮岛
+   ============================================================ */
+.B .screen{height:680px;position:relative;overflow:hidden;
+  background:
+    radial-gradient(600px 400px at 20% 20%, rgba(106,80,220,.25), transparent 60%),
+    radial-gradient(700px 500px at 85% 70%, rgba(232,184,96,.18), transparent 60%),
+    radial-gradient(500px 400px at 60% 100%, rgba(77,208,225,.12), transparent 60%),
+    #08090d;}
+.B .gbar{height:30px;display:flex;align-items:center;padding:0 16px;font-size:10px;color:var(--ink2);
+  position:relative;z-index:5}
+.B .gbar .brand{color:var(--ink);font-weight:600;letter-spacing:2px}
+.B .gbar .nav{margin-left:30px;display:flex;gap:18px}
+.B .gbar .nav span{cursor:pointer;padding:3px 0;border-bottom:1px solid transparent}
+.B .gbar .nav span.on{color:var(--ink);border-color:var(--gold)}
+
+/* 玻璃卡片通用 */
+.gcard{position:absolute;border-radius:16px;
+  background:linear-gradient(135deg, rgba(255,255,255,.09), rgba(255,255,255,.02));
+  backdrop-filter:blur(24px) saturate(160%);-webkit-backdrop-filter:blur(24px) saturate(160%);
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:0 20px 50px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.15);
+  padding:14px;display:flex;flex-direction:column;overflow:hidden}
+.gcard .gh{display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:1.5px;color:var(--ink2);margin-bottom:10px}
+.gcard .gh .gdot{width:5px;height:5px;border-radius:50%}
+
+/* 中央主卡 */
+.B .maincard{left:240px;right:280px;top:54px;height:440px;z-index:3;
+  border-color:rgba(232,184,96,.35);
+  box-shadow:0 30px 80px rgba(0,0,0,.6), 0 0 60px rgba(232,184,96,.12), inset 0 1px 0 rgba(255,255,255,.2);}
+.B .maincard .big{font-size:32px;font-weight:700;letter-spacing:-.5px}
+.B .maincard .chg{color:var(--up);font-size:13px;margin-left:10px;
+  text-shadow:0 0 14px rgba(255,77,106,.6)}
+.B .maincard .meta{display:flex;gap:16px;margin-top:6px;font-size:10.5px;color:var(--ink2)}
+.B .maincard .meta b{color:var(--ink);font-weight:600}
+
+/* 两侧辅卡 */
+.B .sideL{left:20px;top:80px;width:200px;height:170px;z-index:2;opacity:.85}
+.B .sideL2{left:20px;top:270px;width:200px;height:150px;z-index:2;opacity:.7}
+.B .sideR{right:20px;top:80px;width:240px;height:200px;z-index:2;opacity:.85}
+.B .sideR2{right:20px;top:300px;width:240px;height:140px;z-index:2;opacity:.7}
+
+/* 底部悬浮 dock */
+.B .dock{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);z-index:10;
+  display:flex;gap:6px;padding:8px;border-radius:20px;
+  background:rgba(20,22,28,.6);backdrop-filter:blur(30px) saturate(180%);
+  border:1px solid rgba(255,255,255,.15);
+  box-shadow:0 20px 50px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.15)}
+.B .d{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+  font-size:9px;color:var(--ink2);background:rgba(255,255,255,.05);cursor:pointer;transition:all .2s}
+.B .d.on{background:linear-gradient(135deg,var(--gold),#c89040);color:#000;transform:translateY(-6px);
+  box-shadow:0 10px 24px rgba(232,184,96,.4)}
+
+/* ============================================================
+   方案 C · 战术 HUD
+   ============================================================ */
+.C .screen{height:680px;position:relative;overflow:hidden;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(232,184,96,.04), transparent 50%),
+    repeating-linear-gradient(0deg, transparent 0 39px, rgba(232,184,96,.04) 39px 40px),
+    repeating-linear-gradient(90deg, transparent 0 39px, rgba(232,184,96,.04) 39px 40px),
+    #05070a;}
+/* 扫描线 */
+.C .scan{position:absolute;left:0;right:0;height:80px;top:0;z-index:1;pointer-events:none;
+  background:linear-gradient(180deg, transparent, rgba(77,208,225,.06), transparent);
+  animation:scan 4s linear infinite}
+@keyframes scan{0%{transform:translateY(0)}100%{transform:translateY(680px)}}
+
+/* HUD 卡：切角 + L 形角标 */
+.hud{position:relative;background:rgba(10,14,18,.7);
+  clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px);
+  padding:1px;}
+.hud-inner{clip-path:polygon(11px 0,100% 0,100% calc(100% - 11px),calc(100% - 11px) 100%,0 100%,0 11px);
+  background:linear-gradient(135deg, rgba(232,184,96,.35), rgba(232,184,96,.05) 40%, rgba(77,208,225,.2));
+  padding:12px;height:100%;display:flex;flex-direction:column}
+.hud .corner{position:absolute;width:14px;height:14px;border-color:var(--gold);z-index:2}
+.hud .tl{top:0;left:0;border-top:1.5px solid;border-left:1.5px solid}
+.hud .tr{top:0;right:0;border-top:1.5px solid;border-right:1.5px solid}
+.hud .bl{bottom:0;left:0;border-bottom:1.5px solid;border-left:1.5px solid}
+.hud .br{bottom:0;right:0;border-bottom:1.5px solid;border-right:1.5px solid}
+.hud .hud-h{font-family:"SF Mono",monospace;font-size:9.5px;letter-spacing:2px;color:var(--gold);
+  display:flex;justify-content:space-between;margin-bottom:8px}
+.hud .hud-h .st{color:var(--down)}
+.hud .hud-b{flex:1;position:relative}
+
+.C .chud{position:absolute;left:20px;top:50px;width:280px;height:280px}
+.C .rhud{position:absolute;right:20px;top:50px;width:260px;height:200px}
+.C .bhud{position:absolute;right:20px;top:270px;width:260px;height:180px}
+.C .center-hud{position:absolute;left:320px;right:300px;top:50px;height:400px}
+.C .hud-title{font-family:"SF Mono",monospace;font-size:11px;color:var(--cyan);letter-spacing:3px;margin-bottom:10px}
+.C .radar{width:100%;height:100%}
+.C .hud-num{font-family:"SF Mono",monospace;font-size:26px;font-weight:700;color:var(--gold);
+  text-shadow:0 0 18px rgba(232,184,96,.6)}
+.C .hud-num .u{font-size:11px;color:var(--ink2);margin-left:6px;font-weight:400}
+.C .hud-row{display:flex;justify-content:space-between;font-family:"SF Mono",monospace;font-size:10px;
+  padding:3px 0;border-bottom:1px dashed rgba(232,184,96,.15);color:var(--ink2)}
+.C .hud-row b{color:var(--ink);font-weight:500}
+
+/* 顶部 HUD 状态条 */
+.C .hud-top{position:absolute;top:14px;left:50%;transform:translateX(-50%);
+  font-family:"SF Mono",monospace;font-size:10px;color:var(--cyan);letter-spacing:3px;z-index:5;
+  display:flex;gap:20px;align-items:center}
+.C .hud-top .blink{width:8px;height:8px;border-radius:50%;background:var(--down);box-shadow:0 0 8px var(--down);animation:pulse 1.4s infinite}
+
+/* ============================================================
+   说明栏
+   ============================================================ */
+.notes-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:22px}
+.note-card{padding:14px 16px;border-left:2px solid var(--gold);background:rgba(232,184,96,.03)}
+.note-card .nh{font-size:11px;color:var(--gold);letter-spacing:2px;margin-bottom:6px;font-family:"SF Mono",monospace}
+.note-card p{font-size:11.5px;color:var(--ink2);line-height:1.55}
+.note-card p b{color:var(--ink);font-weight:600}
+
+@media (max-width:1100px){.notes-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 封面 -->
+  <div class="cover">
+    <div class="kicker">TickGold · Trading Workbench Redesign</div>
+    <h1>专业盯盘工作台 <span class="thin">·</span> 高端改版</h1>
+    <div class="sub">三条设计方向 —— 曜石终端 / 玻璃浮岛 / 战术 HUD</div>
+    <div class="meta">
+      <span><b>CANVAS</b> 1440 × 900</span>
+      <span><b>TYPE</b> SF Pro / SF Mono</span>
+      <span><b>STYLE</b> Dark Pro · Glass · HUD</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       A · 曜石终端
+  ============================================================ -->
+  <div class="sec">
+    <div class="sec-head">
+      <div class="sec-num">01</div>
+      <div class="sec-title">
+        <h2>曜石终端 <span style="color:var(--ink3);font-weight:300;font-size:14px">Obsidian Terminal</span></h2>
+        <div class="pos">专业派 —— Bloomberg × TradingView 的现代演绎，信息密度即专业感</div>
+      </div>
+      <div class="sec-tags">
+        <span class="stag hot">推荐落地</span>
+        <span class="stag">高密度</span>
+        <span class="stag">蜡烛图</span>
+        <span class="stag">信号流</span>
+      </div>
+    </div>
+
+    <div class="stage A">
+      <div class="bar">
+        <span class="dot" style="background:#ff5f57"></span>
+        <span class="dot" style="background:#febc2e"></span>
+        <span class="dot" style="background:#28c840"></span>
+        <span class="brand">TICKGOLD</span>
+        <span class="url">/workbench/obsidian</span>
+        <span style="color:var(--ink3)">v2.4.3</span>
+      </div>
+
+      <div class="screen">
+        <!-- ticker tape -->
+        <div class="ticker">
+          <div class="tk"><span class="nm">上证指数</span><span class="v up">3285.42 +0.56%</span></div>
+          <div class="tk"><span class="nm">深证成指</span><span class="v up">10521.30 +0.82%</span></div>
+          <div class="tk"><span class="nm">创业板指</span><span class="v up">2135.66 +1.24%</span></div>
+          <div class="tk"><span class="nm">科创50</span><span class="v down">985.20 -0.18%</span></div>
+          <div class="tk"><span class="nm">CPO 概念</span><span class="v up">+3.12%</span></div>
+          <div class="tk"><span class="nm">算力租赁</span><span class="v up">+2.44%</span></div>
+          <div class="tk"><span class="nm">银行</span><span class="v down">-0.32%</span></div>
+        </div>
+
+        <div class="body">
+          <!-- 左：信号流 -->
+          <div class="left">
+            <div class="lh"><span class="live"></span>SIGNAL STREAM · 实时信号</div>
+            <div class="signals">
+              <div class="sig on">
+                <span class="time">10:24</span>
+                <span class="dot" style="background:var(--up);box-shadow:0 0 6px var(--up)"></span>
+                <div class="txt"><b>中际旭创</b> 触及 +4.5%，突破前高，量能放大 2.3×</div>
+              </div>
+              <div class="sig">
+                <span class="time">10:18</span>
+                <span class="dot" style="background:var(--gold);box-shadow:0 0 6px var(--gold)"></span>
+                <div class="txt">央行开展 <b>3800 亿 MLF</b>，利率持平</div>
+              </div>
+              <div class="sig">
+                <span class="time">10:05</span>
+                <span class="dot" style="background:var(--cyan);box-shadow:0 0 6px var(--cyan)"></span>
+                <div class="txt"><b>半导体设备</b> 国产化提速，板块 +1.7%</div>
+              </div>
+              <div class="sig">
+                <span class="time">09:52</span>
+                <span class="dot" style="background:var(--up);box-shadow:0 0 6px var(--up)"></span>
+                <div class="txt">鸿博股份 <b>5 连板</b>，封单 12 亿</div>
+              </div>
+              <div class="sig">
+                <span class="time">09:41</span>
+                <span class="dot" style="background:var(--down);box-shadow:0 0 6px var(--down)"></span>
+                <div class="txt">宁德时代跌破 <b>188</b>，触发预警</div>
+              </div>
+              <div class="sig">
+                <span class="time">09:30</span>
+                <span class="dot" style="background:var(--ink3)"></span>
+                <div class="txt">开盘 · 三大指数集体高开</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 中：K 线 -->
+          <div class="center">
+            <div class="ch-head">
+              <span class="nm">中际旭创</span>
+              <span class="code">300308 · SZ</span>
+              <span class="price up">152.30</span>
+              <span class="chg">+4.56% ▲</span>
+              <div class="stats">
+                <span>开<b>145.20</b></span>
+                <span>高<b>153.10</b></span>
+                <span>低<b>144.80</b></span>
+                <span>量<b>28.4万手</b></span>
+                <span>额<b>42.8亿</b></span>
+              </div>
+            </div>
+            <div class="chart">
+              <svg viewBox="0 0 600 380" preserveAspectRatio="none">
+                <!-- 网格 -->
+                <g stroke="rgba(255,255,255,.04)" stroke-width="1">
+                  <line x1="0" y1="60" x2="600" y2="60"/>
+                  <line x1="0" y1="140" x2="600" y2="140"/>
+                  <line x1="0" y1="220" x2="600" y2="220"/>
+                  <line x1="0" y1="300" x2="600" y2="300"/>
+                </g>
+                <!-- 蜡烛 -->
+                <g>
+                  <!-- 12 根蜡烛：交替涨跌 -->
+                  <g stroke="#ff4d6a" fill="#ff4d6a">
+                    <line x1="30" y1="200" x2="30" y2="260"/><rect x="24" y="215" width="12" height="30"/>
+                    <line x1="75" y1="180" x2="75" y2="250"/><rect x="69" y="200" width="12" height="35"/>
+                    <line x1="165" y1="150" x2="165" y2="220"/><rect x="159" y="170" width="12" height="30"/>
+                    <line x1="255" y1="120" x2="255" y2="190"/><rect x="249" y="140" width="12" height="35"/>
+                    <line x1="345" y1="90" x2="345" y2="160"/><rect x="339" y="105" width="12" height="35"/>
+                    <line x1="435" y1="60" x2="435" y2="130"/><rect x="429" y="75" width="12" height="40"/>
+                    <line x1="525" y1="40" x2="525" y2="110"/><rect x="519" y="55" width="12" height="35"/>
+                  </g>
+                  <g stroke="#00d4a0" fill="none">
+                    <line x1="120" y1="195" x2="120" y2="240"/><rect x="114" y="210" width="12" height="20"/>
+                    <line x1="210" y1="160" x2="210" y2="200"/><rect x="204" y="175" width="12" height="15"/>
+                    <line x1="300" y1="130" x2="300" y2="175"/><rect x="294" y="145" width="12" height="18"/>
+                    <line x1="390" y1="100" x2="390" y2="140"/><rect x="384" y="115" width="12" height="15"/>
+                    <line x1="480" y1="70" x2="480" y2="105"/><rect x="474" y="82" width="12" height="12"/>
+                  </g>
+                </g>
+                <!-- MA 均线 -->
+                <polyline points="30,240 75,225 120,220 165,205 210,200 255,180 300,170 345,150 390,135 435,115 480,100 525,80"
+                  fill="none" stroke="#e8b860" stroke-width="1.2" opacity=".8"/>
+                <polyline points="30,250 75,245 120,240 165,230 210,225 255,215 300,205 345,190 390,180 435,165 480,150 525,135"
+                  fill="none" stroke="#4dd0e1" stroke-width="1" opacity=".6" stroke-dasharray="3 3"/>
+                <!-- 最新价横线 -->
+                <line x1="0" y1="55" x2="600" y2="55" stroke="#ff4d6a" stroke-width="1" stroke-dasharray="4 3" opacity=".6"/>
+                <rect x="540" y="48" width="58" height="16" fill="#ff4d6a" rx="2"/>
+                <text x="569" y="59" fill="#000" font-size="10" font-weight="700" text-anchor="middle" font-family="SF Mono">152.30</text>
+              </svg>
+            </div>
+          </div>
+
+          <!-- 右：自选 -->
+          <div class="right">
+            <div class="rh">
+              <span>WATCHLIST · 自选</span>
+              <div class="grp">
+                <span class="g on">全部</span>
+                <span class="g">持仓</span>
+              </div>
+            </div>
+            <div class="watch">
+              <div class="wrow">
+                <div class="n">贵州茅台<small>600519</small></div>
+                <div class="sp"><svg width="50" height="18"><polyline points="0,14 8,12 16,13 24,9 32,10 40,6 50,4" fill="none" stroke="#ff4d6a" stroke-width="1.2"/></svg></div>
+                <div class="p up">1685.00<small>+1.23%</small></div>
+              </div>
+              <div class="wrow">
+                <div class="n">中际旭创<small>300308</small></div>
+                <div class="sp"><svg width="50" height="18"><polyline points="0,14 8,11 16,12 24,8 32,9 40,5 50,2" fill="none" stroke="#ff4d6a" stroke-width="1.2"/></svg></div>
+                <div class="p up">152.30<small>+4.56%</small></div>
+              </div>
+              <div class="wrow">
+                <div class="n">新易盛<small>300502</small></div>
+                <div class="sp"><svg width="50" height="18"><polyline points="0,10 8,11 16,9 24,10 32,7 40,8 50,5" fill="none" stroke="#ff4d6a" stroke-width="1.2"/></svg></div>
+                <div class="p up">78.42<small>+3.88%</small></div>
+              </div>
+              <div class="wrow">
+                <div class="n">宁德时代<small>300750</small></div>
+                <div class="sp"><svg width="50" height="18"><polyline points="0,6 8,8 16,7 24,10 32,9 40,12 50,13" fill="none" stroke="#00d4a0" stroke-width="1.2"/></svg></div>
+                <div class="p down">187.45<small>-0.85%</small></div>
+              </div>
+              <div class="wrow">
+                <div class="n">中国平安<small>601318</small></div>
+                <div class="sp"><svg width="50" height="18"><polyline points="0,10 8,9 16,11 24,10 32,11 40,10 50,9" fill="none" stroke="#ff4d6a" stroke-width="1.2"/></svg></div>
+                <div class="p up">48.20<small>+0.32%</small></div>
+              </div>
+              <div class="wrow">
+                <div class="n">比亚迪<small>002594</small></div>
+                <div class="sp"><svg width="50" height="18"><polyline points="0,6 8,7 16,9 24,8 32,10 40,11 50,12" fill="none" stroke="#00d4a0" stroke-width="1.2"/></svg></div>
+                <div class="p down">245.60<small>-1.12%</small></div>
+              </div>
+              <div class="wrow">
+                <div class="n">天孚通信<small>300394</small></div>
+                <div class="sp"><svg width="50" height="18"><polyline points="0,12 8,10 16,11 24,8 32,9 40,7 50,6" fill="none" stroke="#ff4d6a" stroke-width="1.2"/></svg></div>
+                <div class="p up">92.18<small>+3.21%</small></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- dock -->
+        <div class="dock">
+          <div class="dico">自选</div>
+          <div class="dico on">K线</div>
+          <div class="dico">雷达</div>
+          <div class="dico">板块</div>
+          <div class="dico">选股</div>
+          <div class="dico">预警</div>
+          <div class="dico">复盘</div>
+          <div class="dico">设置</div>
+        </div>
+      </div>
+
+      <!-- 标注 -->
+      <div class="ann" style="left:260px;top:60px"><span class="lbl">① 三栏专业布局<b>左信号流 / 中K线 / 右自选， densities即专业感</b></span></div>
+      <div class="ann" style="right:300px;top:300px"><span class="lbl">② 蜡烛图 + 双均线<b>红涨绿跌辉光，最新价标签常驻右侧</b></span></div>
+      <div class="ann" style="left:300px;bottom:80px"><span class="lbl">③ 信号流驱动中央切换<b>点左侧信号 → 中央K线 FLIP 切换对应股</b></span></div>
+    </div>
+
+    <div class="notes-row">
+      <div class="note-card"><div class="nh">// CARD FLOW</div><p><b>卡片编排：</b>取消自由/自动二元，改成「信号流 · 主图 · 自选」三栏固定结构，左栏可折叠成 40px 窄条；卡片即"栏"，不再有漂浮卡片的混乱感。</p></div>
+      <div class="note-card"><div class="nh">// MENU & SWITCH</div><p><b>菜单切换：</b>顶部 ticker tape 跑马灯代替顶栏状态；底部 dock 激活项金色辉光；点信号流条目中央 K 线用 FLIP 横向滑入。</p></div>
+      <div class="note-card"><div class="nh">// FLIP HANDOFF</div><p><b>平滑让位：</b>关信号 / 切股时，左栏列表项用 margin-top 过渡 0.28s 缓出；中央 K 线内容 cross-fade + 轻微右移，无跳变。</p></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       B · 玻璃浮岛
+  ============================================================ -->
+  <div class="sec">
+    <div class="sec-head">
+      <div class="sec-num">02</div>
+      <div class="sec-title">
+        <h2>玻璃浮岛 <span style="color:var(--ink3);font-weight:300;font-size:14px">Aero Glass Island</span></h2>
+        <div class="pos">奢华派 —— Vision Pro × macOS Sequoia 玻璃拟态，空间感与层次感</div>
+      </div>
+      <div class="sec-tags">
+        <span class="stag">玻璃拟态</span>
+        <span class="stag">空间层叠</span>
+        <span class="stag">macOS Dock</span>
+      </div>
+    </div>
+
+    <div class="stage B">
+      <div class="bar">
+        <span class="dot" style="background:#ff5f57"></span>
+        <span class="dot" style="background:#febc2e"></span>
+        <span class="dot" style="background:#28c840"></span>
+        <span class="brand">TICKGOLD</span>
+        <span class="url">/workbench/aero</span>
+      </div>
+
+      <div class="screen">
+        <div class="gbar">
+          <span class="brand">TickGold</span>
+          <div class="nav">
+            <span class="on">工作台</span>
+            <span>盯盘</span>
+            <span>复盘</span>
+            <span>策略</span>
+          </div>
+        </div>
+
+        <!-- 主卡 -->
+        <div class="gcard maincard">
+          <div class="gh"><span class="gdot" style="background:var(--up);box-shadow:0 0 8px var(--up)"></span>LIVE · 中际旭创 300308<span style="margin-left:auto;color:var(--ink3)">分时 + 盘口</span></div>
+          <div>
+            <span class="big up">152.30</span>
+            <span class="chg">+6.66 +4.56% ▲</span>
+          </div>
+          <div class="meta">
+            <span>开 <b>145.20</b></span>
+            <span>高 <b>153.10</b></span>
+            <span>低 <b>144.80</b></span>
+            <span>量 <b>28.4万手</b></span>
+            <span>额 <b>42.8亿</b></span>
+            <span>换手 <b>3.2%</b></span>
+          </div>
+          <div style="flex:1;margin-top:14px">
+            <svg width="100%" height="100%" viewBox="0 0 600 280" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="gUp" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#ff4d6a" stop-opacity=".35"/>
+                  <stop offset="100%" stop-color="#ff4d6a" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <path d="M0,200 L50,190 L100,195 L150,170 L200,175 L250,140 L300,145 L350,110 L400,115 L450,80 L500,85 L550,50 L600,45 L600,280 L0,280 Z" fill="url(#gUp)"/>
+              <polyline points="0,200 50,190 100,195 150,170 200,175 250,140 300,145 350,110 400,115 450,80 500,85 550,50 600,45"
+                fill="none" stroke="#ff4d6a" stroke-width="1.8"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 左辅卡 -->
+        <div class="gcard sideL">
+          <div class="gh"><span class="gdot" style="background:var(--gold)"></span>自选盯盘</div>
+          <div style="font-size:11px;line-height:2;color:var(--ink2)">
+            <div style="display:flex;justify-content:space-between"><span>贵州茅台</span><span class="up">+1.23%</span></div>
+            <div style="display:flex;justify-content:space-between"><span>中际旭创</span><span class="up">+4.56%</span></div>
+            <div style="display:flex;justify-content:space-between"><span>新易盛</span><span class="up">+3.88%</span></div>
+            <div style="display:flex;justify-content:space-between"><span>宁德时代</span><span class="down">-0.85%</span></div>
+            <div style="display:flex;justify-content:space-between"><span>比亚迪</span><span class="down">-1.12%</span></div>
+          </div>
+        </div>
+        <div class="gcard sideL2">
+          <div class="gh"><span class="gdot" style="background:var(--cyan)"></span>持仓</div>
+          <div style="font-size:11px;color:var(--ink2);line-height:1.9">
+            <div>成本 <b style="color:var(--ink)">¥142.30</b></div>
+            <div>浮盈 <b class="up">+8.42%</b></div>
+            <div>今日 <b class="up">+2.1%</b></div>
+          </div>
+        </div>
+
+        <!-- 右辅卡 -->
+        <div class="gcard sideR">
+          <div class="gh"><span class="gdot" style="background:var(--up)"></span>涨停雷达 · 连板天梯</div>
+          <div style="font-size:11px;line-height:2;color:var(--ink2)">
+            <div style="display:flex;justify-content:space-between"><span style="color:var(--up);font-weight:700">5板</span><span>鸿博股份</span><span class="up">+10.02%</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:var(--up);font-weight:700">4板</span><span>拓维信息</span><span class="up">+10.00%</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:var(--up);font-weight:700">3板</span><span>四川长虹</span><span class="up">+9.98%</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:var(--ink3)">2板 ×12</span><span>—</span><span>—</span></div>
+          </div>
+        </div>
+        <div class="gcard sideR2">
+          <div class="gh"><span class="gdot" style="background:var(--gold)"></span>板块强度</div>
+          <div style="font-size:11px;color:var(--ink2);line-height:1.9">
+            <div>CPO 概念 <b class="up" style="float:right">+3.12%</b></div>
+            <div>算力租赁 <b class="up" style="float:right">+2.44%</b></div>
+            <div>半导体 <b class="up" style="float:right">+1.70%</b></div>
+          </div>
+        </div>
+
+        <!-- 底部悬浮 dock -->
+        <div class="dock">
+          <div class="d">自选</div>
+          <div class="d on">K线</div>
+          <div class="d">雷达</div>
+          <div class="d">板块</div>
+          <div class="d">预警</div>
+          <div class="d">复盘</div>
+          <div class="d">设置</div>
+        </div>
+      </div>
+
+      <div class="ann" style="left:280px;top:80px"><span class="lbl">① 主卡金色辉光边框<b>玻璃模糊 + 金色描边，当前聚焦卡浮于最上层</b></span></div>
+      <div class="ann" style="left:30px;top:100px"><span class="lbl">② 辅卡半透明后退<b>层级 2，opacity .85，景深拉开</b></span></div>
+      <div class="ann" style="left:380px;bottom:100px"><span class="lbl">③ 悬浮 macOS Dock<b>激活项上浮 -6px + 金色辉光</b></span></div>
+    </div>
+
+    <div class="notes-row">
+      <div class="note-card"><div class="nh">// CARD FLOW</div><p><b>卡片编排：</b>Stage Manager 式空间层叠——主卡大、辅卡小半透明后退；拖任意卡，其余卡用 FLIP 重新分布位置，像 Vision Pro 的窗口层。</p></div>
+      <div class="note-card"><div class="nh">// MENU & SWITCH</div><p><b>菜单切换：</b>去掉左侧 Dock，改为底部居中悬浮玻璃 Dock；点辅卡 → 该卡从侧位 FLIP 放大入主区，原主卡缩小退回。</p></div>
+      <div class="note-card"><div class="nh">// FLIP HANDOFF</div><p><b>平滑让位：</b>卡片间用 transform: translate + scale 0.32s 弹簧过渡；层级切换时 z-index 渐变 + 模糊度渐变，无硬切。</p></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       C · 战术 HUD
+  ============================================================ -->
+  <div class="sec">
+    <div class="sec-head">
+      <div class="sec-num">03</div>
+      <div class="sec-title">
+        <h2>战术 HUD <span style="color:var(--ink3);font-weight:300;font-size:14px">Tactical Command</span></h2>
+        <div class="pos">炫酷派 —— 电影级指挥台，切角面板 + 雷达扫描 + 等宽数字</div>
+      </div>
+      <div class="sec-tags">
+        <span class="stag">HUD</span>
+        <span class="stag">雷达图</span>
+        <span class="stag">科幻感</span>
+      </div>
+    </div>
+
+    <div class="stage C">
+      <div class="bar">
+        <span class="dot" style="background:#ff5f57"></span>
+        <span class="dot" style="background:#febc2e"></span>
+        <span class="dot" style="background:#28c840"></span>
+        <span class="brand">TICKGOLD // TACTICAL</span>
+        <span class="url">/workbench/hud</span>
+      </div>
+
+      <div class="screen" style="height:680px">
+        <div class="scan"></div>
+        <div class="hud-top">
+          <span class="blink"></span>
+          <span>SYS.ONLINE</span>
+          <span>MARKET · A.SHARE · OPEN</span>
+          <span style="color:var(--gold)">10:24:36 CST</span>
+        </div>
+
+        <!-- 左：雷达 -->
+        <div class="hud chud">
+          <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+          <div class="hud-inner">
+            <div class="hud-h"><span>// MARKET RADAR</span><span class="st">● LIVE</span></div>
+            <div class="hud-b">
+              <svg class="radar" viewBox="0 0 260 240">
+                <circle cx="130" cy="120" r="100" fill="none" stroke="rgba(232,184,96,.2)" stroke-width="1"/>
+                <circle cx="130" cy="120" r="70" fill="none" stroke="rgba(232,184,96,.2)" stroke-width="1"/>
+                <circle cx="130" cy="120" r="40" fill="none" stroke="rgba(232,184,96,.2)" stroke-width="1"/>
+                <line x1="130" y1="20" x2="130" y2="220" stroke="rgba(232,184,96,.15)"/>
+                <line x1="30" y1="120" x2="230" y2="120" stroke="rgba(232,184,96,.15)"/>
+                <!-- 扫描扇形 -->
+                <path d="M130,120 L130,20 A100,100 0 0,1 200,60 Z" fill="rgba(77,208,225,.15)"/>
+                <!-- 信号点 -->
+                <circle cx="180" cy="80" r="4" fill="#ff4d6a" style="filter:drop-shadow(0 0 4px #ff4d6a)"/>
+                <circle cx="90" cy="100" r="3" fill="#e8b860" style="filter:drop-shadow(0 0 4px #e8b860)"/>
+                <circle cx="160" cy="160" r="3.5" fill="#ff4d6a" style="filter:drop-shadow(0 0 4px #ff4d6a)"/>
+                <circle cx="110" cy="170" r="2.5" fill="#4dd0e1" style="filter:drop-shadow(0 0 4px #4dd0e1)"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- 中：核心数据 -->
+        <div class="hud center-hud">
+          <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+          <div class="hud-inner">
+            <div class="hud-h"><span>// TARGET · 300308</span><span class="st">● TRACKING</span></div>
+            <div class="hud-title">ZHONGJI INNOVATION · 中际旭创</div>
+            <div class="hud-num">152.30<span class="u">CNY</span> <span style="color:var(--up);font-size:14px;text-shadow:0 0 10px var(--up)">+4.56%</span></div>
+            <div style="margin-top:14px;flex:1">
+              <svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="none">
+                <g stroke="rgba(232,184,96,.1)">
+                  <line x1="0" y1="65" x2="600" y2="65"/>
+                  <line x1="0" y1="130" x2="600" y2="130"/>
+                  <line x1="0" y1="195" x2="600" y2="195"/>
+                </g>
+                <polyline points="0,200 50,190 100,195 150,170 200,175 250,140 300,145 350,110 400,115 450,80 500,85 550,50 600,45"
+                  fill="none" stroke="#e8b860" stroke-width="1.6"/>
+                <polyline points="0,200 50,190 100,195 150,170 200,175 250,140 300,145 350,110 400,115 450,80 500,85 550,50 600,45 600,260 0,260"
+                  fill="rgba(232,184,96,.08)"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右上：连板天梯 -->
+        <div class="hud rhud">
+          <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+          <div class="hud-inner">
+            <div class="hud-h"><span>// LIMIT LADDER</span><span class="st">5 TIERS</span></div>
+            <div class="hud-row"><span>5板 · 鸿博股份</span><b class="up">+10.02%</b></div>
+            <div class="hud-row"><span>4板 · 拓维信息</span><b class="up">+10.00%</b></div>
+            <div class="hud-row"><span>3板 · 四川长虹</span><b class="up">+9.98%</b></div>
+            <div class="hud-row"><span>2板 · 12只</span><b style="color:var(--ink3)">—</b></div>
+            <div class="hud-row"><span>首板 · 47只</span><b style="color:var(--ink3)">—</b></div>
+          </div>
+        </div>
+
+        <!-- 右下：盘口 -->
+        <div class="hud bhud">
+          <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+          <div class="hud-inner">
+            <div class="hud-h"><span>// ORDER BOOK</span><span class="st">DEPTH</span></div>
+            <div class="hud-row"><span>卖五 153.10</span><b>235</b></div>
+            <div class="hud-row"><span>卖四 152.80</span><b>189</b></div>
+            <div class="hud-row"><span>卖三 152.60</span><b>412</b></div>
+            <div class="hud-row" style="border-color:var(--gold);color:var(--gold)"><span>── 152.30 ──</span><b>28.4万手</b></div>
+            <div class="hud-row"><span>买三 152.20</span><b class="down">356</b></div>
+            <div class="hud-row"><span>买二 152.00</span><b class="down">521</b></div>
+            <div class="hud-row"><span>买一 151.80</span><b class="down">689</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ann" style="left:240px;top:80px"><span class="lbl">① 切角 HUD 面板<b>clip-path 切角 + L 形金角标，电影指挥台质感</b></span></div>
+      <div class="ann" style="left:40px;top:200px"><span class="lbl">② 市场雷达<b>扫描扇形 + 信号点，红/金/青三色信号分级</b></span></div>
+      <div class="ann" style="right:40px;top:400px"><span class="lbl">③ 等宽数字 + 扫描线<b>SF Mono 数字，4s 循环扫描线氛围</b></span></div>
+    </div>
+
+    <div class="notes-row">
+      <div class="note-card"><div class="nh">// CARD FLOW</div><p><b>卡片编排：</b>不再是矩形卡片网格，而是切角 HUD 面板按战术位摆位——雷达/主目标/天梯/盘口四角环绕中央大数字，像作战指挥屏。</p></div>
+      <div class="note-card"><div class="nh">// MENU & SWITCH</div><p><b>菜单切换：</b>顶部状态条取代菜单；切股时中央大数字和图表用 cross-fade + 扫描线高亮切换，雷达上信号点 FLIP 移动。</p></div>
+      <div class="note-card"><div class="nh">// FLIP HANDOFF</div><p><b>平滑让位：</b>雷达信号点用 rAF 平滑圆弧移动；盘口行更新时用高度过渡；切面板时 clip-path 缩放 + 辉光渐变，绝不硬切。</p></div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

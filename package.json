@@ -1,9 +1,9 @@
-{
+﻿{
   "name": "tickgold",
   "private": true,
-  "version": "2.7.11",
+  "version": "2.8.0",
   "type": "module",
-  "description": "TickGold - 专业交易者跨平台 A 股盯盘终端 (Tauri 2 + Vue 3)",
+  "description": "TickGold - 涓撲笟浜ゆ槗鑰呰法骞冲彴 A 鑲＄洴鐩樼粓绔?(Tauri 2 + Vue 3)",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
@@ -55,3 +55,4 @@
     ]
   }
 }
+

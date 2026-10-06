@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>卡片工作台改版 · 三版方案效果图</title>
+<style>
+  :root{
+    --bg:#0b0a06; --panel:#15120a; --card:#17130b; --card2:#120f08;
+    --hover:#201b0e; --border:#2a2414; --border2:#3a311b;
+    --text:#f2ebd7; --dim:#b4a77f;
+    --up:#ef5f6b; --down:#2fbf95;
+    --accent:#e8c878; --accent2:#f0d69a; --blue:#6aa6e8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:radial-gradient(1200px 800px at 50% -10%, #1a160a 0%, var(--bg) 60%);
+       color:var(--text); font-family:"PingFang SC","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+       padding:48px 24px 80px; line-height:1.5;}
+  .wrap{max-width:1320px;margin:0 auto}
+
+  /* ============ 封面 ============ */
+  .cover{text-align:center;margin-bottom:36px}
+  .cover h1{font-size:30px;letter-spacing:2px;font-weight:700;
+    background:linear-gradient(180deg,var(--accent2),var(--accent));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .cover .sub{color:var(--dim);font-size:13px;margin-top:10px;letter-spacing:1px}
+  .cover .tagrow{margin-top:18px;display:flex;justify-content:center;gap:10px;flex-wrap:wrap}
+  .tag{font-size:11.5px;color:var(--dim);border:1px solid var(--border2);
+    padding:4px 12px;border-radius:999px;background:rgba(232,200,120,.05)}
+  .tag b{color:var(--accent);font-weight:600}
+
+  /* ============ 痛点条 ============ */
+  .pains{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:30px 0 50px}
+  .pain{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+  .pain .n{display:inline-flex;width:22px;height:22px;border-radius:50%;
+    background:rgba(239,95,107,.15);color:var(--up);font-size:12px;align-items:center;justify-content:center;font-weight:700}
+  .pain h4{margin:8px 0 6px;font-size:14px;color:var(--text)}
+  .pain p{font-size:12px;color:var(--dim)}
+
+  /* ============ 方案大区块 ============ */
+  .scheme{margin-bottom:70px}
+  .scheme-head{display:flex;align-items:baseline;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+  .scheme-badge{font-size:11px;letter-spacing:2px;color:#0b0a06;background:linear-gradient(135deg,var(--accent),var(--accent2));
+    padding:3px 10px;border-radius:4px;font-weight:700}
+  .scheme-head h2{font-size:22px;color:var(--text)}
+  .scheme-head .pos{color:var(--dim);font-size:13px}
+  .scheme-grid{display:grid;grid-template-columns:300px 1fr;gap:22px;align-items:start}
+
+  .notes{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;position:sticky;top:16px}
+  .notes h3{font-size:13px;color:var(--accent);letter-spacing:1px;margin-bottom:12px;
+    padding-bottom:8px;border-bottom:1px dashed var(--border2)}
+  .note{display:flex;gap:10px;margin-bottom:12px}
+  .note .dot{flex:none;width:20px;height:20px;border-radius:50%;background:rgba(232,200,120,.14);
+    color:var(--accent);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px}
+  .note b{display:block;font-size:12.5px;margin-bottom:2px}
+  .note span{font-size:11.5px;color:var(--dim)}
+
+  /* ============ 屏幕 mockup ============ */
+  .screen{position:relative;width:1280px;height:760px;transform-origin:top left;
+    background:var(--bg);border:1px solid var(--border2);border-radius:10px;overflow:hidden;
+    box-shadow:0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(232,200,120,.05)}
+  .scalebox{width:1024px;height:608px}
+  .scalebox .screen{transform:scale(.8)}
+
+  /* 顶栏 */
+  .tb{height:34px;background:var(--panel);border-bottom:1px solid var(--border);
+    display:flex;align-items:center;padding:0 12px;gap:12px;font-size:11px;color:var(--dim)}
+  .tb .brand{color:var(--accent);font-weight:700;letter-spacing:1px;font-size:12px}
+  .tb .search{flex:1;max-width:260px;height:20px;border:1px solid var(--border);border-radius:5px;
+    background:var(--bg);display:flex;align-items:center;padding:0 8px;color:#6b6347;font-size:10.5px}
+  .tb .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .tb .live{display:flex;align-items:center;gap:5px}
+  .tb .live i{width:6px;height:6px;border-radius:50%;background:var(--down);box-shadow:0 0 6px var(--down)}
+  .tb .sep{color:#3a311b}
+  .tb .pill{border:1px solid var(--border2);border-radius:5px;padding:2px 8px;cursor:pointer}
+  .tb .pill.on{color:var(--accent);border-color:var(--accent);background:rgba(232,200,120,.08)}
+
+  /* body */
+  .sb{display:flex;height:calc(100% - 34px)}
+  .dock{width:54px;flex:none;background:var(--panel);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:3px}
+  .dock .di{width:42px;height:40px;border-radius:9px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:2px;color:var(--dim);font-size:9px}
+  .dock .di .ico{width:16px;height:16px;border-radius:4px;background:#2a2414}
+  .dock .di.on{color:var(--accent);background:rgba(232,200,120,.1)}
+  .dock .di.on .ico{background:linear-gradient(135deg,var(--accent),#b8923a)}
+  .dock .sep{width:22px;height:1px;background:var(--border);margin:5px 0}
+
+  .main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .idx{height:26px;flex:none;border-bottom:1px solid var(--border);display:flex;align-items:center;
+    padding:0 10px;gap:16px;font-size:10.5px;color:var(--dim);background:var(--card2)}
+  .idx b{font-weight:600}
+  .up{color:var(--up)} .down{color:var(--down)}
+
+  .ws{flex:1;position:relative;overflow:hidden;padding:10px;display:flex;flex-direction:column;gap:8px}
+
+  /* 通用卡片 */
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;
+    display:flex;flex-direction:column;overflow:hidden;position:relative}
+  .card .ch{height:24px;flex:none;display:flex;align-items:center;gap:6px;padding:0 8px;
+    border-bottom:1px solid var(--border);font-size:10.5px;color:var(--text)}
+  .card .ch .bar{width:3px;height:11px;border-radius:2px}
+  .card .ch .more{margin-left:auto;color:#5a5235;font-size:10px}
+  .card .cb{flex:1;padding:6px 8px;overflow:hidden}
+
+  /* 股票行 */
+  .stock{display:flex;justify-content:space-between;align-items:center;
+    font-size:10.5px;padding:3px 2px;border-bottom:1px dashed rgba(58,49,27,.45)}
+  .stock:last-child{border-bottom:0}
+  .stock .nm{color:var(--text)}
+  .stock .nm small{color:#6b6347;margin-left:4px;font-size:9px}
+  .stock .pr{font-variant-numeric:tabular-nums}
+
+  /* mini K线 */
+  .kline{width:100%;height:100%}
+
+  /* tabstrip */
+  .tabs{height:28px;flex:none;background:var(--panel);border-top:1px solid var(--border);
+    display:flex;align-items:stretch;padding:0 6px;gap:3px}
+  .tab{display:flex;align-items:center;gap:5px;padding:0 10px;font-size:10.5px;color:var(--dim);
+    border-radius:6px 6px 0 0;position:relative;white-space:nowrap}
+  .tab .tbbar{width:3px;height:11px;border-radius:2px}
+  .tab.on{color:var(--text);background:rgba(232,200,120,.09)}
+
+  /* ============ 标注气泡 ============ */
+  .anno{position:absolute;z-index:50;min-width:150px;
+    background:rgba(11,10,6,.92);border:1px solid var(--accent);border-radius:8px;
+    padding:8px 10px;font-size:10.5px;color:var(--text);box-shadow:0 8px 24px rgba(0,0,0,.5)}
+  .anno .ah{color:var(--accent);font-weight:700;font-size:10.5px;display:flex;align-items:center;gap:6px;margin-bottom:3px}
+  .anno .ah .n{width:16px;height:16px;border-radius:50%;background:var(--accent);color:#0b0a06;
+    display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800}
+  .anno p{color:var(--dim);font-size:10px;line-height:1.45}
+
+  /* ============================================================
+     方案 A：锚点栅格
+  ============================================================ */
+  .A .ws-grid{flex:1;display:grid;gap:8px;
+    grid-template-columns:repeat(12,1fr);grid-template-rows:repeat(6,1fr);
+    background-image:
+      linear-gradient(rgba(232,200,120,.06) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(232,200,120,.06) 1px,transparent 1px);
+    background-size:calc(100%/12) calc(100%/6);}
+  .A .g-watch{grid-column:1/5;grid-row:1/4}
+  .A .g-chart{grid-column:5/10;grid-row:1/5}
+  .A .g-radar{grid-column:10/13;grid-row:1/3}
+  .A .g-news{grid-column:1/5;grid-row:4/7}
+  .A .g-rank{grid-column:5/10;grid-row:5/7}
+  /* 拖拽中的卡 + 幽灵位 */
+  .A .dragging{box-shadow:0 18px 40px rgba(0,0,0,.6),0 0 0 1.5px var(--accent);
+    transform:scale(1.02);opacity:.95}
+  .A .ghost{grid-column:10/13;grid-row:3/5;border:1.5px dashed var(--accent);border-radius:8px;
+    background:rgba(232,200,120,.07);display:flex;align-items:center;justify-content:center;
+    color:var(--accent);font-size:10px;letter-spacing:1px}
+  .A .dock .di .lab{display:block}
+  /* 滑动 pill（tab） */
+  .A .tab.on::after{content:"";position:absolute;left:10px;right:10px;bottom:0;height:2px;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px}
+
+  /* ============================================================
+     方案 B：中心聚焦浮岛
+  ============================================================ */
+  .B .ws{display:block}
+  .B .float-pill{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:5;
+    display:flex;gap:2px;background:rgba(21,18,10,.92);backdrop-filter:blur(10px);
+    border:1px solid var(--border2);border-radius:999px;padding:3px}
+  .B .float-pill .fp{padding:4px 14px;font-size:10.5px;color:var(--dim);border-radius:999px;cursor:pointer}
+  .B .float-pill .fp.on{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#0b0a06;font-weight:700}
+  .B .island-center{position:absolute;left:140px;right:200px;top:48px;bottom:38px;
+    border:1px solid var(--accent);border-radius:12px;box-shadow:0 20px 60px rgba(232,200,120,.12),0 0 0 6px rgba(232,200,120,.04)}
+  .B .side-l{position:absolute;left:10px;top:48px;bottom:38px;width:122px;display:flex;flex-direction:column;gap:8px}
+  .B .side-r{position:absolute;right:10px;top:48px;bottom:38px;width:180px;display:flex;flex-direction:column;gap:8px}
+  .B .mini{flex:1}
+  .B .mini .ch{font-size:9.5px;height:20px}
+  .B .mini .cb{font-size:9.5px;padding:4px 6px}
+  .B .edge-strip{position:absolute;left:140px;right:200px;bottom:8px;height:24px;
+    background:var(--panel);border:1px solid var(--border);border-radius:6px;
+    display:flex;align-items:center;padding:0 8px;gap:12px;font-size:9.5px;color:var(--dim)}
+
+  /* ============================================================
+     方案 C：盯盘流水线
+  ============================================================ */
+  .C .pipe-row{display:flex;gap:8px;height:100%;padding-top:2px}
+  .C .pipe{flex:1;background:rgba(23,19,11,.5);border:1px dashed var(--border2);border-radius:10px;
+    display:flex;flex-direction:column;overflow:hidden}
+  .C .pipe.p2{flex:1.25}
+  .C .pipe-h{height:26px;flex:none;display:flex;align-items:center;gap:6px;padding:0 10px;
+    border-bottom:1px solid var(--border);font-size:10.5px;color:var(--accent)}
+  .C .pipe-h .cnt{margin-left:auto;color:var(--dim);font-size:9.5px}
+  .C .pipe-h .arrow{color:var(--dim);font-size:11px}
+  .C .pipe-b{flex:1;padding:6px;display:flex;flex-direction:column;gap:6px;overflow:hidden}
+  .C .pcard{background:var(--card);border:1px solid var(--border);border-radius:7px;padding:6px 8px;
+    font-size:10px}
+  .C .pcard .t{color:var(--text);font-weight:600;margin-bottom:2px;display:flex;justify-content:space-between}
+  .C .pcard .d{color:var(--dim);font-size:9.5px;line-height:1.4}
+  .C .chips{display:flex;gap:6px;padding:6px 10px;border-bottom:1px solid var(--border);background:var(--card2)}
+  .C .chip{font-size:10px;padding:3px 10px;border-radius:999px;border:1px solid var(--border2);color:var(--dim)}
+  .C .chip.on{background:var(--accent);color:#0b0a06;border-color:var(--accent);font-weight:700}
+  /* 卡间让位箭头 */
+  .C .lift{border-color:var(--accent);box-shadow:0 8px 20px rgba(0,0,0,.5)}
+
+  /* ============ FLIP 示意 ============ */
+  .flipdemo{background:var(--panel);border:1px solid var(--border);border-radius:14px;
+    padding:26px;margin-top:10px}
+  .flipdemo h3{color:var(--accent);font-size:15px;margin-bottom:6px}
+  .flipdemo .desc{color:var(--dim);font-size:12px;margin-bottom:20px}
+  .frames{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .frame{width:220px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px}
+  .frame .ft{font-size:10.5px;color:var(--dim);text-align:center;margin-bottom:10px;letter-spacing:1px}
+  .frame .row{display:flex;gap:6px;height:44px;margin-bottom:6px}
+  .fbox{flex:1;border-radius:6px;background:#2a2414;display:flex;align-items:center;justify-content:center;
+    font-size:10px;color:var(--dim);border:1px solid var(--border)}
+  .fbox.hl{background:rgba(232,200,120,.18);border-color:var(--accent);color:var(--accent)}
+  .fbox.gone{opacity:0.25;border-style:dashed}
+  .fbox.moved{background:rgba(106,166,232,.15);border-color:var(--blue);color:var(--blue)}
+  .farrow{font-size:22px;color:var(--accent)}
+  .flip-steps{display:flex;gap:18px;margin-top:18px;flex-wrap:wrap}
+  .fstep{flex:1;min-width:180px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+  .fstep b{color:var(--accent);font-size:11.5px}
+  .fstep p{font-size:10.5px;color:var(--dim);margin-top:3px}
+
+  /* ============ 对比表 ============ */
+  .cmp{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
+  .cmp th,.cmp td{border:1px solid var(--border);padding:10px 12px;text-align:left;vertical-align:top}
+  .cmp th{background:var(--card);color:var(--accent);font-weight:600}
+  .cmp td{color:var(--dim)}
+  .cmp td:first-child{color:var(--text);font-weight:600;width:120px}
+  .reco{margin-top:22px;padding:16px 18px;border-left:3px solid var(--accent);
+    background:rgba(232,200,120,.05);border-radius:0 10px 10px 0;font-size:12.5px;color:var(--text)}
+  .reco b{color:var(--accent)}
+
+  @media (max-width:1100px){
+    .scheme-grid{grid-template-columns:1fr}
+    .notes{position:static}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ 封面 ============ -->
+  <div class="cover">
+    <h1>卡片工作台 · 改版方案效果图</h1>
+    <div class="sub">TICKGOLD · 灵动岛版 ｜ 卡片编排 / 菜单切换 / FLIP 让位 三版方向对比</div>
+    <div class="tagrow">
+      <span class="tag">主题 <b>鎏金深色</b></span>
+      <span class="tag">屏幕 <b>1280 × 760</b></span>
+      <span class="tag">交付 <b>高保真效果图 3 版</b></span>
+    </div>
+  </div>
+
+  <!-- ============ 痛点诊断 ============ -->
+  <div class="pains">
+    <div class="pain">
+      <span class="n">1</span>
+      <h4>卡片自定义编排不顺手</h4>
+      <p>"自动布局 / 自由布局"两个模式割裂，入口藏在顶栏「布局」下拉里；拖拽落点靠 4 个象限槽位提示，自由模式下松手碰撞整理是瞬跳，没有让位动画。</p>
+    </div>
+    <div class="pain">
+      <span class="n">2</span>
+      <h4>菜单与卡片切换不直观</h4>
+      <p>左侧 Dock 靠 hover 浮出面板、280ms 延迟关闭容易误关；底部 Tab 是朴素文字条，active 态只有一条细线；聚焦切换层级深，反馈弱。</p>
+    </div>
+    <div class="pain">
+      <span class="n">3</span>
+      <h4>卡片间缺 FLIP 平滑让位</h4>
+      <p>自由布局 TransitionGroup 只挂了 enter/leave，没有 move——拖卡、关卡、插卡时周围卡片瞬间跳位，视觉上"硬切"，没有惯性和归属感。</p>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       方案 A
+  ============================================================ -->
+  <div class="scheme">
+    <div class="scheme-head">
+      <span class="scheme-badge">方案 A</span>
+      <h2>锚点栅格 · 拖拽即编排</h2>
+      <span class="pos">—— 最小改动、稳扎稳打，保留现有信息密度</span>
+    </div>
+    <div class="scheme-grid">
+      <div class="notes">
+        <h3>本版改动点</h3>
+        <div class="note"><span class="dot">1</span><div><b>统一栅格画布，取消"自动/自由"二元切换</b><span>平时自动排布；点顶栏「编排」进入编辑态，全图浮现 12 列锚点格，拖拽时显示金色虚线幽灵占位框（精确到缝隙），松手周围卡 FLIP 让位。</span></div></div>
+        <div class="note"><span class="dot">2</span><div><b>左侧 Dock 图标 + 常驻文字</b><span>每个图标下方 2 字标签，已开卡片左侧亮条 + 金色小圆点；不再靠 hover 浮出面板，单击即展开分组。</span></div></div>
+        <div class="note"><span class="dot">3</span><div><b>底部 Tab 加滑动指示 pill</b><span>active tab 下方金色指示条用 FLIP 跟随滑动；切卡时旧卡淡出、新卡从原位置滑入。</span></div></div>
+      </div>
+
+      <div class="scalebox"><div class="screen A">
+        <div class="tb">
+          <span class="brand">TickGold</span>
+          <span class="search">🔍 搜索股票 / 功能 / 卡片…</span>
+          <div class="right">
+            <span class="live"><i></i>实时</span>
+            <span class="sep">|</span><span>128 只</span><span class="sep">|</span>
+            <span class="pill on">✎ 编排</span>
+            <span class="pill">布局▾</span>
+            <span class="pill">设置</span>
+          </div>
+        </div>
+        <div class="sb">
+          <div class="dock">
+            <div class="di on"><span class="ico"></span><span class="lab">自选</span></div>
+            <div class="di"><span class="ico"></span><span class="lab">雷达</span></div>
+            <div class="di"><span class="ico"></span><span class="lab">板块</span></div>
+            <div class="di"><span class="ico"></span><span class="lab">选股</span></div>
+            <div class="sep"></div>
+            <div class="di"><span class="ico"></span><span class="lab">复盘</span></div>
+            <div class="di"><span class="ico"></span><span class="lab">⚙</span></div>
+          </div>
+          <div class="main">
+            <div class="idx">
+              <span><b>上证</b> 3285.42 <span class="up">+0.56%</span></span>
+              <span><b>深成</b> 10521.30 <span class="up">+0.82%</span></span>
+              <span><b>创业板</b> 2135.66 <span class="up">+1.24%</span></span>
+              <span><b>科创50</b> 985.20 <span class="down">-0.18%</span></span>
+            </div>
+            <div class="ws">
+              <div class="ws-grid">
+                <div class="card g-watch">
+                  <div class="ch"><span class="bar" style="background:var(--up)"></span>自选盯盘<span class="more">⋯</span></div>
+                  <div class="cb">
+                    <div class="stock"><span class="nm">贵州茅台<small>600519</small></span><span class="pr up">1685.00 +1.23%</span></div>
+                    <div class="stock"><span class="nm">宁德时代<small>300750</small></span><span class="pr down">187.45 -0.85%</span></div>
+                    <div class="stock"><span class="nm">中际旭创<small>300308</small></span><span class="pr up">152.30 +4.56%</span></div>
+                    <div class="stock"><span class="nm">中国平安<small>601318</small></span><span class="pr up">48.20 +0.32%</span></div>
+                    <div class="stock"><span class="nm">比亚迪<small>002594</small></span><span class="pr down">245.60 -1.12%</span></div>
+                  </div>
+                </div>
+                <div class="card g-chart">
+                  <div class="ch"><span class="bar" style="background:var(--accent)"></span>分时 · 中际旭创<span class="more">⋯</span></div>
+                  <div class="cb">
+                    <svg class="kline" viewBox="0 0 400 160" preserveAspectRatio="none">
+                      <polyline points="0,120 40,110 80,115 120,90 160,95 200,70 240,75 280,55 320,60 360,40 400,35"
+                        fill="none" stroke="#ef5f6b" stroke-width="1.6"/>
+                      <polyline points="0,130 40,125 80,128 120,115 160,118 200,105 240,108 280,95 320,100 360,88 400,85"
+                        fill="none" stroke="#3a311b" stroke-width="1" stroke-dasharray="3 3"/>
+                    </svg>
+                  </div>
+                </div>
+                <div class="card g-radar dragging">
+                  <div class="ch"><span class="bar" style="background:var(--up)"></span>涨停雷达<span class="more">⠿</span></div>
+                  <div class="cb">
+                    <div class="stock"><span class="nm">5板 · 鸿博股份</span><span class="pr up">+10.02%</span></div>
+                    <div class="stock"><span class="nm">4板 · 拓维信息</span><span class="pr up">+10.00%</span></div>
+                    <div class="stock"><span class="nm">3板 · 四川长虹</span><span class="pr up">+9.98%</span></div>
+                  </div>
+                </div>
+                <div class="ghost">◈ 幽灵占位框（松手即落）</div>
+                <div class="card g-news">
+                  <div class="ch"><span class="bar" style="background:var(--blue)"></span>快讯流<span class="more">⋯</span></div>
+                  <div class="cb">
+                    <div class="stock"><span class="nm">10:24 · 算力板块异动拉升</span><span class="pr up">+2.3%</span></div>
+                    <div class="stock"><span class="nm">10:18 · 央行开展 3800 亿 MLF</span><span class="pr">—</span></div>
+                    <div class="stock"><span class="nm">10:05 · 半导体设备国产化提速</span><span class="pr up">+1.7%</span></div>
+                  </div>
+                </div>
+                <div class="card g-rank">
+                  <div class="ch"><span class="bar" style="background:var(--accent2)"></span>涨幅榜<span class="more">⋯</span></div>
+                  <div class="cb">
+                    <div class="stock"><span class="nm">1. 中际旭创</span><span class="pr up">+4.56%</span></div>
+                    <div class="stock"><span class="nm">2. 新易盛</span><span class="pr up">+3.88%</span></div>
+                    <div class="stock"><span class="nm">3. 天孚通信</span><span class="pr up">+3.21%</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="tabs">
+              <div class="tab on"><span class="tbbar" style="background:var(--up)"></span>自选盯盘</div>
+              <div class="tab"><span class="tbbar" style="background:var(--accent)"></span>分时走势</div>
+              <div class="tab"><span class="tbbar" style="background:var(--blue)"></span>涨停雷达</div>
+              <div class="tab"><span class="tbbar" style="background:var(--down)"></span>板块热力</div>
+              <div class="tab" style="color:var(--dim)">＋</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 标注 -->
+        <div class="anno" style="left:60px;top:300px">
+          <div class="ah"><span class="n">1</span>锚点栅格 + 幽灵占位</div>
+          <p>编辑态全图浮现淡金锚点格，拖拽卡时实时显示虚线落点框，松手 FLIP 让位。</p>
+        </div>
+        <div class="anno" style="left:780px;top:60px;width:180px">
+          <div class="ah"><span class="n">2</span>Dock 图标 + 文字常驻</div>
+          <p>不再 hover 浮出面板，单击分组展开；已开卡片亮条 + 金点。</p>
+        </div>
+        <div class="anno" style="left:430px;top:690px;width:200px">
+          <div class="ah"><span class="n">3</span>Tab 滑动指示 pill</div>
+          <p>金色指示条随 active tab FLIP 滑动，切卡有方向感。</p>
+        </div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       方案 B
+  ============================================================ -->
+  <div class="scheme">
+    <div class="scheme-head">
+      <span class="scheme-badge">方案 B</span>
+      <h2>浮岛中心聚焦 · 三级磁贴</h2>
+      <span class="pos">—— 视觉冲击强，盯盘时"一屏一主"，沉浸感最佳</span>
+    </div>
+    <div class="scheme-grid">
+      <div class="notes">
+        <h3>本版改动点</h3>
+        <div class="note"><span class="dot">1</span><div><b>三级磁贴：主卡 / 辅卡 / 边缘条</b><span>当前关注卡居中放大（金色描边），左右两侧中尺寸辅卡环绕，底部一条 24px 迷你信息流。拖任意卡，其余卡实时"让开"空隙。</span></div></div>
+        <div class="note"><span class="dot">2</span><div><b>悬浮工具胶囊替代左侧 Dock</b><span>顶栏下方居中一颗毛玻璃胶囊（场景 / 编排 / 布局 / 我的），hover 纵向浮层；左侧仅留 122px 辅卡栏。</span></div></div>
+        <div class="note"><span class="dot">3</span><div><b>共享元素 Morph 切卡</b><span>点辅卡 → 该卡从侧边位置 FLIP 放大入主区，原主卡缩小退回侧边；方向感：左入右出。</span></div></div>
+      </div>
+
+      <div class="scalebox"><div class="screen B">
+        <div class="tb">
+          <span class="brand">TickGold</span>
+          <span class="search">🔍 搜索股票 / 功能 / 卡片…</span>
+          <div class="right">
+            <span class="live"><i></i>实时</span>
+            <span class="sep">|</span><span>128 只</span><span class="sep">|</span>
+            <span class="pill">设置</span>
+          </div>
+        </div>
+        <div class="sb">
+          <div class="main" style="position:relative">
+            <div class="idx">
+              <span><b>上证</b> 3285.42 <span class="up">+0.56%</span></span>
+              <span><b>深成</b> 10521.30 <span class="up">+0.82%</span></span>
+              <span><b>创业板</b> 2135.66 <span class="up">+1.24%</span></span>
+              <span><b>科创50</b> 985.20 <span class="down">-0.18%</span></span>
+            </div>
+            <div class="ws">
+              <!-- 悬浮胶囊 -->
+              <div class="float-pill">
+                <span class="fp on">盯盘</span>
+                <span class="fp">复盘</span>
+                <span class="fp">编排</span>
+                <span class="fp">布局</span>
+                <span class="fp">我的</span>
+              </div>
+
+              <!-- 左辅卡栏 -->
+              <div class="side-l">
+                <div class="card mini">
+                  <div class="ch"><span class="bar" style="background:var(--up)"></span>自选</div>
+                  <div class="cb">
+                    <div class="stock"><span class="nm">茅台</span><span class="pr up">+1.2</span></div>
+                    <div class="stock"><span class="nm">旭创</span><span class="pr up">+4.5</span></div>
+                    <div class="stock"><span class="nm">宁王</span><span class="pr down">-0.8</span></div>
+                    <div class="stock"><span class="nm">平安</span><span class="pr up">+0.3</span></div>
+                  </div>
+                </div>
+                <div class="card mini">
+                  <div class="ch"><span class="bar" style="background:var(--down)"></span>持仓</div>
+                  <div class="cb">
+                    <div class="stock"><span class="nm">成本</span><span class="pr">¥142.3</span></div>
+                    <div class="stock"><span class="nm">浮盈</span><span class="pr up">+8.4%</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 中央主卡 -->
+              <div class="card island-center">
+                <div class="ch"><span class="bar" style="background:var(--accent)"></span>中际旭创 · 300308 · 分时 + 盘口<span class="more">⤢ 弹窗 · ⋯</span></div>
+                <div class="cb">
+                  <svg width="100%" height="100%" viewBox="0 0 500 260" preserveAspectRatio="none">
+                    <line x1="0" y1="130" x2="500" y2="130" stroke="#3a311b" stroke-dasharray="3 3"/>
+                    <polyline points="0,180 50,170 100,175 150,150 200,155 250,120 300,125 350,95 400,100 450,70 500,60"
+                      fill="none" stroke="#ef5f6b" stroke-width="2"/>
+                    <polyline points="0,190 50,188 100,190 150,180 200,182 250,170 300,172 350,160 400,163 450,150 500,148"
+                      fill="none" stroke="#3a311b" stroke-width="1" stroke-dasharray="4 3"/>
+                  </svg>
+                </div>
+              </div>
+
+              <!-- 右辅卡栏 -->
+              <div class="side-r">
+                <div class="card mini" style="flex:1.3">
+                  <div class="ch"><span class="bar" style="background:var(--up)"></span>涨停雷达</div>
+                  <div class="cb">
+                    <div class="stock"><span class="nm">5板 鸿博</span><span class="pr up">+10.0</span></div>
+                    <div class="stock"><span class="nm">4板 拓维</span><span class="pr up">+10.0</span></div>
+                    <div class="stock"><span class="nm">3板 长虹</span><span class="pr up">+9.98</span></div>
+                    <div class="stock"><span class="nm">2板 ×12</span><span class="pr up">—</span></div>
+                  </div>
+                </div>
+                <div class="card mini">
+                  <div class="ch"><span class="bar" style="background:var(--blue)"></span>板块</div>
+                  <div class="cb">
+                    <div class="stock"><span class="nm">CPO 概念</span><span class="pr up">+3.1</span></div>
+                    <div class="stock"><span class="nm">算力租赁</span><span class="pr up">+2.4</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 底部边缘条 -->
+              <div class="edge-strip">
+                <span style="color:var(--up)">10:24 算力板块异动</span>
+                <span style="color:var(--dim)">|</span>
+                <span>MLF 3800 亿</span>
+                <span style="color:var(--dim)">|</span>
+                <span>半导体设备 +1.7%</span>
+                <span style="margin-left:auto;color:var(--accent)">▶ 直播中</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="anno" style="left:380px;top:60px;width:200px">
+          <div class="ah"><span class="n">2</span>悬浮工具胶囊</div>
+          <p>顶栏下方毛玻璃胶囊替代左侧 Dock，hover 纵向展开；视觉更轻。</p>
+        </div>
+        <div class="anno" style="left:420px;top:260px;width:220px">
+          <div class="ah"><span class="n">1</span>三级磁贴布局</div>
+          <p>主卡金色描边居中放大，左右辅卡环绕，底部 24px 迷你流。拖卡时其余卡实时让位。</p>
+        </div>
+        <div class="anno" style="left:180px;top:500px;width:200px">
+          <div class="ah"><span class="n">3</span>共享元素 Morph</div>
+          <p>点辅卡 → 从侧边 FLIP 放大入主区，原主卡缩回；左入右出方向感。</p>
+        </div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       方案 C
+  ============================================================ -->
+  <div class="scheme">
+    <div class="scheme-head">
+      <span class="scheme-badge">方案 C</span>
+      <h2>盯盘流水线 · 分区管道</h2>
+      <span class="pos">—— 按工作流重构，从"看卡片"变成"走流程"</span>
+    </div>
+    <div class="scheme-grid">
+      <div class="notes">
+        <h3>本版改动点</h3>
+        <div class="note"><span class="dot">1</span><div><b>四条管道：观察 → 信号 → 决策 → 复盘</b><span>卡片按盯盘阶段纵向归入管道，管道间可横向拖卡；每条管道顶部有迷你计数条。</span></div></div>
+        <div class="note"><span class="dot">2</span><div><b>顶栏管道 Pills 切换器</b><span>点一颗 pill 切到该管道全屏；再点回总览。左侧只留收起的图标栏，省出横向空间给卡片。</span></div></div>
+        <div class="note"><span class="dot">3</span><div><b>管道内垂直 FLIP 让位</b><span>关卡 / 拖卡时，同管道内其余卡片用垂直 FLIP 补位；跨管道拖动时目标管道高亮虚线。</span></div></div>
+      </div>
+
+      <div class="scalebox"><div class="screen C">
+        <div class="tb">
+          <span class="brand">TickGold</span>
+          <div class="chips" style="margin:0;flex:1;max-width:420px;border:0;background:transparent;padding:0">
+            <span class="chip on">总览</span>
+            <span class="chip">观察</span>
+            <span class="chip">信号</span>
+            <span class="chip">决策</span>
+            <span class="chip">复盘</span>
+          </div>
+          <div class="right">
+            <span class="live"><i></i>实时</span>
+            <span class="sep">|</span><span>128 只</span>
+          </div>
+        </div>
+        <div class="sb">
+          <div class="dock" style="width:44px">
+            <div class="di on"><span class="ico"></span></div>
+            <div class="di"><span class="ico"></span></div>
+            <div class="sep"></div>
+            <div class="di"><span class="ico"></span></div>
+          </div>
+          <div class="main">
+            <div class="idx">
+              <span><b>上证</b> 3285.42 <span class="up">+0.56%</span></span>
+              <span><b>深成</b> 10521.30 <span class="up">+0.82%</span></span>
+              <span><b>创业板</b> 2135.66 <span class="up">+1.24%</span></span>
+            </div>
+            <div class="ws" style="padding:8px">
+              <div class="pipe-row">
+                <div class="pipe">
+                  <div class="pipe-h">🔭 观察<span class="arrow">→</span><span class="cnt">4 卡</span></div>
+                  <div class="pipe-b">
+                    <div class="pcard"><div class="t">自选盯盘<span class="up">+0.6%</span></div><div class="d">128 只自选 · 3 只异动</div></div>
+                    <div class="pcard"><div class="t">板块热力<span class="up">+1.4%</span></div><div class="d">CPO / 算力领涨</div></div>
+                    <div class="pcard"><div class="t">指数概览<span class="flat">—</span></div><div class="d">三大指数集体红盘</div></div>
+                  </div>
+                </div>
+                <div class="pipe p2">
+                  <div class="pipe-h">⚡ 信号<span class="arrow">→</span><span class="cnt">3 卡 · 1 拖起</span></div>
+                  <div class="pipe-b">
+                    <div class="pcard lift"><div class="t">涨停雷达<span class="up">5板</span></div><div class="d">鸿博 5 板 · 拓维 4 板 · 12 只 2 板</div></div>
+                    <div class="pcard"><div class="t">分时异动<span class="up">3 条</span></div><div class="d">10:24 算力 / 10:18 MLF / 10:05 半导体</div></div>
+                    <div class="pcard"><div class="t">预警中心<span class="up">2 未读</span></div><div class="d">旭创触及 +4.5% 止盈线</div></div>
+                  </div>
+                </div>
+                <div class="pipe">
+                  <div class="pipe-h">✍ 决策<span class="arrow">→</span><span class="cnt">2 卡</span></div>
+                  <div class="pipe-b">
+                    <div class="pcard"><div class="t">模拟盘<span class="up">+8.4%</span></div><div class="d">持仓 3 只 · 今日无交易</div></div>
+                    <div class="pcard"><div class="t">战斗计划<span class="flat">—</span></div><div class="d">旭创破 155 减仓 1/3</div></div>
+                  </div>
+                </div>
+                <div class="pipe">
+                  <div class="pipe-h">📓 复盘<span class="cnt">2 卡</span></div>
+                  <div class="pipe-b">
+                    <div class="pcard"><div class="t">决策日志<span class="flat">—</span></div><div class="d">今日 5 条记录</div></div>
+                    <div class="pcard"><div class="t">演化统计<span class="up">+2.1%</span></div><div class="d">周胜率 62%</div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="tabs">
+              <div class="tab on"><span class="tbbar" style="background:var(--accent)"></span>总览流水线</div>
+              <div class="tab"><span class="tbbar" style="background:var(--up)"></span>信号队列</div>
+              <div class="tab" style="color:var(--dim)">＋</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="anno" style="left:120px;top:50px;width:190px">
+          <div class="ah"><span class="n">2</span>顶栏管道 Pills</div>
+          <p>总览 / 观察 / 信号 / 决策 / 复盘，点 pill 切全屏，再点回总览。</p>
+        </div>
+        <div class="anno" style="left:380px;top:280px;width:220px">
+          <div class="ah"><span class="n">1</span>四条盯盘管道</div>
+          <p>观察 → 信号 → 决策 → 复盘，卡片按阶段纵向归入，可跨管道横向拖。</p>
+        </div>
+        <div class="anno" style="left:380px;top:540px;width:210px">
+          <div class="ah"><span class="n">3</span>管道内垂直 FLIP 让位</div>
+          <p>拖起的卡金色描边高亮，同管道其余卡平滑补位；目标管道虚线高亮。</p>
+        </div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       FLIP 让位原理
+  ============================================================ -->
+  <div class="flipdemo">
+    <h3>FLIP 平滑让位 · 动效原理示意</h3>
+    <p class="desc">无论选哪版，"卡片间让位"都用同一套 FLIP 思路：先记录 First 位置 → DOM 更新到 Last → 反向 Invert 位移 → Play 过渡到原位。下面演示关闭 B 卡后，A / C / D 三卡如何平滑补位。</p>
+    <div class="frames">
+      <div class="frame">
+        <div class="ft">① FIRST · 当前位置</div>
+        <div class="row"><div class="fbox">A</div><div class="fbox hl">B 将关闭</div><div class="fbox">C</div><div class="fbox">D</div></div>
+      </div>
+      <div class="farrow">→</div>
+      <div class="frame">
+        <div class="ft">② LAST · DOM 更新后</div>
+        <div class="row"><div class="fbox">A</div><div class="fbox gone">B 已移除</div><div class="fbox">C</div><div class="fbox">D</div></div>
+      </div>
+      <div class="farrow">→</div>
+      <div class="frame">
+        <div class="ft">③ INVERT · C/D 反向瞬移到原 B 右侧</div>
+        <div class="row"><div class="fbox">A</div><div class="fbox moved">C 瞬间移回</div><div class="fbox moved">D 瞬间移回</div></div>
+      </div>
+      <div class="farrow">→</div>
+      <div class="frame">
+        <div class="ft">④ PLAY · 0.28s 缓出滑入新位</div>
+        <div class="row"><div class="fbox">A</div><div class="fbox hl">C 落位</div><div class="fbox hl">D 落位</div></div>
+      </div>
+    </div>
+    <div class="flip-steps">
+      <div class="fstep"><b>F · First</b><p>关卡/拖卡前，用 getBoundingClientRect 记录每张卡的位置与尺寸。</p></div>
+      <div class="fstep"><b>L · Last</b><p>更新 openCards / freeRects，DOM 落到新布局。</p></div>
+      <div class="fstep"><b>I · Invert</b><p>对发生位移的卡，用 transform: translate(dx,dy) 反向抵消，视觉上还在原位。</p></div>
+      <div class="fstep"><b>P · Play</b><p>下一帧移除 transform，加 transition: transform .28s var(--ease-move)，卡片平滑滑入。</p></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       对比 & 推荐
+  ============================================================ -->
+  <div style="margin-top:40px">
+    <h3 style="color:var(--accent);font-size:16px;margin-bottom:14px">三版方案对比</h3>
+    <table class="cmp">
+      <tr><th>维度</th><th>A · 锚点栅格</th><th>B · 浮岛中心聚焦</th><th>C · 盯盘流水线</th></tr>
+      <tr><td>核心思路</td><td>统一栅格 + 幽灵占位，保留现有信息密度</td><td>一屏一主，三级磁贴环绕</td><td>按盯盘流程分四条管道</td></tr>
+      <tr><td>编排改动</td><td>取消自动/自由切换，编辑态显锚点格</td><td>卡片分级尺寸，拖卡实时让位</td><td>管道内垂直排，跨管道横向拖</td></tr>
+      <tr><td>菜单改动</td><td>Dock 加文字常驻，顶栏"编排"开关</td><td>悬浮胶囊替代左侧 Dock</td><td>顶栏 Pills 切管道</td></tr>
+      <tr><td>切换动效</td><td>Tab 滑动 pill + 淡入淡出</td><td>共享元素 Morph，左入右出</td><td>管道横向 slide + 垂直 FLIP</td></tr>
+      <tr><td>实现成本</td><td style="color:var(--down)">低（≈3-5 人日）</td><td style="color:var(--up)">中高（≈8-12 人日）</td><td style="color:var(--accent)">中（≈6-9 人日）</td></tr>
+      <tr><td>适合人群</td><td>老用户、信息密度敏感型</td><td>盯盘聚焦型、单股深度跟踪</td><td>流程化交易、多阶段复盘用户</td></tr>
+    </table>
+    <div class="reco">
+      <b>建议：</b>以 <b>A 版（锚点栅格）</b>作为第一阶段落地——它直接修掉"自由布局入口深、拖卡硬跳"两个最痛的点，改造成本最低；同时把 <b>B 版的"共享元素 Morph 切卡"</b>和 <b>FLIP 让位内核</b>作为通用能力沉淀到 useWorkbench，后续可平滑升级到 B / C 版的视觉语言。
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

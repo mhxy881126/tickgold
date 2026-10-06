@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>场景切换方案对比</title>
+<style>
+:root{
+  --bg:#07080a; --panel:#0c0e12; --card:#11141a; --line:#1e2330;
+  --text:#eef2f8; --dim:#8b97a8; --gold:#e8b860; --up:#ff4d6a;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",sans-serif;padding:20px}
+h1{font-size:16px;color:var(--gold);margin-bottom:16px;letter-spacing:2px}
+.section{margin-bottom:40px}
+.section h2{font-size:13px;color:var(--dim);margin-bottom:12px;letter-spacing:1px}
+.bar{
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:10px 16px;display:flex;align-items:center;gap:12px;
+  margin-bottom:10px;
+}
+.brand{font-size:14px;font-weight:700;color:var(--gold)}
+/* ===== 方案A：下拉选择器 ===== */
+.dropdown{
+  background:var(--card);border:1px solid var(--line);border-radius:8px;
+  padding:6px 12px;font-size:12px;cursor:pointer;
+  display:flex;align-items:center;gap:8px;color:var(--text);
+}
+.dropdown .arrow{color:var(--dim);font-size:10px}
+.dropdown:hover{border-color:var(--gold)}
+/* ===== 方案B：居中悬浮胶囊 ===== */
+.pill-group{
+  background:rgba(255,255,255,.04);border:1px solid var(--line);
+  border-radius:20px;padding:3px;display:flex;gap:2px;
+  backdrop-filter:blur(20px);
+}
+.pill{
+  padding:5px 14px;border-radius:16px;font-size:11px;color:var(--dim);
+  cursor:pointer;transition:all .2s;white-space:nowrap;
+  display:flex;align-items:center;gap:5px;
+}
+.pill svg{width:12px;height:12px}
+.pill.on{background:var(--gold);color:#000;font-weight:600}
+.pill:hover:not(.on){color:var(--text)}
+/* ===== 方案C：图标栅格 ===== */
+.icon-grid{display:flex;gap:6px}
+.icon-item{
+  width:44px;height:44px;border-radius:10px;background:var(--card);
+  border:1px solid var(--line);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;cursor:pointer;
+  transition:all .18s;
+}
+.icon-item svg{width:16px;height:16px;color:var(--dim)}
+.icon-item span{font-size:8px;color:var(--dim)}
+.icon-item.on{border-color:var(--gold);background:rgba(232,184,96,.12)}
+.icon-item.on svg,.icon-item.on span{color:var(--gold)}
+/* ===== 方案D：左侧垂直时间轴 ===== */
+.vert-bar{
+  width:80px;background:var(--panel);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;padding:10px 0;gap:2px;
+}
+.vert-item{
+  padding:8px 10px;font-size:11px;color:var(--dim);cursor:pointer;
+  border-left:2px solid transparent;transition:all .15s;
+}
+.vert-item.on{border-left-color:var(--gold);color:var(--gold);background:rgba(232,184,96,.08)}
+.vert-item:hover:not(.on){color:var(--text);background:rgba(255,255,255,.04)}
+/* 模拟卡片区 */
+.mock-cards{
+  flex:1;display:grid;grid-template-columns:2fr 1fr;gap:8px;padding:10px;
+}
+.mock-card{
+  background:var(--card);border:1px solid var(--line);border-radius:8px;
+  display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:12px;
+}
+.mock-card.big{grid-row:span 2}
+.time-tabs{
+  display:flex;gap:4px;margin-left:auto;
+}
+.ttab{
+  padding:4px 10px;font-size:10px;color:var(--dim);border-radius:6px;cursor:pointer;
+}
+.ttab.on{background:rgba(232,184,96,.15);color:var(--gold)}
+.desc{font-size:11px;color:var(--dim);line-height:1.6;margin-top:6px}
+.label{font-size:11px;color:var(--gold);font-weight:600}
+</style>
+</head>
+<body>
+<h1>场景切换 · 4 套方案</h1>
+
+<!-- 方案 A：下拉 -->
+<div class="section">
+  <span class="label">方案 A · 下拉选择器</span>
+  <div class="bar">
+    <span class="brand">TickGold</span>
+    <div class="dropdown">📊 盘中盯盘 <span class="arrow">▾</span></div>
+    <div class="time-tabs">
+      <span class="ttab">集合竞价</span>
+      <span class="ttab on">早盘 9:30</span>
+      <span class="ttab">午盘</span>
+      <span class="ttab">尾盘 14:30</span>
+      <span class="ttab">盘后复盘</span>
+    </div>
+  </div>
+  <p class="desc">场景收成一个下拉按钮，点开弹出卡片网格选场景。顶栏只占一个按钮宽度，最省空间。适合场景数 ≤ 8 的情况。</p>
+</div>
+
+<!-- 方案 B：居中悬浮胶囊 -->
+<div class="section">
+  <span class="label">方案 B · 居中悬浮胶囊（macOS 控制中心风）</span>
+  <div class="bar">
+    <span class="brand">TickGold</span>
+    <div style="flex:1"></div>
+    <div class="pill-group">
+      <div class="pill on">📈 盘中盯盘</div>
+      <div class="pill">⚡ 开盘竞价</div>
+      <div class="pill">📋 盘后复盘</div>
+      <div class="pill">🔍 条件选股</div>
+      <div class="pill">◉ 极简看盘</div>
+    </div>
+    <div style="flex:1"></div>
+  </div>
+  <div class="bar" style="padding:6px 16px">
+    <div class="time-tabs">
+      <span class="ttab">集合竞价</span>
+      <span class="ttab on">早盘 9:30</span>
+      <span class="ttab">午盘</span>
+      <span class="ttab">尾盘 14:30</span>
+      <span class="ttab">盘后复盘</span>
+    </div>
+  </div>
+  <p class="desc">场景胶囊居中悬浮，选中态金色滑块滑动动画。TimeTabs 单独一行放在下面。视觉重心居中，最像 macOS。</p>
+</div>
+
+<!-- 方案 C：图标栅格 -->
+<div class="section">
+  <span class="label">方案 C · 图标栅格（dock 式）</span>
+  <div class="bar">
+    <span class="brand">TickGold</span>
+    <div class="icon-grid">
+      <div class="icon-item on">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 17l6-6 4 4 8-8v4h2V3h-8v2h4l-6 6-4-4-8 8z"/></svg>
+        <span>盘中</span>
+      </div>
+      <div class="icon-item">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M13 3L4 14h7l-1 7 9-11h-7l1-7z"/></svg>
+        <span>开盘</span>
+      </div>
+      <div class="icon-item">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19 3H5v18l7-3 7 3V3z"/></svg>
+        <span>复盘</span>
+      </div>
+      <div class="icon-item">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 10-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5z"/></svg>
+        <span>选股</span>
+      </div>
+      <div class="icon-item">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16z"/></svg>
+        <span>极简</span>
+      </div>
+    </div>
+    <div class="time-tabs">
+      <span class="ttab">集合竞价</span>
+      <span class="ttab on">早盘 9:30</span>
+      <span class="ttab">午盘</span>
+      <span class="ttab">尾盘 14:30</span>
+      <span class="ttab">盘后复盘</span>
+    </div>
+  </div>
+  <p class="desc">场景变成 44×44 小图标块，和左侧 Dock 视觉语言统一。hover tooltip 显示全名。最紧凑。</p>
+</div>
+
+<!-- 方案 D：左侧垂直 -->
+<div class="section">
+  <span class="label">方案 D · 左侧垂直场景栏</span>
+  <div style="display:flex;gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden">
+    <div class="vert-bar">
+      <div class="vert-item on">盘中盯盘</div>
+      <div class="vert-item">开盘竞价</div>
+      <div class="vert-item">盘后复盘</div>
+      <div class="vert-item">条件选股</div>
+      <div class="vert-item">极简看盘</div>
+    </div>
+    <div style="flex:1">
+      <div class="bar" style="border:none;border-radius:0;border-bottom:1px solid var(--line)">
+        <div class="time-tabs">
+          <span class="ttab">集合竞价</span>
+          <span class="ttab on">早盘 9:30</span>
+          <span class="ttab">午盘</span>
+          <span class="ttab">尾盘 14:30</span>
+          <span class="ttab">盘后复盘</span>
+        </div>
+      </div>
+      <div class="mock-cards">
+        <div class="mock-card big">K线图</div>
+        <div class="mock-card">自选股</div>
+        <div class="mock-card">雷达</div>
+      </div>
+    </div>
+  </div>
+  <p class="desc">场景收成左侧垂直栏（和左侧 Dock 平行），选中态金色左边线。顶栏完全不被占用。但会多占 80px 宽度。</p>
+</div>
+
+</body>
+</html>

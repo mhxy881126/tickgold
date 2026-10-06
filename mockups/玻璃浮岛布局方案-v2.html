@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>玻璃浮岛布局方案 v2</title>
+<style>
+:root{
+  --bg:#07080a; --panel:#0c0e12; --card:#11141a; --line:#1e2330;
+  --text:#eef2f8; --dim:#8b97a8; --gold:#e8b860; --up:#ff4d6a; --down:#00d4a0;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",sans-serif;padding:20px}
+h1{font-size:16px;color:var(--gold);margin-bottom:20px;letter-spacing:2px}
+.section{margin-bottom:40px}
+.section h2{font-size:13px;color:var(--gold);margin-bottom:10px}
+.demo{
+  background:var(--bg);border:1px solid var(--line);border-radius:10px;
+  height:350px;position:relative;overflow:hidden;
+}
+.demo-bar{
+  height:26px;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;padding:0 12px;font-size:10px;color:var(--dim);gap:8px;
+}
+.mock-card{
+  background:var(--card);border:1px solid var(--line);border-radius:8px;
+  display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:11px;
+}
+
+/* ===== 方案 A：主卡贴边 + 右侧导航贴边（无缝） ===== */
+.a-layout{position:absolute;inset:0;display:flex}
+.a-main{flex:1;padding:10px;display:flex}
+.a-main .mock-card{flex:1}
+.a-nav{
+  width:180px;flex:none;background:var(--panel);
+  border-left:1px solid var(--line);padding:10px;
+}
+.a-nav-item{
+  padding:6px 8px;font-size:11px;color:var(--dim);border-radius:4px;
+  margin-bottom:2px;cursor:pointer;
+}
+.a-nav-item.on{background:rgba(232,184,96,.12);color:var(--gold)}
+
+/* ===== 方案 B：主卡有边距 + 右侧导航浮岛 ===== */
+.b-layout{position:absolute;inset:0;padding:12px;display:flex;gap:10px}
+.b-main{flex:1;display:flex}
+.b-main .mock-card{flex:1;border-radius:12px}
+.b-nav{
+  width:180px;flex:none;background:rgba(20,24,32,.8);
+  backdrop-filter:blur(20px);
+  border:1px solid var(--line);border-radius:12px;
+  padding:10px;
+}
+
+/* ===== 方案 C：主卡全宽 + 右侧悬浮抽屉 ===== */
+.c-layout{position:absolute;inset:0}
+.c-main{position:absolute;inset:0;padding:10px}
+.c-main .mock-card{width:100%;height:100%}
+.c-nav{
+  position:absolute;right:0;top:0;bottom:0;width:160px;
+  background:rgba(12,14,18,.95);backdrop-filter:blur(20px);
+  border-left:1px solid var(--line);
+  padding:10px;transform:translateX(0);
+}
+.c-nav-toggle{
+  position:absolute;right:160px;top:50%;transform:translateY(-50%);
+  width:20px;height:40px;background:var(--panel);
+  border:1px solid var(--line);border-right:none;
+  border-radius:6px 0 0 6px;display:flex;align-items:center;justify-content:center;
+  font-size:10px;color:var(--gold);cursor:pointer;
+}
+
+/* ===== 方案 D：三栏（左缩略 + 中主卡 + 右详情） ===== */
+.d-layout{position:absolute;inset:0;display:flex}
+.d-left{
+  width:120px;flex:none;background:var(--panel);border-right:1px solid var(--line);
+  padding:8px;display:flex;flex-direction:column;gap:4px;
+}
+.d-left-item{
+  padding:6px;font-size:10px;color:var(--dim);border-radius:4px;
+  cursor:pointer;text-align:center;
+}
+.d-left-item.on{background:rgba(232,184,96,.12);color:var(--gold)}
+.d-main{flex:1;padding:10px;display:flex}
+.d-main .mock-card{flex:1}
+.d-right{
+  width:160px;flex:none;background:var(--panel);border-left:1px solid var(--line);
+  padding:10px;
+}
+
+.desc{font-size:11px;color:var(--dim);line-height:1.6;margin-top:8px}
+.label{font-size:11px;color:var(--gold);font-weight:600}
+</style>
+</head>
+<body>
+<h1>玻璃浮岛布局 · 4 套方案 v2</h1>
+
+<!-- 方案 A -->
+<div class="section">
+  <span class="label">方案 A · 无缝双栏（主卡贴边 + 导航贴边）</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="a-layout">
+      <div class="a-main"><div class="mock-card">主卡内容</div></div>
+      <div class="a-nav">
+        <div style="font-size:10px;color:var(--gold);margin-bottom:8px">卡片导航</div>
+        <div class="a-nav-item on">涨停雷达</div>
+        <div class="a-nav-item">自选股</div>
+        <div class="a-nav-item">AI 问数</div>
+      </div>
+    </div>
+  </div>
+  <p class="desc">主卡和导航无缝拼接，中间只有一条 1px 分割线。主卡充满左边，导航充满右边。没有空隙。</p>
+</div>
+
+<!-- 方案 B -->
+<div class="section">
+  <span class="label">方案 B · 浮岛双栏（主卡有边距 + 导航悬浮）</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="b-layout">
+      <div class="b-main"><div class="mock-card">主卡内容</div></div>
+      <div class="b-nav">
+        <div style="font-size:10px;color:var(--gold);margin-bottom:8px">卡片导航</div>
+        <div class="a-nav-item on">涨停雷达</div>
+        <div class="a-nav-item">自选股</div>
+        <div class="a-nav-item">AI 问数</div>
+      </div>
+    </div>
+  </div>
+  <p class="desc">主卡和导航都有圆角边距，中间留 10px 空隙。导航是悬浮玻璃面板。最有"浮岛"感。</p>
+</div>
+
+<!-- 方案 C -->
+<div class="section">
+  <span class="label">方案 C · 主卡全宽 + 右侧抽屉（可收起）</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="c-layout">
+      <div class="c-main"><div class="mock-card">主卡内容（全宽）</div></div>
+      <div class="c-nav">
+        <div style="font-size:10px;color:var(--gold);margin-bottom:8px">卡片导航</div>
+        <div class="a-nav-item on">涨停雷达</div>
+        <div class="a-nav-item">自选股</div>
+        <div class="a-nav-item">AI 问数</div>
+      </div>
+      <div class="c-nav-toggle">◀</div>
+    </div>
+  </div>
+  <p class="desc">主卡默认全宽，右侧导航是抽屉式。点 ◀ 收起导航，主卡占满；点 ▶ 展开导航。最大化利用空间。</p>
+</div>
+
+<!-- 方案 D -->
+<div class="section">
+  <span class="label">方案 D · 三栏（左缩略 + 中主卡 + 右导航）</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="d-layout">
+      <div class="d-left">
+        <div class="d-left-item on">自选</div>
+        <div class="d-left-item">雷达</div>
+        <div class="d-left-item">复盘</div>
+      </div>
+      <div class="d-main"><div class="mock-card">主卡内容</div></div>
+      <div class="d-right">
+        <div style="font-size:10px;color:var(--gold);margin-bottom:8px">详情</div>
+        <div style="font-size:10px;color:var(--dim)">涨停数<br><b style="font-size:16px;color:var(--up)">0</b></div>
+      </div>
+    </div>
+  </div>
+  <p class="desc">三栏：左边 120px 缩略卡切换 + 中间主卡 + 右边 160px 详情面板。信息最丰富，但占空间。</p>
+</div>
+
+</body>
+</html>

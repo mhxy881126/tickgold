@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>空工作台优化方案</title>
+<style>
+:root{
+  --bg:#07080a; --panel:#0c0e12; --card:#11141a; --line:#1e2330;
+  --text:#eef2f8; --dim:#8b97a8; --gold:#e8b860; --up:#ff4d6a; --down:#00d4a0;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",sans-serif;padding:20px}
+h1{font-size:16px;color:var(--gold);margin-bottom:20px;letter-spacing:2px}
+.section{margin-bottom:40px}
+.section h2{font-size:13px;color:var(--gold);margin-bottom:10px;letter-spacing:1px}
+.demo{
+  background:var(--bg);border:1px solid var(--line);border-radius:10px;
+  height:400px;position:relative;overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.demo-bar{
+  height:30px;flex:none;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;padding:0 12px;font-size:10px;color:var(--dim);gap:12px;
+}
+.demo-body{flex:1;display:flex;flex-direction:column;position:relative;overflow:hidden}
+
+/* ===== 方案 A：呼吸光效 ===== */
+.aura{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 600px 300px at 50% 40%, rgba(232,184,96,.08), transparent 70%),
+    radial-gradient(ellipse 400px 200px at 30% 60%, rgba(255,77,106,.05), transparent 70%),
+    radial-gradient(ellipse 400px 200px at 70% 60%, rgba(0,212,160,.05), transparent 70%);
+  animation: breathe 4s ease-in-out infinite;
+}
+@keyframes breathe{
+  0%,100%{opacity:.6;transform:scale(1)}
+  50%{opacity:1;transform:scale(1.05)}
+}
+.center-logo{
+  position:relative;z-index:2;flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:8px;
+}
+.tg{
+  width:48px;height:48px;border-radius:12px;
+  background:linear-gradient(135deg,#e8c878,#b8923a);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:700;color:#000;font-size:14px;
+  box-shadow:0 0 40px rgba(232,184,96,.3);
+}
+.quick-row{
+  flex:none;padding:10px;display:flex;gap:8px;justify-content:center;
+}
+.qbtn{
+  padding:6px 14px;border-radius:8px;background:var(--card);
+  border:1px solid var(--line);font-size:11px;color:var(--dim);
+  cursor:pointer;
+}
+
+/* ===== 方案 B：大卡片入口栅格 ===== */
+.entry-grid{
+  flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:20px;
+  align-content:center;
+}
+.entry-card{
+  background:var(--card);border:1px solid var(--line);border-radius:10px;
+  padding:16px;cursor:pointer;transition:all .18s;
+  display:flex;flex-direction:column;gap:6px;
+}
+.entry-card:hover{border-color:var(--gold);transform:translateY(-2px)}
+.entry-card .eic{
+  width:32px;height:32px;border-radius:8px;background:rgba(232,184,96,.1);
+  display:flex;align-items:center;justify-content:center;font-size:16px;
+}
+.entry-card .et{font-size:13px;font-weight:600}
+.entry-card .ed{font-size:10px;color:var(--dim);line-height:1.4}
+
+/* ===== 方案 C：迷你仪表盘 ===== */
+.dash{
+  flex:1;display:grid;grid-template-columns:1.2fr 1fr;gap:12px;padding:16px;
+}
+.dash-main{
+  background:var(--card);border:1px solid var(--line);border-radius:10px;
+  padding:14px;display:flex;flex-direction:column;
+}
+.dash-title{font-size:11px;color:var(--dim);margin-bottom:8px}
+.dash-value{font-size:28px;font-weight:700;color:var(--up)}
+.dash-change{font-size:12px;color:var(--up);margin-top:2px}
+.dash-chart{
+  flex:1;margin-top:10px;background:
+    linear-gradient(90deg, transparent 49%, rgba(255,255,255,.05) 50%, transparent 51%) center/100% 1px no-repeat,
+    linear-gradient(0deg, transparent 49%, rgba(255,255,255,.05) 50%, transparent 51%) center/100% 1px no-repeat;
+  border-radius:6px;position:relative;overflow:hidden;
+}
+.dash-chart::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg, transparent 60%, rgba(255,77,106,.15));
+  clip-path:polygon(0 70%, 10% 65%, 20% 72%, 30% 60%, 40% 68%, 50% 55%, 60% 62%, 70% 48%, 80% 55%, 90% 42%, 100% 50%, 100% 100%, 0 100%);
+}
+.dash-side{display:flex;flex-direction:column;gap:10px}
+.dash-stat{
+  background:var(--card);border:1px solid var(--line);border-radius:10px;
+  padding:12px;flex:1;display:flex;align-items:center;justify-content:space-between;
+}
+.dash-stat .dl{font-size:10px;color:var(--dim)}
+.dash-stat .dv{font-size:18px;font-weight:700}
+
+/* ===== 方案 D：最近使用 ===== */
+.recent{
+  flex:1;display:flex;flex-direction:column;padding:20px;gap:12px;
+}
+.recent-title{font-size:11px;color:var(--dim);letter-spacing:1px}
+.recent-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.recent-card{
+  background:var(--card);border:1px solid var(--line);border-radius:8px;
+  height:80px;padding:10px;cursor:pointer;transition:all .15s;
+}
+.recent-card:hover{border-color:var(--gold)}
+.recent-card .rt{font-size:11px;font-weight:600;margin-bottom:4px}
+.recent-card .rs{font-size:9px;color:var(--dim)}
+.recent-card .rv{font-size:14px;font-weight:700;margin-top:4px}
+.desc{font-size:11px;color:var(--dim);line-height:1.6;margin-top:8px}
+.label{font-size:11px;color:var(--gold);font-weight:600}
+</style>
+</head>
+<body>
+<h1>空工作台 · 4 套优化方案</h1>
+
+<!-- 方案 A -->
+<div class="section">
+  <span class="label">方案 A · 呼吸光效背景</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="demo-body">
+      <div class="aura"></div>
+      <div class="center-logo">
+        <div class="tg">TG</div>
+        <div style="font-size:18px;font-weight:700">TickGold 盯盘工作台</div>
+        <div style="font-size:11px;color:var(--dim)">空台也能一眼看全局</div>
+      </div>
+      <div class="quick-row">
+        <div class="qbtn">⚡ 快速自选股</div>
+        <div class="qbtn">📊 大盘总览</div>
+        <div class="qbtn">🔥 涨停雷达</div>
+      </div>
+    </div>
+  </div>
+  <p class="desc">中间加柔和的金/红/绿呼吸光晕，缓慢脉动。空台不再是死黑，有金融终端的氛围感。改动最小，只加一层渐变背景。</p>
+</div>
+
+<!-- 方案 B -->
+<div class="section">
+  <span class="label">方案 B · 大卡片入口栅格（推荐）</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="entry-grid">
+      <div class="entry-card">
+        <div class="eic">📈</div>
+        <div class="et">大盘总览</div>
+        <div class="ed">指数实时行情 + 涨跌家数 + 市场情绪</div>
+      </div>
+      <div class="entry-card">
+        <div class="eic">⚡</div>
+        <div class="et">涨停雷达</div>
+        <div class="ed">实时涨停板监控 + 封单分析 + 炸板预警</div>
+      </div>
+      <div class="entry-card">
+        <div class="eic">🔥</div>
+        <div class="et">短线精灵</div>
+        <div class="ed">异动快讯 + 大单监控 + 火箭发射</div>
+      </div>
+      <div class="entry-card">
+        <div class="eic">📊</div>
+        <div class="et">K线盘口</div>
+        <div class="ed">分时 + K线 + 五档盘口 + 成交明细</div>
+      </div>
+      <div class="entry-card">
+        <div class="eic">⭐</div>
+        <div class="et">自选股</div>
+        <div class="ed">分组管理 + 实时报价 + 涨跌排序</div>
+      </div>
+      <div class="entry-card">
+        <div class="eic">🔍</div>
+        <div class="et">条件选股</div>
+        <div class="ed">形态选股 + 指标筛选 + 策略回测</div>
+      </div>
+    </div>
+  </div>
+  <p class="desc">中间放 2×3 大卡片入口，每张卡片带图标+标题+描述，hover 金色边框。空台也有内容感，点击直接开卡片。最实用。</p>
+</div>
+
+<!-- 方案 C -->
+<div class="section">
+  <span class="label">方案 C · 迷你大盘仪表盘</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="dash">
+      <div class="dash-main">
+        <div class="dash-title">上证指数</div>
+        <div class="dash-value">3,245.67</div>
+        <div class="dash-change">+18.23 (+0.56%)</div>
+        <div class="dash-chart"></div>
+      </div>
+      <div class="dash-side">
+        <div class="dash-stat">
+          <div><div class="dl">上涨</div><div class="dv" style="color:var(--up)">2,847</div></div>
+          <div><div class="dl">下跌</div><div class="dv" style="color:var(--down)">1,953</div></div>
+        </div>
+        <div class="dash-stat">
+          <div><div class="dl">涨停</div><div class="dv" style="color:var(--up)">48</div></div>
+          <div><div class="dl">跌停</div><div class="dv" style="color:var(--down)">5</div></div>
+        </div>
+        <div class="dash-stat">
+          <div><div class="dl">市场情绪</div><div class="dv" style="color:var(--gold)">50</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="desc">空台直接显示迷你大盘仪表盘——指数走势 + 涨跌家数 + 涨跌停 + 情绪。不开卡片也能看全局，信息密度最高。</p>
+</div>
+
+<!-- 方案 D -->
+<div class="section">
+  <span class="label">方案 D · 最近使用快速恢复</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="recent">
+      <div class="recent-title">最近使用 · 点击快速恢复</div>
+      <div class="recent-row">
+        <div class="recent-card">
+          <div class="rt">自选股</div>
+          <div class="rs">持仓分组</div>
+          <div class="rv" style="color:var(--up)">+2.34%</div>
+        </div>
+        <div class="recent-card">
+          <div class="rt">涨停雷达</div>
+          <div class="rs">实时监控</div>
+          <div class="rv" style="color:var(--up)">48 涨停</div>
+        </div>
+        <div class="recent-card">
+          <div class="rt">K线盘口</div>
+          <div class="rs">贵州茅台</div>
+          <div class="rv" style="color:var(--down)">-0.87%</div>
+        </div>
+        <div class="recent-card">
+          <div class="rt">短线精灵</div>
+          <div class="rs">异动快讯</div>
+          <div class="rv" style="color:var(--gold)">12 条新</div>
+        </div>
+      </div>
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:12px">
+        或者从左侧 Dock 选择功能卡片开始 →
+      </div>
+    </div>
+  </div>
+  <p class="desc">空台显示最近打开过的 4 张卡片缩略图（带实时数据），点击快速恢复上次工作区。最贴近真实使用场景。</p>
+</div>
+
+</body>
+</html>

@@ -13,6 +13,11 @@ const bench = inject<{
 const activeGroup = ref<string | null>(null);
 const hoverTimer = ref<number | null>(null);
 
+// 每个分组已开卡片数（用于红色 badge）
+function groupCount(g: DockGroup): number {
+  return g.items.filter((it) => bench?.isOpen(it.id)).length;
+}
+
 function openGroup(g: DockGroup) {
   if (hoverTimer.value) { window.clearTimeout(hoverTimer.value); hoverTimer.value = null; }
   activeGroup.value = g.name;
@@ -52,7 +57,10 @@ const current = computed<DockGroup | null>(
       @focus="openGroup(g)"
       @click="activeGroup === g.name ? (activeGroup = null) : openGroup(g)"
     >
-      <svg viewBox="0 0 24 24" class="d-ic"><path fill="currentColor" :d="g.icon" /></svg>
+      <span v-if="groupCount(g) > 0" class="d-badge">{{ groupCount(g) }}</span>
+      <span class="d-ic">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" :d="g.icon" /></svg>
+      </span>
       <span class="d-label">{{ g.name.slice(0, 2) }}</span>
     </button>
 
@@ -100,56 +108,74 @@ const current = computed<DockGroup | null>(
 <style scoped>
 .side-dock {
   position: relative;
-  width: 56px;
+  width: 68px;
   flex: none;
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 0;
+  padding: 10px 0;
   gap: 2px;
   z-index: 90;
 }
 .dock-btn {
-  width: 46px; height: 46px;
+  width: 54px; padding: 6px 0;
   border: 0; background: transparent;
-  border-radius: 10px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  border-radius: 8px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
   color: var(--text-dim);
   cursor: pointer;
   transition: background 0.14s, color 0.14s;
   position: relative;
 }
-.d-ic { width: 19px; height: 19px; opacity: 0.85; }
-.d-label { font-size: 9px; line-height: 1; letter-spacing: 0.2px; }
-.dock-btn:hover { color: var(--text); background: var(--bg-hover); }
-.dock-btn.on { color: var(--accent-2); background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.dock-btn.on::before {
-  content: ""; position: absolute; left: -5px; top: 10px; bottom: 10px;
-  width: 3px; border-radius: 0 3px 3px 0; background: linear-gradient(180deg, var(--accent), var(--accent-2));
+.dock-btn .d-ic {
+  width: 22px; height: 22px; border-radius: 6px;
+  background: rgba(255,255,255,.05);
+  display: flex; align-items: center; justify-content: center;
+  transition: all .18s;
 }
-.dock-sep { width: 26px; height: 1px; background: var(--border); margin: 6px 0; }
+.d-ic svg { width: 13px; height: 13px; opacity: .85; }
+.d-label { font-size: 9px; line-height: 1; letter-spacing: 1px; }
+.dock-btn:hover { color: var(--text); background: rgba(232,184,96,.08); }
+.dock-btn.on { color: var(--text); background: rgba(232,184,96,.08); }
+.dock-btn.on .d-ic {
+  background: linear-gradient(135deg, #e8c878, #b8923a);
+}
+.dock-btn.on .d-ic svg { opacity: 1; color: #000; }
+.dock-sep { width: 30px; height: 1px; background: var(--border); margin: 6px 0; }
+.d-badge {
+  position: absolute; top: 2px; right: 4px;
+  min-width: 14px; height: 14px; border-radius: 7px;
+  background: #ef5f6b; color: #fff;
+  font-size: 8.5px; font-weight: 700; line-height: 14px;
+  text-align: center; padding: 0 3px;
+  z-index: 2;
+}
 
 /* dock 右侧浮出面板 */
 .dock-panel {
   position: absolute;
   left: calc(100% - 2px); top: 0;
-  width: 300px;
-  background: color-mix(in srgb, var(--bg-panel) 97%, transparent);
-  backdrop-filter: blur(18px);
-  border: 1px solid var(--border);
+  width: 250px;
+  background: rgba(14,17,22,.97);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,.1);
   border-left: 0;
-  border-radius: 0 12px 12px 0;
-  box-shadow: 16px 16px 40px rgba(0, 0, 0, 0.5);
-  padding: 12px 12px 14px;
+  border-radius: 0 10px 10px 0;
+  box-shadow: 20px 20px 50px rgba(0,0,0,.6);
+  padding: 10px;
   max-height: calc(100vh - 80px);
   overflow-y: auto;
 }
-.dp-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; padding: 0 4px; }
-.dp-head h3 { margin: 0; font-size: 14px; color: var(--accent-2); }
-.dp-head span { font-size: 11px; color: var(--text-dim); }
-.dp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.dp-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 8px; padding: 4px 6px;
+}
+.dp-head h3 { margin: 0; font-size: 10px; color: #e8c878; letter-spacing: 2px; font-weight: 600; }
+.dp-head span { font-size: 9px; color: var(--text-dim); letter-spacing: 0; }
+.dp-grid { display: flex; flex-direction: column; gap: 2px; }
 .dp-item {
   display: grid;
   grid-template-columns: 28px 1fr;
@@ -158,31 +184,30 @@ const current = computed<DockGroup | null>(
   column-gap: 8px;
   padding: 7px 8px;
   border: 1px solid transparent;
-  border-radius: 10px;
-  background: var(--bg);
+  border-radius: 6px;
+  background: transparent;
   color: var(--text);
   text-align: left; cursor: pointer;
-  transition: border-color 0.14s, transform 0.14s;
+  transition: background 0.14s, border-color 0.14s;
 }
 .dpi-ic {
   grid-row: 1 / 3;
-  width: 28px; height: 28px; border-radius: 8px;
+  width: 28px; height: 28px; border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--accent) 13%, transparent);
-  color: var(--accent-2);
+  font-size: 11px; font-weight: 700;
 }
 .dpi-ic svg { width: 15px; height: 15px; }
-.dpi-t { font-size: 12px; font-weight: 700; line-height: 1.2; }
-.dpi-d { font-size: 10px; color: var(--text-dim); line-height: 1.3; margin-top: 2px; }
-.dp-item:hover {
-  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
-  transform: translateY(-1px);
+.dpi-t { font-size: 12px; font-weight: 400; line-height: 1.2; display: flex; align-items: center; gap: 6px; }
+.dpi-d { font-size: 9.5px; color: var(--text-dim); line-height: 1.3; margin-top: 1px; }
+.dp-item:hover { background: rgba(255,255,255,.05); }
+.dp-item.on { background: rgba(232,184,96,.08); border-color: rgba(232,184,96,.25); }
+.dp-item.on .dpi-t::after {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: #e8c878; box-shadow: 0 0 6px #e8c878;
 }
-.dp-item.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
-.dp-item.on .dpi-t::after { content: " · 已开"; color: var(--accent-2); font-weight: 500; font-size: 10px; }
 
 /* 面板过渡 */
-.dpop-enter-active { transition: opacity 0.16s ease, transform 0.16s ease; }
+.dpop-enter-active { transition: opacity 0.15s ease, transform 0.15s ease; }
 .dpop-leave-active { transition: opacity 0.1s ease, transform 0.1s ease; }
 .dpop-enter-from, .dpop-leave-to { opacity: 0; transform: translateX(-8px); }
 </style>

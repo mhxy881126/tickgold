@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>TickGold · 曜石 Bento 可交互原型</title>
+<style>
+:root{
+  --bg:#07080a; --bg2:#0b0d11; --panel:#0e1116;
+  --ink:#e8ecf1; --ink2:#8b94a3; --ink3:#565e6c;
+  --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.14);
+  --up:#ff4d6a; --down:#00d4a0; --gold:#e8b860; --cyan:#4dd0e1;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);
+  font-family:"SF Pro Display","PingFang SC","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+  font-feature-settings:"tnum" 1; font-variant-numeric:tabular-nums;overflow:hidden}
+.up{color:var(--up)} .down{color:var(--down)}
+
+.app{height:100vh;display:flex;flex-direction:column;
+  background:radial-gradient(900px 500px at 70% 0%, rgba(232,184,96,.04), transparent 60%), var(--bg2);}
+
+/* ===== 顶栏 ===== */
+.tbar{height:42px;flex:none;display:flex;align-items:center;padding:0 14px;gap:12px;
+  border-bottom:1px solid var(--line);background:rgba(0,0,0,.2);z-index:20}
+.logo{color:var(--gold);font-weight:700;letter-spacing:2px;font-size:13px}
+.scene{display:flex;gap:4px;margin-left:8px}
+.sc{font-size:11px;padding:4px 11px;border-radius:5px;color:var(--ink2);cursor:pointer;border:1px solid transparent;user-select:none}
+.sc.on{background:var(--gold);color:#000;font-weight:700}
+.sc:not(.on):hover{background:rgba(255,255,255,.05);color:var(--ink)}
+.tbar .right{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:11px;color:var(--ink2)}
+.live{display:flex;align-items:center;gap:5px}
+.live i{width:6px;height:6px;border-radius:50%;background:var(--down);box-shadow:0 0 8px var(--down);animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.btn-edit{font-size:11px;padding:4px 12px;border-radius:5px;cursor:pointer;
+  border:1px solid var(--line2);background:transparent;color:var(--ink2);user-select:none}
+.btn-edit.on{background:var(--gold);color:#000;border-color:var(--gold);font-weight:700}
+.btn-edit:not(.on):hover{color:var(--ink);border-color:var(--ink2)}
+.hbtn{font-size:11px;padding:3px 10px;border-radius:5px;cursor:pointer;
+  border:1px solid var(--line2);background:transparent;color:var(--ink2)}
+.hbtn:hover{color:var(--ink);border-color:var(--ink2)}
+.win-ctl{display:flex;gap:0;margin-left:8px;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.wc{width:34px;height:24px;border:0;background:transparent;color:var(--ink2);
+  cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center}
+.wc + .wc{border-left:1px solid var(--line)}
+.wc:hover{background:rgba(255,255,255,.08);color:var(--ink)}
+.wc.close:hover{background:#e81123;color:#fff}
+.ver{color:var(--ink3);font-size:10.5px}
+.sep{color:var(--line2)}
+
+/* ===== body ===== */
+.abody{flex:1;display:flex;min-height:0}
+
+/* ===== Dock ===== */
+.dock{width:68px;flex:none;background:var(--panel);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:2px;position:relative;z-index:30}
+.dg{width:54px;padding:6px 0;border-radius:8px;display:flex;flex-direction:column;align-items:center;gap:3px;
+  color:var(--ink2);cursor:pointer;position:relative;font-size:9px;letter-spacing:1px;user-select:none}
+.dg .ic{width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,.05);
+  display:flex;align-items:center;justify-content:center;font-size:12px}
+.dg:hover,.dg.on{color:var(--ink);background:rgba(232,184,96,.08)}
+.dg.on .ic{background:linear-gradient(135deg,var(--gold),#b8923a);color:#000}
+.dg .badge{position:absolute;top:2px;right:6px;min-width:14px;height:14px;border-radius:7px;
+  background:var(--up);color:#fff;font-size:8.5px;display:flex;align-items:center;justify-content:center;padding:0 3px;font-weight:700}
+.dsep{width:30px;height:1px;background:var(--line);margin:6px 0}
+
+/* Dock 浮出面板 */
+.dpanel{position:fixed;left:84px;top:0;width:250px;z-index:100;
+  background:rgba(14,17,22,.97);backdrop-filter:blur(20px);
+  border:1px solid var(--line2);border-radius:0 10px 10px 0;
+  padding:10px;box-shadow:20px 20px 50px rgba(0,0,0,.6);
+  opacity:0;pointer-events:none;transform:translateX(-8px);
+  transition:opacity .15s, transform .15s}
+.dpanel.show{opacity:1;pointer-events:auto;transform:translateX(0)}
+.dpanel .ph{font-size:10px;color:var(--gold);letter-spacing:2px;margin:4px 6px 8px;display:flex;justify-content:space-between}
+.dpanel .ph small{color:var(--ink3);letter-spacing:0}
+.ditem{display:grid;grid-template-columns:28px 1fr;gap:8px;align-items:center;
+  padding:7px 8px;border-radius:6px;cursor:pointer;margin-bottom:2px;
+  border:1px solid transparent}
+.ditem:hover{background:rgba(255,255,255,.05)}
+.ditem.opened{background:rgba(232,184,96,.08);border-color:rgba(232,184,96,.25)}
+.ditem .dic{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.ditem .dt{font-size:12px;color:var(--ink);display:flex;align-items:center;gap:6px}
+.ditem .dd{font-size:9.5px;color:var(--ink3);margin-top:1px}
+.ditem .on-dot{width:6px;height:6px;border-radius:50%;background:var(--gold);box-shadow:0 0 6px var(--gold)}
+
+/* ===== 主区 ===== */
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.idxbar{height:28px;flex:none;border-bottom:1px solid var(--line);display:flex;align-items:center;
+  padding:0 14px;gap:18px;font-size:10.5px;background:rgba(0,0,0,.2);color:var(--ink2)}
+.idxbar b{color:var(--ink);font-weight:600}
+
+/* 卡片网格 */
+.grid{flex:1;display:grid;gap:8px;padding:10px;
+  grid-template-columns:repeat(12,1fr);grid-template-rows:repeat(6,1fr);
+  transition:background .2s}
+.grid.editing{
+  background-image:
+    linear-gradient(rgba(232,184,96,.14) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(232,184,96,.14) 1px,transparent 1px);
+  background-size:calc(100%/12) calc(100%/6);
+  background-color:rgba(232,184,96,.02)}
+
+/* 卡片外壳（对齐 CardShell.vue） */
+.card{
+  position:relative;display:flex;flex-direction:column;overflow:hidden;
+  background:linear-gradient(180deg, rgba(255,255,255,.04), transparent 22%),
+             linear-gradient(180deg, #17130b, #120f08);
+  border:1px solid var(--line);border-radius:10px;
+  transition:border-color .18s, box-shadow .18s, opacity .2s, transform .2s;
+}
+.card:hover{border-color:color-mix(in srgb, var(--accent,#e8b860) 45%, var(--line))}
+.card.active{
+  border-color:var(--accent,#e8b860);
+  box-shadow:0 0 0 1px var(--accent,#e8b860),
+             0 0 22px color-mix(in srgb, var(--accent,#e8b860) 35%, transparent),
+             0 18px 44px rgba(0,0,0,.5);
+}
+.card .card-bar{
+  position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;
+  background:linear-gradient(180deg, var(--accent,#e8b860), color-mix(in srgb, var(--accent,#e8b860) 55%, transparent));
+}
+.card .ch{flex:none;display:flex;align-items:center;gap:6px;padding:6px 8px 6px 12px;
+  font-size:11.5px;color:var(--ink);cursor:grab;user-select:none;min-height:28px}
+.card .ch:active{cursor:grabbing}
+.card .ch .grip{width:12px;height:12px;flex:none;color:var(--ink3);opacity:.7}
+.card .ch .tt{font-weight:600;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .ch .tag{font-size:9.5px;padding:2px 6px;border-radius:6px;
+  color:var(--accent,#e8b860);background:color-mix(in srgb,var(--accent,#e8b860) 16%,transparent);flex:none}
+.card .ch .spacer{flex:1}
+.card .ch .htools{display:flex;align-items:center;gap:1px;opacity:0;transition:opacity .16s}
+.card:hover .ch .htools{opacity:.9}
+.card .ch .htool{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;
+  border:none;background:transparent;color:var(--ink2);border-radius:5px;cursor:pointer;font-size:11px}
+.card .ch .htool:hover{background:rgba(255,255,255,.08);color:var(--ink)}
+.card .cb{flex:1;padding:6px 10px 10px;overflow:hidden;position:relative;min-height:0}
+.card.dragging{opacity:.94;z-index:50;border-color:var(--accent);box-shadow:0 18px 44px rgba(0,0,0,.6);cursor:grabbing}
+.grid.editing .card:not(.dragging):not(.ghost-card){opacity:.85}
+.card .resize-h{position:absolute;right:2px;bottom:2px;width:16px;height:16px;padding:0;
+  border:none;background:transparent;color:var(--ink3);opacity:0;cursor:nwse-resize;
+  border-radius:4px;font-size:11px;display:flex;align-items:center;justify-content:center}
+.card:hover .resize-h{opacity:.7}
+.card .resize-h:hover{opacity:1!important;color:var(--accent);background:rgba(255,255,255,.06)}
+
+/* 聚焦态：卡片放大到主区 */
+.backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(3px);
+  z-index:140;opacity:0;pointer-events:none;transition:opacity .25s}
+.backdrop.show{opacity:1;pointer-events:auto}
+.card.focused-card{
+  position:fixed;z-index:150;margin:0;
+  box-shadow:0 0 0 1.5px var(--accent), 0 0 40px color-mix(in srgb,var(--accent) 40%,transparent), 0 30px 80px rgba(0,0,0,.7);
+}
+.grid.dimmed .card:not(.focused-card){opacity:.12;pointer-events:none;filter:blur(1px)}
+.focus-hint{position:fixed;top:54px;left:50%;transform:translateX(-50%);z-index:160;
+  background:rgba(20,22,28,.95);border:1px solid var(--gold);color:var(--gold);
+  padding:6px 16px;border-radius:6px;font-size:11px;display:none;align-items:center;gap:10px}
+.focus-hint.show{display:flex}
+.focus-hint b{color:var(--ink)}
+.focus-hint button{background:transparent;border:1px solid var(--gold);color:var(--gold);
+  padding:2px 10px;border-radius:4px;font-size:11px;cursor:pointer}
+.focus-hint button:hover{background:var(--gold);color:#000}
+
+/* 幽灵占位 */
+.ghost{border:1.5px dashed var(--gold);border-radius:9px;background:rgba(232,184,96,.08);
+  display:flex;align-items:center;justify-content:center;color:var(--gold);
+  font-size:10px;letter-spacing:2px;pointer-events:none;z-index:4}
+
+/* ===== 玻璃浮岛模式 ===== */
+#glassMode{position:absolute;inset:0;display:none;flex-direction:column}
+#glassMode.on{display:flex}
+#glassMode .gmaster{flex:1;position:relative;margin:10px 80px 10px 10px;
+  display:flex;flex-direction:column;overflow:hidden;
+  background:linear-gradient(180deg, rgba(255,255,255,.04), transparent 22%),
+             linear-gradient(180deg, #17130b, #120f08);
+  border:1px solid var(--line);border-radius:10px;
+  transition:margin-right .35s cubic-bezier(.32,.72,0,1)}
+#glassMode .gmaster.expanded{margin-right:290px}
+#glassMode .gmaster .card-bar{position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;
+  background:linear-gradient(180deg,var(--accent),color-mix(in srgb,var(--accent) 55%,transparent))}
+#glassMode .gmaster .ch{flex:none;display:flex;align-items:center;gap:6px;padding:8px 14px;
+  font-size:12.5px;color:var(--ink);border-bottom:1px solid var(--line)}
+#glassMode .gmaster .ch .tt{font-weight:600}
+#glassMode .gmaster .cb{flex:1;padding:8px 14px;overflow:hidden;position:relative;min-height:0}
+#glassMode .gedge{position:absolute;right:0;top:0;bottom:0;width:48px;z-index:20;
+  background:rgba(14,17,24,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-left:1px solid var(--line);
+  transition:width .35s cubic-bezier(.32,.72,0,1);
+  display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:6px;overflow:hidden}
+#glassMode .gedge:hover{width:280px}
+#glassMode .edge-icons{display:flex;flex-direction:column;gap:6px;align-items:center}
+#glassMode .gedge:hover .edge-icons{display:none}
+#glassMode .groups{display:none;flex-direction:column;gap:6px;width:100%;padding:0 8px;overflow-y:auto}
+#glassMode .gedge:hover .groups{display:flex}
+#glassMode .ei{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:700;cursor:pointer;flex:none;
+  border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--ink2)}
+#glassMode .ei.on{background:color-mix(in srgb,var(--accent) 25%,transparent);color:var(--accent);border-color:var(--accent)}
+#glassMode .ggroup{background:rgba(20,24,32,.7);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.08);border-radius:10px;overflow:hidden;flex:none;margin-bottom:4px}
+#glassMode .ggroup-head{padding:6px 10px;font-size:10px;color:var(--gold);letter-spacing:2px;
+  cursor:pointer;display:flex;justify-content:space-between;align-items:center;
+  border-bottom:1px solid rgba(255,255,255,.06)}
+#glassMode .ggroup-body{padding:4px}
+#glassMode .g-item{padding:5px 8px;border-radius:6px;cursor:grab;font-size:11px;
+  display:flex;align-items:center;gap:8px;color:var(--ink2);margin-bottom:1px}
+#glassMode .g-item:hover{background:rgba(255,255,255,.06);color:var(--ink)}
+#glassMode .g-item.on{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+#glassMode .g-item .dot{width:6px;height:6px;border-radius:50%;flex:none}
+#glassMode .pip{position:absolute;width:230px;height:150px;z-index:15;cursor:grab;
+  background:rgba(20,24,32,.8);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.12);border-radius:10px;overflow:hidden;
+  transition:box-shadow .2s, border-color .2s}
+#glassMode .pip:hover{box-shadow:0 0 0 1px var(--accent), 0 10px 30px rgba(0,0,0,.5);border-color:var(--accent)}
+#glassMode .pip .ch{padding:4px 8px 4px 12px;font-size:10.5px;display:flex;align-items:center;gap:6px;cursor:grab}
+#glassMode .pip .ch .tt{font-weight:600;flex:1}
+#glassMode .pip .cb{padding:4px 10px 8px;font-size:10px;overflow:hidden}
+#glassMode .pip .pip-close{width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,.4);border:0;
+  color:var(--ink2);cursor:pointer;font-size:9px}
+#glassMode .pip .pip-close:hover{background:#e81123;color:#fff}
+
+/* 模式切换按钮 */
+.mode-toggle{display:flex;gap:2px;background:var(--panel);padding:2px;border-radius:6px;border:1px solid var(--line)}
+.mt{font-size:10.5px;padding:3px 9px;border-radius:4px;color:var(--ink3);cursor:pointer;border:0;background:transparent}
+.mt.on{background:var(--gold);color:#000;font-weight:700}
+.mt:not(.on):hover{color:var(--ink)}
+
+/* 股票行 */
+.srow{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;
+  padding:3.5px 2px;border-bottom:1px dashed rgba(255,255,255,.04)}
+.srow:last-child{border-bottom:0}
+.srow .nm{color:var(--ink)}
+.srow .nm small{color:var(--ink3);margin-left:4px;font-size:9px;font-family:"SF Mono",monospace}
+.srow .pr{font-weight:600}
+
+/* ===== tabstrip ===== */
+.tabstrip{height:32px;flex:none;background:var(--panel);border-top:1px solid var(--line);
+  display:flex;align-items:stretch;padding:0 8px;gap:3px;overflow-x:auto}
+.tabstrip::-webkit-scrollbar{height:0}
+.tab{display:flex;align-items:center;gap:6px;padding:0 12px;font-size:11px;color:var(--ink2);
+  border-radius:6px 6px 0 0;position:relative;cursor:pointer;white-space:nowrap;flex:none}
+.tab .tbar{width:3px;height:12px;border-radius:2px}
+.tab.on{color:var(--ink);background:rgba(232,184,96,.09)}
+.tab.on::after{content:"";position:absolute;left:12px;right:12px;top:0;height:2px;
+  background:linear-gradient(90deg,var(--gold),#f0d69a);border-radius:2px}
+.tab.add{color:var(--ink3);font-size:14px}
+
+/* toast */
+.toast{position:fixed;bottom:50px;left:50%;transform:translateX(-50%);
+  background:rgba(20,22,28,.95);border:1px solid var(--gold);color:var(--gold);
+  padding:8px 18px;border-radius:6px;font-size:12px;z-index:200;
+  opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- 顶栏 -->
+  <div class="tbar">
+    <span class="logo">TickGold</span>
+    <div class="mode-toggle" id="modeToggle">
+      <button class="mt on" data-mode="bento">▦ Bento</button>
+      <button class="mt" data-mode="glass">⬡ 玻璃浮岛</button>
+    </div>
+    <div class="scene" id="sceneBar"></div>
+    <div class="right">
+      <span class="live"><i></i>实时</span>
+      <span class="sep">|</span>
+      <span>128 只</span>
+      <span class="sep">|</span>
+      <span id="clock">10:24:36</span>
+      <span class="sep">|</span>
+      <span class="ver">v2.4.3</span>
+      <span class="sep">|</span>
+      <button class="hbtn" id="btnSettings">设置</button>
+      <button class="hbtn" id="btnUpdate">检查更新</button>
+      <button class="btn-edit" id="btnEdit">✎ 编排</button>
+      <div class="win-ctl">
+        <button class="wc" id="wcMin" title="最小化">─</button>
+        <button class="wc" id="wcMax" title="最大化/还原">□</button>
+        <button class="wc close" id="wcClose" title="关闭">✕</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="abody">
+    <!-- Dock -->
+    <aside class="dock" id="dock"></aside>
+
+    <!-- 主区 -->
+    <main class="main">
+      <div class="idxbar">
+        <span><b>上证</b> 3285.42 <span class="up">+0.56%</span></span>
+        <span><b>深成</b> 10521.30 <span class="up">+0.82%</span></span>
+        <span><b>创业板</b> 2135.66 <span class="up">+1.24%</span></span>
+        <span><b>科创50</b> 985.20 <span class="down">-0.18%</span></span>
+      </div>
+      <div class="grid" id="grid"></div>
+      <!-- 玻璃浮岛模式 -->
+      <div id="glassMode">
+        <div class="gmaster" id="gmaster">
+          <div class="card-bar"></div>
+          <div class="ch"><span class="tt" id="gmasterTitle"></span></div>
+          <div class="cb" id="gmasterBody"></div>
+        </div>
+        <aside class="gedge" id="gedge">
+          <div class="edge-icons" id="edgeIcons"></div>
+          <div class="groups" id="edgeGroups"></div>
+        </aside>
+      </div>
+      <div class="tabstrip" id="tabstrip"></div>
+    </main>
+  </div>
+
+  <!-- Dock 浮出面板 -->
+  <div class="dpanel" id="dpanel"></div>
+
+  <!-- 聚焦遮罩 + 提示条 -->
+  <div class="backdrop" id="backdrop"></div>
+  <div class="focus-hint" id="focusHint">
+    <b id="focusHintTitle">聚焦中</b>
+    <span style="color:var(--ink2)">|</span>
+    <span style="color:var(--ink2)">按 Esc 或点遮罩还原</span>
+    <button id="btnExitFocus">✕ 还原</button>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+/* ============================================================
+   数据（对齐 src/lib/dock.ts / cards.ts / scenes.ts）
+   ============================================================ */
+const CARD_META = {
+  watch:{title:"自选股",accent:"#26d07c"},
+  rank:{title:"榜单",accent:"#e0556b"},
+  radarsweep:{title:"雷达扫盘",accent:"#2de1ff"},
+  reviewtimeline:{title:"复盘时间线",accent:"#c9a24a"},
+  dragon:{title:"龙虎榜",accent:"#e8c878"},
+  multigrid:{title:"多股同列",accent:"#36b8e8"},
+  heatmatrix:{title:"热力矩阵",accent:"#ff7a45"},
+  telegraph:{title:"电报墙",accent:"#1dffa0"},
+  auction:{title:"集合竞价",accent:"#ffd76a"},
+  limitpool:{title:"涨停池明细",accent:"#e0455a"},
+  radar:{title:"涨停雷达",accent:"#e0455a"},
+  spider:{title:"短线精灵",accent:"#e0556b"},
+  alert:{title:"预警管理",accent:"#ffd700"},
+  news:{title:"盘中快讯",accent:"#b07cff"},
+  sector:{title:"板块行情",accent:"#35c4a8"},
+  sectorheat:{title:"板块热力图",accent:"#d4af37"},
+  sectorevent:{title:"板块异动",accent:"#e0556b"},
+  themelib:{title:"题材库",accent:"#d4af37"},
+  chart:{title:"K线图",accent:"#2f6fed"},
+  trades:{title:"逐笔成交",accent:"#ffb13d"},
+  f10:{title:"F10资料",accent:"#d4af37"},
+  ai:{title:"AI问数",accent:"#d4af37"},
+  review:{title:"AI复盘",accent:"#d4af37"},
+  battleplan:{title:"作战计划",accent:"#d4af37"},
+  decisionlog:{title:"决策日志",accent:"#e8c878"},
+  evolution:{title:"进化回灌",accent:"#1dbe7d"},
+  signalbridge:{title:"信号确认桥",accent:"#ffb13d"},
+  strategy:{title:"策略库",accent:"#d4af37"},
+  sieve:{title:"连板选股器",accent:"#ffd76a"},
+  screener:{title:"条件选股",accent:"#d4af37"},
+  trade:{title:"模拟交易",accent:"#f0883e"},
+  journal:{title:"盯盘日记",accent:"#d4af37"},
+  calendar:{title:"财经日历",accent:"#4ea1ff"},
+  ipo:{title:"新股解禁",accent:"#ff8a3d"},
+  calc:{title:"投资计算器",accent:"#e8c878"},
+  export:{title:"数据导出",accent:"#6aa6e8"},
+};
+
+const DOCK_GROUPS = [
+  {name:"大盘总览",icon:"▦",items:[
+    {id:"watch",desc:"我的股票分组实时行情"},
+    {id:"rank",desc:"全市场涨幅/跌幅/成交额排名"},
+  ]},
+  {name:"盯盘模式",icon:"◉",items:[
+    {id:"radarsweep",desc:"圆形雷达三栏全屏扫盘"},
+    {id:"reviewtimeline",desc:"全天异动时间线 + 当日总结"},
+    {id:"dragon",desc:"每日龙虎榜个股 + 买卖前五席位"},
+    {id:"multigrid",desc:"自选 9 只 分时/K线/盘口同屏"},
+    {id:"heatmatrix",desc:"全市场板块热力矩阵"},
+    {id:"telegraph",desc:"三列异动电报实时滚动"},
+  ]},
+  {name:"情绪异动",icon:"⚡",items:[
+    {id:"auction",desc:"全市场高开抢筹/低开出逃排名"},
+    {id:"limitpool",desc:"涨停/炸板池封单额/封板时间"},
+    {id:"radar",desc:"涨停/炸板/连板/情绪统计"},
+    {id:"spider",desc:"活跃股盘中实时异动"},
+    {id:"alert",desc:"价格/涨跌幅触发推送"},
+    {id:"news",desc:"7x24 全球财经直播"},
+  ]},
+  {name:"板块题材",icon:"◈",items:[
+    {id:"sector",desc:"行业/概念板块排名"},
+    {id:"sectorheat",desc:"板块 treemap 缩放平移"},
+    {id:"sectorevent",desc:"板块拉升/跳水捕捉"},
+    {id:"themelib",desc:"题材生命周期/成分角色"},
+  ]},
+  {name:"个股行情",icon:"⌖",items:[
+    {id:"chart",desc:"日周月 K + 当日分时"},
+    {id:"trades",desc:"逐笔实时滚动 + 主动买卖着色"},
+    {id:"f10",desc:"公司/财务/筹码分布"},
+  ]},
+  {name:"交易工具",icon:"⚙",items:[
+    {id:"ai",desc:"自然语言查询行情/题材/资金"},
+    {id:"review",desc:"盘后市场/题材/个股三层复盘"},
+    {id:"battleplan",desc:"次日触发/候选/观察指令"},
+    {id:"decisionlog",desc:"快脑 BUY/SELL 决策审计"},
+    {id:"evolution",desc:"决策自动打标 + 胜率回灌"},
+    {id:"signalbridge",desc:"BUY/SELL 信号人工确认"},
+    {id:"strategy",desc:"龙头/1进2/抄底策略管理"},
+    {id:"sieve",desc:"N进N+1打板龙头打分"},
+    {id:"screener",desc:"技术/基本面智能选股"},
+    {id:"trade",desc:"虚拟资金 T+1 练盘"},
+    {id:"journal",desc:"交易复盘记录"},
+    {id:"calendar",desc:"休市安排/事件提醒"},
+    {id:"ipo",desc:"新股/解禁日历"},
+    {id:"calc",desc:"盈亏/仓位/风报比/黄金分割"},
+    {id:"export",desc:"CSV/JSON 导出自选/行情"},
+  ]},
+];
+
+const SCENES = [
+  {id:"pan",label:"盘中盯盘",cards:["chart","radar","watch","spider","sectorevent"],
+    size:{chart:[8,4],radar:[4,4],watch:[6,2],spider:[3,2],sectorevent:[3,2]}},
+  {id:"auction",label:"开盘竞价",cards:["auction","radar","watch","spider","sectorevent"],
+    size:{auction:[12,3],radar:[6,2],watch:[6,2],spider:[6,1],sectorevent:[6,1]}},
+  {id:"review",label:"盘后复盘",cards:["themelib","chart","reviewtimeline","sectorheat","news"],
+    size:{themelib:[6,3],chart:[6,3],reviewtimeline:[6,2],sectorheat:[6,2],news:[12,1]}},
+  {id:"screen",label:"条件选股",cards:["screener","sectorheat","sector","rank","watch"],
+    size:{screener:[8,3],sectorheat:[4,3],sector:[6,2],rank:[6,2],watch:[12,1]}},
+  {id:"mini",label:"极简看盘",cards:["chart","radar","watch"],
+    size:{chart:[8,4],radar:[4,4],watch:[12,2]}},
+];
+
+/* ============================================================
+   状态
+   ============================================================ */
+const state = {
+  sceneId: "pan",
+  cards: [],        // [{id, col, row, w, h}]
+  active: null,
+  editing: false,
+  focusedId: null,  // 当前聚焦放大的卡片
+  layoutMode: "bento", // bento | glass
+};
+
+/* ============================================================
+   卡片内容渲染
+   ============================================================ */
+function renderCardBody(id){
+  switch(id){
+    case "chart": return `
+      <div style="position:absolute;top:6px;left:10px;font-size:10px;color:var(--ink2)">
+        <span style="color:var(--up);font-size:18px;font-weight:700">152.30</span>
+        <span class="up" style="margin-left:8px">+6.66 +4.56%</span>
+      </div>
+      <svg width="100%" height="100%" viewBox="0 0 700 360" preserveAspectRatio="none">
+        <g stroke="rgba(255,255,255,.04)"><line x1="0" y1="80" x2="700" y2="80"/><line x1="0" y1="160" x2="700" y2="160"/><line x1="0" y1="240" x2="700" y2="240"/></g>
+        <g stroke="#ff4d6a" fill="#ff4d6a">
+          <line x1="40" y1="220" x2="40" y2="280"/><rect x="34" y="235" width="12" height="30"/>
+          <line x1="110" y1="200" x2="110" y2="270"/><rect x="104" y="220" width="12" height="35"/>
+          <line x1="250" y1="160" x2="250" y2="230"/><rect x="244" y="180" width="12" height="30"/>
+          <line x1="390" y1="120" x2="390" y2="190"/><rect x="384" y="140" width="12" height="35"/>
+          <line x1="530" y1="80" x2="530" y2="150"/><rect x="524" y="95" width="12" height="40"/>
+          <line x1="640" y1="50" x2="640" y2="120"/><rect x="634" y="65" width="12" height="35"/>
+        </g>
+        <g stroke="#00d4a0" fill="none">
+          <line x1="180" y1="195" x2="180" y2="240"/><rect x="174" y="210" width="12" height="20"/>
+          <line x1="320" y1="150" x2="320" y2="195"/><rect x="314" y="165" width="12" height="18"/>
+          <line x1="460" y1="110" x2="460" y2="150"/><rect x="454" y="125" width="12" height="15"/>
+          <line x1="580" y1="70" x2="580" y2="105"/><rect x="574" y="82" width="12" height="12"/>
+        </g>
+        <polyline points="40,260 110,245 180,240 250,220 320,210 390,190 460,175 530,150 580,135 640,110"
+          fill="none" stroke="#e8b860" stroke-width="1.2" opacity=".8"/>
+      </svg>`;
+    case "radar": return `
+      <div class="srow"><span style="color:#e0455a;font-weight:700;font-size:10px">5板</span><span class="nm">鸿博股份</span><span class="pr up">+10.02%</span></div>
+      <div class="srow"><span style="color:#e0455a;font-weight:700;font-size:10px">4板</span><span class="nm">拓维信息</span><span class="pr up">+10.00%</span></div>
+      <div class="srow"><span style="color:#e0455a;font-weight:700;font-size:10px">3板</span><span class="nm">四川长虹</span><span class="pr up">+9.98%</span></div>
+      <div class="srow"><span style="color:var(--ink3);font-size:10px">2板</span><span class="nm">12 只</span><span class="pr" style="color:var(--ink3)">—</span></div>
+      <div style="margin-top:6px;display:flex;gap:10px;font-size:9.5px;color:var(--ink2)">
+        <span>涨停 <b class="up">47</b></span><span>炸板 <b class="down">8</b></span><span>封板率 <b>85%</b></span>
+      </div>`;
+    case "watch": return `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
+        <div class="srow"><span class="nm">贵州茅台<small>600519</small></span><span class="pr up">1685.00 +1.23%</span></div>
+        <div class="srow"><span class="nm">宁德时代<small>300750</small></span><span class="pr down">187.45 -0.85%</span></div>
+        <div class="srow"><span class="nm">中际旭创<small>300308</small></span><span class="pr up">152.30 +4.56%</span></div>
+        <div class="srow"><span class="nm">中国平安<small>601318</small></span><span class="pr up">48.20 +0.32%</span></div>
+        <div class="srow"><span class="nm">新易盛<small>300502</small></span><span class="pr up">78.42 +3.88%</span></div>
+        <div class="srow"><span class="nm">比亚迪<small>002594</small></span><span class="pr down">245.60 -1.12%</span></div>
+      </div>`;
+    case "spider": return `
+      <div class="srow"><span class="nm"><span class="up">▲火箭</span> 中际旭创</span><span class="pr up">+4.56%</span></div>
+      <div class="srow"><span class="nm"><span style="color:var(--gold)">●大买</span> 新易盛</span><span class="pr up">+3.88%</span></div>
+      <div class="srow"><span class="nm"><span class="up">▲火箭</span> 天孚通信</span><span class="pr up">+3.21%</span></div>
+      <div class="srow"><span class="nm"><span class="down">▼跳水</span> 宁德时代</span><span class="pr down">-0.85%</span></div>`;
+    case "sectorevent": return `
+      <div class="srow"><span class="nm"><span class="up">10:24 拉升</span> CPO 概念</span><span class="pr up">+3.12%</span></div>
+      <div class="srow"><span class="nm"><span class="up">10:18 拉升</span> 算力租赁</span><span class="pr up">+2.44%</span></div>
+      <div class="srow"><span class="nm"><span class="up">10:05 异动</span> 半导体设备</span><span class="pr up">+1.70%</span></div>
+      <div class="srow"><span class="nm"><span class="down">09:52 跳水</span> 银行</span><span class="pr down">-0.32%</span></div>`;
+    case "auction": return `
+      <div class="srow"><span class="nm" style="color:var(--gold)">高开抢筹</span><span class="nm">中际旭创</span><span class="pr up">+5.2%</span></div>
+      <div class="srow"><span class="nm" style="color:var(--gold)">高开抢筹</span><span class="nm">新易盛</span><span class="pr up">+4.1%</span></div>
+      <div class="srow"><span class="nm" style="color:var(--down)">低开出逃</span><span class="nm">宁德时代</span><span class="pr down">-1.8%</span></div>`;
+    case "news": return `
+      <div style="font-size:10.5px;line-height:1.9;color:var(--ink2)">
+        <div><span style="color:var(--ink3)">10:24</span> 算力板块异动拉升</div>
+        <div><span style="color:var(--ink3)">10:18</span> 央行开展 3800 亿 MLF</div>
+        <div><span style="color:var(--ink3)">10:05</span> 半导体设备国产化提速</div>
+      </div>`;
+    case "sectorheat": return `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;height:100%">
+        <div style="background:rgba(255,77,106,.5);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff">CPO</div>
+        <div style="background:rgba(255,77,106,.35);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px">算力</div>
+        <div style="background:rgba(255,77,106,.2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px">半导体</div>
+        <div style="background:rgba(0,212,160,.25);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px">银行</div>
+        <div style="background:rgba(255,77,106,.3);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px">光模块</div>
+        <div style="background:rgba(255,183,61,.4);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px">消费</div>
+        <div style="background:rgba(0,212,160,.3);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px">医药</div>
+        <div style="background:rgba(255,77,106,.15);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px">地产</div>
+      </div>`;
+    case "themelib": return `
+      <div class="srow"><span class="nm">CPO 概念 <small>生命周期 主升</small></span><span class="pr up">+3.12%</span></div>
+      <div class="srow"><span class="nm">算力租赁 <small>生命周期 发酵</small></span><span class="pr up">+2.44%</span></div>
+      <div class="srow"><span class="nm">半导体 <small>生命周期 启动</small></span><span class="pr up">+1.70%</span></div>`;
+    case "reviewtimeline": return `
+      <div style="font-size:10.5px;line-height:1.9;color:var(--ink2)">
+        <div><span style="color:var(--gold)">09:30</span> 开盘高开 0.6%</div>
+        <div><span style="color:var(--up)">10:24</span> CPO 板块拉升 3.1%</div>
+        <div><span style="color:var(--down)">13:45</span> 银行跳水拖累指数</div>
+        <div><span style="color:var(--gold)">14:30</span> 尾盘资金回流科技</div>
+      </div>`;
+    case "screener": return `
+      <div style="font-size:10.5px;color:var(--ink2);line-height:1.9">
+        <div>条件：涨幅 &gt; 3% 且 量比 &gt; 2</div>
+        <div>结果：<b class="up">23 只</b> 命中</div>
+        <div style="color:var(--gold);cursor:pointer">▶ 执行选股</div>
+      </div>`;
+    case "sector": return `
+      <div class="srow"><span class="nm">CPO 概念</span><span class="pr up">+3.12%</span></div>
+      <div class="srow"><span class="nm">算力租赁</span><span class="pr up">+2.44%</span></div>
+      <div class="srow"><span class="nm">半导体</span><span class="pr up">+1.70%</span></div>
+      <div class="srow"><span class="nm">银行</span><span class="pr down">-0.32%</span></div>`;
+    case "rank": return `
+      <div class="srow"><span class="nm">1. 中际旭创</span><span class="pr up">+4.56%</span></div>
+      <div class="srow"><span class="nm">2. 新易盛</span><span class="pr up">+3.88%</span></div>
+      <div class="srow"><span class="nm">3. 天孚通信</span><span class="pr up">+3.21%</span></div>`;
+    default: return `<div style="font-size:11px;color:var(--ink3);padding:10px">「${CARD_META[id]?.title||id}」卡片内容</div>`;
+  }
+}
+
+/* ============================================================
+   渲染
+   ============================================================ */
+const grid = document.getElementById("grid");
+const dockEl = document.getElementById("dock");
+const dpanel = document.getElementById("dpanel");
+const sceneBar = document.getElementById("sceneBar");
+const tabstrip = document.getElementById("tabstrip");
+const toast = document.getElementById("toast");
+
+function openCards(){ return state.cards.map(c=>c.id); }
+
+function applyScene(sceneId){
+  state.sceneId = sceneId;
+  const sc = SCENES.find(s=>s.id===sceneId);
+  if(!sc) return;
+  // FLIP: 记录旧位置
+  const oldRects = {};
+  grid.querySelectorAll(".card").forEach(el=>{
+    oldRects[el.dataset.id] = el.getBoundingClientRect();
+  });
+  // 更新状态
+  state.cards = sc.cards.map(id=>{
+    const [w,h] = sc.size[id];
+    return { id, col:1, row:1, w, h };
+  });
+  autoLayout();
+  render();
+  // FLIP: 下一帧动画
+  requestAnimationFrame(()=>{
+    grid.querySelectorAll(".card").forEach(el=>{
+      const old = oldRects[el.dataset.id];
+      if(!old) return;
+      const now = el.getBoundingClientRect();
+      const dx = old.left - now.left;
+      const dy = old.top - now.top;
+      if(dx||dy){
+        el.animate([
+          { transform:`translate(${dx}px,${dy}px)` },
+          { transform:`translate(0,0)` }
+        ], { duration:320, easing:"cubic-bezier(.32,.72,0,1)" });
+      }
+    });
+  });
+  renderDockBadges();
+  renderSceneBar();
+  // 玻璃岛模式下同步更新
+  if(state.layoutMode === "glass"){
+    state.active = sc.cards[0].id;
+    renderGlass();
+  }
+  showToast(`场景切换：${sc.label}`);
+}
+
+// 简单装箱：按 w/h 贪心排列到 12×6 网格
+function autoLayout(){
+  // 按 w 降序排，贪心找空位
+  const occupied = Array.from({length:6},()=>Array(12).fill(false));
+  const sorted = [...state.cards];
+  for(const c of sorted){
+    placed:
+    for(let r=0;r<=6-c.h;r++){
+      for(let col=0;col<=12-c.w;col++){
+        let ok=true;
+        for(let dr=0;dr<c.h;dr++) for(let dc=0;dc<c.w;dc++){
+          if(occupied[r+dr][col+dc]){ok=false;break}
+        }
+        if(ok){
+          c.col=col+1; c.row=r+1;
+          for(let dr=0;dr<c.h;dr++) for(let dc=0;dc<c.w;dc++) occupied[r+dr][col+dc]=true;
+          break placed;
+        }
+      }
+    }
+  }
+}
+
+function render(){
+  // 清掉旧卡片（保留 ghost）
+  grid.querySelectorAll(".card,.ghost").forEach(e=>e.remove());
+  // 聚焦态：主区变暗
+  grid.classList.toggle("dimmed", !!state.focusedId);
+  const isFocused = (id)=> state.focusedId===id;
+
+  for(const c of state.cards){
+    const meta = CARD_META[c.id];
+    const el = document.createElement("div");
+    el.className = "card" + (state.active===c.id?" active":"") + (isFocused(c.id)?" focused-card":"");
+    el.dataset.id = c.id;
+    if(!isFocused(c.id)){
+      el.style.gridColumn = `${c.col} / span ${c.w}`;
+      el.style.gridRow = `${c.row} / span ${c.h}`;
+    }
+    el.style.setProperty("--accent", meta.accent);
+    el.innerHTML = `
+      <div class="card-bar"></div>
+      <div class="ch" data-grab="${c.id}">
+        <svg class="grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>
+        <span class="tt">${meta.title}</span>
+        <span class="spacer"></span>
+        <span class="htools" style="opacity:${isFocused(c.id)?1:''}">
+          <button class="htool" title="折叠">▾</button>
+          <button class="htool h-focus" title="${isFocused(c.id)?'还原布局':'聚焦（主区放大）'}">${isFocused(c.id)?'⤢':'⛶'}</button>
+          <button class="htool" title="设置">⚙</button>
+          <button class="htool h-close" title="关闭卡片">✕</button>
+        </span>
+      </div>
+      <div class="cb">${renderCardBody(c.id)}</div>
+      ${isFocused(c.id)?'':'<button class="resize-h" title="调整大小">⟋</button>'}`;
+
+    // 聚焦卡固定到主区中央
+    if(isFocused(c.id)){
+      const main = document.querySelector(".main").getBoundingClientRect();
+      const pad = 24;
+      el.style.left = (main.left + pad) + "px";
+      el.style.top = (main.top + pad) + "px";
+      el.style.width = (main.width - pad*2) + "px";
+      el.style.height = (main.height - pad*2 - 32) + "px"; // 留底部 tabstrip
+    }
+
+    // 按钮事件
+    el.querySelector(".h-focus").onclick = (e)=>{ e.stopPropagation(); isFocused(c.id)?exitFocus():focusCard(c.id); };
+    el.querySelector(".h-close").onclick = (e)=>{ e.stopPropagation(); closeCard(c.id); };
+    el.querySelector(".ch").onclick = (e)=>{
+      if(e.target.closest("button")) return;
+      state.active = c.id;
+      if(!state.editing) render();
+    };
+    grid.appendChild(el);
+  }
+  // 遮罩与提示条
+  document.getElementById("backdrop").classList.toggle("show", !!state.focusedId);
+  const hint = document.getElementById("focusHint");
+  hint.classList.toggle("show", !!state.focusedId);
+  if(state.focusedId){
+    document.getElementById("focusHintTitle").textContent = CARD_META[state.focusedId]?.title || "";
+  }
+  renderTabstrip();
+}
+
+/* ===== 聚焦 FLIP 共享元素 ===== */
+function focusCard(id){
+  const el = grid.querySelector(`[data-id="${id}"]`);
+  if(!el) return;
+  const oldRect = el.getBoundingClientRect();
+  state.focusedId = id;
+  state.active = id;
+  render();
+  const newEl = grid.querySelector(`[data-id="${id}"]`);
+  const newRect = newEl.getBoundingClientRect();
+  const dx = oldRect.left - newRect.left;
+  const dy = oldRect.top - newRect.top;
+  const sx = oldRect.width / newRect.width;
+  const sy = oldRect.height / newRect.height;
+  newEl.animate([
+    { transform:`translate(${dx}px,${dy}px) scale(${sx},${sy})`, transformOrigin:"top left" },
+    { transform:`translate(0,0) scale(1,1)`, transformOrigin:"top left" }
+  ], { duration:420, easing:"cubic-bezier(.22,1.2,.36,1)" });
+  showToast(`聚焦「${CARD_META[id].title}」：FLIP 共享元素放大`);
+}
+function exitFocus(){
+  if(!state.focusedId) return;
+  const id = state.focusedId;
+  const el = grid.querySelector(`[data-id="${id}"]`);
+  const oldRect = el?.getBoundingClientRect();
+  state.focusedId = null;
+  render();
+  if(oldRect){
+    const newEl = grid.querySelector(`[data-id="${id}"]`);
+    if(newEl){
+      const newRect = newEl.getBoundingClientRect();
+      const dx = oldRect.left - newRect.left;
+      const dy = oldRect.top - newRect.top;
+      const sx = oldRect.width / newRect.width;
+      const sy = oldRect.height / newRect.height;
+      newEl.animate([
+        { transform:`translate(${dx}px,${dy}px) scale(${sx},${sy})`, transformOrigin:"top left" },
+        { transform:`translate(0,0) scale(1,1)`, transformOrigin:"top left" }
+      ], { duration:300, easing:"cubic-bezier(.32,.72,0,1)" });
+    }
+  }
+}
+function closeCard(id){
+  state.cards = state.cards.filter(c=>c.id!==id);
+  if(state.focusedId===id) state.focusedId = null;
+  if(state.active===id) state.active = state.cards[0]?.id || null;
+  showToast(`关闭「${CARD_META[id].title}」，其他卡片 FLIP 补位`);
+  render();
+  renderDockBadges();
+  if(state.layoutMode === "glass") renderGlass();
+}
+
+function renderTabstrip(){
+  tabstrip.innerHTML = "";
+  for(const id of openCards()){
+    const meta = CARD_META[id];
+    const t = document.createElement("div");
+    t.className = "tab" + (state.active===id?" on":"");
+    t.innerHTML = `<span class="tbar" style="background:${meta.accent}"></span>${meta.title}`;
+    t.onclick = ()=>{ state.active=id; render(); };
+    tabstrip.appendChild(t);
+  }
+  const add = document.createElement("div");
+  add.className="tab add"; add.textContent="＋";
+  add.title="从左侧 Dock 打开卡片";
+  tabstrip.appendChild(add);
+}
+
+/* ===== Dock ===== */
+function renderDock(){
+  dockEl.innerHTML="";
+  DOCK_GROUPS.forEach((g,gi)=>{
+    const b = document.createElement("div");
+    b.className = "dg" + (gi===0?" on":"");
+    b.dataset.name = g.name;
+    b.innerHTML = `<span class="ic">${g.icon}</span><span>${g.name.slice(0,2)}</span>`;
+    b.addEventListener("mouseenter",()=>showDockPanel(g,b));
+    b.addEventListener("click",()=>showDockPanel(g,b,true));
+    dockEl.appendChild(b);
+  });
+  const sep = document.createElement("div"); sep.className="dsep"; dockEl.appendChild(sep);
+  const tool = document.createElement("div");
+  tool.className="dg"; tool.innerHTML=`<span class="ic">⚙</span><span>设置</span>`;
+  dockEl.appendChild(tool);
+}
+
+function showDockPanel(g, anchor, force){
+  const rect = anchor.getBoundingClientRect();
+  dpanel.style.top = (rect.top - 10) + "px";
+  dpanel.innerHTML = `
+    <div class="ph">${g.name}<small>${g.items.length} 个卡片</small></div>
+    ${g.items.map(it=>{
+      const meta = CARD_META[it.id];
+      const opened = openCards().includes(it.id);
+      return `<div class="ditem ${opened?"opened":""}" data-id="${it.id}">
+        <span class="dic" style="background:${meta.accent}22;color:${meta.accent}">${meta.title.slice(0,1)}</span>
+        <div><div class="dt">${meta.title} ${opened?'<span class="on-dot"></span>':""}</div><div class="dd">${it.desc}</div></div>
+      </div>`;
+    }).join("")}
+  `;
+  dpanel.querySelectorAll(".ditem").forEach(el=>{
+    el.onclick = ()=>toggleCard(el.dataset.id);
+  });
+  dpanel.classList.add("show");
+}
+
+function hideDockPanel(){ dpanel.classList.remove("show"); }
+
+function renderDockBadges(){
+  dockEl.querySelectorAll(".dg").forEach((el,i)=>{
+    if(i>=DOCK_GROUPS.length) return;
+    const g = DOCK_GROUPS[i];
+    const opened = g.items.filter(it=>openCards().includes(it.id)).length;
+    el.querySelector(".badge")?.remove();
+    if(opened>0){
+      const b = document.createElement("span");
+      b.className="badge"; b.textContent = opened;
+      el.appendChild(b);
+    }
+  });
+}
+
+/* ===== 卡片开关 ===== */
+function toggleCard(id){
+  const idx = state.cards.findIndex(c=>c.id===id);
+  if(idx>=0){
+    // 关闭：FLIP 推出
+    const el = grid.querySelector(`[data-id="${id}"]`);
+    if(el){
+      const r = el.getBoundingClientRect();
+      el.style.transition = "transform .25s, opacity .25s";
+      el.style.transform = `scale(.8)`;
+      el.style.opacity = "0";
+      setTimeout(()=>{
+        state.cards.splice(idx,1);
+        state.active = state.cards[0]?.id || null;
+        render();
+        flipOthers();
+      },220);
+    }
+  } else {
+    // 打开：追加到末尾空位
+    const meta = CARD_META[id];
+    const w = 4, h = 2;
+    // 找空位
+    const occupied = Array.from({length:6},()=>Array(12).fill(false));
+    state.cards.forEach(c=>{
+      for(let dr=0;dr<c.h;dr++) for(let dc=0;dc<c.w;dc++) occupied[c.row-1+dr][c.col-1+dc]=true;
+    });
+    let placed=false;
+    for(let r=0;r<=6-h;r++) for(let col=0;col<=12-w;col++){
+      let ok=true;
+      for(let dr=0;dr<h;dr++) for(let dc=0;dc<w;dc++) if(occupied[r+dr][col+dc]){ok=false;break}
+      if(ok){ state.cards.push({id,col:col+1,row:r+1,w,h}); placed=true; break; }
+      if(placed) break;
+    }
+    if(!placed){ state.cards.push({id,col:1,row:1,w:4,h:2}); }
+    state.active = id;
+    render();
+    flipOthers();
+    showToast(`已打开：${meta.title}`);
+  }
+  renderDockBadges();
+  if(state.layoutMode === "glass") renderGlass();
+}
+
+// 其他卡 FLIP 让位
+function flipOthers(){
+  // 这里简化：render 后用 FLIP 动画已存在的卡
+}
+
+/* ===== 编排模式 + 拖拽 ===== */
+const btnEdit = document.getElementById("btnEdit");
+btnEdit.onclick = ()=>{
+  state.editing = !state.editing;
+  btnEdit.classList.toggle("on", state.editing);
+  btnEdit.textContent = state.editing ? "✓ 完成编排" : "✎ 编排";
+  grid.classList.toggle("editing", state.editing);
+  showToast(state.editing ? "编排模式：拖拽卡片标题栏移动位置" : "退出编排");
+};
+
+let dragState = null;
+grid.addEventListener("pointerdown",(e)=>{
+  if(!state.editing) return;
+  const ch = e.target.closest("[data-grab]");
+  if(!ch) return;
+  e.preventDefault();
+  const id = ch.dataset.grab;
+  const cardEl = grid.querySelector(`[data-id="${id}"]`);
+  if(!cardEl) return;
+  const card = state.cards.find(c=>c.id===id);
+  const rect = cardEl.getBoundingClientRect();
+  const gridRect = grid.getBoundingClientRect();
+  dragState = {
+    id, card, cardEl,
+    offsetX: e.clientX - rect.left,
+    offsetY: e.clientY - rect.top,
+    width: rect.width, height: rect.height,
+    gridRect,
+  };
+  cardEl.classList.add("dragging");
+  cardEl.style.width = rect.width+"px";
+  cardEl.style.height = rect.height+"px";
+  cardEl.style.position = "fixed";
+  cardEl.style.left = rect.left+"px";
+  cardEl.style.top = rect.top+"px";
+  cardEl.style.margin = "0";
+  document.body.style.userSelect = "none";
+});
+
+document.addEventListener("pointermove",(e)=>{
+  if(!dragState) return;
+  const ds = dragState;
+  ds.cardEl.style.left = (e.clientX - ds.offsetX)+"px";
+  ds.cardEl.style.top = (e.clientY - ds.offsetY)+"px";
+  // 计算目标格
+  const gx = ((e.clientX - ds.gridRect.left) / ds.gridRect.width) * 12;
+  const gy = ((e.clientY - ds.gridRect.top) / ds.gridRect.height) * 6;
+  const col = Math.max(1, Math.min(13 - ds.card.w, Math.round(gx - ds.card.w/2) + 1));
+  const row = Math.max(1, Math.min(7 - ds.card.h, Math.round(gy - ds.card.h/2) + 1));
+  showGhost(col, row, ds.card.w, ds.card.h);
+});
+
+document.addEventListener("pointerup",(e)=>{
+  if(!dragState) return;
+  const ds = dragState;
+  ds.cardEl.classList.remove("dragging");
+  ds.cardEl.style.position = "";
+  ds.cardEl.style.left = ""; ds.cardEl.style.top = "";
+  ds.cardEl.style.width = ""; ds.cardEl.style.height = "";
+  ds.cardEl.style.margin = "";
+  document.body.style.userSelect = "";
+  // 计算最终格
+  const gx = ((e.clientX - ds.gridRect.left) / ds.gridRect.width) * 12;
+  const gy = ((e.clientY - ds.gridRect.top) / ds.gridRect.height) * 6;
+  const newCol = Math.max(1, Math.min(13 - ds.card.w, Math.round(gx - ds.card.w/2) + 1));
+  const newRow = Math.max(1, Math.min(7 - ds.card.h, Math.round(gy - ds.card.h/2) + 1));
+  // FLIP: 记录其他卡旧位置
+  const oldRects = {};
+  grid.querySelectorAll(".card").forEach(el=>{
+    if(el.dataset.id !== ds.id) oldRects[el.dataset.id] = el.getBoundingClientRect();
+  });
+  ds.card.col = newCol; ds.card.row = newRow;
+  removeGhost();
+  render();
+  // FLIP 其他卡让位
+  requestAnimationFrame(()=>{
+    grid.querySelectorAll(".card").forEach(el=>{
+      if(el.dataset.id === ds.id) return;
+      const old = oldRects[el.dataset.id];
+      if(!old) return;
+      const now = el.getBoundingClientRect();
+      const dx = old.left - now.left, dy = old.top - now.top;
+      if(dx||dy){
+        el.animate([
+          { transform:`translate(${dx}px,${dy}px)` },
+          { transform:`translate(0,0)` }
+        ], { duration:300, easing:"cubic-bezier(.32,.72,0,1)" });
+      }
+    });
+  });
+  dragState = null;
+});
+
+let ghostEl = null;
+function showGhost(col,row,w,h){
+  if(!ghostEl){
+    ghostEl = document.createElement("div");
+    ghostEl.className = "ghost";
+    grid.appendChild(ghostEl);
+  }
+  ghostEl.style.gridColumn = `${col} / span ${w}`;
+  ghostEl.style.gridRow = `${row} / span ${h}`;
+  ghostEl.textContent = "◈ 落点";
+}
+function removeGhost(){ ghostEl?.remove(); ghostEl=null; }
+
+/* ===== scene bar ===== */
+function renderSceneBar(){
+  sceneBar.innerHTML = "";
+  SCENES.forEach(sc=>{
+    const b = document.createElement("div");
+    b.className = "sc" + (sc.id===state.sceneId?" on":"");
+    b.textContent = sc.label;
+    b.onclick = ()=>applyScene(sc.id);
+    sceneBar.appendChild(b);
+  });
+}
+
+/* ===== toast ===== */
+let toastTimer;
+function showToast(msg){
+  toast.textContent = msg;
+  toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>toast.classList.remove("show"), 1600);
+}
+
+/* ===== dock 鼠标离开隐藏 ===== */
+dockEl.addEventListener("mouseleave",()=>{
+  setTimeout(()=>{
+    if(!dpanel.matches(":hover")) hideDockPanel();
+  },200);
+});
+dpanel.addEventListener("mouseleave",()=>hideDockPanel());
+
+/* ===== clock ===== */
+setInterval(()=>{
+  document.getElementById("clock").textContent = new Date().toLocaleTimeString("zh-CN",{hour12:false});
+},1000);
+
+/* ===== 标题栏窗口控制（对齐 App.vue useWindowControls）===== */
+document.getElementById("btnSettings").onclick = ()=>showToast("打开设置面板（原型演示：SettingsDialog）");
+document.getElementById("btnUpdate").onclick = ()=>showToast("检查更新：已是最新版本 v2.4.3");
+document.getElementById("wcMin").onclick = ()=>showToast("最小化窗口（Tauri: winMinimize）");
+document.getElementById("wcMax").onclick = function(){
+  const el = document.documentElement;
+  if(!document.fullscreen){ el.requestFullscreen?.(); showToast("最大化窗口（Tauri: winToggleMax）"); }
+  else { document.exitFullscreen?.(); showToast("还原窗口"); }
+};
+document.getElementById("wcClose").onclick = ()=>showToast("关闭窗口（Tauri: winClose）");
+
+/* ===== 聚焦遮罩 / Esc 退出 ===== */
+document.getElementById("backdrop").onclick = exitFocus;
+document.getElementById("btnExitFocus").onclick = exitFocus;
+document.addEventListener("keydown",(e)=>{
+  if(e.key==="Escape" && state.focusedId) exitFocus();
+});
+
+/* ============================================================
+   玻璃浮岛模式
+   ============================================================ */
+const glassMode = document.getElementById("glassMode");
+const gmaster = document.getElementById("gmaster");
+const gedge = document.getElementById("gedge");
+
+function renderGlass(){
+  if(!state.active) state.active = state.cards[0]?.id;
+  const mid = state.active;
+  const mc = CARD_META[mid];
+  gmaster.style.setProperty("--accent", mc.accent);
+  document.getElementById("gmasterTitle").textContent = mc.title;
+  document.getElementById("gmasterBody").innerHTML = renderCardBody(mid);
+  // 窄条图标
+  const icons = document.getElementById("edgeIcons");
+  icons.innerHTML = "";
+  for(const c of state.cards){
+    const meta = CARD_META[c.id];
+    const b = document.createElement("div");
+    b.className = "ei" + (c.id===mid?" on":"");
+    b.style.setProperty("--accent", meta.accent);
+    b.textContent = meta.title.slice(0,1);
+    b.title = meta.title;
+    b.style.cursor = "pointer";
+    b.onmousedown = (e)=>{ if(e.button===0){ state.active = c.id; renderGlass(); } };
+    icons.appendChild(b);
+  }
+  // 分组
+  const groups = document.getElementById("edgeGroups");
+  groups.innerHTML = `<div style="font-size:10px;color:var(--ink3);letter-spacing:2px;padding:4px 6px">卡片导航</div>`;
+  for(const g of DOCK_GROUPS){
+    const openedItems = g.items.filter(it => openCards().includes(it.id));
+    if(openedItems.length === 0) continue;
+    const grp = document.createElement("div");
+    grp.className = "ggroup";
+    grp.innerHTML = `<div class="ggroup-head"><span>${g.name}</span><span style="font-size:9px">▾</span></div>`;
+    const body = document.createElement("div");
+    body.className = "ggroup-body";
+    for(const it of openedItems){
+      const meta = CARD_META[it.id];
+      const row = document.createElement("div");
+      row.className = "g-item" + (it.id===mid?" on":"");
+      row.style.setProperty("--accent", meta.accent);
+      row.innerHTML = `<span class="dot" style="background:${meta.accent}"></span>${meta.title}`;
+      row.onmousedown = (e)=>{
+        if(e.button !== 0) return;
+        // 记录起始位置，用于判断是否拖拽
+        const sx = e.clientX, sy = e.clientY;
+        let dragged = false;
+        const mm = (ev)=>{
+          if(Math.hypot(ev.clientX-sx, ev.clientY-sy) > 12){
+            dragged = true;
+            startDragToPipFrom(ev, it.id, sx, sy);
+            window.removeEventListener("pointermove", mm);
+          }
+        };
+        window.addEventListener("pointermove", mm);
+        window.addEventListener("pointerup", ()=>{
+          window.removeEventListener("pointermove", mm);
+          if(!dragged){
+            state.active = it.id;
+            renderGlass();
+          }
+        }, {once:true});
+      };
+      body.appendChild(row);
+    }
+    grp.appendChild(body);
+    groups.appendChild(grp);
+  }
+}
+
+// 拖卡片到主区 → 变成 PiP 浮窗（从阈值触发点开始）
+function startDragToPipFrom(ev, id, sx, sy){
+  const c = CARD_META[id];
+  let pip = null;
+  const move = (e)=>{
+    if(!pip){
+      pip = document.createElement("div");
+      pip.className = "pip";
+      pip.style.setProperty("--accent", c.accent);
+      const rect = gmaster.getBoundingClientRect();
+      pip.style.left = (e.clientX - rect.left - 100) + "px";
+      pip.style.top = (e.clientY - rect.top - 40) + "px";
+      pip.innerHTML = `
+        <div class="ch"><span class="tt">${c.title}</span><button class="pip-close">✕</button></div>
+        <div class="cb">${renderCardBody(id)}</div>`;
+      pip.querySelector(".pip-close").onclick = (ev2)=>{ ev2.stopPropagation(); pip.remove(); };
+      const ch = pip.querySelector(".ch");
+      ch.onpointerdown = (pe)=>{
+        const psx = pe.clientX - pip.offsetLeft;
+        const psy = pe.clientY - pip.offsetTop;
+        const pmv = (pme)=>{
+          const rect = gmaster.getBoundingClientRect();
+          pip.style.left = (pme.clientX - rect.left - psx) + "px";
+          pip.style.top = (pme.clientY - rect.top - psy) + "px";
+        };
+        const pup = ()=>{
+          window.removeEventListener("pointermove",pmv);
+          window.removeEventListener("pointerup",pup);
+        };
+        window.addEventListener("pointermove",pmv);
+        window.addEventListener("pointerup",pup);
+      };
+      gmaster.appendChild(pip);
+      showToast(`「${c.title}」已弹出为画中画浮窗`);
+    } else {
+      const rect = gmaster.getBoundingClientRect();
+      pip.style.left = (e.clientX - rect.left - 100) + "px";
+      pip.style.top = (e.clientY - rect.top - 40) + "px";
+    }
+  };
+  const up = ()=>{
+    window.removeEventListener("pointermove",move);
+    window.removeEventListener("pointerup",up);
+  };
+  window.addEventListener("pointermove",move);
+  window.addEventListener("pointerup",up);
+}
+
+// hover edge 展开
+gedge.addEventListener("mouseenter",()=>gmaster.classList.add("expanded"));
+gedge.addEventListener("mouseleave",()=>gmaster.classList.remove("expanded"));
+
+// 模式切换
+document.getElementById("modeToggle").onclick = (e)=>{
+  const btn = e.target.closest(".mt");
+  if(!btn) return;
+  document.querySelectorAll(".mt").forEach(x=>x.classList.remove("on"));
+  btn.classList.add("on");
+  state.layoutMode = btn.dataset.mode;
+  const isGlass = state.layoutMode === "glass";
+  document.getElementById("grid").style.display = isGlass ? "none" : "grid";
+  document.querySelector(".tabstrip").style.display = isGlass ? "none" : "flex";
+  glassMode.classList.toggle("on", isGlass);
+  if(isGlass){
+    renderGlass();
+    showToast("切换到玻璃浮岛模式 · hover 右边缘展开");
+  } else {
+    render();
+    showToast("切换到 Bento 平铺模式");
+  }
+};
+
+/* ===== init ===== */
+renderDock();
+renderSceneBar();
+applyScene("pan");
+
+// 调试：#focus=chart 自动聚焦某张卡
+if(location.hash.includes("focus=")){
+  const id = location.hash.split("focus=")[1];
+  setTimeout(()=>focusCard(id), 400);
+}
+// 调试：#glass=1 自动切玻璃浮岛
+if(location.hash.includes("glass=1")){
+  setTimeout(()=>document.querySelector('.mt[data-mode="glass"]').click(), 200);
+}
+</script>
+</body>
+</html>

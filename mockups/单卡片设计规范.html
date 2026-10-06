@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>TickGold · 单卡片设计规范 Card Anatomy</title>
+<style>
+:root{
+  --bg:#07080a; --bg2:#0b0d11; --panel:#0e1116;
+  --ink:#e8ecf1; --ink2:#8b94a3; --ink3:#565e6c;
+  --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.14);
+  --up:#ff4d6a; --down:#00d4a0; --gold:#e8b860; --blue:#2f6fed;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--ink);
+  font-family:"SF Pro Display","PingFang SC","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+  font-feature-settings:"tnum" 1; font-variant-numeric:tabular-nums;}
+body{padding:50px 28px 90px;line-height:1.5}
+.wrap{max-width:1280px;margin:0 auto}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.04;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence baseFrequency='0.9'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");}
+
+/* 封面 */
+.cover{text-align:center;margin-bottom:44px;position:relative;z-index:2}
+.kicker{font-size:11px;letter-spacing:6px;color:var(--gold);text-transform:uppercase;margin-bottom:12px}
+.cover h1{font-size:30px;font-weight:700}
+.cover .sub{color:var(--ink2);font-size:13px;margin-top:8px}
+
+/* 章节 */
+.sec{margin-bottom:56px;position:relative;z-index:2}
+.sec-head{margin-bottom:18px}
+.sec-head h2{font-size:18px;font-weight:600}
+.sec-head .pos{color:var(--ink2);font-size:12px;margin-top:3px}
+
+/* ============================================================
+   卡片真实外壳（对齐 CardShell.vue）
+   ============================================================ */
+.card-shell{
+  position:relative;display:flex;flex-direction:column;
+  background:linear-gradient(180deg, rgba(255,255,255,.04), transparent 22%),
+             linear-gradient(180deg, #17130b, #120f08);
+  border:1px solid var(--line);border-radius:10px;overflow:hidden;
+  transition:border-color .18s, box-shadow .18s;
+}
+.card-shell:hover{border-color:rgba(232,184,96,.45)}
+.card-shell.focused{
+  border-color:var(--gold);
+  box-shadow:0 0 0 1px var(--gold), 0 0 22px rgba(232,184,96,.35), 0 18px 44px rgba(0,0,0,.5);
+}
+.card-shell.dragging{opacity:.94;border-color:var(--gold);box-shadow:0 18px 44px rgba(0,0,0,.6)}
+.card-shell.resizing{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold)}
+
+/* 左侧色条 */
+.card-bar{position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;
+  background:linear-gradient(180deg,var(--bar,#2f6fed),color-mix(in srgb,var(--bar,#2f6fed) 60%,transparent))}
+
+/* 标题栏 */
+.card-head{display:flex;align-items:center;gap:6px;padding:7px 8px 7px 12px;
+  cursor:grab;user-select:none;flex:none}
+.card-head:active{cursor:grabbing}
+.head-ic{width:14px;height:14px;color:var(--ink3);flex:none}
+.grip{opacity:.7}
+.card-title{font-size:12.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-tag{font-size:10px;padding:2px 6px;border-radius:6px;color:var(--gold);
+  background:rgba(232,184,96,.16);flex:none}
+.head-spacer{flex:1}
+.head-tools{display:flex;align-items:center;gap:1px;opacity:.45;transition:opacity .16s}
+.card-shell:hover .head-tools{opacity:1}
+.head-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;
+  border:none;background:transparent;color:var(--ink2);border-radius:5px;cursor:pointer;font-size:12px}
+.head-btn:hover{background:rgba(255,255,255,.08);color:var(--ink)}
+
+/* body */
+.card-body{flex:1;min-height:0;padding:8px 12px 12px;overflow:hidden;position:relative}
+.card-shell.collapsed .card-body{display:none}
+
+/* ============================================================
+   Section 1: 状态矩阵
+   ============================================================ */
+.state-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+.state-cell{display:flex;flex-direction:column;gap:8px}
+.state-cell .lab{font-size:11px;color:var(--ink2);text-align:center;letter-spacing:1px}
+.state-cell .lab b{display:block;color:var(--ink);font-size:12px;margin-bottom:2px}
+.mini-card{height:110px}
+.mini-card .card-head{padding:5px 6px 5px 10px}
+.mini-card .card-title{font-size:11px}
+.mini-card .head-tools{opacity:.35}
+
+/* ============================================================
+   Section 2: 解剖大卡
+   ============================================================ */
+.anatomy{position:relative;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:30px}
+.big-card{width:520px;margin:0 auto}
+.big-card .card-body{height:280px}
+.callout{position:absolute;font-size:11px;color:var(--gold)}
+.callout .c-num{display:inline-flex;width:18px;height:18px;border-radius:50%;background:var(--gold);
+  color:#000;align-items:center;justify-content:center;font-size:10px;font-weight:700;margin-right:6px}
+.callout .c-desc{display:block;margin-top:4px;color:var(--ink2);font-size:10.5px;line-height:1.5;max-width:180px}
+
+/* ============================================================
+   Section 3: 切换动效序列
+   ============================================================ */
+.flow{display:flex;align-items:stretch;gap:0;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:24px;overflow-x:auto}
+.fstep{flex:none;width:200px;position:relative}
+.farrow{display:flex;align-items:center;color:var(--gold);font-size:20px;padding:0 8px;flex:none}
+.fstep .flab{font-size:10px;color:var(--ink3);text-align:center;margin-bottom:8px;letter-spacing:1px}
+.fstep .fbox{height:120px;position:relative}
+
+/* ============================================================
+   Section 4: 右键菜单
+   ============================================================ */
+.ctx-demo{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:30px;display:flex;gap:40px;align-items:flex-start}
+.ctx-menu{width:200px;background:rgba(14,17,22,.97);border:1px solid var(--line2);border-radius:8px;
+  padding:6px;box-shadow:0 18px 44px rgba(0,0,0,.6);font-size:12px}
+.ctx-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:5px;color:var(--ink);cursor:pointer}
+.ctx-item:hover{background:rgba(232,184,96,.1)}
+.ctx-item .ci-ic{width:14px;height:14px;color:var(--ink3)}
+.ctx-item .ci-k{margin-left:auto;color:var(--ink3);font-size:10px;font-family:monospace}
+.ctx-sep{height:1px;background:var(--line);margin:4px 0}
+.ctx-doc{flex:1;font-size:12px;color:var(--ink2);line-height:1.8}
+.ctx-doc b{color:var(--ink)}
+
+/* 可交互演示区 */
+.live-demo{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:24px;position:relative;min-height:420px}
+.demo-btns{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.dbtn{font-size:11.5px;padding:6px 14px;border-radius:6px;border:1px solid var(--line2);
+  background:transparent;color:var(--ink2);cursor:pointer}
+.dbtn:hover{color:var(--ink);border-color:var(--ink2)}
+.dbtn.on{background:var(--gold);color:#000;border-color:var(--gold);font-weight:700}
+.demo-stage{position:relative;height:340px}
+
+/* toast */
+.toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);
+  background:rgba(20,22,28,.95);border:1px solid var(--gold);color:var(--gold);
+  padding:8px 18px;border-radius:6px;font-size:12px;z-index:200;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="cover">
+    <div class="kicker">TickGold · Card Anatomy</div>
+    <h1>单卡片设计规范</h1>
+    <div class="sub">对齐 CardShell.vue · 六种状态 / 标题栏解剖 / 切换动效 / 右键菜单</div>
+  </div>
+
+  <!-- ============ Section 1: 状态矩阵 ============ -->
+  <div class="sec">
+    <div class="sec-head">
+      <h2>① 卡片六种状态</h2>
+      <div class="pos">默认 / Hover / 聚焦 / 拖拽 / 调整尺寸 / 折叠 —— 每种状态的边框、阴影、不透明度差异</div>
+    </div>
+    <div class="state-grid">
+      <div class="state-cell">
+        <div class="card-shell mini-card" style="--bar:#2f6fed">
+          <div class="card-bar"></div>
+          <div class="card-head"><span class="card-title">默认</span></div>
+          <div class="card-body" style="font-size:10px;color:var(--ink3)">1px 边框<br/>无阴影</div>
+        </div>
+        <div class="lab"><b>Default</b>1px 边框</div>
+      </div>
+      <div class="state-cell">
+        <div class="card-shell mini-card" style="--bar:#2f6fed;border-color:rgba(232,184,96,.45)">
+          <div class="card-bar"></div>
+          <div class="card-head"><span class="card-title">Hover</span></div>
+          <div class="card-body" style="font-size:10px;color:var(--ink3)">边框变金<br/>工具按钮淡入</div>
+        </div>
+        <div class="lab"><b>Hover</b>边框 accent</div>
+      </div>
+      <div class="state-cell">
+        <div class="card-shell mini-card focused" style="--bar:#e0455a">
+          <div class="card-bar"></div>
+          <div class="card-head"><span class="card-title">聚焦 Focused</span></div>
+          <div class="card-body" style="font-size:10px;color:var(--ink3)">accent 描边<br/>+ 22px 辉光</div>
+        </div>
+        <div class="lab"><b>Focused</b>辉光描边</div>
+      </div>
+      <div class="state-cell">
+        <div class="card-shell mini-card dragging" style="--bar:#e0556b">
+          <div class="card-bar"></div>
+          <div class="card-head"><span class="card-title">拖拽 Dragging</span></div>
+          <div class="card-body" style="font-size:10px;color:var(--ink3)">opacity .94<br/>深阴影</div>
+        </div>
+        <div class="lab"><b>Dragging</b>半透明浮起</div>
+      </div>
+      <div class="state-cell">
+        <div class="card-shell mini-card resizing" style="--bar:#26d07c">
+          <div class="card-bar"></div>
+          <div class="card-head"><span class="card-title">调整尺寸</span></div>
+          <div class="card-body" style="font-size:10px;color:var(--ink3)">0 0 0 1px<br/>accent 描边</div>
+        </div>
+        <div class="lab"><b>Resizing</b>1px 描边</div>
+      </div>
+      <div class="state-cell">
+        <div class="card-shell mini-card collapsed" style="--bar:#d4af37">
+          <div class="card-bar"></div>
+          <div class="card-head"><span class="card-title">折叠 Collapsed ▾</span></div>
+          <div class="card-body"></div>
+        </div>
+        <div class="lab"><b>Collapsed</b>仅标题栏</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Section 2: 标题栏解剖 ============ -->
+  <div class="sec">
+    <div class="sec-head">
+      <h2>② 标题栏解剖（Hover 可交互）</h2>
+      <div class="pos">把鼠标移到下面这张卡上——右侧工具按钮会从 opacity .45 淡入到 1</div>
+    </div>
+    <div class="anatomy" style="padding-top:70px">
+      <div class="card-shell big-card" id="bigCard" style="--bar:#2f6fed">
+        <div class="card-bar"></div>
+        <div class="card-head">
+          <svg class="head-ic grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>
+          <span class="card-title">K线图 · 中际旭创 300308</span>
+          <span class="card-tag">主升</span>
+          <span class="head-spacer"></span>
+          <div class="head-tools">
+            <button class="head-btn" title="折叠">▾</button>
+            <button class="head-btn" title="聚焦">⛶</button>
+            <button class="head-btn" title="编排微件">⊞</button>
+            <button class="head-btn" title="弹出画中岛">⧉</button>
+            <button class="head-btn" title="设置">⚙</button>
+            <button class="head-btn" title="关闭">✕</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div style="font-size:18px;font-weight:700;color:var(--up)">152.30 <span style="font-size:11px">+4.56%</span></div>
+          <svg width="100%" height="90%" viewBox="0 0 400 200" preserveAspectRatio="none" style="margin-top:8px">
+            <polyline points="0,160 50,150 100,155 150,130 200,135 250,100 300,105 350,70 400,60"
+              fill="none" stroke="#ff4d6a" stroke-width="1.5"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- 标注：在卡片上方横向排列 -->
+      <div class="callout" style="left:20px;top:20px">
+        <span class="c-num">1</span>左侧 accent 渐变条
+        <span class="c-desc">3px 宽，top/bottom 各 8px 留白</span>
+      </div>
+      <div class="callout" style="left:230px;top:20px">
+        <span class="c-num">2</span>Grip 六点拖拽
+        <span class="c-desc">14×14，按住标题栏拖动整卡</span>
+      </div>
+      <div class="callout" style="left:440px;top:20px">
+        <span class="c-num">3</span>卡片标签 Tag
+        <span class="c-desc">4 字自定义，金色半透徽章</span>
+      </div>
+      <div class="callout" style="right:20px;top:20px">
+        <span class="c-num">4</span>工具按钮组
+        <span class="c-desc">默认 opacity .45，hover 淡入到 1</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Section 3: 切换动效 ============ -->
+  <div class="sec">
+    <div class="sec-head">
+      <h2>③ 卡片切换动效序列</h2>
+      <div class="pos">打开 / 聚焦 / 关闭 三种场景的 FLIP 位移轨迹</div>
+    </div>
+    <div class="flow">
+      <div class="fstep">
+        <div class="flab">A · 从 Dock 打开卡片</div>
+        <div class="fbox">
+          <div class="card-shell" style="position:absolute;left:0;top:0;width:120px;height:80px;opacity:.4">
+            <div class="card-bar" style="--bar:#e0455a"></div>
+            <div class="card-head"><span class="card-title" style="font-size:10px">雷达</span></div>
+          </div>
+          <div style="position:absolute;left:140px;top:20px;font-size:20px;color:var(--gold)">→</div>
+          <div class="card-shell" style="position:absolute;left:170px;top:0;width:120px;height:80px;border-color:var(--gold);box-shadow:0 0 16px rgba(232,184,96,.3)">
+            <div class="card-bar" style="--bar:#e0455a"></div>
+            <div class="card-head"><span class="card-title" style="font-size:10px">雷达</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="farrow">→</div>
+      <div class="fstep">
+        <div class="flab">B · 聚焦放大（共享元素 FLIP）</div>
+        <div class="fbox">
+          <div class="card-shell" style="position:absolute;left:20px;top:20px;width:80px;height:60px">
+            <div class="card-bar" style="--bar:#2f6fed"></div>
+            <div class="card-head"><span class="card-title" style="font-size:9px">K线</span></div>
+          </div>
+          <div style="position:absolute;left:105px;top:30px;font-size:18px;color:var(--gold)">⤢</div>
+          <div class="card-shell focused" style="position:absolute;left:120px;top:-10px;width:150px;height:100px">
+            <div class="card-bar" style="--bar:#2f6fed"></div>
+            <div class="card-head"><span class="card-title" style="font-size:10px">K线 · 放大</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="farrow">→</div>
+      <div class="fstep">
+        <div class="flab">C · 关闭卡片（其他卡补位）</div>
+        <div class="fbox">
+          <div style="display:flex;gap:6px;position:absolute;left:10px;top:20px">
+            <div class="card-shell" style="width:60px;height:60px"><div class="card-bar" style="--bar:#26d07c"></div></div>
+            <div class="card-shell" style="width:60px;height:60px;opacity:.3;border-style:dashed"><div class="card-bar" style="--bar:#e0455a"></div></div>
+            <div class="card-shell" style="width:60px;height:60px"><div class="card-bar" style="--bar:#e0556b"></div></div>
+          </div>
+          <div style="position:absolute;left:150px;top:40px;font-size:18px;color:var(--gold)">→</div>
+          <div style="display:flex;gap:6px;position:absolute;left:170px;top:20px">
+            <div class="card-shell" style="width:60px;height:60px"><div class="card-bar" style="--bar:#26d07c"></div></div>
+            <div class="card-shell" style="width:60px;height:60px"><div class="card-bar" style="--bar:#e0556b"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Section 4: 可交互 live demo ============ -->
+  <div class="sec">
+    <div class="sec-head">
+      <h2>④ 可交互演示</h2>
+      <div class="pos">点下面按钮，看卡片在「正常 / 聚焦 / 折叠 / 关闭」间切换的真实动效</div>
+    </div>
+    <div class="live-demo">
+      <div class="demo-btns">
+        <button class="dbtn on" data-state="normal">正常态</button>
+        <button class="dbtn" data-state="focused">聚焦 ⛶</button>
+        <button class="dbtn" data-state="collapsed">折叠 ▾</button>
+        <button class="dbtn" data-state="dragging">拖拽态</button>
+      </div>
+      <div class="demo-stage">
+        <div class="card-shell" id="liveCard" style="--bar:#2f6fed;width:340px;position:absolute;left:50%;top:20px;transform:translateX(-50%);transition:all .3s cubic-bezier(.32,.72,0,1)">
+          <div class="card-bar"></div>
+          <div class="card-head">
+            <svg class="head-ic grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>
+            <span class="card-title">K线图</span>
+            <span class="card-tag">主升</span>
+            <span class="head-spacer"></span>
+            <div class="head-tools">
+              <button class="head-btn">▾</button>
+              <button class="head-btn">⛶</button>
+              <button class="head-btn">⚙</button>
+              <button class="head-btn">✕</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div style="font-size:20px;font-weight:700;color:var(--up)">152.30 <span style="font-size:11px">+4.56%</span></div>
+            <svg width="100%" height="200" viewBox="0 0 300 150" preserveAspectRatio="none" style="margin-top:8px">
+              <polyline points="0,120 40,110 80,115 120,90 160,95 200,70 240,75 280,45 300,40"
+                fill="none" stroke="#ff4d6a" stroke-width="1.5"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Section 5: 右键菜单 ============ -->
+  <div class="sec">
+    <div class="sec-head">
+      <h2>⑤ 卡片右键菜单（对齐 CardContextMenu.vue）</h2>
+      <div class="pos">11 个动作分两组：视图操作 / 个性化 / 危险区</div>
+    </div>
+    <div class="ctx-demo">
+      <div class="ctx-menu">
+        <div class="ctx-item"><span class="ci-ic">⛶</span>聚焦（主区放大）<span class="ci-k">Enter</span></div>
+        <div class="ctx-item"><span class="ci-ic">▾</span>折叠卡片</div>
+        <div class="ctx-item"><span class="ci-ic">📌</span>置顶卡片</div>
+        <div class="ctx-item"><span class="ci-ic">🔒</span>锁定位置</div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item"><span class="ci-ic">📋</span>复制卡片样式</div>
+        <div class="ctx-item"><span class="ci-ic">📥</span>粘贴样式</div>
+        <div class="ctx-item"><span class="ci-ic">🎨</span>换色</div>
+        <div class="ctx-item"><span class="ci-ic">🏷</span>设置标签</div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item" style="color:var(--up)"><span class="ci-ic">✕</span>关闭卡片<span class="ci-k">Del</span></div>
+      </div>
+      <div class="ctx-doc">
+        <b>交互细节：</b><br/>
+        · 右键卡片任意处 → 菜单跟随鼠标弹出，自动避开屏幕边缘<br/>
+        · <b>聚焦</b> → FLIP 共享元素放大到主区（useCardFocus）<br/>
+        · <b>折叠</b> → body display:none，仅留标题栏，双击标题栏同样触发<br/>
+        · <b>置顶 / 锁定</b> → 标题栏显示 pin / lock 小图标<br/>
+        · <b>复制 / 粘贴样式</b> → 跨卡复用颜色、透明度、圆角、辉光<br/>
+        · <b>关闭</b> → 0.22s 缩小淡出，其他卡 FLIP 补位，底部 toast「卡片已关闭 · 撤销」
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// 可交互状态切换
+const card = document.getElementById("liveCard");
+const btns = document.querySelectorAll(".dbtn");
+const toast = document.getElementById("toast");
+let toastTimer;
+function showToast(msg){
+  toast.textContent = msg; toast.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(()=>toast.classList.remove("show"),1500);
+}
+btns.forEach(b=>{
+  b.onclick = ()=>{
+    btns.forEach(x=>x.classList.remove("on"));
+    b.classList.add("on");
+    const s = b.dataset.state;
+    card.className = "card-shell";
+    card.style.transform = "translateX(-50%)";
+    card.style.opacity = "1";
+    if(s==="focused"){
+      card.classList.add("focused");
+      card.style.width = "560px";
+      card.style.top = "0px";
+      card.style.transform = "translateX(-50%) scale(1.05)";
+      showToast("聚焦：accent 描边 + 22px 辉光");
+    } else if(s==="collapsed"){
+      card.classList.add("collapsed");
+      card.style.width = "340px";
+      showToast("折叠：body 收起，仅留标题栏");
+    } else if(s==="dragging"){
+      card.classList.add("dragging");
+      card.style.transform = "translateX(calc(-50% + 12px)) rotate(1deg)";
+      showToast("拖拽：opacity .94 + 深阴影");
+    } else {
+      card.style.width = "340px";
+      showToast("正常：1px 边框，无阴影");
+    }
+  };
+});
+</script>
+</body>
+</html>

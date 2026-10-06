@@ -6,6 +6,7 @@ import { useTheme, type ThemeId } from "../composables/useTheme";
 import { useAccessibility } from "../composables/useAccessibility";
 import { useMotion } from "../composables/useMotion";
 import { useSkins } from "../composables/useSkins";
+import { useWindowControls } from "../composables/useWindowControls";
 import { tsStatus } from "../composables/useTimeSeries";
 import { collectorStatus } from "../composables/useCollector";
 import { logger, type LogLevel } from "../utils/logger";
@@ -59,7 +60,7 @@ import { ISLAND_SKINS, getIslandSkin, setIslandSkin, applyIslandSkin, ISLAND_SKI
 import { usePaperStore } from "../stores/paper";
 
 defineProps<{ open: boolean }>();
-const emit = defineEmits<{ "update:open": [boolean]; "replay-onboarding": [] }>();
+const emit = defineEmits<{ "update:open": [boolean]; "replay-onboarding": []; "check-update": [] }>();
 function close() {
   emit("update:open", false);
 }
@@ -67,6 +68,7 @@ function close() {
 const { theme, setTheme, THEMES } = useTheme();
 const { zoom, highContrast, setZoom, setHighContrast, ZOOM_LEVELS } = useAccessibility();
 const { tier: motionTier, setTier: setMotionTier, MOTION_TIERS } = useMotion();
+const { curVersion } = useWindowControls();
 const skinsApi = useSkins();
 
 // 灵动岛皮肤
@@ -1321,9 +1323,12 @@ async function toggleDev() {
               <div class="ab-logo">TG</div>
               <div class="ab-name">TickGold</div>
               <div class="ab-desc">开源跨平台 A 股盯盘终端</div>
+              <div class="ab-ver">v{{ curVersion || "2.7.11" }}</div>
               <div class="ab-tech">Tauri 2.0 · Rust · Vue 3 · TypeScript · ECharts</div>
-              <div class="ab-desc">一套代码，图形化发布 Windows / macOS</div>
-              <button type="button" class="ab-replay" @click="replayOnboarding">重新查看新手引导</button>
+              <div class="ab-actions">
+                <button type="button" class="ab-primary" @click="emit('check-update')">检查更新</button>
+                <button type="button" class="ab-ghost" @click="replayOnboarding">新手引导</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1498,6 +1503,19 @@ async function toggleDev() {
 .seg-btn + .seg-btn { border-left: 1px solid var(--border); }
 .ab-replay { margin-top: 16px; background: transparent; color: var(--accent); border: 1px solid var(--border-light); border-radius: 8px; padding: 8px 20px; cursor: pointer; font-size: 13px; font-family: inherit; }
 .ab-replay:hover { background: var(--bg-hover); }
+.ab-ver { font-size: 12px; color: var(--accent); margin-top: 6px; font-weight: 600; }
+.ab-actions { display: flex; gap: 10px; margin-top: 18px; }
+.ab-primary {
+  background: var(--accent); color: #000; border: none;
+  border-radius: 8px; padding: 8px 22px; cursor: pointer;
+  font-size: 13px; font-weight: 600; font-family: inherit;
+}
+.ab-primary:hover { filter: brightness(1.1); }
+.ab-ghost {
+  background: transparent; color: var(--text-dim); border: 1px solid var(--border-light);
+  border-radius: 8px; padding: 8px 18px; cursor: pointer; font-size: 13px; font-family: inherit;
+}
+.ab-ghost:hover { background: var(--bg-hover); color: var(--text); }
 
 /* 卡片皮肤 */
 .skin-card { position: relative; cursor: pointer; }

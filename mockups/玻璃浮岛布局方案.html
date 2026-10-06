@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>玻璃浮岛布局方案</title>
+<style>
+:root{
+  --bg:#07080a; --panel:#0c0e12; --card:#11141a; --line:#1e2330;
+  --text:#eef2f8; --dim:#8b97a8; --gold:#e8b860; --up:#ff4d6a; --down:#00d4a0;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",sans-serif;padding:20px}
+h1{font-size:16px;color:var(--gold);margin-bottom:20px;letter-spacing:2px}
+.section{margin-bottom:40px}
+.section h2{font-size:13px;color:var(--gold);margin-bottom:10px;letter-spacing:1px}
+.demo{
+  background:var(--bg);border:1px solid var(--line);border-radius:10px;
+  height:380px;position:relative;overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.demo-bar{
+  height:28px;flex:none;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;padding:0 12px;font-size:10px;color:var(--dim);gap:10px;
+}
+.demo-body{flex:1;display:flex;overflow:hidden}
+
+/* 通用卡片 */
+.mock-card{
+  background:var(--card);border:1px solid var(--line);border-radius:8px;
+  display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:11px;
+}
+.mock-card.main{border-color:rgba(232,184,96,.3)}
+
+/* ===== 方案 A：左主 + 右缩略图列 ===== */
+.a-main{flex:1;padding:10px;display:flex;flex-direction:column;gap:8px}
+.a-side{
+  width:200px;flex:none;border-left:1px solid var(--line);
+  background:rgba(12,14,18,.8);padding:10px;overflow-y:auto;
+  display:flex;flex-direction:column;gap:6px;
+}
+.a-side-item{
+  padding:8px 10px;border-radius:6px;font-size:11px;cursor:pointer;
+  display:flex;align-items:center;gap:6px;border:1px solid transparent;
+}
+.a-side-item.on{background:rgba(232,184,96,.1);border-color:rgba(232,184,96,.3)}
+.a-side-item .dot{width:6px;height:6px;border-radius:50%;background:var(--up)}
+.a-side-title{font-size:10px;color:var(--gold);letter-spacing:1px;padding:4px 6px}
+
+/* ===== 方案 B：左主 + 下 tab 条（去掉右侧栏） ===== */
+.b-main{flex:1;padding:10px;display:flex;flex-direction:column;gap:8px}
+.b-tabs{
+  height:36px;flex:none;border-top:1px solid var(--line);
+  display:flex;align-items:center;padding:0 10px;gap:4px;overflow-x:auto;
+  background:rgba(12,14,18,.8);
+}
+.b-tab{
+  padding:4px 12px;border-radius:6px;font-size:11px;color:var(--dim);
+  cursor:pointer;white-space:nowrap;border:1px solid transparent;
+}
+.b-tab.on{background:var(--gold);color:#000;font-weight:600}
+
+/* ===== 方案 C：左主 + 右双列（主缩略 + 次缩略） ===== */
+.c-main{flex:1;padding:10px}
+.c-side{
+  width:280px;flex:none;border-left:1px solid var(--line);
+  background:rgba(12,14,18,.8);display:flex;flex-direction:column;
+}
+.c-side-top{flex:1;padding:10px;display:flex;flex-direction:column;gap:6px;overflow-y:auto}
+.c-side-bottom{
+  height:80px;flex:none;border-top:1px solid var(--line);padding:8px;
+  display:flex;gap:6px;overflow-x:auto;
+}
+.c-mini{
+  min-width:100px;height:60px;background:var(--card);border:1px solid var(--line);
+  border-radius:6px;padding:6px;font-size:9px;color:var(--dim);
+}
+.c-mini.on{border-color:var(--gold)}
+
+/* ===== 方案 D：三栏布局（左导航 + 中主 + 右预览） ===== */
+.d-nav{
+  width:140px;flex:none;border-right:1px solid var(--line);
+  background:rgba(12,14,18,.8);padding:10px;overflow-y:auto;
+  display:flex;flex-direction:column;gap:4px;
+}
+.d-nav-item{
+  padding:6px 8px;border-radius:6px;font-size:11px;color:var(--dim);cursor:pointer;
+}
+.d-nav-item.on{background:rgba(232,184,96,.12);color:var(--gold)}
+.d-main{flex:1;padding:10px}
+.d-preview{
+  width:180px;flex:none;border-left:1px solid var(--line);
+  background:rgba(12,14,18,.8);padding:10px;
+}
+.d-preview-title{font-size:10px;color:var(--gold);margin-bottom:8px}
+
+.desc{font-size:11px;color:var(--dim);line-height:1.6;margin-top:8px}
+.label{font-size:11px;color:var(--gold);font-weight:600}
+</style>
+</head>
+<body>
+<h1>玻璃浮岛布局 · 4 套方案</h1>
+
+<!-- 方案 A -->
+<div class="section">
+  <span class="label">方案 A · 左主 + 右分组导航（当前优化版）</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="demo-body">
+      <div class="a-main">
+        <div class="mock-card main" style="flex:1">主卡 · 决策日志</div>
+      </div>
+      <div class="a-side">
+        <div class="a-side-title">卡片导航</div>
+        <div class="a-side-item"><span class="dot"></span>自选股</div>
+        <div class="a-side-item"><span class="dot"></span>雷达扫盘</div>
+        <div class="a-side-item on"><span class="dot"></span>决策日志</div>
+        <div class="a-side-item"><span class="dot"></span>AI 问数</div>
+        <div class="a-side-item"><span class="dot"></span>作战计划</div>
+      </div>
+    </div>
+  </div>
+  <p class="desc">主卡占 75%，右侧 200px 分组导航列表。去掉底部 tab 条，只保留右侧导航。最简洁。</p>
+</div>
+
+<!-- 方案 B -->
+<div class="section">
+  <span class="label">方案 B · 左主 + 底部 tab 条（去掉右侧栏）</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="demo-body" style="flex-direction:column">
+      <div class="b-main" style="flex:1">
+        <div class="mock-card main" style="flex:1">主卡 · 决策日志</div>
+      </div>
+      <div class="b-tabs">
+        <div class="b-tab">自选股</div>
+        <div class="b-tab">雷达扫盘</div>
+        <div class="b-tab on">决策日志</div>
+        <div class="b-tab">AI 问数</div>
+        <div class="b-tab">作战计划</div>
+        <div class="b-tab">信号确认桥</div>
+      </div>
+    </div>
+  </div>
+  <p class="desc">主卡占满，底部一行 tab 条切换卡片。不要右侧栏，空间最大。最像浏览器 tab 页。</p>
+</div>
+
+<!-- 方案 C -->
+<div class="section">
+  <span class="label">方案 C · 左主 + 右双列（列表 + 迷你预览）</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="demo-body">
+      <div class="c-main">
+        <div class="mock-card main" style="height:100%">主卡 · 决策日志</div>
+      </div>
+      <div class="c-side">
+        <div class="c-side-top">
+          <div class="a-side-title">卡片导航</div>
+          <div class="a-side-item"><span class="dot"></span>自选股</div>
+          <div class="a-side-item on"><span class="dot"></span>决策日志</div>
+          <div class="a-side-item"><span class="dot"></span>AI 问数</div>
+        </div>
+        <div class="c-side-bottom">
+          <div class="c-mini on">自选股<br><b style="color:var(--up)">+2.3%</b></div>
+          <div class="c-mini">雷达<br><b>48 涨停</b></div>
+          <div class="c-mini">榜单<br><b>涨幅榜</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="desc">右侧 280px 分上下两块：上面卡片列表，下面迷你数据预览。既知道开了哪些卡，又能瞥一眼其他卡的数据。</p>
+</div>
+
+<!-- 方案 D -->
+<div class="section">
+  <span class="label">方案 D · 三栏布局（左导航 + 中主 + 右预览）</span>
+  <div class="demo">
+    <div class="demo-bar">集合竞价 | 早盘 9:30 | 午盘 | 尾盘 14:30 | 盘后复盘</div>
+    <div class="demo-body">
+      <div class="d-nav">
+        <div class="d-nav-item">自选股</div>
+        <div class="d-nav-item">雷达扫盘</div>
+        <div class="d-nav-item on">决策日志</div>
+        <div class="d-nav-item">AI 问数</div>
+        <div class="d-nav-item">作战计划</div>
+      </div>
+      <div class="d-main">
+        <div class="mock-card main" style="height:100%">主卡 · 决策日志</div>
+      </div>
+      <div class="d-preview">
+        <div class="d-preview-title">上一张 · 雷达扫盘</div>
+        <div class="mock-card" style="height:100px">迷你预览</div>
+      </div>
+    </div>
+  </div>
+  <p class="desc">三栏：左 140px 导航 + 中主卡 + 右 180px 上一张预览。切换卡片时能看到前一张的缩略图，不会"断片"。</p>
+</div>
+
+</body>
+</html>
