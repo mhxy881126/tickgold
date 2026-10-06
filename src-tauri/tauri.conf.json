@@ -1,12 +1,12 @@
-﻿{
+{
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "TickGold",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "identifier": "com.stockdock.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "pnpm build"
   },
   "app": {
@@ -65,4 +65,5 @@
     }
   }
 }
+
 

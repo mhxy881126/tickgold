@@ -5967,7 +5967,7 @@ dependencies = [
 
 [[package]]
 name = "tickgold"
-version = "2.7.7"
+version = "2.9.0"
 dependencies = [
  "aes",
  "base64 0.22.1",

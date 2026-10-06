@@ -1863,25 +1863,26 @@ pub fn run() {
             //   关于 TickGold
             //   退出 TickGold
             let main_item =
-                CheckMenuItem::with_id(app, "toggle_main", "📊 主窗口", true, true, None::<&str>)?;
+                CheckMenuItem::with_id(app, "toggle_main", "主窗口", true, true, None::<&str>)?;
             let island_item = CheckMenuItem::with_id(
                 app,
                 "toggle_island",
-                "🏝️ 灵动岛",
+                "灵动岛",
                 true,
                 true,
                 None::<&str>,
             )?;
             let sep1 = PredefinedMenuItem::separator(app)?;
-            let settings_item = MenuItem::with_id(app, "open_settings", "⚙️ 打开设置", true, None::<&str>)?;
-            let pause_item = CheckMenuItem::with_id(app, "pause_alert", "⏸️ 暂停预警", true, false, None::<&str>)?;
+            let settings_item = MenuItem::with_id(app, "open_settings", "设置…", true, None::<&str>)?;
+            let pause_item = CheckMenuItem::with_id(app, "pause_alert", "暂停预警", true, false, None::<&str>)?;
+            let update_item = MenuItem::with_id(app, "check_update", "检查更新…", true, None::<&str>)?;
             let sep2 = PredefinedMenuItem::separator(app)?;
-            let about_item = MenuItem::with_id(app, "about", "ℹ️ 关于 TickGold", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "🚪 退出 TickGold", true, None::<&str>)?;
+            let about_item = MenuItem::with_id(app, "about", "关于 TickGold", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "退出 TickGold", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[
                 &main_item, &island_item,
                 &sep1,
-                &settings_item, &pause_item,
+                &settings_item, &pause_item, &update_item,
                 &sep2,
                 &about_item, &quit,
             ])?;
@@ -1912,6 +1913,13 @@ pub fn run() {
                     }
                     "pause_alert" => {
                         // TODO: 切换预警暂停状态
+                    }
+                    "check_update" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.emit("check-update", ());
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
                     }
                     "about" => {
                         if let Some(w) = app.get_webview_window("main") {

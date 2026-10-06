@@ -344,6 +344,12 @@ function onPaletteKey(e: KeyboardEvent) {
 function pickStock(code: string, name?: string) {
   selected.value = code;
   if (name && !wl.codes.includes(code)) wl.add(code, name);
+  // 玻璃浮岛模式：直接把主卡切到右侧卡片导航里的 K线图，不弹 Bento 聚焦 rail
+  if (bench.layoutMode.value === "glass") {
+    if (!bench.isOpen("chart")) bench.open("chart");
+    bench.setGlassActive("chart");
+    return;
+  }
   if (bench.isOpen("chart")) {
     if (bench.isFocused.value) {
       if (bench.focusId.value !== "chart") switchFocus("chart");
@@ -359,6 +365,12 @@ function onSelect(code: string) {
   pickStock(code);
 }
 function onSectorPick(name: string, kind: string) {
+  // 玻璃浮岛模式：直接切主卡到板块行情，不弹 Bento 聚焦 rail
+  if (bench.layoutMode.value === "glass") {
+    if (!bench.isOpen("sector")) bench.open("sector");
+    bench.setGlassActive("sector");
+    return;
+  }
   // 打开板块行情卡片并聚焦，展示该板块成分股
   if (bench.isOpen("sector")) {
     if (bench.isFocused.value) {
@@ -380,6 +392,12 @@ const unlistenFns: (() => void)[] = [];
 onMounted(async () => {
   // 板块热力图点击 → 打开板块行情卡片
   window.addEventListener("open-sector-card", () => {
+    // 玻璃浮岛模式：直接切主卡，不进 Bento 聚焦
+    if (bench.layoutMode.value === "glass") {
+      if (!bench.isOpen("sector")) bench.open("sector");
+      bench.setGlassActive("sector");
+      return;
+    }
     if (bench.isOpen("sector")) {
       bench.focusId.value = "sector";
     } else {
@@ -459,6 +477,10 @@ onMounted(async () => {
         if (!bench.isOpen("signalbridge")) bench.open("signalbridge");
       })
     );
+    // 托盘菜单事件
+    unlistenFns.push(await listen("open-settings", () => { showSettings.value = true; }));
+    unlistenFns.push(await listen("check-update", () => { showUpdate.value = true; }));
+    unlistenFns.push(await listen("show-about", () => { showSettings.value = true; }));
     // 预警触发：写历史 + 系统通知 + 声音 + 记录触发时间
     unlistenFns.push(
       await listen<AlertEvent>("alert:triggered", (e) => {
