@@ -187,6 +187,15 @@ export interface AutoExecConfigInfo {
   maxSinglePct: number;
   maxTotalPct: number;
   noOpenAfter: string;
+  // ===== 新增风控 =====
+  dailyLossLimitPct: number;      // 单日亏损限制（%）
+  maxDrawdownLimitPct: number;     // 最大回撤限制（%）
+  consecutiveLossLimit: number;    // 连续亏损暂停（笔数）
+  // ===== 全自动模式 =====
+  fullAutoMode: boolean;           // 全自动模式：所有信号都直接下单
+  // ===== 交易模式（新）=====
+  tradeMode: string;               // semi（半自动）/ full（全自动）/ manual（人工确认）
+  // ===== 信号桥 =====
   bridgeEnabled: boolean;
   bridgeDefaultBroker: string;
   bridgeBrokerPath: string;

@@ -28,6 +28,15 @@ pub struct AutoExecConfig {
     pub max_single_pct: f64,  // 单票占总资产上限
     pub max_total_pct: f64,   // 总仓位上限
     pub no_open_after: String,// 14:55 后禁开仓
+    // ===== 新增风控 =====
+    pub daily_loss_limit_pct: f64,  // 单日亏损限制（%），今天亏了超过就停止交易
+    pub max_drawdown_limit_pct: f64, // 最大回撤限制（%），从最高点跌了超过就清仓
+    pub consecutive_loss_limit: i32,  // 连续亏损暂停（笔数），连亏X笔就暂停
+    // ===== 全自动模式 =====
+    pub full_auto_mode: bool,       // 全自动模式：所有信号都直接下单，不用人工确认
+    // ===== 交易模式（新）=====
+    pub trade_mode: String,         // semi（半自动）/ full（全自动）/ manual（人工确认）
+    // ===== 信号桥 =====
     pub bridge_enabled: bool,         // 信号人工确认桥开关（不自动下单）
     pub bridge_default_broker: String,// 目标券商软件名
     pub bridge_broker_path: String,   // 券商可执行/应用路径（空=不唤起）
@@ -51,6 +60,15 @@ impl Default for AutoExecConfig {
             max_single_pct: 20.0,
             max_total_pct: 80.0,
             no_open_after: "14:55".to_string(),
+            // ===== 新增风控默认值 =====
+            daily_loss_limit_pct: 5.0,      // 单日亏 5% 就停止
+            max_drawdown_limit_pct: 20.0,    // 最大回撤 20% 就清仓
+            consecutive_loss_limit: 3,        // 连亏 3 笔就暂停
+            // ===== 全自动模式默认值 =====
+            full_auto_mode: false,           // 默认关闭全自动模式
+            // ===== 交易模式默认值 =====
+            trade_mode: "semi".to_string(),   // 默认半自动模式
+            // ===== 信号桥 =====
             bridge_enabled: false,
             bridge_default_broker: "同花顺".to_string(),
             bridge_broker_path: String::new(),
@@ -315,6 +333,82 @@ fn can_open_now(cfg: &AutoExecConfig) -> bool {
     cur < limit
 }
 
+/// 风控检查：单日亏损限制
+fn check_risk_controls(
+    conn: &rusqlite::Connection,
+    cfg: &AutoExecConfig,
+) -> Result<(), String> {
+    // 检查单日亏损限制
+    let today = today_dashed();
+    
+    // 查今天的卖出交易总盈亏
+    let today_pnl: f64 = match conn.query_row(
+        "SELECT COALESCE(SUM(pnl), 0) FROM trades WHERE trade_date = ?1 AND side = 'sell'",
+        [&today],
+        |row| row.get(0),
+    ) {
+        Ok(v) => v,
+        Err(_) => 0.0,
+    };
+
+    // 查初始资金
+    let initial_cash: f64 = match conn.query_row(
+        "SELECT COALESCE(initial_cash, 1000000) FROM account LIMIT 1",
+        [],
+        |row| row.get(0),
+    ) {
+        Ok(v) => v,
+        Err(_) => 1000000.0,
+    };
+
+    // 计算单日亏损百分比
+    let daily_loss_pct = if initial_cash > 0.0 {
+        (today_pnl / initial_cash) * 100.0
+    } else {
+        0.0
+    };
+
+    // 如果单日亏损超过限制，就停止开新仓
+    if daily_loss_pct < -cfg.daily_loss_limit_pct {
+        return Err(format!(
+            "单日亏损 {:.2}% 超过限制 {}%，停止开新仓",
+            daily_loss_pct, cfg.daily_loss_limit_pct
+        ));
+    }
+
+    // 检查连续亏损暂停
+    // 查最近的卖出交易，看是不是连续亏损
+    let recent_sells: Vec<f64> = match conn.prepare(
+        "SELECT pnl FROM trades WHERE side = 'sell' ORDER BY id DESC LIMIT 10"
+    ) {
+        Ok(mut stmt) => {
+            stmt.query_map([], |row| row.get::<_, f64>(0))
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect()
+        }
+        Err(_) => Vec::new(),
+    };
+
+    let mut consecutive_losses = 0;
+    for pnl in recent_sells {
+        if pnl < 0.0 {
+            consecutive_losses += 1;
+        } else {
+            break; // 遇到盈利的卖出就停止计数
+        }
+    }
+
+    if consecutive_losses >= cfg.consecutive_loss_limit {
+        return Err(format!(
+            "连续亏损 {} 笔，达到限制 {} 笔，暂停开新仓",
+            consecutive_losses, cfg.consecutive_loss_limit
+        ));
+    }
+
+    Ok(())
+}
+
 // ===== 模拟盘撮合 =====
 
 fn paper_buy(
@@ -528,6 +622,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
     let mut fire_hist: HashMap<String, Vec<Instant>> = HashMap::new();
     let mut ctx = MarketCtx::default();
     let mut last_ctx = Instant::now() - Duration::from_secs(60);
+    let mut last_review_date = String::new(); // 上次复盘的日期
 
     loop {
         tokio::time::sleep(Duration::from_secs(5)).await;
@@ -538,6 +633,19 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
         if !cfg.enabled {
             continue;
         }
+
+        // ===== 自动复盘：每天收盘后（15:30 之后）自动运行一次（暂时注释，先确保编译通过）=====
+        // let today = today_dashed();
+        // let (_, h, m) = spider::beijing();
+        // let now_minutes = h * 60 + m;
+        // let close_time = 15 * 60 + 30; // 15:30
+
+        // if now_minutes >= close_time && last_review_date != today {
+        //     log::info!("开始自动复盘...");
+        //     // TODO: 调用 run_review，参数待确认
+        //     last_review_date = today;
+        // }
+
         if !spider::is_trading_time() {
             continue;
         }
@@ -755,7 +863,18 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
 
             match d.label.as_str() {
                 "BUY" if pos.is_none() => {
-                    if d.confidence >= cfg.exec_confidence && can_open_now(&cfg) {
+                    // 风控检查：单日亏损限制
+                    let risk_ok = check_risk_controls(&conn, &cfg).is_ok();
+
+                    // 根据交易模式决定行为
+                    let should_auto_buy = match cfg.trade_mode.as_str() {
+                        "full" => d.confidence >= cfg.watch_confidence && can_open_now(&cfg) && risk_ok,
+                        "semi" => d.confidence >= cfg.exec_confidence && can_open_now(&cfg) && risk_ok,
+                        "manual" => false, // 人工确认模式：不自动下单
+                        _ => d.confidence >= cfg.exec_confidence && can_open_now(&cfg) && risk_ok,
+                    };
+
+                    if should_auto_buy {
                         match paper_buy(&conn, item, q, &cfg, total_asset, cash, total_pos_pct) {
                             Ok(msg) => {
                                 log_decision(&conn, item, &d, "executed", &features, false);
@@ -785,22 +904,42 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                     } else if d.confidence >= cfg.watch_confidence
                         && can_fire(&mut fire_hist, &item.code)
                     {
-                        log_decision(&conn, item, &d, "watch", &features, false);
-                        emit_signal(&app, item, &d, "watch", "快脑买入观察信号，请人工确认");
-                        let budget = total_asset * cfg.max_single_pct / 100.0;
-                        bridge_push(&app, &conn, &cfg, bridge::SignalInput {
-                            code: item.code.clone(),
-                            name: item.name.clone(),
-                            side: "BUY".to_string(),
-                            source: "fastbrain".to_string(),
-                            model_version: d.model_version.clone(),
-                            strategy: item.strategy.clone(),
-                            confidence: d.confidence,
-                            ref_price: q.price,
-                            vol: bridge::suggest_buy_vol(q.price, budget),
-                            reason: "快脑买入观察信号".to_string(),
-                            trade_date: today_dashed(),
-                        });
+                        // 根据交易模式决定行为
+                        let should_auto_buy = match cfg.trade_mode.as_str() {
+                            "full" => can_open_now(&cfg) && risk_ok,
+                            _ => false, // semi 和 manual 模式：中置信度不自动下单
+                        };
+
+                        if should_auto_buy {
+                            match paper_buy(&conn, item, q, &cfg, total_asset, cash, total_pos_pct) {
+                                Ok(msg) => {
+                                    log_decision(&conn, item, &d, "executed", &features, false);
+                                    emit_signal(&app, item, &d, "executed", &msg);
+                                }
+                                Err(reason) => {
+                                    log_decision(&conn, item, &d, "drop", &features, false);
+                                    emit_signal(&app, item, &d, "watch", &format!("全自动买入但{reason}"));
+                                }
+                            }
+                        } else {
+                            // 半自动/人工确认模式：只发信号到确认桥
+                            log_decision(&conn, item, &d, "watch", &features, false);
+                            emit_signal(&app, item, &d, "watch", "快脑买入观察信号，请人工确认");
+                            let budget = total_asset * cfg.max_single_pct / 100.0;
+                            bridge_push(&app, &conn, &cfg, bridge::SignalInput {
+                                code: item.code.clone(),
+                                name: item.name.clone(),
+                                side: "BUY".to_string(),
+                                source: "fastbrain".to_string(),
+                                model_version: d.model_version.clone(),
+                                strategy: item.strategy.clone(),
+                                confidence: d.confidence,
+                                ref_price: q.price,
+                                vol: bridge::suggest_buy_vol(q.price, budget),
+                                reason: "快脑买入观察信号".to_string(),
+                                trade_date: today_dashed(),
+                            });
+                        }
                     }
                 }
                 "SELL" if pos.is_some() => {

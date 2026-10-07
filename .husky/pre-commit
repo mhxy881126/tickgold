@@ -1,0 +1,8 @@
+#!/bin/sh
+echo "🔍 正在运行 TypeScript 类型检查..."
+npx vue-tsc --noEmit
+if [ $? -ne 0 ]; then
+  echo "❌ 类型检查失败，提交已取消。请修复错误后再提交。"
+  exit 1
+fi
+echo "✅ 类型检查通过，继续提交。"

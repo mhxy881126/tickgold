@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, reactive, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit as tauriEmit } from "@tauri-apps/api/event";
@@ -132,7 +132,7 @@ async function toggleAutoStart(v: boolean) {
 }
 void loadAutoStart();
 
-type Tab = "appearance" | "data" | "ai" | "knowledge" | "broker" | "plugins" | "logs" | "about";
+type Tab = "appearance" | "data" | "ai" | "autotrade" | "knowledge" | "broker" | "plugins" | "logs" | "about";
 const tab = ref<Tab>("appearance");
 function pick(id: ThemeId) {
   setTheme(id);
@@ -225,6 +225,14 @@ const DEFAULT_FB_CFG: AutoExecConfigInfo = {
   maxSinglePct: 20,
   maxTotalPct: 60,
   noOpenAfter: "14:55",
+  // ===== 风控设置 =====
+  dailyLossLimitPct: 5,        // 单日亏 5% 停止
+  maxDrawdownLimitPct: 20,     // 最大回撤 20% 清仓
+  consecutiveLossLimit: 3,      // 连亏 3 笔暂停
+  // ===== 全自动模式 =====
+  fullAutoMode: false,          // 默认关闭全自动模式（兼容旧版）
+  // ===== 交易模式（新）=====
+  tradeMode: "semi",            // 默认半自动模式
   bridgeEnabled: false,
   bridgeDefaultBroker: "",
   bridgeBrokerPath: "",
@@ -496,6 +504,7 @@ function pickTab(id: Tab) {
   tab.value = id;
   if (id === "logs") refreshLogs();
   if (id === "ai" && !aiLoaded.value) void loadAiTab();
+  if (id === "autotrade" && !fbCfg.value) void loadFastBrain(); // 第一次打开AI操盘手时加载配置
   if (id === "broker" && !brokerLoaded.value) void loadBrokerTab();
   if (id === "plugins") void loadPluginsTab();
 }
@@ -740,6 +749,10 @@ async function toggleDev() {
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2zM9 21h6M10 17v4M14 17v4" /></svg>
               AI 模型
             </button>
+            <button class="nav-item" :class="{ on: tab === 'autotrade' }" @click="pickTab('autotrade')">
+              <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M7 2v2h10V2h2v4h-2v12h2v4H5v-4h2V6H5V2h2zm2 4v12h6V6H9z" /></svg>
+              AI 操盘手
+            </button>
             <button class="nav-item" :class="{ on: tab === 'knowledge' }" @click="pickTab('knowledge')">
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z" /></svg>
               知识库
@@ -937,7 +950,7 @@ async function toggleDev() {
             <!-- AI 模型配置 -->
             <div v-else-if="tab === 'ai'" class="ai-tab">
               <!-- 第一步：选 AI 模型 -->
-              <div class="section-title">① AI 模型</div>
+              <div class="section-title">AI 模型</div>
               <div class="section-sub">选本地或云端模型，用于智能问答和选股分析</div>
               <div class="seg ai-provider">
                 <button type="button" class="seg-btn" :class="{ on: aiCfg.provider === 'ollama' }" @click="aiCfg.provider = 'ollama'">本地 Ollama</button>
@@ -989,9 +1002,12 @@ async function toggleDev() {
                 <span v-if="aiMsg" class="ai-msg" :class="{ ok: /成功|已保存/.test(aiMsg) }">{{ aiMsg }}</span>
               </div>
 
-              <!-- 第二步：盘中决策引擎 -->
-              <template v-if="fbCfg">
-                <div class="section-title" style="margin-top:24px">② 盘中决策引擎</div>
+            </div>
+
+            <!-- 自动交易（独立 tab）-->
+            <div v-else-if="tab === 'autotrade'" class="ai-tab">
+              <div v-if="fbCfg">
+                <div class="section-title">盘中决策引擎</div>
                 <div class="section-sub">自动扫描自选股信号，规则脑默认可用；Laya 是更强的本地模型（可选）</div>
                 <div class="seg ai-provider">
                   <button type="button" class="seg-btn" :class="{ on: fbCfg.brainMode === 'rule' }" @click="fbCfg.brainMode = 'rule'">技术指标规则脑</button>
@@ -999,7 +1015,26 @@ async function toggleDev() {
                 </div>
 
                 <div v-if="fbCfg.brainMode === 'cloud_llm'" class="section-sub" style="margin-top:8px; color: var(--accent-2)">
-                  💡 使用上方配置的云端大模型（DeepSeek/GPT等）自动判断买卖信号，API Key 在 ① AI模型 里设置
+                  💡 使用上方配置的云端大模型（DeepSeek/GPT等）自动判断买卖信号，API Key 在 AI模型 里设置
+                </div>
+
+                <!-- 交易模式选择 -->
+                <div class="bridge-box" style="margin-top:12px">
+                  <div class="bridge-title">
+                    <span>🤖 交易模式</span>
+                  </div>
+                  <div class="section-sub">
+                    选择机器人如何处理买卖信号
+                  </div>
+                  <div class="bridge-grid" style="margin-top:10px">
+                    <label class="ai-field">
+                      <select v-model="fbCfg.tradeMode">
+                        <option value="semi">半自动（只有高置信度自动下单）</option>
+                        <option value="full">全自动（所有信号都自动下单）</option>
+                        <option value="manual">人工确认（所有信号都需要人工确认）</option>
+                      </select>
+                    </label>
+                  </div>
                 </div>
 
                 <!-- 规则脑指标说明 + 开关 -->
@@ -1034,20 +1069,9 @@ async function toggleDev() {
                   </div>
                 </div>
 
-                <template v-if="fbCfg.brainMode === 'laya'">
-                  <div class="ai-field" style="margin-top:12px">
-                    <label>Laya 服务地址</label>
-                    <div class="fb-urlrow">
-                      <input v-model="fbCfg.layaUrl" type="text" spellcheck="false" placeholder="http://127.0.0.1:8788" />
-                      <button type="button" class="logs-btn" @click="checkLaya">健康检查</button>
-                    </div>
-                    <span v-if="fbHealth" class="fb-health">{{ fbHealth }}</span>
-                  </div>
-                </template>
-
                 <!-- 折叠：高级参数 -->
                 <details class="bk-advanced" style="margin-top:14px">
-                  <summary>高级参数（止损/仓位/置信度）</summary>
+                  <summary>高级参数（止损/仓位/置信度）— 模拟交易和真实交易都用这套</summary>
                   <div class="fb-params" style="margin-top:10px">
                     <div class="ai-field">
                       <label>硬止损 %：{{ fbCfg.hardStopPct }}</label>
@@ -1073,6 +1097,23 @@ async function toggleDev() {
                       <label>总仓位上限 %：{{ fbCfg.maxTotalPct }}</label>
                       <input v-model.number="fbCfg.maxTotalPct" type="range" min="20" max="100" step="5" />
                     </div>
+
+                    <!-- 风控设置 -->
+                    <div class="ai-field" style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.1);">
+                      <label style="font-weight:600; color:#ff6464;">🛡️ 风控设置（保命用）</label>
+                    </div>
+                    <div class="ai-field">
+                      <label>单日亏损限制 %：{{ fbCfg.dailyLossLimitPct }}（今天亏了就停止交易）</label>
+                      <input v-model.number="fbCfg.dailyLossLimitPct" type="range" min="1" max="20" step="1" />
+                    </div>
+                    <div class="ai-field">
+                      <label>最大回撤限制 %：{{ fbCfg.maxDrawdownLimitPct }}（从最高点跌了就清仓）</label>
+                      <input v-model.number="fbCfg.maxDrawdownLimitPct" type="range" min="5" max="50" step="5" />
+                    </div>
+                    <div class="ai-field">
+                      <label>连续亏损暂停：{{ fbCfg.consecutiveLossLimit }} 笔（连亏就暂停）</label>
+                      <input v-model.number="fbCfg.consecutiveLossLimit" type="range" min="1" max="10" step="1" />
+                    </div>
                   </div>
                   <div class="ai-field" style="margin-top:10px">
                     <label>禁止开仓时间（之后只卖不买）</label>
@@ -1080,40 +1121,12 @@ async function toggleDev() {
                   </div>
                 </details>
 
-                <!-- 折叠：信号确认桥 -->
-                <details class="bk-advanced" style="margin-top:14px">
-                  <summary>信号人工确认桥（不自动下单）</summary>
-                  <div class="bridge-box" style="margin-top:10px; border:none; padding:0; background:transparent">
-                    <div class="bridge-title">
-                      <span>启用信号确认桥</span>
-                      <button type="button" class="switch" :class="{ on: fbCfg.bridgeEnabled }" @click="fbCfg.bridgeEnabled = !fbCfg.bridgeEnabled"><span class="knob"></span></button>
-                    </div>
-                    <div class="section-sub">信号落待确认单，人工改价后生成券商指令，可唤起券商软件</div>
-                    <div class="bridge-grid" style="margin-top:10px">
-                      <label class="ai-field"><span>默认券商</span>
-                        <input v-model="fbCfg.bridgeDefaultBroker" type="text" spellcheck="false" placeholder="同花顺" /></label>
-                      <label class="ai-field grow2"><span>券商软件路径</span>
-                        <input v-model="fbCfg.bridgeBrokerPath" type="text" spellcheck="false" placeholder="留空则不唤起" /></label>
-                    </div>
-                    <div class="bridge-grid">
-                      <label class="ai-field"><span>有效期(分钟)：{{ fbCfg.bridgeTtlMinutes }}</span>
-                        <input v-model.number="fbCfg.bridgeTtlMinutes" type="range" min="5" max="240" step="5" /></label>
-                      <label class="ai-field"><span>默认动作</span>
-                        <select v-model="fbCfg.bridgeDefaultAction">
-                          <option value="copy">复制指令</option>
-                          <option value="export">仅生成</option>
-                          <option value="hotkey">唤起券商</option>
-                        </select></label>
-                    </div>
-                  </div>
-                </details>
-
-                <div class="ai-actions" style="margin-top:14px">
-                  <button type="button" class="logs-btn primary" @click="saveFastBrain">保存决策引擎参数</button>
-                  <span v-if="fbMsg" class="ai-msg" :class="{ ok: fbMsg.includes('已保存') }">{{ fbMsg }}</span>
+                <!-- 保存按钮 -->
+                <div style="margin-top:16px; display:flex; gap:8px; align-items:center;">
+                  <button type="button" class="logs-btn primary" @click="saveFastBrain">保存自动交易配置</button>
+                  <span v-if="fbMsg" class="ai-msg" :class="{ ok: /成功|已保存/.test(fbMsg) }">{{ fbMsg }}</span>
                 </div>
-              </template>
-
+              </div>
             </div>
 
             <!-- 知识库（独立 tab）-->
@@ -1186,7 +1199,7 @@ async function toggleDev() {
               </div>
 
               <!-- 第一步：选模式 -->
-              <div class="section-title" style="margin-top:20px">① 选择交易模式</div>
+              <div class="section-title" style="margin-top:20px">选择交易模式</div>
               <div v-if="bForm" class="bk-mode-grid">
                 <label class="bk-mode-card" :class="{ on: bForm.kind === 'mock' }">
                   <input v-model="bForm.kind" type="radio" value="mock" />
@@ -1217,7 +1230,7 @@ async function toggleDev() {
 
               <!-- 第二步：连接（仅 QMT 模式需要） -->
               <template v-if="bForm && bForm.kind === 'qmt'">
-                <div class="section-title" style="margin-top:20px">② 连接</div>
+                <div class="section-title" style="margin-top:20px">连接</div>
                 <div class="bk-actions">
                   <button type="button" class="logs-btn primary big" @click="bConnect">连接通道</button>
                   <button type="button" class="logs-btn" @click="bDisconnect">断开</button>
@@ -1225,7 +1238,7 @@ async function toggleDev() {
               </template>
 
               <!-- 第三步：实盘开关（醒目警示） -->
-              <div class="section-title" style="margin-top:20px">③ 实盘委托</div>
+              <div class="section-title" style="margin-top:20px">实盘委托</div>
               <div v-if="bForm && bForm.kind === 'mock'" class="bk-live-card disabled">
                 <div>
                   <div class="bk-live-title">⚪ 当前为模拟模式</div>
@@ -1244,19 +1257,14 @@ async function toggleDev() {
 
               <!-- 折叠：高级设置 -->
               <details class="bk-advanced" style="margin-top:20px">
-                <summary>高级设置（风控参数 / 模拟工具 / 紧急停止）</summary>
+                <summary>高级设置（模拟工具 / 紧急停止）</summary>
 
-                <!-- 风控参数 -->
-                <div class="section-title" style="margin-top:14px">风控参数</div>
-                <div v-if="bForm" class="bridge-grid">
-                  <label class="ai-field"><span>单票上限%：{{ bForm.maxSinglePct }}</span>
-                    <input v-model.number="bForm.maxSinglePct" type="range" min="5" max="100" step="1" /></label>
-                  <label class="ai-field"><span>总仓位上限%：{{ bForm.maxTotalPct }}</span>
-                    <input v-model.number="bForm.maxTotalPct" type="range" min="10" max="100" step="5" /></label>
+                <!-- 说明 -->
+                <div class="section-sub" style="margin-top:14px; color: var(--accent-2)">
+                  💡 仓位、止损、风控等参数统一在「AI 操盘手」选项卡设置
                 </div>
-                <div v-if="bForm" class="bridge-grid">
-                  <label class="ai-field"><span>禁止开仓时间</span>
-                    <input v-model="bForm.noOpenAfter" type="text" spellcheck="false" placeholder="14:55" /></label>
+
+                <div v-if="bForm" class="bridge-grid" style="margin-top:10px">
                   <label class="ai-field"><span>预留费用%：{{ bForm.feePct }}</span>
                     <input v-model.number="bForm.feePct" type="range" min="0" max="1" step="0.01" /></label>
                 </div>

@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 问数聊天界面设计</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+        
+        body {
+            background: #1a1a2e;
+            color: #eee;
+            padding: 40px;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+            color: #fff;
+        }
+        
+        .demo-container {
+            display: flex;
+            gap: 40px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .demo-card {
+            background: #16213e;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            width: 400px;
+            height: 600px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .demo-title {
+            padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            font-weight: 600;
+            font-size: 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        /* ===== 方案 1：现代聊天风格 ===== */
+        .chat-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .chat-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+        
+        .chat-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        .chat-subtitle {
+            font-size: 12px;
+            color: #888;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .message {
+            display: flex;
+            gap: 12px;
+            max-width: 85%;
+        }
+        
+        .message.user {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+        
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        
+        .message.assistant .message-avatar {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+        }
+        
+        .message.user .message-avatar {
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+        }
+        
+        .message-bubble {
+            padding: 12px 16px;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .message.assistant .message-bubble {
+            background: rgba(255, 255, 255, 0.08);
+            border-bottom-left-radius: 4px;
+        }
+        
+        .message.user .message-bubble {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-bottom-right-radius: 4px;
+        }
+        
+        .chat-input {
+            padding: 16px 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            gap: 12px;
+        }
+        
+        .chat-input input {
+            flex: 1;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 24px;
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            font-size: 14px;
+            outline: none;
+        }
+        
+        .chat-input button {
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff;
+            font-size: 18px;
+            cursor: pointer;
+        }
+        
+        /* ===== 方案 2：金融科技风格 ===== */
+        .fintech-container {
+            display: flex;
+            height: 100%;
+        }
+        
+        .fintech-sidebar {
+            width: 120px;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 16px 8px;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .fintech-nav-item {
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            margin-bottom: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .fintech-nav-item.active {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff;
+        }
+        
+        .fintech-main {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        .data-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border-left: 3px solid #667eea;
+        }
+        
+        .data-card-title {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 8px;
+        }
+        
+        .data-card-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+        }
+        
+        .data-card-change {
+            font-size: 14px;
+            color: #00ff88;
+        }
+        
+        .data-card-change.down {
+            color: #ff4757;
+        }
+        
+        /* ===== 方案 3：简洁高效风格 ===== */
+        .simple-container {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        
+        .simple-welcome {
+            text-align: center;
+            padding: 40px 20px;
+            margin-bottom: 20px;
+        }
+        
+        .simple-welcome-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        
+        .simple-welcome-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .simple-welcome-subtitle {
+            font-size: 14px;
+            color: #888;
+        }
+        
+        .simple-examples {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .simple-example {
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .simple-example:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .simple-message {
+            padding: 16px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .simple-message-role {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 8px;
+        }
+        
+        .simple-message-content {
+            font-size: 14px;
+            line-height: 1.8;
+        }
+    </style>
+</head>
+<body>
+    <h1>AI 问数聊天界面设计方案</h1>
+    
+    <div class="demo-container">
+        <!-- 方案 1：现代聊天风格 -->
+        <div>
+            <div class="demo-title">方案 1：现代聊天风格（类似 ChatGPT）</div>
+            <div class="demo-card">
+                <div class="chat-header">
+                    <div class="chat-avatar">🤖</div>
+                    <div>
+                        <div class="chat-title">TickGold 问数助手</div>
+                        <div class="chat-subtitle">在线</div>
+                    </div>
+                </div>
+                
+                <div class="chat-messages">
+                    <div class="message assistant">
+                        <div class="message-avatar">🤖</div>
+                        <div class="message-bubble">
+                            你好！我是你的 AI 助手，我可以帮你查行情、分析个股、梳理题材等。
+                        </div>
+                    </div>
+                    
+                    <div class="message user">
+                        <div class="message-avatar">👤</div>
+                        <div class="message-bubble">
+                            宁德时代怎么样？
+                        </div>
+                    </div>
+                    
+                    <div class="message assistant">
+                        <div class="message-avatar">🤖</div>
+                        <div class="message-bubble">
+                            宁德时代（300750）：<br>
+                            • 最新价：182.50 元（+2.35%）<br>
+                            • PE：25.3  PB：4.2<br>
+                            • MA5：178.2  MA10：175.6<br>
+                            • MACD：金叉  RSI：65.3
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chat-input">
+                    <input type="text" placeholder="问点什么...">
+                    <button>➤</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 方案 2：金融科技风格 -->
+        <div>
+            <div class="demo-title">方案 2：金融科技风格（数据看板）</div>
+            <div class="demo-card">
+                <div class="demo-title" style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    📊 实时数据看板
+                </div>
+                <div class="fintech-container">
+                    <div class="fintech-sidebar">
+                        <div class="fintech-nav-item active">市场</div>
+                        <div class="fintech-nav-item">题材</div>
+                        <div class="fintech-nav-item">个股</div>
+                        <div class="fintech-nav-item">持仓</div>
+                    </div>
+                    <div class="fintech-main">
+                        <div class="data-card">
+                            <div class="data-card-title">宁德时代 (300750)</div>
+                            <div class="data-card-value">182.50</div>
+                            <div class="data-card-change">+2.35%  (+4.18)</div>
+                        </div>
+                        
+                        <div class="data-card">
+                            <div class="data-card-title">市盈率 (PE)</div>
+                            <div class="data-card-value">25.3</div>
+                            <div class="data-card-change">行业排名：前 30%</div>
+                        </div>
+                        
+                        <div class="data-card">
+                            <div class="data-card-title">技术指标</div>
+                            <div class="data-card-value">MACD 金叉</div>
+                            <div class="data-card-change">RSI: 65.3  偏强</div>
+                        </div>
+                        
+                        <div class="data-card">
+                            <div class="data-card-title">均线趋势</div>
+                            <div class="data-card-value">多头排列</div>
+                            <div class="data-card-change">MA5 > MA10 > MA20</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 方案 3：简洁高效风格 -->
+        <div>
+            <div class="demo-title">方案 3：简洁高效风格</div>
+            <div class="demo-card">
+                <div class="simple-container">
+                    <div class="simple-welcome">
+                        <div class="simple-welcome-icon">💡</div>
+                        <div class="simple-welcome-title">TickGold 问数助手</div>
+                        <div class="simple-welcome-subtitle">基于本地知识库与行情数据</div>
+                    </div>
+                    
+                    <div class="simple-examples">
+                        <div class="simple-example">📈 今天市场情绪怎么样？</div>
+                        <div class="simple-example">🎯 帮我梳理主线题材</div>
+                        <div class="simple-example">📊 宁德时代技术分析</div>
+                        <div class="simple-example">💰 我的持仓表现如何？</div>
+                    </div>
+                    
+                    <div class="simple-message">
+                        <div class="simple-message-role">👤 你</div>
+                        <div class="simple-message-content">
+                            宁德时代怎么样？
+                        </div>
+                    </div>
+                    
+                    <div class="simple-message">
+                        <div class="simple-message-role">🤖 AI 助手</div>
+                        <div class="simple-message-content">
+                            <strong>宁德时代（300750）：</strong><br>
+                            • 最新价：182.50 元（+2.35%）<br>
+                            • PE：25.3  PB：4.2<br>
+                            • MACD：金叉  RSI：65.3<br>
+                            • 均线：多头排列（上涨趋势）
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chat-input" style="border-top: 1px solid rgba(255,255,255,0.1);">
+                    <input type="text" placeholder="问点什么...">
+                    <button>➤</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 方案 4：赛博朋克风 -->
+        <div>
+            <div class="demo-title">方案 4：赛博朋克风（霓虹科技）</div>
+            <div class="demo-card" style="background: #0a0a0f; border: 1px solid #ff00ff;">
+                <div style="padding: 16px 20px; border-bottom: 1px solid #ff00ff; display: flex; align-items: center; gap: 12px;">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; background: #ff00ff; display: flex; align-items: center; justify-content: center; font-size: 18px; box-shadow: 0 0 20px #ff00ff;">🤖</div>
+                    <div>
+                        <div style="font-size: 16px; font-weight: 600; color: #00ffff; text-shadow: 0 0 10px #00ffff;">NEO 操盘手</div>
+                        <div style="font-size: 12px; color: #ff00ff; text-shadow: 0 0 5px #ff00ff;">● 在线</div>
+                    </div>
+                </div>
+                
+                <div style="flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+                    <div style="display: flex; gap: 12px; max-width: 85%;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background: #ff00ff; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; box-shadow: 0 0 10px #ff00ff;">🤖</div>
+                        <div style="padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.6; background: rgba(255, 0, 255, 0.1); border: 1px solid #ff00ff; border-bottom-left-radius: 4px; color: #fff;">
+                            你好，交易者。我是 NEO，你的 AI 操盘手。<br>
+                            我可以接入实时行情、技术分析、资金流向。
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 12px; max-width: 85%; align-self: flex-end; flex-direction: row-reverse;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background: #00ffff; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; box-shadow: 0 0 10px #00ffff;">👤</div>
+                        <div style="padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.6; background: linear-gradient(135deg, #ff00ff, #00ffff); border-bottom-right-radius: 4px; color: #000; font-weight: 600;">
+                            宁德时代怎么样？
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 12px; max-width: 85%;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background: #ff00ff; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; box-shadow: 0 0 10px #ff00ff;">🤖</div>
+                        <div style="padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.6; background: rgba(0, 255, 255, 0.1); border: 1px solid #00ffff; border-bottom-left-radius: 4px; color: #fff;">
+                            <span style="color: #00ffff; text-shadow: 0 0 5px #00ffff;">宁德时代 (300750)</span><br>
+                            • 最新价：<span style="color: #00ff00; text-shadow: 0 0 5px #00ff00;">182.50 +2.35%</span><br>
+                            • PE：25.3  PB：4.2<br>
+                            • MACD：<span style="color: #00ff00; text-shadow: 0 0 5px #00ff00;">金叉</span><br>
+                            • RSI：65.3  偏强<br>
+                            • 信号：<span style="color: #ff00ff; text-shadow: 0 0 5px #ff00ff;">买入</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="padding: 16px 20px; border-top: 1px solid #ff00ff; display: flex; gap: 12px;">
+                    <input type="text" placeholder="输入指令..." style="flex: 1; padding: 12px 16px; border: 1px solid #00ffff; border-radius: 24px; background: rgba(0, 255, 255, 0.05); color: #00ffff; font-size: 14px; outline: none;">
+                    <button style="width: 40px; height: 40px; border: none; border-radius: 50%; background: linear-gradient(135deg, #ff00ff, #00ffff); color: #000; font-size: 18px; cursor: pointer; box-shadow: 0 0 20px #ff00ff;">➤</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 方案 5：浅色简约风 -->
+        <div>
+            <div class="demo-title">方案 5：浅色简约风（清爽护眼）</div>
+            <div class="demo-card" style="background: #f8f9fa; color: #333;">
+                <div style="padding: 16px 20px; border-bottom: 1px solid #e9ecef; display: flex; align-items: center; gap: 12px;">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; background: #e3f2fd; display: flex; align-items: center; justify-content: center; font-size: 18px;">🤖</div>
+                    <div>
+                        <div style="font-size: 16px; font-weight: 600; color: #1976d2;">TickGold 问数助手</div>
+                        <div style="font-size: 12px; color: #666;">在线</div>
+                    </div>
+                </div>
+                
+                <div style="flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; background: #fff;">
+                    <div style="display: flex; gap: 12px; max-width: 85%;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background: #e3f2fd; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">🤖</div>
+                        <div style="padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.6; background: #f8f9fa; border-bottom-left-radius: 4px; color: #333;">
+                            你好！我是你的 AI 助手，我可以帮你查行情、分析个股、梳理题材等。
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 12px; max-width: 85%; align-self: flex-end; flex-direction: row-reverse;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background: #1976d2; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; color: #fff;">👤</div>
+                        <div style="padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.6; background: #1976d2; border-bottom-right-radius: 4px; color: #fff;">
+                            宁德时代怎么样？
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 12px; max-width: 85%;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background: #e3f2fd; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">🤖</div>
+                        <div style="padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.6; background: #f8f9fa; border-bottom-left-radius: 4px; color: #333;">
+                            <strong style="color: #1976d2;">宁德时代（300750）：</strong><br>
+                            • 最新价：182.50 元（<span style="color: #d32f2f;">+2.35%</span>）<br>
+                            • PE：25.3  PB：4.2<br>
+                            • MACD：<span style="color: #d32f2f;">金叉</span>  RSI：65.3<br>
+                            • 均线：多头排列（上涨趋势）
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="padding: 16px 20px; border-top: 1px solid #e9ecef; display: flex; gap: 12px; background: #fff;">
+                    <input type="text" placeholder="问点什么..." style="flex: 1; padding: 12px 16px; border: 1px solid #e9ecef; border-radius: 24px; background: #f8f9fa; color: #333; font-size: 14px; outline: none;">
+                    <button style="width: 40px; height: 40px; border: none; border-radius: 50%; background: #1976d2; color: #fff; font-size: 18px; cursor: pointer;">➤</button>
+                </div>
+            </div>
+        </div>
+        <!-- 方案 6：多会话模式（完整功能） -->
+        <div>
+            <div class="demo-title">方案 6：多会话模式（左侧对话历史）</div>
+            <div class="demo-card" style="width: 600px;">
+                <div style="display: flex; height: 100%;">
+                    <!-- 左侧边栏：对话历史 -->
+                    <div style="width: 180px; background: rgba(0,0,0,0.2); border-right: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column;">
+                        <div style="padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            <button style="width: 100%; padding: 10px; background: linear-gradient(135deg, #667eea, #764ba2); border: none; border-radius: 8px; color: #fff; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                ＋ 新建对话
+                            </button>
+                        </div>
+                        <div style="flex: 1; padding: 12px; overflow-y: auto;">
+                            <div style="padding: 10px 12px; background: rgba(255,255,255,0.1); border-radius: 8px; font-size: 13px; margin-bottom: 4px; cursor: pointer; border-left: 3px solid #667eea;">
+                                📍 宁德时代分析
+                                <div style="font-size: 11px; color: #888; margin-top: 4px;">今天 14:30</div>
+                            </div>
+                            <div style="padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 4px; cursor: pointer; hover: background: rgba(255,255,255,0.05);">
+                                📊 今天市场情绪
+                                <div style="font-size: 11px; color: #888; margin-top: 4px;">今天 10:15</div>
+                            </div>
+                            <div style="padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 4px; cursor: pointer;">
+                                🎯 主线题材梳理
+                                <div style="font-size: 11px; color: #888; margin-top: 4px;">昨天 16:30</div>
+                            </div>
+                            <div style="padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 4px; cursor: pointer;">
+                                💰 持仓表现分析
+                                <div style="font-size: 11px; color: #888; margin-top: 4px;">昨天 14:20</div>
+                            </div>
+                            <div style="padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 4px; cursor: pointer;">
+                                📈 贵州茅台财务
+                                <div style="font-size: 11px; color: #888; margin-top: 4px;">3天前</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 右侧：聊天窗口 -->
+                    <div style="flex: 1; display: flex; flex-direction: column;">
+                        <div style="padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between;">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 18px;">🤖</div>
+                                <div>
+                                    <div style="font-size: 16px; font-weight: 600;">宁德时代分析</div>
+                                    <div style="font-size: 12px; color: #888;">今天 14:30</div>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button style="width: 32px; height: 32px; border: none; border-radius: 8px; background: rgba(255,255,255,0.1); color: #fff; font-size: 14px; cursor: pointer;">📋</button>
+                                <button style="width: 32px; height: 32px; border: none; border-radius: 8px; background: rgba(255,255,255,0.1); color: #fff; font-size: 14px; cursor: pointer;">🗑️</button>
+                            </div>
+                        </div>
+                        
+                        <div style="flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+                            <div style="display: flex; gap: 12px; max-width: 85%;">
+                                <div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">🤖</div>
+                                <div style="padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.6; background: rgba(255,255,255,0.08); border-bottom-left-radius: 4px;">
+                                    你好！我正在分析宁德时代，请稍等...
+                                </div>
+                            </div>
+                            
+                            <div style="display: flex; gap: 12px; max-width: 85%; align-self: flex-end; flex-direction: row-reverse;">
+                                <div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #f093fb, #f5576c); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">👤</div>
+                                <div style="padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.6; background: linear-gradient(135deg, #667eea, #764ba2); border-bottom-right-radius: 4px;">
+                                    宁德时代怎么样？
+                                </div>
+                            </div>
+                            
+                            <div style="display: flex; gap: 12px; max-width: 85%;">
+                                <div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">🤖</div>
+                                <div style="padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.6; background: rgba(255,255,255,0.08); border-bottom-left-radius: 4px;">
+                                    <strong>宁德时代（300750）：</strong><br>
+                                    • 最新价：182.50 元（+2.35%）<br>
+                                    • PE：25.3  PB：4.2<br>
+                                    • MACD：金叉  RSI：65.3<br>
+                                    • 均线：多头排列（上涨趋势）
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="padding: 16px 20px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; gap: 12px;">
+                            <input type="text" placeholder="问点什么..." style="flex: 1; padding: 12px 16px; border: none; border-radius: 24px; background: rgba(255,255,255,0.08); color: #fff; font-size: 14px; outline: none;">
+                            <button style="width: 40px; height: 40px; border: none; border-radius: 50%; background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; font-size: 18px; cursor: pointer;">➤</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- 方案 7：玻璃拟态风（毛玻璃效果） -->
+        <div>
+            <div class="demo-title">方案 7：玻璃拟态风（毛玻璃效果）</div>
+            <div class="demo-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);">
+                <div style="display: flex; height: 100%; backdrop-filter: blur(20px); background: rgba(255,255,255,0.1);">
+                    <!-- 左侧边栏 -->
+                    <div style="width: 160px; border-right: 1px solid rgba(255,255,255,0.2); padding: 16px;">
+                        <button style="width: 100%; padding: 10px; background: rgba(255,255,255,0.2); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.3); border-radius: 12px; color: #fff; font-size: 13px; cursor: pointer; margin-bottom: 16px;">
+                            ＋ 新建对话
+                        </button>
+                        <div style="padding: 10px 12px; background: rgba(255,255,255,0.2); backdrop-filter: blur(10px); border-radius: 12px; font-size: 12px; margin-bottom: 8px; cursor: pointer; border-left: 3px solid #fff;">
+                            📍 宁德时代分析
+                        </div>
+                        <div style="padding: 10px 12px; border-radius: 12px; font-size: 12px; margin-bottom: 8px; cursor: pointer; hover: background: rgba(255,255,255,0.1);">
+                            📊 今天市场情绪
+                        </div>
+                        <div style="padding: 10px 12px; border-radius: 12px; font-size: 12px; margin-bottom: 8px; cursor: pointer;">
+                            🎯 主线题材梳理
+                        </div>
+                    </div>
+                    
+                    <!-- 右侧聊天窗口 -->
+                    <div style="flex: 1; display: flex; flex-direction: column; padding: 20px;">
+                        <div style="flex: 1; display: flex; flex-direction: column; gap: 16px; overflow-y: auto;">
+                            <div style="display: flex; gap: 12px; max-width: 80%;">
+                                <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.3); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">🤖</div>
+                                <div style="padding: 14px 18px; border-radius: 20px; font-size: 14px; line-height: 1.6; background: rgba(255,255,255,0.2); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.3); border-bottom-left-radius: 4px; color: #fff;">
+                                    你好！我是你的 AI 助手，我可以帮你查行情、分析个股、梳理题材等。
+                                </div>
+                            </div>
+                            
+                            <div style="display: flex; gap: 12px; max-width: 80%; align-self: flex-end; flex-direction: row-reverse;">
+                                <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.3); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">👤</div>
+                                <div style="padding: 14px 18px; border-radius: 20px; font-size: 14px; line-height: 1.6; background: rgba(255,255,255,0.4); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.5); border-bottom-right-radius: 4px; color: #fff; font-weight: 500;">
+                                    宁德时代怎么样？
+                                </div>
+                            </div>
+                            
+                            <div style="display: flex; gap: 12px; max-width: 80%;">
+                                <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.3); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">🤖</div>
+                                <div style="padding: 14px 18px; border-radius: 20px; font-size: 14px; line-height: 1.6; background: rgba(255,255,255,0.2); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.3); border-bottom-left-radius: 4px; color: #fff;">
+                                    <strong>宁德时代（300750）：</strong><br>
+                                    • 最新价：182.50 元（+2.35%）<br>
+                                    • PE：25.3  PB：4.2<br>
+                                    • MACD：金叉  RSI：65.3<br>
+                                    • 均线：多头排列（上涨趋势）
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-top: 20px; padding: 12px 16px; background: rgba(255,255,255,0.2); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.3); border-radius: 24px; display: flex; gap: 12px;">
+                            <input type="text" placeholder="问点什么..." style="flex: 1; background: transparent; border: none; color: #fff; font-size: 14px; outline: none;">
+                            <button style="width: 36px; height: 36px; border: none; border-radius: 50%; background: rgba(255,255,255,0.3); backdrop-filter: blur(10px); color: #fff; font-size: 16px; cursor: pointer;">➤</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 方案 8：股票专用风（涨跌颜色） -->
+        <div>
+            <div class="demo-title">方案 8：股票专用风（涨跌颜色 + 数据卡片）</div>
+            <div class="demo-card">
+                <div style="display: flex; height: 100%;">
+                    <!-- 左侧边栏 -->
+                    <div style="width: 160px; background: rgba(0,0,0,0.3); border-right: 1px solid rgba(255,255,255,0.1); padding: 16px;">
+                        <button style="width: 100%; padding: 10px; background: linear-gradient(135deg, #ff4757, #ff6b81); border: none; border-radius: 8px; color: #fff; font-size: 13px; cursor: pointer; margin-bottom: 16px;">
+                            ＋ 新建对话
+                        </button>
+                        <div style="padding: 10px 12px; background: rgba(255,71,87,0.2); border-radius: 8px; font-size: 12px; margin-bottom: 8px; cursor: pointer; border-left: 3px solid #ff4757;">
+                            📍 宁德时代分析
+                        </div>
+                        <div style="padding: 10px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 8px; cursor: pointer;">
+                            📊 今天市场情绪
+                        </div>
+                        <div style="padding: 10px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 8px; cursor: pointer;">
+                            🎯 主线题材梳理
+                        </div>
+                    </div>
+                    
+                    <!-- 右侧聊天窗口 -->
+                    <div style="flex: 1; display: flex; flex-direction: column;">
+                        <div style="flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+                            <!-- 股票数据卡片 -->
+                            <div style="background: linear-gradient(135deg, rgba(255,71,87,0.1), rgba(255,107,129,0.1)); border: 1px solid rgba(255,71,87,0.3); border-radius: 12px; padding: 16px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                    <div>
+                                        <div style="font-size: 16px; font-weight: 700; color: #fff;">宁德时代</div>
+                                        <div style="font-size: 12px; color: #888;">300750.SZ</div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div style="font-size: 24px; font-weight: 700; color: #ff4757;">182.50</div>
+                                        <div style="font-size: 14px; color: #ff4757;">+2.35% (+4.18)</div>
+                                    </div>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 12px;">
+                                    <div>
+                                        <div style="color: #888;">成交量</div>
+                                        <div style="color: #fff;">125.6万手</div>
+                                    </div>
+                                    <div>
+                                        <div style="color: #888;">成交额</div>
+                                        <div style="color: #fff;">22.8亿</div>
+                                    </div>
+                                    <div>
+                                        <div style="color: #888;">换手率</div>
+                                        <div style="color: #fff;">2.35%</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 技术指标卡片 -->
+                            <div style="background: linear-gradient(135deg, rgba(0,255,136,0.1), rgba(0,255,204,0.1)); border: 1px solid rgba(0,255,136,0.3); border-radius: 12px; padding: 16px;">
+                                <div style="font-size: 14px; font-weight: 600; color: #00ff88; margin-bottom: 12px;">📈 技术指标</div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px;">
+                                    <div>
+                                        <div style="color: #888;">MA5</div>
+                                        <div style="color: #fff;">178.20</div>
+                                    </div>
+                                    <div>
+                                        <div style="color: #888;">MA10</div>
+                                        <div style="color: #fff;">175.60</div>
+                                    </div>
+                                    <div>
+                                        <div style="color: #888;">MACD</div>
+                                        <div style="color: #00ff88;">金叉</div>
+                                    </div>
+                                    <div>
+                                        <div style="color: #888;">RSI</div>
+                                        <div style="color: #00ff88;">65.3 偏强</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="padding: 16px 20px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; gap: 12px;">
+                            <input type="text" placeholder="问点什么..." style="flex: 1; padding: 12px 16px; border: none; border-radius: 24px; background: rgba(255,255,255,0.08); color: #fff; font-size: 14px; outline: none;">
+                            <button style="width: 40px; height: 40px; border: none; border-radius: 50%; background: linear-gradient(135deg, #ff4757, #ff6b81); color: #fff; font-size: 18px; cursor: pointer;">➤</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

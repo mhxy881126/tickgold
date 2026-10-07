@@ -104,6 +104,59 @@ pub fn specs() -> Vec<ToolSpec> {
             }),
         },
         ToolSpec {
+            name: "get_quote".into(),
+            description: "查询单只股票的实时行情：最新价、涨跌幅、成交量、成交额、振幅。输入股票代码（如 300750）。".into(),
+            parameters: json!({
+                "type":"object",
+                "properties":{"code":{"type":"string","description":"股票代码，如 300750"}},
+                "required": ["code"],
+                "additionalProperties":false
+            }),
+        },
+        ToolSpec {
+            name: "get_fundamentals".into(),
+            description: "查询单只股票的基本面数据：市盈率、市净率、换手率、振幅。输入股票代码（如 300750）。".into(),
+            parameters: json!({
+                "type":"object",
+                "properties":{"code":{"type":"string","description":"股票代码，如 300750"}},
+                "required": ["code"],
+                "additionalProperties":false
+            }),
+        },
+        ToolSpec {
+            name: "get_kline".into(),
+            description: "查询单只股票的日K线历史数据：最近 N 天的开盘价、收盘价、最高价、最低价、成交量。输入股票代码（如 300750）和天数（默认 20 天）。".into(),
+            parameters: json!({
+                "type":"object",
+                "properties":{
+                    "code":{"type":"string","description":"股票代码，如 300750"},
+                    "count":{"type":"integer","description":"天数，默认 20，最大 60"}
+                },
+                "required": ["code"],
+                "additionalProperties":false
+            }),
+        },
+        ToolSpec {
+            name: "get_indicators".into(),
+            description: "查询单只股票的技术指标：均线 MA5/MA10/MA20、MACD、RSI 14日。输入股票代码（如 300750）。".into(),
+            parameters: json!({
+                "type":"object",
+                "properties":{"code":{"type":"string","description":"股票代码，如 300750"}},
+                "required": ["code"],
+                "additionalProperties":false
+            }),
+        },
+        ToolSpec {
+            name: "get_finance".into(),
+            description: "查询单只股票的财务报表：营收、净利润、毛利率、净利率等。输入股票代码（如 300750）。".into(),
+            parameters: json!({
+                "type":"object",
+                "properties":{"code":{"type":"string","description":"股票代码，如 300750"}},
+                "required": ["code"],
+                "additionalProperties":false
+            }),
+        },
+        ToolSpec {
             name: "list_themes".into(),
             description: "列出题材库题材（阶段、级别、活跃日期、在册成分数）。可按生命周期阶段过滤与关键词搜索。".into(),
             parameters: json!({
@@ -714,6 +767,21 @@ pub fn dispatch<'a>(
         if name == "semantic_search" {
             return semantic_search(ctx, &args).await;
         }
+        if name == "get_quote" {
+            return get_quote(ctx, &args).await;
+        }
+        if name == "get_fundamentals" {
+            return get_fundamentals(ctx, &args).await;
+        }
+        if name == "get_kline" {
+            return get_kline(ctx, &args).await;
+        }
+        if name == "get_indicators" {
+            return get_indicators(ctx, &args).await;
+        }
+        if name == "get_finance" {
+            return get_finance_tool(ctx, &args).await;
+        }
         let c = open_readonly(ctx.data_dir)?;
         match name {
             "market_overview" => market_overview(&c, &args),
@@ -726,6 +794,175 @@ pub fn dispatch<'a>(
             other => Err(format!("未知工具: {other}")),
         }
     })
+}
+
+/// 查询实时行情
+async fn get_quote(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
+    let code = args.get("code").and_then(|v| v.as_str()).ok_or("缺少 code 参数")?;
+    
+    // 调用行情 API
+    match crate::market::get_quotes(vec![code.to_string()]).await {
+        Ok(quotes) => {
+            if let Some(q) = quotes.first() {
+                Ok(ToolOut {
+                    content: serde_json::to_string_pretty(&json!({
+                        "code": q.code,
+                        "name": q.name,
+                        "price": q.price,
+                        "pct": q.pct,
+                        "volume": q.volume,
+                        "amount": q.amount,
+                        "high": q.high,
+                        "low": q.low,
+                        "open": q.open,
+                        "prev_close": q.prev_close,
+                    })).unwrap_or_default(),
+                    refs: vec![],
+                })
+            } else {
+                Err(format!("查不到股票: {code}"))
+            }
+        }
+        Err(e) => Err(format!("行情查询失败: {e}")),
+    }
+}
+
+/// 查询基本面数据（市盈率、市净率、换手率）
+async fn get_fundamentals(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
+    let code = args.get("code").and_then(|v| v.as_str()).ok_or("缺少 code 参数")?;
+    
+    // 直接调用腾讯的行情 API（因为腾讯提供 PE/PB/换手率）
+    match crate::market::tencent::quotes(&[code.to_string()]).await {
+        Ok(quotes) => {
+            if let Some(q) = quotes.first() {
+                Ok(ToolOut {
+                    content: serde_json::to_string_pretty(&json!({
+                        "code": q.code,
+                        "name": q.name,
+                        "price": q.price,
+                        "pct": q.pct,
+                        "pe": q.pe,
+                        "pb": q.pb,
+                        "turnover": q.turnover,
+                        "amplitude": q.amplitude,
+                    })).unwrap_or_default(),
+                    refs: vec![],
+                })
+            } else {
+                Err(format!("查不到股票: {code}"))
+            }
+        }
+        Err(e) => Err(format!("基本面查询失败: {e}")),
+    }
+}
+
+/// 查询日K线历史数据
+async fn get_kline(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
+    let code = args.get("code").and_then(|v| v.as_str()).ok_or("缺少 code 参数")?;
+    let count = args.get("count").and_then(|v| v.as_i64()).unwrap_or(20).clamp(5, 60);
+    
+    // 调用 K 线 API（腾讯数据源）
+    match crate::market::tencent::kline(code, 101, count).await {
+        Ok(bars) => {
+            let bars_json: Vec<_> = bars.iter().map(|b| json!({
+                "timestamp": b.timestamp,
+                "open": b.open,
+                "close": b.close,
+                "high": b.high,
+                "low": b.low,
+                "volume": b.volume,
+            })).collect();
+            
+            Ok(ToolOut {
+                content: serde_json::to_string_pretty(&json!({
+                    "code": code,
+                    "count": bars.len(),
+                    "bars": bars_json,
+                })).unwrap_or_default(),
+                refs: vec![],
+            })
+        }
+        Err(e) => Err(format!("K线查询失败: {e}")),
+    }
+}
+
+/// 查询技术指标（均线、MACD、RSI）
+async fn get_indicators(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
+    let code = args.get("code").and_then(|v| v.as_str()).ok_or("缺少 code 参数")?;
+    
+    // 先获取 K 线数据（60 天）
+    let bars = crate::market::tencent::kline(code, 101, 60).await
+        .map_err(|e| format!("K线查询失败: {e}"))?;
+    
+    if bars.len() < 20 {
+        return Err(format!("K线数据不足，无法计算技术指标"));
+    }
+    
+    let closes: Vec<f64> = bars.iter().map(|b| b.close).collect();
+    
+    // 计算均线
+    let ma5 = if closes.len() >= 5 { closes.iter().rev().take(5).sum::<f64>() / 5.0 } else { 0.0 };
+    let ma10 = if closes.len() >= 10 { closes.iter().rev().take(10).sum::<f64>() / 10.0 } else { 0.0 };
+    let ma20 = if closes.len() >= 20 { closes.iter().rev().take(20).sum::<f64>() / 20.0 } else { 0.0 };
+    
+    // 简化的 MACD（用 EMA12 - EMA26 近似）
+    let ema12 = closes.iter().rev().take(12).sum::<f64>() / 12.0;
+    let ema26 = closes.iter().rev().take(26).sum::<f64>() / 26.0;
+    let macd = ema12 - ema26;
+    
+    // 简化的 RSI 14日
+    let mut gains = 0.0;
+    let mut losses = 0.0;
+    for i in 1..15 {
+        if i < closes.len() {
+            let diff = closes[closes.len() - i] - closes[closes.len() - i - 1];
+            if diff > 0.0 { gains += diff; } else { losses += -diff; }
+        }
+    }
+    let rsi = if gains + losses > 0.0 {
+        100.0 - (100.0 / (1.0 + gains / losses))
+    } else {
+        50.0
+    };
+    
+    // 判断趋势
+    let ma_bullish = ma5 > ma10 && ma10 > ma20;
+    let ma_bearish = ma5 < ma10 && ma10 < ma20;
+    
+    Ok(ToolOut {
+        content: serde_json::to_string_pretty(&json!({
+            "code": code,
+            "ma5": ma5,
+            "ma10": ma10,
+            "ma20": ma20,
+            "macd": macd,
+            "rsi14": rsi,
+            "trend": if ma_bullish { "多头排列（上涨趋势）" } 
+                     else if ma_bearish { "空头排列（下跌趋势）" } 
+                     else { "震荡" },
+        })).unwrap_or_default(),
+        refs: vec![],
+    })
+}
+
+/// 查询财务报表
+async fn get_finance_tool(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
+    let code = args.get("code").and_then(|v| v.as_str()).ok_or("缺少 code 参数")?;
+    
+    // 调用财务报表 API（新浪 F10）
+    match crate::market::f10::get_finance(code.to_string()).await {
+        Ok(report) => {
+            Ok(ToolOut {
+                content: serde_json::to_string_pretty(&json!({
+                    "code": code,
+                    "periods": report.periods,
+                    "groups": report.groups,
+                })).unwrap_or_default(),
+                refs: vec![],
+            })
+        }
+        Err(e) => Err(format!("财务报表查询失败: {e}")),
+    }
 }
 
 #[cfg(test)]

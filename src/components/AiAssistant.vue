@@ -246,22 +246,50 @@ function openSettings() {
 
 // ===== 空态示例 =====
 const isEmpty = computed(() => messages.value.length === 0);
-const EXAMPLES: { q: string; path: string }[] = [
+const EXAMPLES: { q: string; path: string; category: string }[] = [
+  // 市场类
   {
     q: "今天市场情绪怎么样？涨停和连板梯队如何？",
     path: "M3 12h4l2 7 4-16 2 9h6",
+    category: "市场",
   },
+  {
+    q: "今天大盘资金流向如何？",
+    path: "M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6",
+    category: "市场",
+  },
+  // 题材类
   {
     q: "帮我梳理当前主线题材和龙头股",
     path: "M20.6 13.4 12 22l-9-9V3h10zM6.5 7.5h.01",
+    category: "题材",
   },
   {
     q: "最近哪些板块在持续获得主力资金流入？",
     path: "M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6",
+    category: "题材",
   },
+  // 个股类
+  {
+    q: "分析一下宁德时代的 K 线形态和技术指标",
+    path: "M3 12h4l2 7 4-16 2 9h6",
+    category: "个股",
+  },
+  {
+    q: "查一下贵州茅台的市盈率和财务数据",
+    path: "M20 7H4a1 1 0 00-1 1v11a2 2 0 002 2h14a2 2 0 002-2V8a1 1 0 00-1-1zM16 3v4M8 3v4",
+    category: "个股",
+  },
+  // 持仓类
   {
     q: "我模拟盘的持仓今天表现如何？",
     path: "M20 7H4a1 1 0 00-1 1v11a2 2 0 002 2h14a2 2 0 002-2V8a1 1 0 00-1-1zM16 3v4M8 3v4",
+    category: "持仓",
+  },
+  {
+    q: "我的持仓哪些需要止损？",
+    path: "M20 7H4a1 1 0 00-1 1v11a2 2 0 002 2h14a2 2 0 002-2V8a1 1 0 00-1-1zM16 3v4M8 3v4",
+    category: "持仓",
   },
 ];
 async function askExample(q: string) {
@@ -485,27 +513,28 @@ async function askExample(q: string) {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 9px 12px;
-  border-radius: 9px;
-  border: 1px solid var(--border-light);
-  background: var(--bg-card);
-  color: var(--text);
-  font-size: 12.5px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
 }
 .new-chat svg {
   width: 15px;
   height: 15px;
-  stroke: var(--accent);
+  stroke: #fff;
   fill: none;
   stroke-width: 2;
   stroke-linecap: round;
 }
 .new-chat:hover {
-  border-color: var(--accent);
-  background: var(--bg-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
 }
 .side-list {
   flex: 1;
