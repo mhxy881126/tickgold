@@ -134,6 +134,30 @@
 
     <div v-show="tab === 'behave'" class="csp-pane">
       <div class="row">
+        <span class="k">尺寸</span>
+        <input
+          class="sz"
+          type="number"
+          min="1"
+          max="12"
+          :value="span"
+          title="宽（12 列网格中的列数）"
+          @change="onSizeChange('w', $event)"
+        />
+        <span class="sz-x">×</span>
+        <input
+          class="sz"
+          type="number"
+          min="1"
+          max="12"
+          :value="rspan"
+          title="高（逻辑行数）"
+          @change="onSizeChange('h', $event)"
+        />
+        <span class="sz-hint">格</span>
+      </div>
+
+      <div class="row">
         <span class="k">刷新</span>
         <select
           class="sel"
@@ -181,7 +205,7 @@ import { ref, computed } from "vue";
 import { CARD_SWATCHES } from "../composables/useWorkbench";
 import { useSkins } from "../composables/useSkins";
 
-defineProps<{
+const props = defineProps<{
   open: boolean;
   look: {
     color: string;
@@ -198,6 +222,8 @@ defineProps<{
     barGlow?: boolean;
   };
   refresh: number;
+  span: number;
+  rspan: number;
 }>();
 
 const emit = defineEmits<{
@@ -209,6 +235,7 @@ const emit = defineEmits<{
   (e: "tag", t: string): void;
   (e: "reset"): void;
   (e: "resetwidgets"): void;
+  (e: "size", w: number, h: number): void;
 }>();
 
 const tab = ref<"look" | "behave">("look");
@@ -222,6 +249,13 @@ const currentSkinName = computed(
 function onGradToggle(ev: Event) {
   const on = (ev.target as HTMLInputElement).checked;
   emit("look", { gradientTo: on ? "#2f6fed" : "" });
+}
+
+// 尺寸输入：改宽 / 改高各自触发，另一维保持现值；钳制到 1..12 格
+function onSizeChange(axis: "w" | "h", ev: Event) {
+  const v = Math.max(1, Math.min(12, Number((ev.target as HTMLInputElement).value) || 1));
+  if (axis === "w") emit("size", v, props.rspan);
+  else emit("size", props.span, v);
 }
 </script>
 
@@ -334,6 +368,19 @@ function onGradToggle(ev: Event) {
   font-size: 11px;
   padding: 0 6px;
 }
+.sz {
+  width: 44px;
+  height: 24px;
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 0 4px;
+  text-align: center;
+}
+.sz-x { color: var(--text-dim); }
+.sz-hint { color: var(--text-dim); font-size: 10px; }
 .mini {
   border: 1px solid var(--border);
   background: transparent;

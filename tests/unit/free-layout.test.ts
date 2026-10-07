@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
+import { ref } from "vue";
 import { packFree, rectsOverlap, settleFreeRects, type FreeRect } from "../../src/lib/layout";
+import { useFreeLayout } from "../../src/composables/workbench/useFreeLayout";
+import type { CardId } from "../../src/lib/cards";
 
 function r(x: number, y: number, w: number, h: number): FreeRect {
   return { x, y, w, h };
@@ -73,5 +76,60 @@ describe("settleFreeRects 碰撞推开", () => {
     expect(rects.a.y).toBe(0);
     expect(rects.b.y).toBe(3);
     expect(rects.c.y).toBe(6);
+  });
+});
+
+// 方案 E · P0：freeResize —— 自由布局缩放手柄写回 freeRects，拖大后自动碰撞推开
+describe("freeResize 自由布局缩放", () => {
+  function make() {
+    const openCards = ref<CardId[]>(["chart", "radar"]);
+    const timeMode = ref<string | null>(null);
+    const fl = useFreeLayout({ openCards, timeMode, pushUndo: () => {} });
+    fl.enableFree();
+    return { fl, openCards };
+  }
+
+  it("缩小不触发碰撞：chart 6×4 保留锚点，radar 不动", () => {
+    const { fl } = make();
+    fl.freeResize("chart", 6, 4);
+    expect(fl.freeRects.value.chart).toEqual(r(0, 0, 6, 4));
+    expect(fl.freeRects.value.radar).toEqual(r(8, 0, 4, 5));
+  });
+
+  it("拖大压到右侧卡：自动把雷达向下推，两两不重叠", () => {
+    const { fl } = make();
+    fl.freeResize("chart", 10, 4);
+    expect(fl.freeRects.value.chart).toEqual(r(0, 0, 10, 4));
+    expect(fl.freeRects.value.radar).toEqual(r(8, 4, 4, 5));
+    expect(rectsOverlap(fl.freeRects.value.chart, fl.freeRects.value.radar)).toBe(false);
+  });
+
+  it("越界钳制：w/h 上限 12/30、下限 1/1", () => {
+    const { fl } = make();
+    fl.freeResize("chart", 99, 99);
+    expect(fl.freeRects.value.chart).toEqual(r(0, 0, 12, 30));
+    fl.freeResize("chart", 0, 0);
+    expect(fl.freeRects.value.chart).toEqual(r(0, 0, 1, 1));
+  });
+
+  it("尺寸未变化 → 不写回（引用不变）", () => {
+    const { fl } = make();
+    const before = fl.freeRects.value.chart;
+    fl.freeResize("chart", 8, 5);
+    expect(fl.freeRects.value.chart).toBe(before);
+  });
+
+  it("未开启的卡 id → 无操作不报错", () => {
+    const { fl } = make();
+    expect(() => fl.freeResize("news", 6, 4)).not.toThrow();
+  });
+
+  it("NaN 尺寸（0 视口等边界）→ 拒绝写入，状态不变", () => {
+    const { fl } = make();
+    const before = JSON.parse(JSON.stringify(fl.freeRects.value));
+    fl.freeResize("chart", Number.NaN, 4);
+    fl.freeResize("chart", 6, Number.NaN);
+    fl.freeResize("chart", Number.NaN, Number.NaN);
+    expect(fl.freeRects.value).toEqual(before);
   });
 });

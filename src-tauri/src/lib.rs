@@ -12,7 +12,6 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, LogicalPosition, Manager, WebviewUrl, WebviewWindowBuilder,
 };
-use tauri_plugin_global_shortcut::ShortcutState;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 struct BossHidden(Mutex<bool>);
@@ -1773,23 +1772,28 @@ pub fn run() {
         .manage(ai::autoexec::AutoExecCtl::new())
         .manage(broker::BrokerManager::new())
         .manage(plugin::PluginManager::new())
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcuts(["Alt+`", "Alt+S"])
-                .expect("invalid shortcut")
-                .with_handler(|app, shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        // Alt+S 唤起信号确认桥，其余（Alt+`）走老板键
-                        if shortcut.to_string().ends_with('S') {
-                            bridge_focus(app);
-                        } else {
-                            boss_toggle(app);
-                        }
-                    }
-                })
-                .build(),
-        )
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
+            // ===== 全局快捷键（v2.12.1 容错化）：老板键 Alt+` / 唤起桥 Alt+S
+            // 注册失败（如被其他程序占用）仅告警不阻断启动，避免插件初始化 panic 拖垮整个应用 =====
+            {
+                use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutEvent, ShortcutState};
+                let gsc = app.global_shortcut();
+                if let Err(e) = gsc.on_shortcut("Alt+`", |app, _sc, event: ShortcutEvent| {
+                    if event.state() == ShortcutState::Pressed {
+                        boss_toggle(app);
+                    }
+                }) {
+                    log::warn!("全局快捷键 Alt+` 注册失败（可能被其他程序占用，老板键不可用）: {e}");
+                }
+                if let Err(e) = gsc.on_shortcut("Alt+S", |app, _sc, event: ShortcutEvent| {
+                    if event.state() == ShortcutState::Pressed {
+                        bridge_focus(app);
+                    }
+                }) {
+                    log::warn!("全局快捷键 Alt+S 注册失败（信号确认桥唤起键不可用）: {e}");
+                }
+            }
             // ===== v1.9 AI 边车库初始化 + data_dir 状态就位 =====
             {
                 let dir = app.path().app_data_dir()?;

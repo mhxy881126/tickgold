@@ -73,6 +73,52 @@ export function packBento(
   return { pos, rows: Math.max(1, maxRowEnd) };
 }
 
+// ===== 方案 F · P1：流体磁贴编排 =====
+// 显式锚点（getPos 返回 1-based col/row）优先固定落位；目标被占则向下让位（流体）。
+// 无显式锚点的卡按原 first-fit 顺序排入剩余空间 —— 与 packBento 输出完全一致。
+export interface TileAnchor { col: number; row: number }
+export function packTiles(
+  cards: CardId[],
+  getSize: (id: CardId) => { w: number; h: number },
+  getPos: (id: CardId) => TileAnchor | undefined
+): BentoPack {
+  const MAXR = 60;
+  const occ: boolean[][] = Array.from({ length: MAXR }, () => Array(12).fill(false));
+  const pos = {} as Record<string, BentoPos>;
+  let maxRowEnd = 0;
+  const freeAt = (x: number, y: number, cw: number, ch: number): boolean => {
+    if (x + cw > 12 || y + ch > MAXR) return false;
+    for (let dy = 0; dy < ch; dy++)
+      for (let dx = 0; dx < cw; dx++) if (occ[y + dy][x + dx]) return false;
+    return true;
+  };
+  const place = (id: CardId, x: number, y: number, cw: number, ch: number) => {
+    for (let dy = 0; dy < ch; dy++)
+      for (let dx = 0; dx < cw; dx++) occ[y + dy][x + dx] = true;
+    pos[id] = { col: x + 1, colEnd: x + 1 + cw, row: y + 1, rowEnd: y + 1 + ch };
+    if (y + ch > maxRowEnd) maxRowEnd = y + ch;
+  };
+  for (const id of cards) {
+    const s = getSize(id);
+    const cw = Math.max(1, Math.min(12, s.w));
+    const ch = Math.max(1, s.h);
+    const p = getPos(id);
+    if (p) {
+      const x = Math.max(0, Math.min(12 - cw, p.col - 1));
+      let y = Math.max(0, p.row - 1);
+      while (!freeAt(x, y, cw, ch) && y < MAXR - ch) y++;
+      place(id, x, y, cw, ch);
+    } else {
+      let placed = false;
+      for (let y = 0; y <= MAXR - ch && !placed; y++)
+        for (let x = 0; x + cw <= 12 && !placed; x++)
+          if (freeAt(x, y, cw, ch)) { place(id, x, y, cw, ch); placed = true; }
+      if (!placed) { const y = maxRowEnd; place(id, 0, y, cw, ch); }
+    }
+  }
+  return { pos, rows: Math.max(1, maxRowEnd) };
+}
+
 export const ROW_UNIT = 88; // 自由布局每个逻辑行的像素高度
 // 各卡在自由画布上的默认尺寸（w=12 列网格中的列数，h=逻辑行数）
 const FREE_SIZE: Partial<Record<CardId, { w: number; h: number }>> = {

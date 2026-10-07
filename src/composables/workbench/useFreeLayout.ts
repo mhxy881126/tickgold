@@ -162,6 +162,20 @@ export function useFreeLayout(ctx: FreeLayoutContext) {
     settleFreeRects(next);
     freeRects.value = next;
   }
+  // 方案 E · P0：自由布局缩放手柄。由 CardShell 右下角手柄 emit 网格单位 (w,h)，
+  // 写回 freeRects（保持左上角锚点），随后碰撞推开，防止拖大后压住其它卡。
+  // 连续拖拽期间不压撤销栈（与 startFreeDrag 一致：自由布局移动/缩放不进撤销栈）。
+  function freeResize(id: CardId, w: number, h: number) {
+    const rect = freeRects.value[id];
+    if (!rect) return;
+    if (!Number.isFinite(w) || !Number.isFinite(h)) return;
+    const cw = clampNum(Math.round(w), 1, COLS);
+    const ch = clampNum(Math.round(h), 1, 30);
+    if (cw === rect.w && ch === rect.h) return;
+    const next: Record<string, FreeRect> = { ...freeRects.value, [id]: { x: rect.x, y: rect.y, w: cw, h: ch } };
+    settleFreeRects(next);
+    freeRects.value = next;
+  }
   // 自由卡定位样式（宽用百分比、高用固定像素）
   function freeCellStyle(id: CardId): Record<string, string> {
     const g = freeDrag.value && freeDrag.value.id === id ? freeDrag.value : freeRects.value[id];
@@ -195,6 +209,7 @@ export function useFreeLayout(ctx: FreeLayoutContext) {
     placeNewFree,
     startFreeDrag,
     tidyFree,
+    freeResize,
     freeCellStyle,
     freeHeight,
     clampNum,

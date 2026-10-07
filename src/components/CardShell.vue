@@ -64,6 +64,8 @@
       :open="cfgOpen"
       :look="look"
       :refresh="refresh"
+      :span="span"
+      :rspan="rspan"
       @close="cfgOpen = false"
       @look="(p) => emit('look', p)"
       @refresh="(n) => emit('refresh', n)"
@@ -72,6 +74,7 @@
       @tag="(t) => emit('tag', t)"
       @reset="emit('resetlook')"
       @resetwidgets="emit('resetwidgets')"
+      @size="(w: number, h: number) => emit('resize', w, h)"
     />
 
     <!-- 右下角 resize 手柄 -->
@@ -222,12 +225,14 @@ function startResize(e: PointerEvent) {
   const h0 = props.rspan;
   const colW = (r.width - (w0 - 1) * GAP) / w0;
   const rowH = (r.height - (h0 - 1) * GAP) / h0;
+  if (!Number.isFinite(colW) || !Number.isFinite(rowH) || colW <= 0 || rowH <= 0) return;
   const sx = e.clientX;
   const sy = e.clientY;
   resizing.value = true;
   const move = (ev: PointerEvent) => {
     const cw = clampNum(w0 + Math.round((ev.clientX - sx) / colW), 1, 12);
     const ch = clampNum(h0 + Math.round((ev.clientY - sy) / rowH), 1, 12);
+    if (!Number.isFinite(cw) || !Number.isFinite(ch)) return;
     emit("resize", cw, ch);
   };
   const up = () => {

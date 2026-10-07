@@ -29,12 +29,13 @@ import IpoCalendar from "./components/IpoCalendar.vue";
 import SearchBox from "./components/SearchBox.vue";
 import StockChart from "./components/StockChart.vue";
 import TimeTabs from "./components/TimeTabs.vue";
+import TradeDeck from "./components/TradeDeck.vue";
 import NewsFlash from "./components/NewsFlash.vue";
 import WelcomeBoard from "./components/WelcomeBoard.vue";
 import { useWatchlistStore } from "./stores/watchlist";
 import { useQuotesStore } from "./stores/quotes";
 import { useAlertStore } from "./stores/alert";
-import { useWorkbench, CARD_META, SCENES, currentTimeSlot, type CardId } from "./composables/useWorkbench";
+import { useWorkbench, CARD_META, SCENES, currentTimeSlot, type CardId, type Scene } from "./composables/useWorkbench";
 import { useDockGroups } from "./composables/useDockGroups";
 import { useTheme } from "./composables/useTheme";
 import { useAccessibility } from "./composables/useAccessibility";
@@ -239,6 +240,23 @@ function toggleCard(id: CardId) {
   }
   // 新打开：主卡+导航模式下自动设为主卡
   bench.open(id);
+}
+
+// ===== 方案 D · 交易指挥舱场景（B）=====
+// 交易盯盘场景在非自由布局下以 TradeDeck 范式渲染（账户条 + 主图 + 信号桥 + 逐笔/模拟持仓/自选 + Kill Switch）
+const deckMode = computed(() => !bench.freeMode.value && bench.sceneId.value === "trade");
+
+// 编排与场景互斥守卫：自由布局（A 编排态）中禁止切换场景，先退出编排再切
+const guardToast = ref(false);
+let guardTimer: ReturnType<typeof setTimeout> | null = null;
+function applySceneGuarded(sc: Scene) {
+  if (bench.freeMode.value) {
+    guardToast.value = true;
+    if (guardTimer) clearTimeout(guardTimer);
+    guardTimer = setTimeout(() => (guardToast.value = false), 2600);
+    return;
+  }
+  bench.applyScene(sc);
 }
 
 // ===== 玻璃浮岛：按 Dock 分组聚合已开卡片 =====
@@ -568,7 +586,7 @@ onBeforeUnmount(() => {
           type="button"
           class="scene-pill"
           :class="{ on: bench.sceneId.value === sc.id }"
-          @click="bench.applyScene(sc)"
+          @click="applySceneGuarded(sc)"
         >
           <svg viewBox="0 0 24 24"><path fill="currentColor" :d="sc.icon" /></svg>
           <span>{{ sc.label }}</span>
@@ -647,8 +665,17 @@ onBeforeUnmount(() => {
 
       <div class="ws-body" :class="{ free: bench.freeMode.value, glass: true }">
 
+      <!-- ===== 方案 D · 交易指挥舱场景（交易盯盘） ===== -->
+      <TradeDeck
+        v-if="deckMode"
+        :selected="selected"
+        @select="onSelect"
+        @sector="onSectorPick"
+        @menu="(m) => onCardMenu(m.id, m)"
+      />
+
       <!-- ===== 主卡+右导航布局（Bento / 玻璃浮岛通用） ===== -->
-      <template v-if="!bench.freeMode.value">
+      <template v-else-if="!bench.freeMode.value">
         <div class="glass-layout">
         <div class="glass-master">
           <CardShell
@@ -662,6 +689,9 @@ onBeforeUnmount(() => {
             :color="bench.cardCustom.value[bench.glassActive.value]?.color ?? ''"
             :look-vars="bench.cardStyleVars(bench.glassActive.value)"
             :look="bench.cardLook(bench.glassActive.value)"
+            :locked="bench.cardLook(bench.glassActive.value).locked"
+            :span="bench.cardSpanOf(bench.glassActive.value).w"
+            :rspan="bench.cardSpanOf(bench.glassActive.value).h"
             :cfg-open-signal="bench.openCfgId.value === bench.glassActive.value"
             :popoutable="bench.isWidgetCard(bench.glassActive.value)"
             :popout-on="pip.isOpen({ kind: 'card', cardId: bench.glassActive.value })"
@@ -772,12 +802,16 @@ onBeforeUnmount(() => {
               :title="CARD_META[id].title"
               :accent="CARD_META[id].accent"
               free-drag
+              resizable
               :focused="bench.focusId.value === id"
               :collapsed="bench.isCollapsed(id)"
               :refresh="bench.cardRefreshOf(id)"
               :color="bench.cardCustom.value[id]?.color ?? ''"
               :look-vars="bench.cardStyleVars(id)"
               :look="bench.cardLook(id)"
+              :locked="bench.cardLook(id).locked"
+              :span="bench.freeRects.value[id]?.w ?? bench.cardSpanOf(id).w"
+              :rspan="bench.freeRects.value[id]?.h ?? bench.cardSpanOf(id).h"
               :cfg-open-signal="bench.openCfgId.value === id"
               :popoutable="bench.isWidgetCard(id)"
               :popout-on="pip.isOpen({ kind: 'card', cardId: id })"
@@ -785,6 +819,7 @@ onBeforeUnmount(() => {
               @focus="enterFocus(id)"
               @restore="exitFocus"
               @grab="(e: PointerEvent) => bench.startFreeDrag(e, id)"
+              @resize="(w: number, h: number) => bench.freeResize(id, w, h)"
               @menu="(p) => onCardMenu(id, p)"
               @cfg-consumed="bench.openCfgId.value = null"
               @collapse="bench.toggleCollapse(id)"
@@ -850,6 +885,11 @@ onBeforeUnmount(() => {
       >
         卡片已关闭 · 撤销
       </button>
+    </Transition>
+
+    <!-- 编排与场景互斥提示 toast -->
+    <Transition name="toast">
+      <div v-if="guardToast" class="undo-toast guard">编排中不可切换场景 · 请先恢复自动布局</div>
     </Transition>
 
     <!-- 卡片右键菜单 -->

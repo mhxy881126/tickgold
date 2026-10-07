@@ -8,10 +8,10 @@ import {
   defaultSizeOf,
   defaultZone,
   rankDefault,
-  packBento,
+  packTiles,
   settleFreeRects,
 } from "../lib/layout";
-import type { FreeRect } from "../lib/layout";
+import type { FreeRect, BentoPos } from "../lib/layout";
 import {
   MODES,
   TIME_PRESETS,
@@ -67,6 +67,7 @@ function createWorkbench() {
     placeNewFree,
     startFreeDrag,
     tidyFree,
+    freeResize,
     freeCellStyle,
     freeHeight,
     clampNum,
@@ -264,22 +265,28 @@ function createWorkbench() {
   const sideCards = computed(() => openCards.value.filter((id) => zoneOf(id) === "side"));
 
   // 统一网格布局：时段 Bento（3 行铺满）或 Bento 自动排布（12×6，可扩展滚动）
+  // 方案 F · P1：统一走 packTiles —— 卡带显式 pos（Deck 磁贴编排）固定落位并让位；无 pos 时 first-fit 与旧 packBento 完全一致
   const gridLayout = computed<{
     cells: Record<string, Record<string, string>>;
     rows: number;
     scroll: boolean;
     time: boolean;
+    posMap: Record<string, BentoPos>;
   }>(() => {
     // 时段驾驶舱：预设显式 Bento（3 大行）
     if (timeMode.value) {
       const p = TIME_PRESETS.find((x) => x.id === timeMode.value);
       const st: Record<string, Record<string, string>> = {};
+      const pm: Record<string, BentoPos> = {};
       if (p)
         openCards.value.forEach((id) => {
           const b = p.bento[id];
-          if (b) st[id] = cell(b.col, b.colEnd, b.row, b.rowEnd, 3);
+          if (b) {
+            st[id] = cell(b.col, b.colEnd, b.row, b.rowEnd, 3);
+            pm[id] = b;
+          }
         });
-      return { cells: st, rows: 3, scroll: false, time: true };
+      return { cells: st, rows: 3, scroll: false, time: true, posMap: pm };
     }
     // Bento 自动排布：尺寸取用户覆盖（折叠=1 行），否则默认
     const getSize = (id: CardId) => {
@@ -289,14 +296,15 @@ function createWorkbench() {
       const h = cu?.collapsed ? 1 : cu?.rspan ?? d.h;
       return { w, h };
     };
-    const pk = packBento(openCards.value, getSize);
+    const getPos = (id: CardId) => cardCustom.value[id]?.pos;
+    const pk = packTiles(openCards.value, getSize, getPos);
     const effRows = Math.max(6, pk.rows);
     const st: Record<string, Record<string, string>> = {};
     openCards.value.forEach((id) => {
       const b = pk.pos[id];
       if (b) st[id] = cell(b.col, b.colEnd, b.row, b.rowEnd, effRows);
     });
-    return { cells: st, rows: effRows, scroll: pk.rows > 6, time: false };
+    return { cells: st, rows: effRows, scroll: pk.rows > 6, time: false, posMap: pk.pos };
   });
   const layout = computed(() => gridLayout.value.cells);
 
@@ -454,12 +462,41 @@ function createWorkbench() {
 
   // ===== 卡片尺寸 / 折叠 / 外观（V1）=====
   function resizeCard(id: CardId, w: number, h: number) {
+    if (!Number.isFinite(w) || !Number.isFinite(h)) return;
     patchCustom(id, {
       span: clampNum(Math.round(w), 1, 12),
       rspan: clampNum(Math.round(h), 1, 12),
       collapsed: false,
     });
     if (timeMode.value) timeMode.value = null; // 改尺寸 → 退出固定 Bento
+  }
+  // 方案 F · P1：Deck 磁贴编排 —— 落子写显式锚点（自动持久化；位置未变化不写）
+  function deckMoveCard(id: CardId, col: number, row: number) {
+    if (!openCards.value.includes(id)) return;
+    if (!Number.isFinite(col) || !Number.isFinite(row)) return;
+    const cc = clampNum(Math.round(col), 1, 12);
+    const rr = Math.max(1, Math.round(row));
+    const cur = cardCustom.value[id]?.pos;
+    if (cur && cur.col === cc && cur.row === rr) return;
+    pushUndo();
+    patchCustom(id, { pos: { col: cc, row: rr } });
+    persistCurrent();
+  }
+  // 方案 F · P1：恢复 Deck 出厂布局 —— 仅清显式锚点，尺寸/外观自定义保留
+  function deckResetLayout(ids: CardId[]) {
+    const affected = ids.filter((id) => cardCustom.value[id]?.pos);
+    if (!affected.length) return;
+    pushUndo();
+    const next = { ...cardCustom.value };
+    for (const id of affected) {
+      const cu = next[id];
+      if (cu) {
+        const { pos: _omit, ...rest } = cu;
+        next[id] = { ...rest };
+      }
+    }
+    cardCustom.value = next;
+    persistCurrent();
   }
   function toggleCollapse(id: CardId) {
     patchCustom(id, { collapsed: !cardCustom.value[id]?.collapsed });
@@ -578,7 +615,12 @@ function createWorkbench() {
   }
 
   // ===== V3 场景模板：整组替换 + 预设尺寸 =====
+  // 方案 G · P2：交易盯盘 = 布局容器 —— 离开时快照其卡片集合，切回时恢复（布局/自定义卡不因场景往返丢失）；
+  // 显式锚点（pos）仅在交易盯盘场景保留，不污染其它场景。
+  const deckOpenSnapshot = ref<CardId[] | null>(null);
   function applyScene(scene: Scene) {
+    // 切出「交易盯盘」时快照当前编排集合（含布局切换/自定义添加的卡）
+    if (sceneId.value === "trade") deckOpenSnapshot.value = [...openCards.value];
     pushUndo();
     clearSlotInline();
     focusId.value = null;
@@ -590,7 +632,10 @@ function createWorkbench() {
     if (scene.size) {
       (Object.keys(scene.size) as CardId[]).forEach((id) => {
         const s = scene.size![id]!;
-        cc[id] = { span: s.w, rspan: s.h };
+        // 方案 F · P1：已编排过的卡保留显式锚点（切场景往返不丢布局）；未编排走场景默认
+        // 方案 G · P2：锚点仅随「交易盯盘」场景保留，避免污染盘中盯盘等其它场景
+        const prevPos = scene.id === "trade" ? cardCustom.value[id]?.pos : undefined;
+        cc[id] = { span: s.w, rspan: s.h, ...(prevPos ? { pos: prevPos } : {}) };
       });
     }
     cardCustom.value = cc;
@@ -601,10 +646,14 @@ function createWorkbench() {
       if (p) wm[id] = p;
     });
     cardWidgets.value = wm;
-    openCards.value = [...scene.cards];
+    // 方案 G · P2：切回「交易盯盘」优先用离开时的编排集合（含布局切换/自定义卡），否则场景出厂
+    openCards.value =
+      scene.id === "trade" && deckOpenSnapshot.value
+        ? [...deckOpenSnapshot.value]
+        : [...scene.cards];
     // 主卡+导航模式：场景切换后默认第一张为主卡
     if (!freeMode.value) {
-      glassActive.value = scene.cards[0] ?? null;
+      glassActive.value = openCards.value[0] ?? null;
     }
   }
   function saveCurrentAsScene() {
@@ -779,10 +828,46 @@ function createWorkbench() {
       "SELECT cards FROM layout WHERE id=?",
       [id]
     );
-    if (rows[0]?.cards) applySnapshot(rows[0].cards);
+    if (rows[0]?.cards) {
+      // applySnapshot 会把 sceneId 置空（快照语义）——加载布局应留在当前场景，不跳转
+      const prevScene = sceneId.value;
+      applySnapshot(rows[0].cards);
+      if (prevScene && SCENES.some((x) => x.id === prevScene)) sceneId.value = prevScene;
+    }
   }
   async function deleteNamedLayout(id: number) {
     await db().execute("DELETE FROM layout WHERE id=?", [id]);
+  }
+  // 方案 G · P2：切换布局 —— 整套快照（卡片集合 + 尺寸 + 位置）套用，可撤销、自动持久化；无变化不入栈
+  // 仅由「交易盯盘」布局抽屉调用（天然只作用于该模式）；应用后更新场景往返快照，切走再回不丢布局集合
+  // applySnapshot 会把 sceneId 置空（快照语义）——布局套用必须留在「交易盯盘」场景，否则 deck 模式退出导致界面跳转
+  async function applyNamedLayout(id: number): Promise<boolean> {
+    const rows = await db().select<{ cards: string }[]>(
+      "SELECT cards FROM layout WHERE id=?",
+      [id]
+    );
+    if (!rows[0]?.cards) return false;
+    const prev = serialize();
+    pushUndo();
+    applySnapshot(rows[0].cards);
+    sceneId.value = "trade";
+    if (serialize() === prev) {
+      undoStack.pop();
+      canUndo.value = undoStack.length > 0;
+      return true;
+    }
+    deckOpenSnapshot.value = [...openCards.value];
+    return true;
+  }
+  // 方案 G · P2：重命名布局（保存时可自定义命名 / 列表项改名）
+  async function renameNamedLayout(id: number, name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    await db().execute("UPDATE layout SET name=?, updated_at=? WHERE id=?", [
+      trimmed,
+      Date.now(),
+      id,
+    ]);
   }
   // 重置：恢复默认分区 + 默认顺序
   function resetLayout() {
@@ -831,6 +916,8 @@ function createWorkbench() {
     isCollapsed,
     cardSpanOf,
     resizeCard,
+    deckMoveCard,
+    deckResetLayout,
     toggleCollapse,
     setCardColor,
     setCardRefresh,
@@ -880,6 +967,7 @@ function createWorkbench() {
     disableFree,
     startFreeDrag,
     tidyFree,
+    freeResize,
     freeCellStyle,
     freeHeight,
     // 持久化 / 布局
@@ -887,6 +975,8 @@ function createWorkbench() {
     saveNamedLayout,
     listNamedLayouts,
     loadNamedLayout,
+    applyNamedLayout,
+    renameNamedLayout,
     deleteNamedLayout,
     resetLayout,
     // v1 微件编排

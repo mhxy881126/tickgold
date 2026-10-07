@@ -98,6 +98,11 @@ export const SCENES: Scene[] = [
     cards: ["chart", "radar", "watch"],
     // 12×6=72：图表 8×4 + 雷达 4×4，自选整行垫底
     size: { chart: { w: 8, h: 4 }, radar: { w: 4, h: 4 }, watch: { w: 12, h: 2 } } },
+  { id: "trade", label: "交易盯盘", icon: "M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z",
+    // 方案 D · 交易指挥舱（B 交易场景）：App 内以 TradeDeck 范式渲染（账户条 + 主图 + 信号桥 + 逐笔/模拟持仓/自选 + Kill Switch），
+    // 此处 size 保证 12×6=72 铺满校验，同时为「恢复自动布局」等 Bento 回落提供尺寸。
+    cards: ["chart", "signalbridge", "trades", "trade", "watch"],
+    size: { chart: { w: 6, h: 4 }, signalbridge: { w: 6, h: 4 }, trades: { w: 3, h: 2 }, trade: { w: 3, h: 2 }, watch: { w: 6, h: 2 } } },
 ];
 
 export interface NamedLayout {

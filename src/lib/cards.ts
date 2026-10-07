@@ -91,6 +91,7 @@ export const CARD_META: Record<CardId, CardMeta> = {
 export interface CardCustom {
   span?: number;       // 用户覆盖的列跨度（1..12）
   rspan?: number;      // 用户覆盖的行跨度（逻辑行）
+  pos?: { col: number; row: number }; // 方案 F · P1：显式网格锚点（1-based），Deck 磁贴编排落位
   collapsed?: boolean; // 折叠为标题栏
   color?: string;      // 强调色覆盖
   refresh?: number;    // 刷新频率（秒，0=跟随全局）

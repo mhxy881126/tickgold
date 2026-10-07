@@ -331,6 +331,12 @@
   cursor: pointer;
 }
 .undo-toast:hover { border-color: #d4af37; color: #e8c96a; }
+.undo-toast.guard {
+  cursor: default;
+  border-color: rgba(242, 54, 69, 0.65);
+  color: #ff8a93;
+  background: rgba(242, 54, 69, 0.1);
+}
 .toast-enter-active,
 .toast-leave-active { transition: opacity 0.2s, transform 0.2s; }
 .toast-enter-from,
