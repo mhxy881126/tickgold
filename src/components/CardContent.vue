@@ -8,11 +8,9 @@ import LimitRadar from "./LimitRadar.vue";
 import SieveCard from "./SieveCard.vue";
 import AuctionBoard from "./AuctionBoard.vue";
 import LimitPool from "./LimitPool.vue";
-import RadarSweep from "./RadarSweep.vue";
 import ReviewTimeline from "./ReviewTimeline.vue";
 import MultiStockGrid from "./MultiStockGrid.vue";
 import MarketHeatMatrix from "./MarketHeatMatrix.vue";
-import TelegraphWall from "./TelegraphWall.vue";
 import ShortTermSpider from "./ShortTermSpider.vue";
 import SectorBoard from "./SectorBoard.vue";
 import SectorHeatmap from "./SectorHeatmap.vue";
@@ -78,11 +76,9 @@ function retry() {
     <LimitPool v-else-if="id === 'limitpool'" @select="$emit('select', $event)" />
     <LimitRadar v-else-if="id === 'radar'" @select="$emit('select', $event)" />
     <SieveCard v-else-if="id === 'sieve'" @select="$emit('select', $event)" />
-    <RadarSweep v-else-if="id === 'radarsweep'" @select="$emit('select', $event)" />
     <ReviewTimeline v-else-if="id === 'reviewtimeline'" @select="$emit('select', $event)" />
     <MultiStockGrid v-else-if="id === 'multigrid'" @select="$emit('select', $event)" />
     <MarketHeatMatrix v-else-if="id === 'heatmatrix'" @select="$emit('select', $event)" />
-    <TelegraphWall v-else-if="id === 'telegraph'" @select="$emit('select', $event)" />
     <ShortTermSpider v-else-if="id === 'spider'" @select="$emit('select', $event)" />
     <SectorBoard v-else-if="id === 'sector'" @select="$emit('select', $event)" />
     <SectorHeatmap v-else-if="id === 'sectorheat'" @select="$emit('select', $event)" @sector="(name: string, kind: string) => $emit('sector', name, kind)" />

@@ -41,6 +41,17 @@ class FakeDb {
     ];
     // 默认标记引导已完成，避免首启弹 Onboarding 遮挡主界面
     this.meta = [{ key: "onboarding_done", value: "1" }];
+    // 模拟历史缺陷数据：watch/rank/news 三卡曾被出厂微件化为简化微件
+    // （自选列表/滚动快讯），启动恢复时应被 migrateSnapshot 一次性还原为
+    // 经典完整组件（WatchList 分组管理 / RankBoard 8 Tab / NewsFlash 分页开窗）
+    this.meta.push({
+      key: "workbench_current",
+      value: JSON.stringify([
+        { id: "watch", zone: "main", v: 1, widgets: { primary: null, items: [{ id: "ql_w", def: "quote-list", w: 12, h: 7, x: 0, y: 0 }] } },
+        { id: "rank", zone: "main", v: 1, widgets: { primary: null, items: [{ id: "ql_r", def: "quote-list", w: 12, h: 7, x: 0, y: 0 }] } },
+        { id: "news", zone: "main", v: 1, widgets: { primary: null, items: [{ id: "nt_n", def: "news-tape", w: 12, h: 6, x: 0, y: 0 }] } },
+      ]),
+    });
   }
 
   async select(sql: string, params: unknown[] = []): Promise<Row[]> {
@@ -211,6 +222,41 @@ const handlers: Record<string, Handler> = {
   get_hist_minute: () => Array.from({ length: 30 }, (_, i) => bar(i)),
   get_hist_minute_days: () => Array.from({ length: 3 }, (_, d) => ({ date: `2026010${d + 1}`, bars: Array.from({ length: 30 }, (_, i) => bar(i)) })),
   get_rank_page: () => [quote("600519", 1680, 5.2), quote("300750", 189, 4.1), quote("601318", 48, -2.3)],
+  get_rank_board: (a) => {
+    // 增强榜单（RankBoard.vue 使用）：按 sort 生成对应指标列的确定性 mock
+    const pool: [string, string, number, number, number, number, number, number, number, number][] = [
+      // code, name, price, pct, amount(亿), turnover, volumeRatio, speed5, mainNet(亿), bigNet(亿)
+      ["600519", "贵州茅台", 1680, 5.2, 89.4, 1.2, 2.3, 1.5, 12.3, 8.1],
+      ["300750", "宁德时代", 189, 4.1, 72.1, 3.4, 1.8, 0.9, 9.6, 6.2],
+      ["601318", "中国平安", 48, -2.3, 45.6, 1.5, 0.7, -0.4, -3.2, -1.1],
+      ["000001", "平安银行", 12.3, 1.8, 30.2, 2.1, 1.1, 0.6, 2.4, 1.8],
+      ["600036", "招商银行", 36.5, 0.6, 28.9, 0.9, 0.8, 0.1, 0.5, 0.3],
+      ["000858", "五粮液", 145, -1.2, 26.4, 1.1, 1.4, -0.2, -1.8, -0.9],
+      ["002594", "比亚迪", 245, 3.3, 58.7, 4.2, 2.6, 2.1, 15.6, 9.8],
+      ["300059", "东方财富", 21.5, 2.9, 42.3, 5.6, 3.1, 1.2, 7.8, 5.4],
+    ];
+    const pageNum = Math.max(1, (a?.page as number) || 1);
+    const start = (pageNum - 1) * 50;
+    // 第 1 页 50 条；第 2 页仅 8 条（模拟末页不足一页 → hasMore 收敛）
+    if (pageNum >= 2) {
+      return pool.slice(0, 8).map((r) => ({
+        code: r[0], name: r[1], price: r[2], pct: r[3], amount: r[4] * 1e8,
+        turnover: r[5], volumeRatio: r[6], speed5: r[7], mainNet: r[8] * 1e8, bigNet: r[9] * 1e8,
+      }));
+    }
+    return pool.map((r, i) => ({
+      code: r[0], name: r[1], price: r[2], pct: r[3], amount: r[4] * 1e8,
+      turnover: r[5], volumeRatio: r[6], speed5: r[7], mainNet: r[8] * 1e8, bigNet: r[9] * 1e8,
+    })).concat(
+      // 补足分页第二页（PAGE_SIZE=50），验证滚动加载
+      Array.from({ length: Math.max(0, 50 - pool.length) }, (_, i) => ({
+        code: `60${(1000 + start + i).toString().padStart(4, "0")}`, name: `示例股${start + i + 1}`,
+        price: 10 + i * 0.1, pct: (i % 7) - 3, amount: (i + 1) * 5e7, turnover: 2 + i * 0.1,
+        volumeRatio: 1 + i * 0.05, speed5: ((i * 13) % 5) - 2, mainNet: (i % 9) * 1e7,
+        bigNet: (i % 8) * 6e6,
+      }))
+    );
+  },
   get_orderbook: () => ({ code: "600519", name: "贵州茅台", price: 1680, prevClose: 1660, open: 1665, high: 1690, low: 1660, volume: 12000, amount: 2e9, asks: [], bids: [] }),
   get_sectors: () => [{ code: "BK1", name: "半导体", changePct: 2.3, netAmount: 1e9, inAmount: 3e9, outAmount: 2e9, leadCode: "300750", leadName: "宁德时代", leadPct: 4.1 }],
   get_news_flash: () => [{ id: 1, time: "2026-01-01 09:45:00", text: "市场开盘活跃", tags: ["快讯"], url: "" }],

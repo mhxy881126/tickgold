@@ -35,7 +35,7 @@ import { useWatchlistStore } from "./stores/watchlist";
 import { useQuotesStore } from "./stores/quotes";
 import { useAlertStore } from "./stores/alert";
 import { useWorkbench, CARD_META, SCENES, currentTimeSlot, type CardId } from "./composables/useWorkbench";
-import { DOCK_GROUPS } from "./lib/dock";
+import { useDockGroups } from "./composables/useDockGroups";
 import { useTheme } from "./composables/useTheme";
 import { useAccessibility } from "./composables/useAccessibility";
 import { useMotion } from "./composables/useMotion";
@@ -242,9 +242,12 @@ function toggleCard(id: CardId) {
 }
 
 // ===== 玻璃浮岛：按 Dock 分组聚合已开卡片 =====
+// 用户可自定义左侧菜单分组（新增/重命名/删除/移动功能），此处共享同一份配置
+const dock = useDockGroups();
+const dockGroups = dock.groups;
 const glassGroups = computed(() => {
   const open = bench.openCards.value;
-  return DOCK_GROUPS
+  return dockGroups.value
     .map((g) => ({
       name: g.name,
       items: g.items.filter((it) => open.includes(it.id as CardId)),
@@ -253,8 +256,11 @@ const glassGroups = computed(() => {
 });
 
 // 玻璃浮岛右侧导航：所有分组都显示，可折叠
-const allGlassGroups = DOCK_GROUPS;
-const openGroups = ref<Set<string>>(new Set(DOCK_GROUPS.map(g => g.name)));
+const allGlassGroups = dockGroups;
+const openGroups = ref<Set<string>>(new Set(dockGroups.value.map(g => g.name)));
+watch(dockGroups, (gs) => {
+  openGroups.value = new Set([...openGroups.value, ...gs.map((g) => g.name)]);
+});
 function toggleGroup(name: string) {
   if (openGroups.value.has(name)) openGroups.value.delete(name);
   else openGroups.value.add(name);

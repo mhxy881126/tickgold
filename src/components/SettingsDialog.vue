@@ -1369,7 +1369,7 @@ async function toggleDev() {
               <div class="ab-logo">TG</div>
               <div class="ab-name">TickGold</div>
               <div class="ab-desc">开源跨平台 A 股盯盘终端</div>
-              <div class="ab-ver">v{{ curVersion || "2.10.0" }}</div>
+              <div class="ab-ver">v{{ curVersion || "—" }}</div>
               <div class="ab-tech">Tauri 2.0 · Rust · Vue 3 · TypeScript · ECharts</div>
               <div class="ab-actions">
                 <button type="button" class="ab-primary" @click="emit('check-update')">检查更新</button>

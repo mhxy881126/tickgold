@@ -1,17 +1,21 @@
 // 自绘标题栏窗口控制（Windows；macOS 用原生红绿灯）
+// 模块级单例：curVersion 等状态全局共享——关于页等所有消费方拿到同一份已初始化的版本号，
+// 避免各实例独立 ref 导致 curVersion 永远为空（曾使关于页一直显示兜底旧版本）。
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { onBeforeUnmount, ref } from "vue";
+import { ref } from "vue";
+
+const curVersion = ref("");
+const isMac = ref(false);
+const isWin = ref(false);
+const isMax = ref(false);
+let inited = false;
+let unlistenResize: (() => void) | null = null;
 
 export function useWindowControls() {
-  const curVersion = ref("");
-  const isMac = ref(false);
-  const isWin = ref(false);
-  const isMax = ref(false);
   const inTauri = typeof window !== "undefined" && "__TAURI__" in window;
   const appWin = inTauri ? getCurrentWindow() : null;
-  let unlistenResize: (() => void) | null = null;
 
   async function syncMax() {
     try {
@@ -49,8 +53,10 @@ export function useWindowControls() {
     }
   }
 
-  // 平台、版本与窗口最大化状态初始化（集中容错）
+  // 平台、版本与窗口最大化状态初始化（集中容错；全应用只执行一次）
   async function initPlatform() {
+    if (inited) return;
+    inited = true;
     try {
       const pf = (navigator.platform || navigator.userAgent || "").toLowerCase();
       isMac.value = pf.includes("mac");
@@ -61,7 +67,8 @@ export function useWindowControls() {
     }
     try {
       await syncMax();
-      if (appWin) {
+      if (appWin && !unlistenResize) {
+        // 模块级单例：监听随应用生命周期，无需按组件卸载清理
         unlistenResize = await appWin.onResized(() => {
           syncMax();
         });
@@ -70,10 +77,6 @@ export function useWindowControls() {
       /* ignore */
     }
   }
-
-  onBeforeUnmount(() => {
-    unlistenResize?.();
-  });
 
   return {
     curVersion,

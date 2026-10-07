@@ -11,14 +11,14 @@ function legacy(id: SnapshotCard["id"], extra: Partial<SnapshotCard> = {}): Snap
 }
 
 describe("legacy → v1 自动迁移", () => {
-  it("有出厂模板的老卡被迁移为 v1，cu/rect 全保留", () => {
+  it("v1 快照往返保留 cu/rect", () => {
+    // 无内置出厂模板（watch/rank/news 已全部移除），直接构造 v1 快照验证自定义字段保留
     const cu = { color: "#123456", tag: "测", locked: true };
     const rect = { x: 100, y: 50, w: 320, h: 240 };
-    const r = migrateCard(legacy("watch", { cu, rect }));
-    expect(r.changed).toBe(true);
-    expect(r.card.v).toBe(1);
-    expect(r.card.widgets).toBeDefined();
-    expect(r.card.widgets!.items.length).toBeGreaterThan(0);
+    const r = migrateCard(
+      legacy("watch", { v: 1, widgets: { items: buildItems(["text-note"]) }, cu, rect })
+    );
+    expect(r.changed).toBe(false);
     expect(r.card.cu).toBe(cu);
     expect(r.card.rect).toBe(rect);
   });
@@ -60,19 +60,124 @@ describe("legacy → v1 自动迁移", () => {
   });
 
   it("整份快照迁移后再次迁移幂等", () => {
+    // 无内置出厂模板（watch/rank/news 曾微件化，已全部移除并还原），legacy 卡全部保持经典
     const cards = [
       legacy("watch"),
       legacy("rank"),
       legacy("news"),
-      legacy("heatmatrix"), // 无模板
+      legacy("heatmatrix"),
     ];
     const once = migrateSnapshot(cards);
-    expect(once.changed).toBe(true);
-    expect(once.cards.filter((c) => c.v === 1)).toHaveLength(3);
+    expect(once.changed).toBe(false);
+    expect(once.cards.filter((c) => c.v === 1)).toHaveLength(0);
+    expect(once.cards).toEqual(cards);
 
     const twice = migrateSnapshot(once.cards);
     expect(twice.changed).toBe(false);
     expect(twice.cards).toEqual(once.cards);
+  });
+
+  it("老版出厂微件化的榜单卡（quote-list 自选列表）还原为经典 RankBoard", () => {
+    const cards: SnapshotCard[] = [
+      {
+        ...legacy("rank"),
+        v: 1,
+        widgets: {
+          primary: null,
+          items: [{ id: "ql_x", def: "quote-list", w: 12, h: 7, x: 0, y: 0 }],
+        },
+      },
+    ];
+    const r = migrateSnapshot(cards);
+    expect(r.changed).toBe(true);
+    expect(r.cards[0]!.v).toBeUndefined();
+    expect(r.cards[0]!.widgets).toBeUndefined();
+    // 还原后再次迁移幂等（保持经典）
+    expect(migrateSnapshot(r.cards).changed).toBe(false);
+  });
+
+  it("老版出厂微件化的自选卡（quote-list 自选列表）还原为经典 WatchList（分组管理）", () => {
+    const cards: SnapshotCard[] = [
+      {
+        ...legacy("watch"),
+        v: 1,
+        widgets: {
+          primary: null,
+          items: [{ id: "ql_x", def: "quote-list", w: 12, h: 7, x: 0, y: 0 }],
+        },
+      },
+    ];
+    const r = migrateSnapshot(cards);
+    expect(r.changed).toBe(true);
+    expect(r.cards[0]!.v).toBeUndefined();
+    expect(r.cards[0]!.widgets).toBeUndefined();
+    expect(migrateSnapshot(r.cards).changed).toBe(false);
+  });
+
+  it("老版出厂微件化的快讯卡（news-tape 滚动快讯）还原为经典 NewsFlash（分页/开窗）", () => {
+    const cards: SnapshotCard[] = [
+      {
+        ...legacy("news"),
+        v: 1,
+        widgets: {
+          primary: null,
+          items: [{ id: "nt_x", def: "news-tape", w: 12, h: 6, x: 0, y: 0 }],
+        },
+      },
+    ];
+    const r = migrateSnapshot(cards);
+    expect(r.changed).toBe(true);
+    expect(r.cards[0]!.v).toBeUndefined();
+    expect(r.cards[0]!.widgets).toBeUndefined();
+    expect(migrateSnapshot(r.cards).changed).toBe(false);
+  });
+
+  it("用户自行编排过的榜单卡（改过绑定）不被还原", () => {
+    const cards: SnapshotCard[] = [
+      {
+        ...legacy("rank"),
+        v: 1,
+        widgets: {
+          primary: null,
+          items: [{ id: "ql_x", def: "quote-list", w: 12, h: 7, x: 0, y: 0, bind: "600519" }],
+        },
+      },
+    ];
+    const r = migrateSnapshot(cards);
+    expect(r.cards[0]!.widgets!.items.map((i) => i.def)).toEqual(["quote-list"]);
+  });
+
+  it("用户自行编排过的榜单卡（多个微件）不被还原", () => {
+    const items = buildItems(["quote-list", "kline-mini"]);
+    const cards: SnapshotCard[] = [
+      { ...legacy("rank"), v: 1, widgets: { primary: null, items } },
+    ];
+    const r = migrateSnapshot(cards);
+    expect(r.cards[0]!.widgets!.items.map((i) => i.def)).toEqual(["quote-list", "kline-mini"]);
+  });
+
+  it("用户自行编排过的自选卡（改过尺寸）不被还原", () => {
+    const cards: SnapshotCard[] = [
+      {
+        ...legacy("watch"),
+        v: 1,
+        widgets: {
+          primary: null,
+          items: [{ id: "ql_x", def: "quote-list", w: 6, h: 6, x: 0, y: 0 }],
+        },
+      },
+    ];
+    const r = migrateSnapshot(cards);
+    expect(r.cards[0]!.widgets!.items.map((i) => i.def)).toEqual(["quote-list"]);
+  });
+
+  it("用户自行编排过的快讯卡（多个微件）不被还原", () => {
+    const items = buildItems(["news-tape", "text-note"]);
+    const cards: SnapshotCard[] = [
+      { ...legacy("news"), v: 1, widgets: { primary: null, items } },
+    ];
+    const r = migrateSnapshot(cards);
+    expect(r.cards[0]!.widgets!.items.map((i) => i.def)).toEqual(["news-tape", "text-note"]);
   });
 });
 
@@ -129,7 +234,7 @@ describe("v1 快照清洗与往返稳定", () => {
     expect(migrateSnapshot(once.cards).changed).toBe(false);
   });
 
-  it("v1 widgets 全无效时：有 preset 回落 preset，无 preset 剥除字段", () => {
+  it("v1 widgets 全无效时：无内置 preset，一律剥除字段", () => {
     const bad: SnapshotCard[] = [
       {
         ...legacy("news"),
@@ -143,9 +248,9 @@ describe("v1 快照清洗与往返稳定", () => {
       },
     ];
     const r = migrateSnapshot(bad);
-    // preset 每次生成新实例 id，按结构比对
-    expect(r.cards[0]!.widgets!.items.map((i) => i.def)).toEqual(["news-tape"]);
-    expect(r.cards[0]!.widgets!.primary ?? null).toBeNull();
+    expect(r.changed).toBe(true);
+    expect(r.cards[0]!.v).toBeUndefined();
+    expect(r.cards[0]!.widgets).toBeUndefined();
     expect(r.cards[1]!.v).toBeUndefined();
     expect(r.cards[1]!.widgets).toBeUndefined();
   });

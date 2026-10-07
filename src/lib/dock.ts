@@ -30,12 +30,10 @@ export const DOCK_GROUPS: DockGroup[] = [
     name: "盯盘模式",
     icon: "M12 2A10 10 0 1 0 22 12h-2A8 8 0 1 1 12 4zM12 6v6l5 2-1 1.7L11 13V6z",
     items: [
-      { id: "radarsweep", label: "雷达扫盘", icon: "M12 2A10 10 0 1 0 22 12h-2A8 8 0 1 1 12 4zM12 6v6l5 2-1 1.7L11 13V6z", desc: "圆形雷达三栏全屏扫盘", star: true },
       { id: "reviewtimeline", label: "复盘时间线", icon: "M12 3a2 2 0 100 4 2 2 0 000-4zm0 7a2 2 0 100 4 2 2 0 000-4zm0 7a2 2 0 100 4 2 2 0 000-4z", desc: "全天异动时间线 + 当日总结" },
       { id: "dragon", label: "龙虎榜", icon: "M4 4h16v6H4zm0 10h16v6H4z", desc: "每日龙虎榜个股 + 买卖前五席位/游资", star: true },
       { id: "multigrid", label: "多股同列", icon: "M3 3h5v5H3zm6.5 0h5v5h-5zM16 3h5v5h-5zM3 9.5h5v5H3zm6.5 0h5v5h-5zM16 9.5h5v5h-5zM3 16h5v5H3zm6.5 0h5v5h-5zM16 16h5v5h-5z", desc: "自选 9 只 分时/K线/盘口同屏" },
       { id: "heatmatrix", label: "热力矩阵", icon: "M3 4h7v4H3zm9 0h9v4h-9zM3 10h9v4H3zm11 0h7v4h-7zM3 16h7v4H3zm9 0h9v4h-9z", desc: "全市场板块热力矩阵" },
-      { id: "telegraph", label: "电报墙", icon: "M4 11a8 8 0 0116 0M7 11a5 5 0 0110 0M10 11a2 2 0 014 0M12 13v8", desc: "三列异动电报实时滚动" },
     ],
   },
   {

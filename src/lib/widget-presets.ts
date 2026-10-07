@@ -28,12 +28,13 @@ export function buildItems(defIds: string[]): WidgetInstance[] {
   return packWidgets(made);
 }
 
-const PRESET_DEFS: Partial<Record<CardId, string[]>> = {
-  // K线图卡恢复为经典完整组件（StockChart：全周期/指标/画线），不再出厂微件化
-  watch: ["quote-list"],
-  rank: ["quote-list"],
-  news: ["news-tape"],
-};
+// 内置出厂微件模板（当前为空）。
+// watch / rank / news 三个卡曾被出厂微件化为简化微件（quote-list 自选列表、
+// news-tape 滚动快讯），导致完整组件功能丢失（自选分组管理、榜单 8 Tab、
+// 快讯分页/开窗）。已全部移除模板，恢复经典组件渲染；历史已迁移数据由
+// widget-migrate 的 isUnmodifiedFactory 一次性还原。
+// 机制保留：插件或后续卡片可继续通过 presetOf 提供出厂模板。
+const PRESET_DEFS: Partial<Record<CardId, string[]>> = {};
 
 export function presetOf(id: CardId): CardWidgets | undefined {
   const defs = PRESET_DEFS[id];

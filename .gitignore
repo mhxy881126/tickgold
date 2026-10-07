@@ -40,3 +40,6 @@ src-tauri/.cargo/
 
 # 签名私钥备份（绝密，永不提交）
 /signing-backup/
+
+*_check.mjs
+app_dev_log*.txt

@@ -214,18 +214,30 @@ function metricCls(q: RankRow) {
 /* 顶部密集 Tab：扁平分段式，8 项自动换行 */
 .tabs {
   display: flex; flex-wrap: wrap; flex-shrink: 0;
-  padding: 4px 6px 0; gap: 2px;
-  border-bottom: 1px solid #1b2230; background: #0e121b;
+  padding: 8px 8px 4px; gap: 4px;
+  border-bottom: 1px solid #1b2230; 
+  background: linear-gradient(180deg, #0e121b 0%, #162030 100%);
+  min-height: 40px; /* 确保标签页有最小高度 */
 }
 .tab {
-  background: transparent; border: 1px solid transparent; border-bottom: none;
-  border-radius: 4px 4px 0 0; padding: 5px 10px;
-  font-size: 12px; color: #7d8896; cursor: pointer; white-space: nowrap;
+  background: rgba(255, 255, 255, 0.05); 
+  border: 1px solid rgba(255, 255, 255, 0.1); 
+  border-radius: 8px 8px 0 0; 
+  padding: 6px 12px;
+  font-size: 12px; color: #a0aab8; cursor: pointer; white-space: nowrap;
+  transition: all 0.2s ease;
 }
-.tab:hover { color: #c7d0dc; background: rgba(255, 255, 255, .03); }
+.tab:hover { 
+  color: #fff; 
+  background: rgba(255, 255, 255, 0.1); 
+  border-color: rgba(255, 255, 255, 0.2);
+}
 .tab.active {
-  color: #f0f4fa; background: #0b0e14;
-  border-color: #1b2230; box-shadow: inset 0 2px 0 #d4af37;
+  color: #fff; 
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: transparent;
+  box-shadow: 0 -2px 10px rgba(102, 126, 234, 0.3);
+  font-weight: 600;
 }
 
 /* 固定表头 */

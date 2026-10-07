@@ -5,11 +5,9 @@ export type CardId =
   | "auction"
   | "limitpool"
   | "radar"
-  | "radarsweep"
   | "reviewtimeline"
   | "multigrid"
   | "heatmatrix"
-  | "telegraph"
   | "chart"
   | "sectorheat"
   | "sector"
@@ -54,11 +52,9 @@ export const CARD_META: Record<CardId, CardMeta> = {
   auction: { title: "集合竞价", accent: "#ffd76a", kind: "chart" },
   limitpool: { title: "涨停池明细", accent: "#e0455a", kind: "chart" },
   radar: { title: "涨停雷达", accent: "#e0455a", kind: "chart" },
-  radarsweep: { title: "雷达扫盘", accent: "#2de1ff", kind: "chart" },
   reviewtimeline: { title: "复盘时间线", accent: "#c9a24a", kind: "chart" },
   multigrid: { title: "多股同列", accent: "#36b8e8", kind: "chart" },
   heatmatrix: { title: "全市场热力矩阵", accent: "#ff7a45", kind: "chart" },
-  telegraph: { title: "异动电报墙", accent: "#1dffa0", kind: "chart" },
   chart: { title: "K线图", accent: "#2f6fed", kind: "chart" },
   sectorheat: { title: "板块热力图", accent: "#d4af37", kind: "chart" },
   sector: { title: "板块行情", accent: "#35c4a8", kind: "chart" },
