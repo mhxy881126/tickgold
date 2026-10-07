@@ -58,7 +58,10 @@ async function loadOrderQuote() {
   try {
     const qs = await fetchQuotes([tradeCode.value]);
     orderQuote.value = qs[0] ?? null;
-  } catch { /* ignore */ }
+  } catch {
+    // 行情拉取失败：清空而非保留上一只股票的价格，避免价格残留（如 85.98 vs 现价 35.93）
+    orderQuote.value = null;
+  }
 }
 
 const price = computed(() => orderQuote.value?.price ?? 0);

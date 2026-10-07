@@ -21,6 +21,7 @@ import {
   type BrokerAsset,
   type BrokerStatus,
 } from "../broker/api";
+import { usePaperStore } from "../stores/paper";
 
 const props = defineProps<{ selected: string | null }>();
 const emit = defineEmits<{
@@ -143,9 +144,9 @@ function onResetLayout() {
   flash("已恢复默认布局（尺寸自定义保留）");
 }
 
-// ===== 方案 G · P2：多套布局切换 + 自定义卡片增删 =====
-const deckLayoutOpen = ref(false);
-const deckAddOpen = ref(false);
+// ===== 方案 G · P2 / 方案 C：多套布局 + 卡片增删，收进「工作台管理」抽屉 =====
+const deckMoreOpen = ref(false);
+const deckManageOpen = ref(false);
 const layouts = ref<NamedLayout[]>([]);
 const layoutBusy = ref(false);
 // 保存布局弹层：支持自定义命名
@@ -187,23 +188,23 @@ async function loadLayouts() {
     layouts.value = [];
   }
 }
-function toggleLayouts() {
-  deckLayoutOpen.value = !deckLayoutOpen.value;
-  if (deckLayoutOpen.value) {
-    deckAddOpen.value = false;
+function toggleMore() {
+  deckMoreOpen.value = !deckMoreOpen.value;
+  if (deckMoreOpen.value) deckManageOpen.value = false;
+}
+function toggleManage() {
+  deckManageOpen.value = !deckManageOpen.value;
+  if (deckManageOpen.value) {
+    deckMoreOpen.value = false;
     void loadLayouts();
   }
-}
-function toggleAddCards() {
-  deckAddOpen.value = !deckAddOpen.value;
-  if (deckAddOpen.value) deckLayoutOpen.value = false;
 }
 async function onApplyLayout(id: number) {
   if (layoutBusy.value) return;
   layoutBusy.value = true;
   try {
     const ok = await bench.applyNamedLayout(id);
-    deckLayoutOpen.value = false;
+    deckManageOpen.value = false;
     flash(ok ? "已切换到该布局" : "布局不可用");
   } finally {
     layoutBusy.value = false;
@@ -216,7 +217,7 @@ async function onDeleteLayout(id: number) {
 }
 function onAddCard(id: CardId) {
   bench.open(id);
-  deckAddOpen.value = false;
+  deckManageOpen.value = false;
   flash("已添加卡片，可拖拽编排位置");
 }
 // 候选卡：全量卡（CARD_META 全集，含 Deck 专属卡）中未打开的部分
@@ -227,14 +228,21 @@ const candidateCards = computed(() =>
 const deckPopWrap = ref<HTMLElement | null>(null);
 function onDocPointer(e: PointerEvent) {
   const t = e.target as Node;
-  if (deckPopWrap.value && !deckPopWrap.value.contains(t)) {
-    deckLayoutOpen.value = false;
-    deckAddOpen.value = false;
+  const wraps = Array.isArray(deckPopWrap.value)
+    ? deckPopWrap.value
+    : deckPopWrap.value
+      ? [deckPopWrap.value]
+      : [];
+  if (wraps.every((w) => !w || !w.contains(t))) {
+    deckMoreOpen.value = false;
+    deckManageOpen.value = false;
   }
 }
 
 const status = ref<BrokerStatus | null>(null);
 const asset = ref<BrokerAsset | null>(null);
+// 模拟盘账户：与 PaperTrade / 模拟交易卡同源（SQLite paper_account/paper_position）
+const paper = usePaperStore();
 // Kill Switch 二次确认：首次点击进入 armed 态（4s 内再次点击才真正触发）
 const armed = ref(false);
 const busy = ref(false);
@@ -247,6 +255,8 @@ const positionPct = computed(() => {
   if (!a || !a.totalAsset || !a.marketValue) return null;
   return Math.min(100, Math.round((a.marketValue / a.totalAsset) * 100));
 });
+// 实盘启用判定：false 时资产条展示本地模拟盘账本
+const isLive = computed(() => status.value?.liveEnabled === true);
 
 function fmtMoney(v: number | undefined): string {
   return v === undefined
@@ -260,10 +270,23 @@ async function refresh() {
   } catch {
     status.value = null;
   }
-  try {
-    asset.value = await brokerQueryAsset();
-  } catch {
-    asset.value = null;
+  const live = status.value?.liveEnabled === true;
+  if (live) {
+    // 实盘模式：资产由券商侧回报（QMT sidecar），未回报时保持 "--"
+    try {
+      asset.value = await brokerQueryAsset();
+    } catch {
+      asset.value = null;
+    }
+  } else {
+    // 模拟模式：统一读本地模拟盘账本（与持仓表 / 模拟交易卡同源），
+    // 不再读 Rust 内存 mock 账户，避免「买了股票但资产条仍显示空账户」对不上。
+    asset.value = {
+      cash: paper.account.cash,
+      marketValue: paper.marketValue,
+      totalAsset: paper.totalAssets,
+      note: "模拟盘账户",
+    };
   }
 }
 
@@ -305,6 +328,8 @@ async function releaseKill() {
 }
 
 onMounted(() => {
+  // 模拟盘账本初始化（幂等；PaperTrade 已加载时无副作用）
+  if (!paper.loaded) void paper.load();
   refresh();
   // 轻量轮询账户 / 开关状态（Kill Switch 状态由券商侧事件驱动，轮询兜底）
   tick = setInterval(refresh, 8000);
@@ -329,38 +354,57 @@ onBeforeUnmount(() => {
         <div class="da-k">可用资金</div>
         <div class="da-v">{{ fmtMoney(asset?.cash) }}</div>
       </div>
-      <div class="da-cell">
-        <div class="da-k">持仓市值</div>
-        <div class="da-v">{{ fmtMoney(asset?.marketValue) }}</div>
-      </div>
-      <div class="da-cell">
-        <div class="da-k">仓位占比</div>
-        <div class="da-v">{{ positionPct === null ? "--" : positionPct + "%" }}</div>
-      </div>
-      <div class="da-status">
-        <span class="da-dot" :class="{ on: status?.connected }"></span>
-        {{ status?.connected ? "QMT 已连接" : "未连接" }}
-        <span class="da-acct">· {{ status?.accountId || "模拟账户" }}</span>
+      <!-- 方案 C：次要资产 + 账户状态收进「更多」浮层 -->
+      <div ref="deckPopWrap" class="dk-pop-wrap">
+        <button class="dk-act" type="button" :class="{ on: deckMoreOpen }" @click="toggleMore">
+          更多 ▾
+        </button>
+        <div v-if="deckMoreOpen" class="dk-more-pop">
+          <div class="dm-cell">
+            <div class="da-k">持仓市值</div>
+            <div class="dm-v">{{ fmtMoney(asset?.marketValue) }}</div>
+          </div>
+          <div class="dm-cell">
+            <div class="da-k">仓位占比</div>
+            <div class="dm-v">{{ positionPct === null ? "--" : positionPct + "%" }}</div>
+          </div>
+          <div class="dm-cell">
+            <div class="da-k">账户状态</div>
+            <div class="dm-v dm-status">
+              <template v-if="isLive">
+                <span class="da-dot" :class="{ on: status?.connected }"></span>
+                {{ status?.connected ? "QMT 已连接" : "QMT 未连接" }}
+                <span class="da-acct">· {{ status?.accountId }}</span>
+              </template>
+              <template v-else>
+                <span class="da-dot on"></span>
+                本地模拟盘 · 账本就绪
+              </template>
+            </div>
+          </div>
+          <div class="dm-cell">
+            <div class="da-k">Kill Switch</div>
+            <div class="dm-v" :style="{ color: status?.killSwitch ? '#f26a75' : '' }">
+              {{ status?.killSwitch ? "已触发 · 通道断开" : "未触发" }}
+            </div>
+          </div>
+        </div>
       </div>
       <div class="da-spacer"></div>
       <Transition name="fade">
         <div v-if="barMsg" class="da-msg">{{ barMsg }}</div>
       </Transition>
-      <!-- 方案 G · P2：多套布局 + 自定义卡片增删 -->
+      <!-- 方案 C：布局 + 卡片 + 保存/恢复 收进「工作台管理」抽屉 -->
       <div ref="deckPopWrap" class="dk-pop-wrap">
-        <button class="dk-act" type="button" :class="{ on: deckLayoutOpen }" @click="toggleLayouts">
-          布局 ▾
+        <button class="dk-act dk-mgmt" type="button" :class="{ on: deckManageOpen }" @click="toggleManage">
+          工作台管理 ▾
         </button>
-        <button class="dk-act" type="button" :class="{ on: deckAddOpen }" @click="toggleAddCards">
-          + 卡片
-        </button>
-        <!-- 布局抽屉：切换 / 管理命名布局 -->
-        <div v-if="deckLayoutOpen" class="dk-pop">
+        <div v-if="deckManageOpen" class="dk-pop dk-pop-mgmt">
           <div class="dk-pop-head">
-            <span>命名布局</span>
+            <span>布局</span>
             <button class="dk-pop-new" type="button" @click="onSaveLayout">保存新布局…</button>
           </div>
-          <div v-if="!layouts.length" class="dk-pop-empty">暂无命名布局，点「保存布局」创建一套</div>
+          <div v-if="!layouts.length" class="dk-pop-empty">暂无命名布局，点「保存新布局」创建一套</div>
           <div v-for="l in layouts" :key="l.id" class="dk-pop-item">
             <template v-if="renameOf === l.id">
               <input
@@ -381,6 +425,16 @@ onBeforeUnmount(() => {
               <button class="dk-pop-del" type="button" title="删除该布局" @click="onDeleteLayout(l.id)">×</button>
             </template>
           </div>
+          <div class="dk-pop-head dk-pop-sec"><span>卡片</span></div>
+          <div v-if="!candidateCards.length" class="dk-pop-empty">所有卡片都已打开</div>
+          <div v-for="id in candidateCards" :key="id" class="dk-pop-item">
+            <button class="dk-pop-name" type="button" @click="onAddCard(id)">
+              ＋ {{ CARD_META[id].title }}
+            </button>
+          </div>
+          <div class="dk-pop-foot">
+            <button class="dk-act dk-pop-ok" type="button" @click="onResetLayout">恢复默认布局</button>
+          </div>
         </div>
         <!-- 保存布局弹层：自定义命名 -->
         <div v-if="saveDlg" class="dk-pop dk-pop-save">
@@ -398,23 +452,7 @@ onBeforeUnmount(() => {
             <button class="dk-act" type="button" @click="saveDlg = false">取消</button>
           </div>
         </div>
-        <!-- 添加卡抽屉：全量卡中未打开的部分 -->
-        <div v-if="deckAddOpen" class="dk-pop">
-          <div class="dk-pop-head"><span>添加卡片</span></div>
-          <div v-if="!candidateCards.length" class="dk-pop-empty">所有卡片都已打开</div>
-          <div v-for="id in candidateCards" :key="id" class="dk-pop-item">
-            <button class="dk-pop-name" type="button" @click="onAddCard(id)">
-              {{ CARD_META[id].title }}
-            </button>
-          </div>
-        </div>
       </div>
-      <button class="dk-act" type="button" title="把当前编排保存为命名布局" @click="onSaveLayout">
-        保存布局
-      </button>
-      <button class="dk-act" type="button" title="清除全部面板位置，回到场景出厂（尺寸自定义保留）" @click="onResetLayout">
-        恢复默认布局
-      </button>
       <button
         v-if="status?.killSwitch"
         class="dk-release"
@@ -529,14 +567,6 @@ onBeforeUnmount(() => {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text, #e6ecf5);
-}
-.da-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-dim, #7c8798);
-  white-space: nowrap;
 }
 .da-dot {
   width: 8px;
@@ -762,6 +792,60 @@ onBeforeUnmount(() => {
 .dk-pop-ok {
   border-color: #e8c878;
   color: #e8c878;
+}
+/* 方案 C：工作台管理抽屉 + 资产「更多」浮层 */
+.dk-mgmt {
+  color: #e8c878;
+  border-color: rgba(232, 200, 120, 0.5);
+}
+.dk-mgmt:hover,
+.dk-mgmt.on {
+  background: rgba(232, 200, 120, 0.12);
+  border-color: #e8c878;
+  color: #e8c878;
+}
+.dk-pop-mgmt {
+  min-width: 320px;
+  max-height: 380px;
+}
+.dk-pop-sec {
+  margin-top: 10px;
+}
+.dk-pop-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 4px 2px;
+  border-top: 1px solid var(--border, #222a38);
+  margin-top: 4px;
+}
+.dk-more-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 320px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border, #2a3344);
+  border-radius: 10px;
+  background: var(--bg-panel, #15181f);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.dm-v {
+  margin-top: 2px;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #e6ecf5);
+}
+.dm-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 400;
 }
 /* 磁贴拖拽层：幽灵占位 + 磁吸辅助线 */
 .dk-drag-ghost {
