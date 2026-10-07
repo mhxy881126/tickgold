@@ -42,7 +42,7 @@ import Performance from "./Performance.vue";
 import type { CardId } from "../composables/useWorkbench";
 
 const props = defineProps<{ id: CardId; selected: string | null }>();
-defineEmits<{ select: [code: string]; sector: [name: string, kind: string] }>();
+defineEmits<{ select: [code: string]; sector: [name: string, kind: string]; switchCard: [cardId: string] }>();
 
 // 单卡崩溃边界：捕获子卡片渲染错误，显示兜底而非整屏白屏（不影响其他卡片）
 const crashed = ref(false);

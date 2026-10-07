@@ -166,7 +166,7 @@ function collectFromStore(cardId: CardId): TargetPoint[] {
       // 日志显示具体股票
       const topStock = list[0];
       const topQ = topStock ? quotes.map[topStock.code] : null;
-      addLog(`✅ 自选股 5 只 | ${topStock?.name} ${topQ?.price?.toFixed(2)} ${topQ?.pct >= 0 ? "+" : ""}${topQ?.pct?.toFixed(1)}%`, "info");
+      addLog(`✅ 自选股 5 只 | ${topStock?.name} ${topQ?.price?.toFixed(2)} ${(topQ?.pct ?? 0) >= 0 ? "+" : ""}${topQ?.pct?.toFixed(1)}%`, "info");
       break;
 
     case "rank":
@@ -213,7 +213,7 @@ function collectFromStore(cardId: CardId): TargetPoint[] {
       const stats = [
         { label: `涨停 ${marketSentiment.value.limitUp} 家`, x: 200, y: 200 },
         { label: `跌停 ${marketSentiment.value.limitDown} 家`, x: 350, y: 200 },
-        { label: `最高板 ${marketSentiment.value.maxStreak} 板`, x: 500, y: 200 },
+        { label: `最高板 ${marketSentiment.value.maxBoard} 板`, x: 500, y: 200 },
       ];
       stats.forEach((s, i) => {
         points.push({
