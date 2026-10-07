@@ -94,7 +94,7 @@ function retry() {
     <CalcTools v-else-if="id === 'calc'" />
     <DataExport v-else-if="id === 'export'" :code="selected" />
     <DragonTiger v-else-if="id === 'dragon'" @select="$emit('select', $event)" />
-    <ThemeLibrary v-else-if="id === 'themelib'" />
+    <ThemeLibrary v-else-if="id === 'themelib'" @select="$emit('select', $event)" />
     <TradeTape v-else-if="id === 'trades'" :code="selected" />
     <AiAssistant v-else-if="id === 'ai'" />
     <AiReview v-else-if="id === 'review'" />

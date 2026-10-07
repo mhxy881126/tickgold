@@ -381,6 +381,10 @@ export async function fetchAuction(): Promise<AuctionData> {
   return await invoke<AuctionData>("get_auction");
 }
 
+export async function fetchAuctionPage(page: number, asc: number): Promise<AuctionStock[]> {
+  return await invoke<AuctionStock[]>("get_auction_page", { page, asc });
+}
+
 // ===== 涨停池 / 炸板池明细 =====
 export interface ZtStock {
   code: string;

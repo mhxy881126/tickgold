@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>TickGold · 蜂群盯盘工作台原型</title>
+<style>
+/* ===== 基础变量 ===== */
+:root{
+  --bg:#0a0e1a;
+  --bg-2:#0f1525;
+  --panel:rgba(20,28,48,.55);
+  --panel-solid:#141c30;
+  --line:rgba(120,180,255,.12);
+  --line-bright:rgba(120,220,255,.45);
+  --cyan:#4fd8e8;
+  --cyan-dim:rgba(79,216,232,.35);
+  --red:#ff5b6a;
+  --green:#22c55e;
+  --amber:#f5a623;
+  --purple:#a86bff;
+  --text:#e6edf7;
+  --text-dim:#7a8aa5;
+  --text-faint:#4a5878;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+  font-family:"PingFang SC","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+  font-size:13px;user-select:none}
+.num{font-family:"SF Mono","JetBrains Mono",Consolas,monospace;font-variant-numeric:tabular-nums}
+
+/* ===== 顶栏 ===== */
+#topbar{position:fixed;top:0;left:0;right:0;height:48px;display:flex;align-items:center;
+  padding:0 16px;background:linear-gradient(180deg,rgba(10,14,26,.95),rgba(10,14,26,.7));
+  backdrop-filter:blur(10px);border-bottom:1px solid var(--line);z-index:100}
+.brand{font-weight:700;font-size:16px;letter-spacing:.5px;color:#fff;margin-right:28px}
+.brand span{color:var(--cyan)}
+.sessions{display:flex;gap:4px}
+.sess-tab{padding:6px 14px;border-radius:6px;cursor:pointer;color:var(--text-dim);font-size:12px;
+  border:1px solid transparent;transition:all .2s}
+.sess-tab:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.sess-tab.active{color:var(--cyan);background:rgba(79,216,232,.08);border-color:var(--cyan-dim)}
+.search{flex:1;max-width:380px;margin:0 auto;position:relative}
+.search input{width:100%;height:30px;background:rgba(255,255,255,.05);border:1px solid var(--line);
+  border-radius:15px;padding:0 14px 0 32px;color:var(--text);font-size:12px;outline:none}
+.search input:focus{border-color:var(--cyan-dim)}
+.search::before{content:"🔍";position:absolute;left:11px;top:6px;font-size:12px;opacity:.5}
+.top-right{display:flex;align-items:center;gap:14px;margin-left:auto}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+.clock{font-size:13px;color:var(--text);letter-spacing:1px}
+
+/* ===== 左侧图标栏 ===== */
+#leftnav{position:fixed;left:0;top:48px;bottom:0;width:56px;background:rgba(15,21,37,.7);
+  border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;
+  padding:10px 0;gap:4px;z-index:90;backdrop-filter:blur(10px)}
+.nav-item{width:44px;height:44px;border-radius:8px;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;cursor:pointer;color:var(--text-dim);transition:all .2s;position:relative}
+.nav-item:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.nav-item.active{color:var(--cyan);background:rgba(79,216,232,.08)}
+.nav-item.active::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:2px;
+  background:var(--cyan);border-radius:0 2px 2px 0}
+.nav-item svg{width:18px;height:18px}
+.nav-item .lbl{font-size:10px;margin-top:2px}
+
+/* ===== 主画布层 ===== */
+#stage{position:fixed;left:56px;right:200px;top:48px;bottom:0;overflow:hidden}
+#network{position:absolute;inset:0;width:100%;height:100%}
+
+/* ===== 右侧卡片导航 ===== */
+#rightnav{position:fixed;right:0;top:48px;bottom:0;width:200px;background:rgba(15,21,37,.7);
+  border-left:1px solid var(--line);padding:14px;overflow-y:auto;z-index:90;backdrop-filter:blur(10px)}
+.rn-title{font-size:12px;color:var(--text-dim);margin-bottom:10px;display:flex;justify-content:space-between}
+.rn-group{margin-bottom:12px}
+.rn-group-head{font-size:12px;color:var(--text);padding:6px 8px;border-radius:6px;cursor:pointer;
+  display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,.03)}
+.rn-group-head:hover{background:rgba(255,255,255,.06)}
+.rn-group-head .cnt{font-size:10px;color:var(--text-faint)}
+.rn-items{padding:4px 0 4px 14px}
+.rn-item{font-size:11px;color:var(--text-dim);padding:4px 6px;cursor:pointer;border-radius:4px;
+  display:flex;align-items:center;gap:6px}
+.rn-item:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.rn-item::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--text-faint)}
+
+/* ===== 卡片通用 ===== */
+.card{position:absolute;background:var(--panel);backdrop-filter:blur(14px);
+  border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+  box-shadow:0 8px 32px rgba(0,0,0,.4);cursor:grab;transition:box-shadow .2s,border-color .2s,opacity .3s;
+  min-width:180px}
+.card:hover{border-color:var(--line-bright)}
+.card.dragging{cursor:grabbing;z-index:50;box-shadow:0 20px 60px rgba(79,216,232,.25)}
+.card.selected{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan),0 12px 40px rgba(79,216,232,.3)}
+.card-title{font-size:11px;color:var(--text-dim);margin-bottom:6px;display:flex;justify-content:space-between;
+  align-items:center}
+.card-title .ttl{font-weight:500}
+.card-handle{position:absolute;top:6px;right:6px;display:none;gap:4px}
+body.editing .card{border-style:dashed}
+body.editing .card:hover{border-color:var(--cyan)}
+body.editing .card-handle{display:flex}
+.handle-btn{width:18px;height:18px;border-radius:4px;background:rgba(255,255,255,.08);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:10px;color:var(--text-dim)}
+.handle-btn:hover{background:var(--cyan);color:#000}
+.big-num{font-size:26px;font-weight:700;line-height:1.1}
+.up{color:var(--red)}
+.down{color:var(--green)}
+.tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:6px}
+.tag.up{background:rgba(255,91,106,.15);color:var(--red)}
+.tag.down{background:rgba(34,197,94,.15);color:var(--green)}
+
+/* 卡片内小图表 */
+.mini-chart{width:100%;height:50px;margin-top:6px}
+.kv-row{display:flex;justify-content:space-between;font-size:11px;padding:2px 0;color:var(--text-dim)}
+.kv-row b{color:var(--text);font-weight:500}
+
+/* ===== 编排模式工具条 ===== */
+#editToolbar{position:fixed;top:58px;left:50%;transform:translateX(-50%);
+  background:var(--panel-solid);border:1px solid var(--cyan-dim);border-radius:24px;
+  padding:6px 14px;display:none;align-items:center;gap:12px;z-index:200;font-size:12px;
+  box-shadow:0 8px 32px rgba(0,0,0,.5)}
+body.editing #editToolbar{display:flex}
+#editToolbar button{background:transparent;border:1px solid var(--line);color:var(--text);
+  padding:4px 12px;border-radius:14px;cursor:pointer;font-size:12px}
+#editToolbar button:hover{border-color:var(--cyan);color:var(--cyan)}
+#editToolbar button.primary{background:var(--cyan);color:#000;border-color:var(--cyan);font-weight:600}
+#gridOverlay{position:absolute;inset:0;display:none;pointer-events:none;
+  background-image:linear-gradient(rgba(79,216,232,.07) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(79,216,232,.07) 1px,transparent 1px);
+  background-size:40px 40px}
+body.editing #gridOverlay{display:block}
+
+/* ===== 浮层 ===== */
+.overlay{position:fixed;background:var(--panel-solid);border:1px solid var(--line);border-radius:12px;
+  box-shadow:0 20px 60px rgba(0,0,0,.6);z-index:300;display:none;backdrop-filter:blur(20px)}
+.overlay.show{display:block}
+
+/* AI 助手 */
+#aiPanel{right:220px;bottom:20px;width:360px;max-height:480px;display:none;flex-direction:column;
+  border-color:var(--cyan-dim)}
+#aiPanel.show{display:flex}
+.ai-head{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;
+  align-items:center}
+.ai-body{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+.ai-msg{max-width:88%;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.6}
+.ai-msg.user{align-self:flex-end;background:rgba(79,216,232,.15);color:var(--cyan)}
+.ai-msg.bot{align-self:flex-start;background:rgba(255,255,255,.06)}
+.ai-suggest{margin-top:6px;display:flex;flex-direction:column;gap:6px}
+.ai-suggest .mini-card{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:8px;
+  padding:6px 10px;font-size:11px;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+.ai-suggest .mini-card:hover{border-color:var(--cyan)}
+.ai-suggest .mini-card button{background:var(--cyan);color:#000;border:none;border-radius:4px;
+  padding:2px 8px;font-size:10px;cursor:pointer}
+.ai-input{padding:10px 12px;border-top:1px solid var(--line);display:flex;gap:8px}
+.ai-input input{flex:1;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:16px;
+  padding:6px 12px;color:var(--text);font-size:12px;outline:none}
+
+/* 预警 */
+#alertPanel{top:60px;right:220px;width:320px;border-color:var(--red);display:none;
+  box-shadow:0 12px 40px rgba(255,91,106,.25)}
+#alertPanel.show{display:block;animation:slideIn .3s ease}
+@keyframes slideIn{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}
+.alert-head{padding:10px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,91,106,.2)}
+.alert-head .bell{color:var(--red);font-size:16px}
+.alert-body{padding:12px 14px;font-size:12px;line-height:1.6}
+.alert-actions{padding:10px 14px;display:flex;gap:8px;border-top:1px solid var(--line)}
+.alert-actions button{flex:1;padding:6px;border-radius:6px;cursor:pointer;font-size:12px;border:none}
+.alert-actions .primary{background:var(--red);color:#fff}
+.alert-actions .ghost{background:transparent;color:var(--text-dim);border:1px solid var(--line)}
+
+/* 布局管理 */
+#layoutPanel{top:60px;right:220px;width:340px;display:none;padding:14px}
+#layoutPanel.show{display:block}
+.layout-item{display:flex;gap:10px;padding:10px;border:1px solid var(--line);border-radius:8px;
+  margin-bottom:8px;cursor:pointer;align-items:center}
+.layout-item:hover{border-color:var(--cyan)}
+.layout-item.current{border-color:var(--cyan);background:rgba(79,216,232,.06)}
+.layout-thumb{width:80px;height:50px;background:rgba(255,255,255,.04);border-radius:4px;flex-shrink:0;
+  position:relative;overflow:hidden}
+.layout-meta{flex:1}
+.layout-meta .name{font-size:13px;margin-bottom:2px}
+.layout-meta .sub{font-size:10px;color:var(--text-dim)}
+
+/* 右下角状态 */
+#statusBar{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);
+  display:flex;gap:24px;font-size:11px;color:var(--text-faint);z-index:80;letter-spacing:1px}
+
+/* 提示气泡 */
+#toast{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);
+  background:var(--panel-solid);border:1px solid var(--cyan-dim);padding:8px 18px;border-radius:20px;
+  font-size:12px;color:var(--cyan);z-index:400;display:none}
+#toast.show{display:block;animation:slideUp .3s ease}
+@keyframes slideUp{from{transform:translate(-50%,10px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
+
+/* 时段特定模式 */
+body.minimal .card{opacity:.25;pointer-events:none}
+body.minimal #leftnav{width:40px}
+body.minimal #rightnav{display:none}
+body.minimal #stage{right:0}
+body.focus-mode .card:not(.focused){opacity:.2;pointer-events:none;filter:blur(1px)}
+body.focus-mode #network{opacity:.5}
+
+/* 聚焦卡片 — 平滑缩放动画 */
+.card{transition:left .45s cubic-bezier(.2,.8,.2,1),top .45s cubic-bezier(.2,.8,.2,1),
+  width .45s cubic-bezier(.2,.8,.2,1),height .45s cubic-bezier(.2,.8,.2,1),
+  transform .45s cubic-bezier(.2,.8,.2,1),opacity .3s,border-color .2s,box-shadow .2s,filter .3s}
+.card.focused{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan),0 30px 100px rgba(79,216,232,.4);
+  z-index:60 !important;transform:scale(1.35)}
+body.focus-mode .card:not(.focused){opacity:.15;filter:blur(2px);pointer-events:none}
+#stage{transition:filter .3s}
+body.focus-mode #stage{filter:brightness(.6)}
+</style>
+</head>
+<body>
+
+<!-- ===== 顶栏 ===== -->
+<div id="topbar">
+  <div class="brand">Tick<span>Gold</span></div>
+  <div class="sessions">
+    <div class="sess-tab" data-sess="auction">开盘竞价</div>
+    <div class="sess-tab active" data-sess="intraday">盘中盯盘</div>
+    <div class="sess-tab" data-sess="postclose">盘后复盘</div>
+    <div class="sess-tab" data-sess="minimal">极简看盘</div>
+  </div>
+  <div class="search"><input placeholder="搜索代码 / 名称 / 拼音"></div>
+  <div class="top-right">
+    <span style="font-size:11px;color:var(--text-dim)">实时</span>
+    <div class="live-dot"></div>
+    <div class="clock num" id="clock">14:02:21</div>
+  </div>
+</div>
+
+<!-- ===== 左侧导航 ===== -->
+<div id="leftnav">
+  <div class="nav-item active" data-nav="market">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>
+    <span class="lbl">大盘</span>
+  </div>
+  <div class="nav-item" data-nav="watch">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    <span class="lbl">盯盘</span>
+  </div>
+  <div class="nav-item" data-nav="emo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 017 7c0 3-2 5-3 7h-8c-1-2-3-4-3-7a7 7 0 017-7z"/></svg>
+    <span class="lbl">情绪</span>
+  </div>
+  <div class="nav-item" data-nav="sector">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    <span class="lbl">板块</span>
+  </div>
+  <div class="nav-item" data-nav="stock">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>
+    <span class="lbl">个股</span>
+  </div>
+  <div class="nav-item" data-nav="trade">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+    <span class="lbl">交易</span>
+  </div>
+  <div class="nav-item" data-nav="ai">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+    <span class="lbl">AI</span>
+  </div>
+  <div class="nav-item" data-nav="cmd">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+    <span class="lbl">命令</span>
+  </div>
+</div>
+
+<!-- ===== 主舞台 ===== -->
+<div id="stage">
+  <canvas id="network"></canvas>
+  <div id="gridOverlay"></div>
+  <!-- 卡片挂载点 -->
+  <div id="cardsLayer" style="position:absolute;inset:0"></div>
+</div>
+
+<!-- ===== 右侧导航 ===== -->
+<div id="rightnav">
+  <div class="rn-title"><span>卡片导航</span><span style="cursor:pointer" id="btnLayouts">布局</span></div>
+  <div class="rn-group">
+    <div class="rn-group-head">大盘总览 <span class="cnt">2</span></div>
+    <div class="rn-items">
+      <div class="rn-item" data-card="idx">大盘指数</div>
+      <div class="rn-item" data-card="fav">自选股</div>
+    </div>
+  </div>
+  <div class="rn-group">
+    <div class="rn-group-head">盯盘模式 <span class="cnt">3</span></div>
+    <div class="rn-items">
+      <div class="rn-item" data-card="timeline">复盘时间线</div>
+      <div class="rn-item" data-card="lhb">龙虎榜</div>
+      <div class="rn-item" data-card="heat">热力矩阵</div>
+    </div>
+  </div>
+  <div class="rn-group">
+    <div class="rn-group-head">情绪异动 <span class="cnt">3</span></div>
+    <div class="rn-items">
+      <div class="rn-item" data-card="limitup">涨停雷达</div>
+      <div class="rn-item" data-card="rank">短线精灵</div>
+      <div class="rn-item" data-card="ai">盘中快讯</div>
+    </div>
+  </div>
+  <div class="rn-group">
+    <div class="rn-group-head">板块题材 <span class="cnt">2</span></div>
+    <div class="rn-items">
+      <div class="rn-item" data-card="heat">板块热力图</div>
+      <div class="rn-item" data-card="rank">题材库</div>
+    </div>
+  </div>
+  <div class="rn-group">
+    <div class="rn-group-head">个股行情 <span class="cnt">1</span></div>
+    <div class="rn-items">
+      <div class="rn-item" data-card="stock">善水科技</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 编排工具条 ===== -->
+<div id="editToolbar">
+  <span style="color:var(--text-dim)" id="selInfo">编排模式 · 拖拽卡片自由布局</span>
+  <button id="btnAutoCluster">自动聚簇</button>
+  <button id="btnSaveLayout">保存布局</button>
+  <button class="primary" id="btnDoneEdit">完成编排</button>
+</div>
+
+<!-- ===== AI 助手浮窗 ===== -->
+<div id="aiPanel" class="overlay">
+  <div class="ai-head"><b>AI 助手</b><span style="cursor:pointer" onclick="closeAI()">✕</span></div>
+  <div class="ai-body">
+    <div class="ai-msg user">今天光伏板块为什么异动？</div>
+    <div class="ai-msg bot">今日光伏板块异动主要由两方面驱动：① 午后政策面释放硅料价格见底信号；② 龙头善水科技封板带动板块情绪。当前板块内 12 只个股涨幅超过 5%。
+      <div class="ai-suggest">
+        <div class="mini-card"><span>光伏板块资金流</span><button>+ 加入</button></div>
+        <div class="mini-card"><span>善水科技盘口</span><button>+ 加入</button></div>
+        <div class="mini-card"><span>板块联动股</span><button>+ 加入</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="ai-input"><input placeholder="问问今天的市场…"><button onclick="toggleAI()" style="background:var(--cyan);border:none;border-radius:14px;padding:4px 12px;cursor:pointer;color:#000">发送</button></div>
+</div>
+
+<!-- ===== 预警浮窗 ===== -->
+<div id="alertPanel" class="overlay">
+  <div class="alert-head"><span class="bell">🔔</span><b style="color:var(--red)">涨停雷达预警</b></div>
+  <div class="alert-body">
+    <div style="font-size:14px;margin-bottom:4px">善水科技 301190 触及涨停</div>
+    <div class="num" style="color:var(--text-dim)">现价 35.93 <span class="up">+20.01%</span> · 封单 2.96万手</div>
+  </div>
+  <div class="alert-actions">
+    <button class="primary" onclick="closeAlert()">查看详情</button>
+    <button class="ghost" onclick="closeAlert()">忽略</button>
+  </div>
+</div>
+
+<!-- ===== 布局管理 ===== -->
+<div id="layoutPanel" class="overlay">
+  <div style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+    <b>布局方案</b><span style="cursor:pointer;color:var(--text-dim)" onclick="closeLayout()">✕</span>
+  </div>
+  <div class="layout-item current" data-layout="watch">
+    <div class="layout-thumb">
+      <div style="position:absolute;left:8px;top:8px;width:18px;height:12px;background:rgba(79,216,232,.5);border-radius:1px"></div>
+      <div style="position:absolute;left:30px;top:8px;width:14px;height:12px;background:rgba(255,91,106,.5);border-radius:1px"></div>
+      <div style="position:absolute;left:50px;top:8px;width:22px;height:12px;background:rgba(255,91,106,.4);border-radius:1px"></div>
+      <div style="position:absolute;left:8px;top:24px;width:28px;height:16px;background:rgba(255,91,106,.6);border-radius:1px"></div>
+      <div style="position:absolute;left:40px;top:24px;width:16px;height:16px;background:rgba(245,166,35,.5);border-radius:1px"></div>
+      <div style="position:absolute;left:8px;top:42px;width:14px;height:8px;background:rgba(168,107,255,.5);border-radius:1px"></div>
+      <div style="position:absolute;left:26px;top:42px;width:14px;height:8px;background:rgba(168,107,255,.4);border-radius:1px"></div>
+      <div style="position:absolute;left:44px;top:42px;width:20px;height:8px;background:rgba(245,166,35,.4);border-radius:1px"></div>
+    </div>
+    <div class="layout-meta"><div class="name">盯盘布局</div><div class="sub">当前使用 · 8 张卡片</div></div>
+  </div>
+  <div class="layout-item" data-layout="review">
+    <div class="layout-thumb">
+      <div style="position:absolute;left:6px;top:6px;width:12px;height:9px;background:rgba(79,216,232,.5);border-radius:1px"></div>
+      <div style="position:absolute;left:22px;top:6px;width:12px;height:9px;background:rgba(79,216,232,.4);border-radius:1px"></div>
+      <div style="position:absolute;left:38px;top:6px;width:12px;height:9px;background:rgba(255,91,106,.5);border-radius:1px"></div>
+      <div style="position:absolute;left:54px;top:6px;width:18px;height:9px;background:rgba(255,91,106,.4);border-radius:1px"></div>
+      <div style="position:absolute;left:6px;top:20px;width:20px;height:12px;background:rgba(255,91,106,.5);border-radius:1px"></div>
+      <div style="position:absolute;left:30px;top:20px;width:16px;height:12px;background:rgba(245,166,35,.5);border-radius:1px"></div>
+      <div style="position:absolute;left:50px;top:20px;width:22px;height:12px;background:rgba(245,166,35,.4);border-radius:1px"></div>
+      <div style="position:absolute;left:6px;top:36px;width:14px;height:9px;background:rgba(168,107,255,.5);border-radius:1px"></div>
+      <div style="position:absolute;left:24px;top:36px;width:14px;height:9px;background:rgba(168,107,255,.4);border-radius:1px"></div>
+      <div style="position:absolute;left:42px;top:36px;width:12px;height:9px;background:rgba(79,216,232,.4);border-radius:1px"></div>
+      <div style="position:absolute;left:58px;top:36px;width:12px;height:9px;background:rgba(79,216,232,.3);border-radius:1px"></div>
+      <div style="position:absolute;left:6px;top:48px;width:64px;height:6px;background:rgba(255,255,255,.1);border-radius:1px"></div>
+    </div>
+    <div class="layout-meta"><div class="name">复盘布局</div><div class="sub">12 张卡片 · 上次 09:30</div></div>
+  </div>
+  <div class="layout-item" data-layout="zen">
+    <div class="layout-thumb">
+      <div style="position:absolute;left:6px;top:20px;width:14px;height:10px;background:rgba(79,216,232,.5);border-radius:1px"></div>
+      <div style="position:absolute;left:34px;top:8px;width:14px;height:10px;background:rgba(255,91,106,.5);border-radius:1px"></div>
+      <div style="position:absolute;left:56px;top:30px;width:16px;height:10px;background:rgba(255,91,106,.4);border-radius:1px"></div>
+    </div>
+    <div class="layout-meta"><div class="name">极简布局</div><div class="sub">3 张卡片 · 上次 14:00</div></div>
+  </div>
+  <div style="border-top:1px solid var(--line);padding-top:10px;margin-top:6px;display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:11px;color:var(--text-dim)">将当前编排保存为新布局</span>
+    <button style="background:var(--cyan);border:none;color:#000;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px">+ 保存</button>
+  </div>
+</div>
+
+<!-- ===== 底部状态 ===== -->
+<div id="statusBar">
+  <span>活跃节点 <span class="num" id="statNodes">68</span></span>
+  <span>联动边 <span class="num" id="statEdges">214</span></span>
+  <span id="statSession">盘中盯盘</span>
+</div>
+
+<div id="toast">拖拽卡片自由编排 · 松手自动对齐网格</div>
+
+<script>
+/* ============================================================
+   蜂群节点网络 — Canvas （星云辉光版）
+   ============================================================ */
+const canvas=document.getElementById('network');
+const ctx=canvas.getContext('2d');
+let W,H,nodes=[],edges=[],dust=[];
+// 四簇 = 真实行业板块
+const CLUSTERS=[
+  {cx:.25,cy:.32,color:'#4fd8e8',r:140,n:44,name:'科技'},   // 青蓝 左上
+  {cx:.75,cy:.30,color:'#ff9a4d',r:140,n:44,name:'金融'},   // 橙红 右上
+  {cx:.25,cy:.72,color:'#b06bff',r:130,n:38,name:'消费'},   // 紫   左下
+  {cx:.75,cy:.72,color:'#f5a623',r:140,n:44,name:'周期'},   // 琥珀 右下
+];
+const CENTER={x:.5,y:.55};
+let morphMode=0;  // 0=四簇 1=放射 2=环形 3=螺旋
+function resize(){
+  const r=canvas.parentElement.getBoundingClientRect();
+  W=canvas.width=r.width;H=canvas.height=r.height;
+}
+function buildNodes(){
+  nodes=[];
+  nodes.push({x:CENTER.x*W,y:CENTER.y*H,tx:CENTER.x*W,ty:CENTER.y*H,r:8,color:'#4fd8e8',ci:-1,core:true,
+    phase:0,speed:.01,isCenter:true});
+  CLUSTERS.forEach((c,ci)=>{
+    for(let i=0;i<c.n;i++){
+      const ang=Math.random()*Math.PI*2;
+      const dist=Math.pow(Math.random(),.7)*c.r;
+      const isBig=Math.random()<.15;
+      nodes.push({
+        x:c.cx*W+Math.cos(ang)*dist,
+        y:c.cy*H+Math.sin(ang)*dist,
+        tx:c.cx*W+Math.cos(ang)*dist,
+        ty:c.cy*H+Math.sin(ang)*dist,
+        homeCx:c.cx*W,homeCy:c.cy*H,homeAng:ang,homeDist:dist,
+        z:.3+Math.random()*.7,
+        mktcap:Math.pow(Math.random(),2)*8+1,  // 市值权重 1-9（大票大）
+        chg:(Math.random()-.45)*6,            // 涨跌幅 %
+        flow:Math.random(),                    // 资金流向 0-1
+        alert:0,                               // 异动脉冲计时
+        r:isBig?3+Math.random()*2:1.5+Math.random()*1.5,
+        baseColor:c.color,ci,core:isBig,
+        phase:Math.random()*Math.PI*2,
+        speed:.005+Math.random()*.015,
+        seed:Math.random()*Math.PI*2
+      });
+    }
+  });
+  // 中心向每簇放射连线（始终存在）
+  edges=[];
+  const ci0=0;
+  nodes.forEach((n,i)=>{
+    if(n.isCenter)return;
+    const d=Math.hypot(n.x-nodes[0].x,n.y-nodes[0].y);
+    if(d<500)edges.push({a:0,b:i,w:.08+Math.random()*.12,radial:true});
+  });
+  dust=[];
+  for(let i=0;i<120;i++){
+    dust.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.5+.3,
+      a:Math.random()*.4,vy:.05+Math.random()*.2,ph:Math.random()*6.28});
+  }
+}
+
+// 根据形态计算每个节点的目标坐标
+function computeTargets(mode){
+  const cx=CENTER.x*W,cy=CENTER.y*H;
+  nodes.forEach((n,i)=>{
+    if(n.isCenter){n.tx=cx;n.ty=cy;return;}
+    if(mode===0){
+      // 四簇星团（回到home）
+      n.tx=n.homeCx+Math.cos(n.homeAng)*n.homeDist;
+      n.ty=n.homeCy+Math.sin(n.homeAng)*n.homeDist;
+    }else if(mode===1){
+      // 中心放射：从中心向外扇形扩散
+      const ang=n.homeAng+n.ci*.5;
+      const dist=200+Math.random()*250;
+      n.tx=cx+Math.cos(ang)*dist;
+      n.ty=cy+Math.sin(ang)*dist;
+    }else if(mode===2){
+      // 环形星系：绕中心成环
+      const total=nodes.length-1;
+      const ang=(i/total)*Math.PI*2+n.seed*.2;
+      const dist=180+((n.seed*50)%120);
+      n.tx=cx+Math.cos(ang)*dist;
+      n.ty=cy+Math.sin(ang)*dist*.6;
+    }else if(mode===3){
+      // 螺旋
+      const total=nodes.length-1;
+      const prog=i/total;
+      const ang=prog*Math.PI*6+n.seed;
+      const dist=80+prog*280;
+      n.tx=cx+Math.cos(ang)*dist;
+      n.ty=cy+Math.sin(ang)*dist*.7;
+    }
+  });
+}
+let t=0;
+function draw(){
+  t++;
+  // 纯黑背景
+  ctx.fillStyle='#050810';
+  ctx.fillRect(0,0,W,H);
+
+  // 角落星云雾团（像银河）
+  const nebs=[
+    {x:.15,y:.25,c:'rgba(79,216,232,.13)'},
+    {x:.85,y:.2,c:'rgba(255,154,77,.11)'},
+    {x:.15,y:.85,c:'rgba(176,107,255,.13)'},
+    {x:.85,y:.85,c:'rgba(245,166,35,.11)'},
+  ];
+  nebs.forEach(n=>{
+    const g=ctx.createRadialGradient(n.x*W,n.y*H,0,n.x*W,n.y*H,320);
+    g.addColorStop(0,n.c);g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  });
+
+  // 底部 3D 网格地平线
+  const hzY=H*.75;
+  ctx.strokeStyle='rgba(79,216,232,.07)';
+  ctx.lineWidth=.5;
+  for(let i=0;i<8;i++){
+    const y=hzY+i*i*1.2;
+    if(y>H)break;
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
+  }
+  for(let i=-10;i<=10;i++){
+    ctx.beginPath();
+    ctx.moveTo(W/2+i*30,hzY);
+    ctx.lineTo(W/2+i*200,H);
+    ctx.stroke();
+  }
+
+  // 斜向扫描线
+  ctx.strokeStyle='rgba(79,216,232,.05)';
+  const scanY=(t*.6)%(H+300)-150;
+  ctx.beginPath();ctx.moveTo(0,scanY);ctx.lineTo(W,scanY+120);ctx.stroke();
+
+  // 节点向目标位置平滑插值
+  nodes.forEach(n=>{
+    n.x+=(n.tx-n.x)*.03;
+    n.y+=(n.ty-n.y)*.03;
+  });
+
+  // 背景微尘（极少）
+  dust.forEach(d=>{
+    d.y-=d.vy;if(d.y<0)d.y=H;
+    const tw=.3+.5*Math.sin(t*.015+d.ph);
+    ctx.globalAlpha=d.a*tw*.5;
+    ctx.fillStyle='#6688aa';
+    ctx.beginPath();ctx.arc(d.x,d.y,d.r,0,Math.PI*2);ctx.fill();
+  });
+
+  // 簇内连线（重新建立，跟随节点当前位置）
+  if(!draw._clusterEdges||draw._clusterFrames--<=0){
+    draw._clusterFrames=30;  // 每30帧重建一次连线
+    draw._clusterEdges=[];
+    nodes.forEach((n,i)=>{
+      if(n.isCenter)return;
+      nodes.forEach((m,j)=>{
+        if(j<=i||m.isCenter)return;
+        const dx=n.x-m.x,dy=n.y-m.y,d=Math.hypot(dx,dy);
+        if(n.ci===m.ci&&d<90)draw._clusterEdges.push({a:i,b:j});
+      });
+    });
+  }
+  draw._clusterEdges.forEach(e=>{
+    const a=nodes[e.a],b=nodes[e.b];
+    const w=(a.flow+b.flow)*.5;  // 资金流向决定线粗
+    ctx.strokeStyle=a.baseColor;
+    ctx.globalAlpha=.15+w*.15;
+    ctx.lineWidth=.4+w*.8;
+    ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+    // 流动光点
+    const pulse=(t*.02+e.a*.37)%1;
+    const px=a.x+(b.x-a.x)*pulse,py=a.y+(b.y-a.y)*pulse;
+    ctx.globalAlpha=.6;
+    ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(px,py,.8+w,0,Math.PI*2);ctx.fill();
+  });
+
+  // 中心放射连线
+  edges.forEach(e=>{
+    const a=nodes[e.a],b=nodes[e.b];
+    ctx.strokeStyle=a.color;
+    ctx.globalAlpha=.12;
+    ctx.lineWidth=.4;
+    ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+  });
+
+  // 中心 — 全息旋转线框大脑
+  const c=nodes.find(n=>n.isCenter);
+  if(c){
+    c.phase+=c.speed;
+    const R=36;
+    // 大光晕
+    const glow=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,R*2.5);
+    glow.addColorStop(0,'rgba(79,216,232,.4)');
+    glow.addColorStop(1,'rgba(79,216,232,0)');
+    ctx.globalAlpha=.7;
+    ctx.fillStyle=glow;
+    ctx.beginPath();ctx.arc(c.x,c.y,R*2.5,0,Math.PI*2);ctx.fill();
+    // 旋转纬线（椭圆）
+    for(let i=0;i<5;i++){
+      const rot=c.phase*.5;
+      const scale=.2+i*.2;
+      ctx.globalAlpha=.5-i*.07;
+      ctx.strokeStyle='#4fd8e8';
+      ctx.lineWidth=.8;
+      ctx.beginPath();
+      ctx.ellipse(c.x,c.y,R*scale,R*scale*Math.abs(Math.sin(rot+i)),0,0,Math.PI*2);
+      ctx.stroke();
+    }
+    // 旋转经线
+    for(let i=0;i<4;i++){
+      const rot=c.phase*.5+i*Math.PI/4;
+      ctx.globalAlpha=.4;
+      ctx.strokeStyle='#4fd8e8';
+      ctx.lineWidth=.6;
+      ctx.beginPath();
+      for(let a=0;a<=Math.PI*2;a+=.1){
+        const px=c.x+Math.cos(a)*R*Math.cos(rot);
+        const py=c.y+Math.sin(a)*R;
+        if(a===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+      }
+      ctx.stroke();
+    }
+    // 中心亮核
+    ctx.globalAlpha=1;
+    ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(c.x,c.y,3,0,Math.PI*2);ctx.fill();
+    // 外层脉冲环
+    ctx.globalAlpha=.3;
+    ctx.strokeStyle='#4fd8e8';
+    const pr=(c.phase*8)%R;
+    ctx.beginPath();ctx.arc(c.x,c.y,pr,0,Math.PI*2);ctx.stroke();
+  }
+
+  // 簇节点 — 数据驱动
+  nodes.forEach(n=>{
+    if(n.isCenter)return;
+    n.phase+=n.speed;
+    const depth=n.z||.6;
+    const sizeMul=.6+n.mktcap*.25;  // 市值影响大小
+    const rr=n.r*depth*sizeMul;
+    // 涨跌幅决定颜色：红涨绿跌
+    let nodeColor;
+    if(n.chg>2)nodeColor='#ff4d4f';        // 大涨红
+    else if(n.chg>0)nodeColor='#ff7875';   // 小涨浅红
+    else if(n.chg>-2)nodeColor='#52c41a';  // 小跌浅绿
+    else nodeColor='#389e0d';              // 大跌深绿
+    // 异动脉冲衰减
+    if(n.alert>0)n.alert*=.95;
+    const pulse=.75+.25*Math.sin(n.phase)+n.alert*1.5;
+    // 外层光晕
+    const glow=ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,rr*7);
+    glow.addColorStop(0,nodeColor);
+    glow.addColorStop(.4,hexA(nodeColor,.25*depth+n.alert*.4));
+    glow.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.globalAlpha=.55*pulse*depth;
+    ctx.fillStyle=glow;
+    ctx.beginPath();ctx.arc(n.x,n.y,rr*7,0,Math.PI*2);ctx.fill();
+    // 亮核
+    ctx.globalAlpha=.9*depth+n.alert;
+    const core=ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,rr*1.3);
+    core.addColorStop(0,'#fff');
+    core.addColorStop(.5,nodeColor);
+    core.addColorStop(1,hexA(nodeColor,.3));
+    ctx.fillStyle=core;
+    ctx.beginPath();ctx.arc(n.x,n.y,rr*pulse,0,Math.PI*2);ctx.fill();
+    // 大票加标签
+    if(n.mktcap>6){
+      ctx.globalAlpha=.5;
+      ctx.fillStyle='#8aaacc';
+      ctx.font='10px sans-serif';
+      ctx.fillText('#'+n.ci*100+Math.floor(n.seed*9),n.x+rr+4,n.y+3);
+    }
+  });
+  ctx.globalAlpha=1;
+  requestAnimationFrame(draw);
+}
+function hexA(hex,a){
+  const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+window.addEventListener('resize',()=>{resize();buildNodes();});
+resize();buildNodes();draw();
+
+/* ============================================================
+   卡片数据与渲染
+   ============================================================ */
+const cardsLayer=document.getElementById('cardsLayer');
+const CARDS=[
+  {id:'idx',title:'大盘总览',x:60,y:80,w:200,h:90,cluster:0,
+    html:()=>`<div class="kv-row"><span>上证指数</span><b class="num up">3,187.42 +0.83%</b></div>
+              <div class="kv-row"><span>深证成指</span><b class="num up">10,452.18 +1.12%</b></div>`},
+  {id:'limitup',title:'涨停雷达',x:W-320<0?400:W-340,y:80,w:180,h:100,cluster:1,
+    html:()=>`<div class="big-num up num">47<span class="tag up">+12</span></div>
+              <div style="font-size:10px;color:var(--text-dim);margin-top:4px">较昨日 · 情绪偏热</div>`},
+  {id:'stock',title:'善水科技 301190',x:380,y:200,w:340,h:200,cluster:1,focusable:true,
+    html:()=>`<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">
+        <span class="big-num up num">35.93</span><span class="tag up">+20.01%</span></div>
+      <svg class="mini-chart" viewBox="0 0 320 50" preserveAspectRatio="none">
+        <polyline points="0,40 30,38 60,35 90,36 120,30 150,28 180,22 210,25 240,18 270,15 300,10 320,8"
+          fill="none" stroke="#ff5b6a" stroke-width="1.5"/>
+        <polyline points="0,42 30,40 60,38 90,37 120,33 150,30 180,28 210,27 240,22 270,18 300,15 320,12"
+          fill="none" stroke="#4fd8e8" stroke-width=".8" opacity=".6"/>
+      </svg>`},
+  {id:'ai',title:'AI 问数',x:80,y:380,w:180,h:70,cluster:2,
+    html:()=>`<div style="font-size:11px;color:var(--text-dim);font-style:italic">"今日情绪温度？"</div>`},
+  {id:'heat',title:'板块热力图',x:W-320<0?400:W-340,y:220,w:180,h:160,cluster:3,
+    html:()=>`<div id="heatGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:2px;margin-top:4px">
+        ${Array.from({length:48},()=>{
+          const c=['#ff5b6a','#f5a623','#22c55e','#4fd8e8'][Math.floor(Math.random()*4)];
+          return `<div style="aspect-ratio:1;background:${c};opacity:${.3+Math.random()*.6};border-radius:1px"></div>`;
+        }).join('')}</div>`},
+  {id:'fav',title:'自选',x:60,y:500,w:160,h:60,cluster:0,
+    html:()=>`<div class="kv-row"><span>善水科技</span><b class="num up">+20.01%</b></div>
+              <div class="kv-row"><span>宁德时代</span><b class="num up">+2.34%</b></div>`},
+  {id:'rank',title:'榜单',x:260,y:520,w:140,h:60,cluster:0,
+    html:()=>`<div style="font-size:11px;color:var(--text-dim)">涨幅榜 · 跌幅榜 · 成交额榜</div>`},
+  {id:'lhb',title:'龙虎榜',x:460,y:480,w:160,h:70,cluster:1,
+    html:()=>`<div class="kv-row"><span>善水科技</span><b class="num">净买 1.2亿</b></div>
+              <div class="kv-row"><span>中际旭创</span><b class="num">净买 8400万</b></div>`},
+  {id:'timeline',title:'复盘时间线',x:680,y:500,w:180,h:70,cluster:2,
+    html:()=>`<div style="font-size:11px;color:var(--text-dim)">今日 5 个关键时点已记录</div>`},
+];
+
+function renderCards(){
+  cardsLayer.innerHTML='';
+  window.cardsById={};
+  CARDS.forEach(c=>{
+    window.cardsById[c.id]=c;
+    const el=document.createElement('div');
+    el.className='card';el.dataset.id=c.id;
+    el.style.left=c.x+'px';el.style.top=c.y+'px';
+    el.style.width=c.w+'px';
+    el.innerHTML=`<div class="card-title"><span class="ttl">${c.title}</span>
+      <div class="card-handle"><span class="handle-btn">⋮⋮</span><span class="handle-btn">✕</span></div></div>
+      ${c.html()}`;
+    cardsLayer.appendChild(el);
+    attachDrag(el,c);
+    el.addEventListener('click',e=>{
+      if(document.body.classList.contains('editing'))return;
+      if(c.focusable)toggleFocus(el);
+    });
+  });
+}
+function toggleFocus(el){
+  const wasFocused=el.classList.contains('focused');
+  // 先取消所有聚焦
+  document.querySelectorAll('.card.focused').forEach(c=>{
+    c.classList.remove('focused');
+    const card=cardsById[c.dataset.id];
+    if(card){c.style.left=card._ox+'px';c.style.top=card._oy+'px';
+      c.style.width=card._ow+'px';c.style.height=card._oh+'px';}
+  });
+  document.body.classList.remove('focus-mode');
+  if(wasFocused)return;
+  // 新聚焦：移到中央放大
+  const card=cardsById[el.dataset.id];
+  card._ox=card.x;card._oy=card.y;card._ow=card.w;
+  // 计算舞台中心位置，放大到 1.6 倍
+  const stage=document.getElementById('stage').getBoundingClientRect();
+  const newW=card.w*1.6;
+  const newX=(stage.width-newW)/2;
+  const newY=(stage.height-newW*.6)/2;
+  el.style.left=newX+'px';el.style.top=newY+'px';el.style.width=newW+'px';
+  el.classList.add('focused');
+  document.body.classList.add('focus-mode');
+}
+
+/* ============================================================
+   拖拽编排
+   ============================================================ */
+function attachDrag(el,card){
+  let sx,sy,ox,oy,dragging=false;
+  el.addEventListener('mousedown',e=>{
+    if(!document.body.classList.contains('editing'))return;
+    dragging=true;sx=e.clientX;sy=e.clientY;
+    ox=card.x;oy=card.y;
+    el.classList.add('dragging');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!dragging)return;
+    let nx=ox+e.clientX-sx,ny=oy+e.clientY-sy;
+    nx=Math.max(0,Math.min(nx,W-card.w));
+    ny=Math.max(0,Math.min(ny,H-60));
+    // 40px 网格吸附
+    nx=Math.round(nx/40)*40;ny=Math.round(ny/40)*40;
+    card.x=nx;card.y=ny;
+    el.style.left=nx+'px';el.style.top=ny+'px';
+  });
+  window.addEventListener('mouseup',()=>{
+    if(dragging){dragging=false;el.classList.remove('dragging');}
+  });
+}
+
+/* 进入/退出编排 */
+document.getElementById('rightnav').addEventListener('click',e=>{
+  if(e.target.id==='btnLayouts'){document.getElementById('layoutPanel').classList.add('show');}
+});
+document.getElementById('btnDoneEdit').onclick=()=>{
+  document.body.classList.remove('editing');
+  toast('编排已保存');
+};
+document.getElementById('btnAutoCluster').onclick=()=>{
+  // 动画飞回所属簇
+  CARDS.forEach((c,i)=>{
+    const cl=CLUSTERS[c.cluster];
+    const tx=cl.cx*W-100+(i%3)*20,ty=cl.cy*H-60+Math.floor(i/3)*20;
+    const el=cardsLayer.querySelector(`[data-id="${c.id}"]`);
+    animateTo(el,c,tx,ty,600);
+  });
+  toast('已自动聚簇到节点');
+};
+function animateTo(el,card,tx,ty,dur){
+  const sx=card.x,sy=card.y,t0=performance.now();
+  function step(now){
+    const p=Math.min(1,(now-t0)/dur);
+    const ease=1-Math.pow(1-p,3);
+    card.x=sx+(tx-sx)*ease;card.y=sy+(ty-sy)*ease;
+    el.style.left=card.x+'px';el.style.top=card.y+'px';
+    if(p<1)requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+/* 双击任意卡片标题栏进入编排 */
+document.addEventListener('dblclick',e=>{
+  if(e.target.closest('.card-title'))document.body.classList.add('editing');
+});
+
+/* ============================================================
+   时段切换
+   ============================================================ */
+document.querySelectorAll('.sess-tab').forEach(tab=>{
+  tab.onclick=()=>{
+    document.querySelectorAll('.sess-tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    const s=tab.dataset.sess;
+    document.body.classList.remove('minimal');
+    document.getElementById('statSession').textContent=tab.textContent;
+    if(s==='minimal')document.body.classList.add('minimal');
+    if(s==='auction')toast('开盘竞价模式 · 距开盘 03:13');
+    if(s==='postclose')toast('盘后复盘 · AI 报告已生成');
+  };
+});
+
+/* 左侧导航点击 */
+document.querySelectorAll('.nav-item').forEach(n=>{
+  n.onclick=()=>{
+    document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
+    n.classList.add('active');
+    if(n.dataset.nav==='ai')toggleAI();
+  };
+});
+
+/* 右侧导航点击 → 聚焦对应卡片 */
+document.querySelectorAll('.rn-item').forEach(item=>{
+  item.addEventListener('click',()=>{
+    const id=item.dataset.card;
+    const el=cardsLayer.querySelector(`[data-id="${id}"]`);
+    if(!el)return;
+    // 关闭其他聚焦
+    document.querySelectorAll('.card.focused').forEach(c=>{
+      c.classList.remove('focused');
+      const card=cardsById[c.dataset.id];
+      if(card){c.style.left=card._ox+'px';c.style.top=card._oy+'px';}
+    });
+    document.body.classList.remove('focus-mode');
+    // 触发聚焦
+    requestAnimationFrame(()=>toggleFocus(el));
+    document.querySelectorAll('.rn-item').forEach(x=>x.style.color='');
+    item.style.color='var(--cyan)';
+  });
+});
+
+/* ============================================================
+   浮层控制
+   ============================================================ */
+function toggleAI(){document.getElementById('aiPanel').classList.toggle('show');}
+function closeAI(){document.getElementById('aiPanel').classList.remove('show');}
+function closeAlert(){document.getElementById('alertPanel').classList.remove('show');}
+function closeLayout(){document.getElementById('layoutPanel').classList.remove('show');}
+
+/* 布局切换 */
+document.querySelectorAll('.layout-item').forEach(item=>{
+  item.addEventListener('click',()=>{
+    document.querySelectorAll('.layout-item').forEach(x=>x.classList.remove('current'));
+    item.classList.add('current');
+    const layout=item.dataset.layout;
+    closeLayout();
+    if(layout==='zen'){
+      // 极简：只留3张
+      CARDS.forEach(c=>{
+        const el=cardsLayer.querySelector(`[data-id="${c.id}"]`);
+        if(['idx','limitup','stock'].includes(c.id))el.style.display='';
+        else el.style.display='none';
+      });
+      toast('已切换到极简布局 · 3 张卡片');
+    }else{
+      CARDS.forEach(c=>{
+        const el=cardsLayer.querySelector(`[data-id="${c.id}"]`);
+        el.style.display='';
+      });
+      toast('已切换到'+item.querySelector('.name').textContent);
+    }
+  });
+});
+function toast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  clearTimeout(t._tm);t._tm=setTimeout(()=>t.classList.remove('show'),1800);
+}
+
+/* 自动形态演化 — 每 8 秒切换一次 */
+const MORPH_NAMES=['四簇星团','中心放射','环形星系','螺旋星云'];
+setInterval(()=>{
+  morphMode=(morphMode+1)%4;
+  computeTargets(morphMode);
+  toast('网络形态：'+MORPH_NAMES[morphMode]);
+},8000);
+
+/* 随机异动脉冲 — 模拟涨停/大单 */
+setInterval(()=>{
+  const targets=nodes.filter(n=>!n.isCenter);
+  const n=targets[Math.floor(Math.random()*targets.length)];
+  n.alert=1;  // 触发爆闪
+},2500);
+setTimeout(()=>{document.getElementById('alertPanel').classList.add('show');},4000);
+setInterval(()=>{
+  const a=document.getElementById('alertPanel');
+  a.classList.add('show');
+  setTimeout(closeAlert,6000);
+},20000);
+
+/* 时钟 */
+setInterval(()=>{
+  const d=new Date();
+  const p=n=>String(n).padStart(2,'0');
+  document.getElementById('clock').textContent=`${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+},1000);
+
+/* 初始：自动进入一次编排提示 */
+setTimeout(()=>toast('双击卡片标题栏进入编排模式'),1500);
+
+renderCards();
+</script>
+</body>
+</html>

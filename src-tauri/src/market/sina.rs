@@ -286,66 +286,94 @@ async fn sina_hs_a_page(page: i64) -> Result<Vec<Value>, String> {
 }
 
 pub async fn auction() -> Result<AuctionData, String> {
-    let total = sina_hs_a_count().await?;
-    let pages = (total.max(0) + 99) / 100;
-    // 每批 5 页并发，避免一次性约 56 并发；带重试提高整段成功率
-    let mut rows: Vec<AuctionStock> = Vec::new();
-    let mut pn = 1i64;
-    while pn <= pages {
-        let batch_end = (pn + 4).min(pages);
-        let mut handles = Vec::new();
-        for p in pn..=batch_end {
-            handles.push(tokio::spawn(async move {
-                let mut last = String::new();
-                for _ in 0..2 {
-                    match sina_hs_a_page(p).await {
-                        Ok(v) => return Ok(v),
-                        Err(e) => last = e,
-                    }
-                }
-                Err(last)
-            }));
-        }
-        for h in handles {
-            let page = h.await.map_err(|e| e.to_string())??;
-            // 新浪数值字段多为字符串，但 amount/volume/changepercent 等也可能直接给数字，两者兼容
-            let f = |v: &Value, k: &str| match &v[k] {
-                Value::String(s) => s.parse::<f64>().unwrap_or(0.0),
-                Value::Number(n) => n.as_f64().unwrap_or(0.0),
-                _ => 0.0,
+    // 只取涨幅前200 + 跌幅前200，2个并发请求
+    let (high_res, low_res) = tokio::join!(
+        sina_rank_page(1, "changepercent", 0, 200),
+        sina_rank_page(1, "changepercent", 1, 200),
+    );
+    let high_raw = high_res?;
+    let low_raw = low_res?;
+    let f = |v: &Value, k: &str| match &v[k] {
+        Value::String(s) => s.parse::<f64>().unwrap_or(0.0),
+        Value::Number(n) => n.as_f64().unwrap_or(0.0),
+        _ => 0.0,
+    };
+    let mut seen = std::collections::HashSet::new();
+    let mut high: Vec<AuctionStock> = Vec::new();
+    let mut low: Vec<AuctionStock> = Vec::new();
+    for (page, is_high) in [(high_raw, true), (low_raw, false)] {
+        for v in &page {
+            let code = v["code"].as_str().unwrap_or("").to_string();
+            if !seen.insert(code.clone()) { continue; }
+            let prev_close = f(v, "settlement");
+            let open = f(v, "open");
+            if prev_close <= 0.0 || open <= 0.0 { continue; }
+            let s = AuctionStock {
+                code,
+                name: v["name"].as_str().unwrap_or("").to_string(),
+                open,
+                prev_close,
+                gap: (open - prev_close) / prev_close * 100.0,
+                amount: f(v, "amount"),
+                price: f(v, "trade"),
+                pct: f(v, "changepercent"),
             };
-            for v in &page {
-                let prev_close = f(v, "settlement");
-                let open = f(v, "open");
-                if prev_close <= 0.0 || open <= 0.0 {
-                    continue;
-                }
-                rows.push(AuctionStock {
-                    code: v["code"].as_str().unwrap_or("").to_string(),
-                    name: v["name"].as_str().unwrap_or("").to_string(),
-                    open,
-                    prev_close,
-                    gap: (open - prev_close) / prev_close * 100.0,
-                    amount: f(v, "amount"),
-                    price: f(v, "trade"),
-                    pct: f(v, "changepercent"),
-                });
-            }
+            if is_high && s.gap > 0.0 { high.push(s); }
+            else if !is_high && s.gap < 0.0 { low.push(s); }
         }
-        pn = batch_end + 1;
     }
-
-    let count = rows.len();
-    let mut high: Vec<AuctionStock> = rows.iter().filter(|r| r.gap > 0.0).cloned().collect();
     high.sort_by(|a, b| b.gap.partial_cmp(&a.gap).unwrap());
-    let mut low: Vec<AuctionStock> = rows.iter().filter(|r| r.gap < 0.0).cloned().collect();
     low.sort_by(|a, b| a.gap.partial_cmp(&b.gap).unwrap());
+    let count = high.len() + low.len();
     Ok(AuctionData {
         updated: now_millis(),
         total: count,
         high_open: high,
         low_open: low,
     })
+}
+
+/// 新浪排行页：page=页码, sort=排序字段, asc=0降序/1升序, num=每页条数
+async fn sina_rank_page(page: i64, sort: &str, asc: i32, num: i64) -> Result<Vec<Value>, String> {
+    let url = format!(
+        "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page={page}&num={num}&sort={sort}&asc={asc}&node=hs_a&symbol=&_s_r_a=sort"
+    );
+    http()
+        .get(&url)
+        .header("Referer", "https://finance.sina.com.cn/")
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| format!("新浪排行第{page}页解析失败: {e}"))
+}
+
+/// 分页获取竞价榜单（前端滚动加载更多用）。asc=0高开降序, asc=1低开升序。
+pub async fn auction_page(page: i64, asc: i32) -> Result<Vec<AuctionStock>, String> {
+    let raw = sina_rank_page(page, "changepercent", asc, 100).await?;
+    let f = |v: &Value, k: &str| match &v[k] {
+        Value::String(s) => s.parse::<f64>().unwrap_or(0.0),
+        Value::Number(n) => n.as_f64().unwrap_or(0.0),
+        _ => 0.0,
+    };
+    let mut out = Vec::new();
+    for v in &raw {
+        let prev_close = f(v, "settlement");
+        let open = f(v, "open");
+        if prev_close <= 0.0 || open <= 0.0 { continue; }
+        out.push(AuctionStock {
+            code: v["code"].as_str().unwrap_or("").to_string(),
+            name: v["name"].as_str().unwrap_or("").to_string(),
+            open, prev_close,
+            gap: (open - prev_close) / prev_close * 100.0,
+            amount: f(v, "amount"),
+            price: f(v, "trade"),
+            pct: f(v, "changepercent"),
+        });
+    }
+    Ok(out)
 }
 
 // ===== 增强榜单回退源：push2 clist 全节点失败时改走新浪 =====

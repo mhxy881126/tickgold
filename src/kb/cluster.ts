@@ -65,7 +65,7 @@ export function clusterThemes(stocks: SealStock[], concepts: ConceptMembership[]
   // f127 缺失时 industry 为空串：空名行业不能参与同名去重，更不能聚出 "" 题材
   const industryNames = new Set(stocks.map((s) => s.industry).filter(Boolean));
 
-  // ① 概念路径：成分股中当日涨停 ≥ 2
+  // ① 概念路径：成分股中当日涨停 ≥ 1（宽松阈值，单只涨停也建题材便于跟踪）
   for (const c of concepts) {
     // 与当日行业同名的概念标签只是行业的镜像，两路都不重复计入（见同名去重用例）。
     if (industryNames.has(c.concept)) continue;
@@ -76,10 +76,10 @@ export function clusterThemes(stocks: SealStock[], concepts: ConceptMembership[]
         members.push(stk);
       }
     }
-    if (members.length >= 2) clusters.push(summarize(c.concept, "concept", members));
+    if (members.length >= 1) clusters.push(summarize(c.concept, "concept", members));
   }
 
-  // ② 行业路径：同行业涨停 ≥ 3，且该行业没有被同名概念覆盖
+  // ② 行业路径：同行业涨停 ≥ 2，且该行业没有被同名概念覆盖
   const byIndustry = new Map<string, SealStock[]>();
   for (const stk of stocks) {
     if (!stk.industry) continue; // 空行业标签（hybk 缺失）不建行业聚类
@@ -87,7 +87,7 @@ export function clusterThemes(stocks: SealStock[], concepts: ConceptMembership[]
     byIndustry.get(stk.industry)!.push(stk);
   }
   for (const [industry, members] of byIndustry) {
-    if (members.length >= 3 && !conceptNames.has(industry)) {
+    if (members.length >= 2 && !conceptNames.has(industry)) {
       clusters.push(summarize(industry, "industry", members));
     }
   }

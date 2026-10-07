@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>集合竞价UI方案 - 3套设计</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0d1117; color:#c9d1d9; font-family:"Microsoft YaHei",sans-serif; padding:20px; }
+h1 { font-size:18px; color:#e6edf3; margin-bottom:16px; }
+h2 { font-size:14px; color:#d2af37; margin:24px 0 12px; padding-left:10px; border-left:3px solid #d2af37; }
+.grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+.card { background:#161b22; border:1px solid #30363d; border-radius:10px; overflow:hidden; }
+.card-head { padding:10px 14px; border-bottom:1px solid #30363d; display:flex; justify-content:space-between; align-items:center; }
+.card-title { font-size:13px; font-weight:600; color:#e6edf3; }
+.card-tag { font-size:10px; padding:2px 8px; border-radius:4px; }
+.tag-a { background:rgba(212,175,55,.15); color:#d2af37; }
+.tag-b { background:rgba(242,82,102,.15); color:#f25266; }
+.tag-c { background:rgba(34,181,115,.15); color:#22b573; }
+
+/* 通用 */
+.up { color:#f25266; }
+.down { color:#22b573; }
+.dim { color:#8b949e; }
+.num { font-variant-numeric:tabular-nums; }
+.small { font-size:10px; }
+</style>
+</head>
+<body>
+<h1>集合竞价卡片 — 3套UI方案</h1>
+<p style="color:#8b949e;font-size:12px;margin-bottom:20px">基于现有数据（新浪涨幅排行），3种不同信息架构风格</p>
+
+<!-- ============ 方案A：专业盯盘版 ============ -->
+<h2>方案A · 专业盯盘版（信息密度优先）</h2>
+<div class="grid">
+<div class="card">
+  <div class="card-head">
+    <span class="card-title">集合竞价</span>
+    <span class="card-tag tag-a">方案A</span>
+  </div>
+  <div style="padding:12px;">
+    <!-- 时间轴 -->
+    <div style="display:flex;gap:2px;margin-bottom:12px;font-size:10px">
+      <div style="flex:1;text-align:center;opacity:1"><div style="color:#d2af37;font-weight:700">9:15</div>开始竞价</div>
+      <div style="flex:1;text-align:center;opacity:.35"><div style="color:#d2af37;font-weight:700">9:20</div>不可撤单</div>
+      <div style="flex:1;text-align:center;opacity:.35"><div style="color:#d2af37;font-weight:700">9:25</div>开盘价</div>
+      <div style="flex:1;text-align:center;opacity:.35"><div style="color:#d2af37;font-weight:700">9:30</div>连续竞价</div>
+    </div>
+    <!-- 情绪条 -->
+    <div style="background:#0d1117;border-radius:8px;padding:10px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span class="small dim">竞价情绪</span>
+        <span class="up" style="font-size:18px;font-weight:700">偏多</span>
+      </div>
+      <div style="height:6px;background:#30363d;border-radius:3px;overflow:hidden;display:flex">
+        <div style="width:62%;background:linear-gradient(90deg,#f25266,#ff6b81)"></div>
+        <div style="flex:1;background:#22b573;opacity:.3"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px" class="small dim">
+        <span>高开67</span><span>竞价额688亿</span><span>低开45</span>
+      </div>
+    </div>
+    <!-- 多列数据 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px">
+      <div style="background:#0d1117;padding:8px;border-radius:6px">
+        <div class="small dim">涨停开盘</div>
+        <div class="up" style="font-size:16px;font-weight:700">8只</div>
+      </div>
+      <div style="background:#0d1117;padding:8px;border-radius:6px">
+        <div class="small dim">竞价涨幅中位</div>
+        <div class="num" style="font-size:16px;font-weight:700">+1.2%</div>
+      </div>
+      <div style="background:#0d1117;padding:8px;border-radius:6px">
+        <div class="small dim">高开>5%</div>
+        <div class="up num" style="font-size:16px;font-weight:700">12只</div>
+      </div>
+      <div style="background:#0d1117;padding:8px;border-radius:6px">
+        <div class="small dim">大额抢筹(>5亿)</div>
+        <div class="num" style="font-size:16px;font-weight:700;color:#d2af37">5只</div>
+      </div>
+    </div>
+    <!-- 榜单 -->
+    <div style="margin-top:10px">
+      <div style="font-size:10px;color:#8b949e;padding:4px 0;display:grid;grid-template-columns:1.5fr .7fr .7fr .7fr">
+        <span>名称</span><span style="text-align:right">缺口</span><span style="text-align:right">竞价额</span><span style="text-align:right">涨幅</span>
+      </div>
+      <div style="font-size:11px">
+        <div style="display:grid;grid-template-columns:1.5fr .7fr .7fr .7fr;padding:4px 0;border-bottom:1px solid #21262d">
+          <span>宏柏新材 <span class="tag" style="background:rgba(242,82,102,.2);color:#f25266;font-size:9px;padding:0 3px;border-radius:3px">涨停开</span></span>
+          <span class="up num" style="text-align:right">+10.0%</span>
+          <span class="dim num" style="text-align:right">3.8亿</span>
+          <span class="up num" style="text-align:right">+9.3%</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1.5fr .7fr .7fr .7fr;padding:4px 0;border-bottom:1px solid #21262d">
+          <span>翔丰华 <span class="tag" style="background:rgba(212,175,55,.2);color:#d2af37;font-size:9px;padding:0 3px;border-radius:3px">大额</span></span>
+          <span class="down num" style="text-align:right">-0.6%</span>
+          <span class="dim num" style="text-align:right">5.4亿</span>
+          <span class="up num" style="text-align:right">+6.3%</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1.5fr .7fr .7fr .7fr;padding:4px 0">
+          <span>芒果超媒 <span class="tag" style="background:rgba(212,175,55,.2);color:#d2af37;font-size:9px;padding:0 3px;border-radius:3px">大额</span></span>
+          <span class="down num" style="text-align:right">-0.5%</span>
+          <span class="dim num" style="text-align:right">22.7亿</span>
+          <span class="up num" style="text-align:right">+6.1%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 方案B：情绪仪表盘版 ============ -->
+<div class="card">
+  <div class="card-head">
+    <span class="card-title">集合竞价</span>
+    <span class="card-tag tag-b">方案B</span>
+  </div>
+  <div style="padding:16px;text-align:center">
+    <div style="font-size:10px;color:#8b949e;margin-bottom:8px">9:15-9:20 可撤单阶段</div>
+    <!-- 大圆表 -->
+    <div style="width:120px;height:120px;margin:0 auto 12px;position:relative">
+      <div style="width:120px;height:120px;border-radius:50%;background:conic-gradient(#f25266 0deg,#f25266 223deg,#30363d 223deg,#22b573 360deg);display:flex;align-items:center;justify-content:center">
+        <div style="width:90px;height:90px;border-radius:50%;background:#161b22;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div style="font-size:22px;font-weight:700" class="up">62%</div>
+          <div class="small dim">多方占优</div>
+        </div>
+      </div>
+    </div>
+    <!-- 关键数字 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+      <div>
+        <div class="up" style="font-size:20px;font-weight:700">67</div>
+        <div class="small dim">高开</div>
+      </div>
+      <div>
+        <div style="font-size:20px;font-weight:700;color:#d2af37">688亿</div>
+        <div class="small dim">竞价额</div>
+      </div>
+      <div>
+        <div class="down" style="font-size:20px;font-weight:700">45</div>
+        <div class="small dim">低开</div>
+      </div>
+    </div>
+    <!-- 涨幅分布条 -->
+    <div style="text-align:left;background:#0d1117;padding:10px;border-radius:8px;margin-bottom:10px">
+      <div class="small dim" style="margin-bottom:6px">高开幅度分布</div>
+      <div style="display:flex;height:14px;border-radius:3px;overflow:hidden">
+        <div style="width:18%;background:#f25266" title=">5%"></div>
+        <div style="width:17%;background:#ff7b8e" title="2-5%"></div>
+        <div style="width:65%;background:#3d444d" title="0-2%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px" class="small dim">
+        <span>12只 >5%</span><span>11只 2-5%</span><span>44只 0-2%</span>
+      </div>
+    </div>
+    <!-- 亮点个股 -->
+    <div style="text-align:left">
+      <div class="small dim" style="margin-bottom:6px">竞价抢筹TOP3</div>
+      <div style="font-size:11px;display:flex;flex-direction:column;gap:4px">
+        <div style="display:flex;justify-content:space-between;background:#0d1117;padding:6px 8px;border-radius:5px">
+          <span>芒果超媒</span><span class="dim num">22.7亿</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;background:#0d1117;padding:6px 8px;border-radius:5px">
+          <span>药石科技</span><span class="dim num">18.8亿</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;background:#0d1117;padding:6px 8px;border-radius:5px">
+          <span>中粮糖业</span><span class="dim num">9.7亿</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 方案C：信号流版 ============ -->
+<div class="card">
+  <div class="card-head">
+    <span class="card-title">集合竞价</span>
+    <span class="card-tag tag-c">方案C</span>
+  </div>
+  <div style="padding:12px">
+    <div style="font-size:10px;color:#8b949e;margin-bottom:10px">盘前 · 112只异动 · 688亿竞价额</div>
+    <!-- 信号流 -->
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="background:rgba(242,82,102,.08);border-left:3px solid #f25266;padding:8px 10px;border-radius:0 6px 6px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;font-weight:600">涨停开盘</span>
+          <span class="up" style="font-size:14px;font-weight:700">8只</span>
+        </div>
+        <div class="small dim" style="margin-top:2px">宏柏新材、恩华药业、紫竹高科…</div>
+      </div>
+      <div style="background:rgba(212,175,55,.08);border-left:3px solid #d2af37;padding:8px 10px;border-radius:0 6px 6px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;font-weight:600">大额抢筹</span>
+          <span style="font-size:14px;font-weight:700;color:#d2af37">5只 >5亿</span>
+        </div>
+        <div class="small dim" style="margin-top:2px">芒果超媒22.7亿、药石科技18.8亿</div>
+      </div>
+      <div style="background:rgba(34,181,115,.08);border-left:3px solid #22b573;padding:8px 10px;border-radius:0 6px 6px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;font-weight:600">低开出逃</span>
+          <span class="down" style="font-size:14px;font-weight:700">45只</span>
+        </div>
+        <div class="small dim" style="margin-top:2px">佛塑科技-2.1%、建新股份-0.9%</div>
+      </div>
+      <div style="background:rgba(139,148,158,.08);border-left:3px solid #8b949e;padding:8px 10px;border-radius:0 6px 6px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;font-weight:600">竞价中位数</span>
+          <span class="num" style="font-size:14px;font-weight:700">+1.2%</span>
+        </div>
+        <div class="small dim" style="margin-top:2px">整体情绪偏暖，赚钱效应一般</div>
+      </div>
+    </div>
+    <!-- 快捷标签 -->
+    <div style="display:flex;gap:4px;margin-top:10px;flex-wrap:wrap">
+      <span style="font-size:10px;padding:3px 8px;background:#0d1117;border-radius:10px;cursor:pointer">高开抢筹</span>
+      <span style="font-size:10px;padding:3px 8px;background:#0d1117;border-radius:10px;cursor:pointer">低开出逃</span>
+      <span style="font-size:10px;padding:3px 8px;background:#0d1117;border-radius:10px;cursor:pointer">竞价额TOP</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 对比说明 -->
+<h2>方案对比</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:12px">
+  <div style="background:#161b22;padding:14px;border-radius:8px;font-size:12px;line-height:1.8">
+    <div style="color:#d2af37;font-weight:600;margin-bottom:6px">方案A · 专业盯盘版</div>
+    <div class="dim">适合：看盘老手，需要快速扫数据</div>
+    <div class="dim">优点：信息密度高，多指标一屏看完</div>
+    <div class="dim">缺点：视觉上偏密集，不够直观</div>
+  </div>
+  <div style="background:#161b22;padding:14px;border-radius:8px;font-size:12px;line-height:1.8">
+    <div style="color:#f25266;font-weight:600;margin-bottom:6px">方案B · 情绪仪表盘版</div>
+    <div class="dim">适合：快速判断今天情绪好不好</div>
+    <div class="dim">优点：大圆表一眼看多空，视觉冲击力强</div>
+    <div class="dim">缺点：明细数据少，需要点进去看</div>
+  </div>
+  <div style="background:#161b22;padding:14px;border-radius:8px;font-size:12px;line-height:1.8">
+    <div style="color:#22b573;font-weight:600;margin-bottom:6px">方案C · 信号流版</div>
+    <div class="dim">适合：快速抓重点，不看细节</div>
+    <div class="dim">优点：卡片化信号，红绿标签一眼识别</div>
+    <div class="dim">缺点：数据粒度粗，只看重点不看全量</div>
+  </div>
+</div>
+</body>
+</html>

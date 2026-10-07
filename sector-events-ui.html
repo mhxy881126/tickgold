@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>板块异动UI方案 - 3套设计</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;color:#c9d1d9;font-family:"Microsoft YaHei",sans-serif;padding:20px}
+h1{font-size:18px;color:#e6edf3;margin-bottom:6px}
+.sub{font-size:12px;color:#8b949e;margin-bottom:20px}
+h2{font-size:14px;color:#d2af37;margin:24px 0 12px;padding-left:10px;border-left:3px solid #d2af37}
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;overflow:hidden}
+.ch{padding:10px 14px;border-bottom:1px solid #30363d;display:flex;justify-content:space-between;align-items:center}
+.ct{font-size:13px;font-weight:600;color:#e6edf3}
+.tag{font-size:10px;padding:2px 8px;border-radius:4px}
+.ta{background:rgba(212,175,55,.15);color:#d2af37}
+.tb{background:rgba(242,82,102,.15);color:#f25266}
+.tc{background:rgba(34,181,115,.15);color:#22b573}
+.up{color:#f25266}.down{color:#22b573}.dim{color:#8b949e}
+.num{font-variant-numeric:tabular-nums}
+.small{font-size:10px}
+</style>
+</head>
+<body>
+<h1>板块异动 — 3套UI方案</h1>
+<div class="sub">实时监控板块涨跌幅变化、资金流向、领涨股切换</div>
+
+<div class="grid">
+<!-- ========== 方案A：时间流版 ========== -->
+<div class="card">
+  <div class="ch">
+    <span class="ct">📊 板块异动</span>
+    <span class="tag ta">方案A · 时间流</span>
+  </div>
+  <div style="padding:8px">
+    <div style="display:flex;gap:4px;margin-bottom:8px">
+      <span style="font-size:10px;padding:2px 8px;background:#f25266;color:#fff;border-radius:10px">全部</span>
+      <span style="font-size:10px;padding:2px 8px;background:#0d1117;border-radius:10px;cursor:pointer">领涨</span>
+      <span style="font-size:10px;padding:2px 8px;background:#0d1117;border-radius:10px;cursor:pointer">资金</span>
+      <span style="font-size:10px;padding:2px 8px;background:#0d1117;border-radius:10px;cursor:pointer">跳水</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;gap:8px;padding:6px;background:#0d1117;border-radius:6px;align-items:center">
+        <span class="small dim num" style="width:32px;flex:none">9:31</span>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:600">CXO概念 <span class="up num">+4.28%</span></div>
+          <div class="small dim">领涨：药石科技 +5.9%</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;padding:6px;background:#0d1117;border-radius:6px;align-items:center">
+        <span class="small dim num" style="width:32px;flex:none">9:30</span>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:600">创新药 <span class="up num">+3.17%</span></div>
+          <div class="small dim">净流入83亿 · 12只涨停</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;padding:6px;background:#0d1117;border-radius:6px;align-items:center">
+        <span class="small dim num" style="width:32px;flex:none">9:30</span>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:600">融资融券 <span class="up num">+2.85%</span></div>
+          <div class="small dim">资金青睐 · 主力净流入132亿</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;padding:6px;background:#0d1117;border-radius:6px;align-items:center">
+        <span class="small dim num" style="width:32px;flex:none">9:29</span>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:600">房地产 <span class="down num">-1.24%</span></div>
+          <div class="small dim">跳水 · 5分钟跌1.8%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 方案B：卡片版 ========== -->
+<div class="card">
+  <div class="ch">
+    <span class="ct">📊 板块异动</span>
+    <span class="tag tb">方案B · 卡片</span>
+  </div>
+  <div style="padding:10px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+      <div style="background:#0d1117;padding:8px;border-radius:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:11px;font-weight:600">CXO概念</span>
+          <span class="up num" style="font-weight:700">+4.28%</span>
+        </div>
+        <div class="small dim" style="margin-top:3px">领涨：药石科技</div>
+        <div class="small dim">资金：净流入12亿</div>
+      </div>
+      <div style="background:#0d1117;padding:8px;border-radius:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:11px;font-weight:600">创新药</span>
+          <span class="up num" style="font-weight:700">+3.17%</span>
+        </div>
+        <div class="small dim" style="margin-top:3px">领涨：恒瑞医药</div>
+        <div class="small dim">资金：净流入83亿</div>
+      </div>
+      <div style="background:#0d1117;padding:8px;border-radius:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:11px;font-weight:600">融资融券</span>
+          <span class="up num" style="font-weight:700">+2.85%</span>
+        </div>
+        <div class="small dim" style="margin-top:3px">领涨：芒果超媒</div>
+        <div class="small dim">资金：净流入132亿</div>
+      </div>
+      <div style="background:#0d1117;padding:8px;border-radius:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:11px;font-weight:600">房地产</span>
+          <span class="down num" style="font-weight:700">-1.24%</span>
+        </div>
+        <div class="small dim" style="margin-top:3px">跳水：5分钟跌1.8%</div>
+        <div class="small dim">资金：净流出56亿</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 方案C：排行榜版 ========== -->
+<div class="card">
+  <div class="ch">
+    <span class="ct">📊 板块异动</span>
+    <span class="tag tc">方案C · 排行榜</span>
+  </div>
+  <div style="padding:8px">
+    <div style="display:flex;gap:4px;margin-bottom:8px">
+      <span style="font-size:10px;padding:2px 8px;background:#f25266;color:#fff;border-radius:10px">涨幅榜</span>
+      <span style="font-size:10px;padding:2px 8px;background:#0d1117;border-radius:10px;cursor:pointer">资金榜</span>
+      <span style="font-size:10px;padding:2px 8px;background:#0d1117;border-radius:10px;cursor:pointer">跳水榜</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:4px;background:#0d1117">
+        <span style="width:18px;height:18px;background:#f25266;color:#fff;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">1</span>
+        <span style="flex:1;font-size:11px;font-weight:600">CXO概念</span>
+        <span class="up num" style="font-size:11px;font-weight:700">+4.28%</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:4px;background:#0d1117">
+        <span style="width:18px;height:18px;background:#ff6b81;color:#fff;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">2</span>
+        <span style="flex:1;font-size:11px;font-weight:600">CRO概念</span>
+        <span class="up num" style="font-size:11px;font-weight:700">+4.21%</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:4px;background:#0d1117">
+        <span style="width:18px;height:18px;background:#ff9900;color:#fff;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">3</span>
+        <span style="flex:1;font-size:11px;font-weight:600">创新药</span>
+        <span class="up num" style="font-size:11px;font-weight:700">+3.17%</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:4px;background:#0d1117">
+        <span style="width:18px;height:18px;background:#30363d;color:#8b949e;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">4</span>
+        <span style="flex:1;font-size:11px;font-weight:600">抗癌</span>
+        <span class="up num" style="font-size:11px;font-weight:700">+2.69%</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:4px;background:#0d1117">
+        <span style="width:18px;height:18px;background:#30363d;color:#8b949e;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">5</span>
+        <span style="flex:1;font-size:11px;font-weight:600">生物疫苗</span>
+        <span class="up num" style="font-size:11px;font-weight:700">+2.64%</span>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<h2>方案对比</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+  <div style="background:#161b22;padding:14px;border-radius:8px;font-size:12px;line-height:1.8">
+    <div style="color:#d2af37;font-weight:600;margin-bottom:6px">A · 时间流版</div>
+    <div class="dim">时间戳+板块名+涨跌幅+领涨股/资金</div>
+    <div class="dim">优点：像看新闻流，最新异动一眼看到</div>
+    <div class="dim">缺点：没有排名感</div>
+  </div>
+  <div style="background:#161b22;padding:14px;border-radius:8px;font-size:12px;line-height:1.8">
+    <div style="color:#f25266;font-weight:600;margin-bottom:6px">B · 卡片版</div>
+    <div class="dim">2列卡片，每个板块一个独立卡片</div>
+    <div class="dim">优点：信息密度高，一屏看多个板块</div>
+    <div class="dim">缺点：滚动多了找不到重点</div>
+  </div>
+  <div style="background:#161b22;padding:14px;border-radius:8px;font-size:12px;line-height:1.8">
+    <div style="color:#22b573;font-weight:600;margin-bottom:6px">C · 排行榜版</div>
+    <div class="dim">带排名数字，可切换涨幅/资金/跳水榜</div>
+    <div class="dim">优点：一眼看到谁最强，排名清晰</div>
+    <div class="dim">缺点：缺少时间维度</div>
+  </div>
+</div>
+</body>
+</html>

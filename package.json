@@ -1,9 +1,9 @@
-{
+﻿{
   "name": "tickgold",
   "private": true,
-  "version": "2.14.0",
+  "version": "2.15.0",
   "type": "module",
-  "description": "TickGold - 涓撲笟浜ゆ槗鑰呰法骞冲彴 A 鑲＄洴鐩樼粓绔?(Tauri 2 + Vue 3)",
+  "description": "TickGold - 娑撴挷绗熸禍銈嗘閼板懓娉曢獮鍐插酱 A 閼诧紕娲撮惄妯肩矒缁?(Tauri 2 + Vue 3)",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
@@ -55,4 +55,5 @@
     ]
   }
 }
+
 

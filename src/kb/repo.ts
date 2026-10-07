@@ -324,3 +324,90 @@ export async function countLimitUpSince(d: Db, code: string, sinceDate: string):
   );
   return rows[0]?.c ?? 0;
 }
+
+// ===== 题材热度统计（关联 limit_up_record）=====
+
+export interface ThemeStockStat {
+  code: string;
+  name: string;
+  boards: number;        // 最新连板数
+  sealFund: number;     // 封单金额（元）
+  broken: number;       // 炸板次数
+  turnover: number;     // 成交额
+  firstSeal: number;     // 首次封板时间（HHMMSS）
+  tradeDate: string;    // 涨停日期
+}
+
+export interface ThemeSummary {
+  themeId: number;
+  sealCount: number;     // 涨停家数
+  maxBoards: number;    // 最高连板
+  totalSealFund: number; // 总封单（元）
+  brokenCount: number;   // 炸板股数
+  leaderCode: string;    // 龙头代码
+  leaderName: string;    // 龙头名称
+}
+
+/** 查询某题材成分股的最新涨停定格数据 */
+export async function listThemeStockStats(d: Db, themeId: number): Promise<ThemeStockStat[]> {
+  const rows = await d.select<Record<string, unknown>[]>(
+    `SELECT lu.code, lu.name, lu.boards, lu.seal_fund, lu.broken, lu.turnover,
+            lu.first_seal, lu.trade_date
+     FROM limit_up_record lu
+     INNER JOIN theme_stock ts ON ts.code = lu.code
+     WHERE ts.theme_id = ? AND ts.left_date IS NULL
+       AND lu.trade_date = (SELECT MAX(trade_date) FROM limit_up_record WHERE code = lu.code)
+     ORDER BY lu.boards DESC, lu.seal_fund DESC`,
+    [themeId]
+  );
+  return rows.map((r) => ({
+    code: r.code as string,
+    name: (r.name as string) ?? "",
+    boards: (r.boards as number) ?? 1,
+    sealFund: (r.seal_fund as number) ?? 0,
+    broken: (r.broken as number) ?? 0,
+    turnover: (r.turnover as number) ?? 0,
+    firstSeal: (r.first_seal as number) ?? 0,
+    tradeDate: r.trade_date as string,
+  }));
+}
+
+/** 查询所有题材的汇总热度（左侧列表角标用）——单条SQL，无N+1 */
+export async function listAllThemeSummaries(d: Db): Promise<Map<number, ThemeSummary>> {
+  const rows = await d.select<Record<string, unknown>[]>(
+    `WITH latest AS (
+       SELECT MAX(trade_date) AS d FROM limit_up_record
+     ),
+     ranked AS (
+       SELECT ts.theme_id, ts.code, ts.name, lu.boards, lu.seal_fund, lu.broken,
+              ROW_NUMBER() OVER (PARTITION BY ts.theme_id ORDER BY lu.boards DESC, lu.seal_fund DESC) AS rn
+       FROM theme_stock ts
+       INNER JOIN limit_up_record lu ON lu.code = ts.code
+       CROSS JOIN latest
+       WHERE ts.left_date IS NULL AND lu.trade_date = latest.d
+     )
+     SELECT theme_id,
+            COUNT(*) AS seal_count,
+            MAX(boards) AS max_boards,
+            SUM(seal_fund) AS total_seal_fund,
+            SUM(CASE WHEN broken > 0 THEN 1 ELSE 0 END) AS broken_count,
+            MAX(CASE WHEN rn = 1 THEN code END) AS leader_code,
+            MAX(CASE WHEN rn = 1 THEN name END) AS leader_name
+     FROM ranked
+     GROUP BY theme_id`
+  );
+  const map = new Map<number, ThemeSummary>();
+  for (const r of rows) {
+    const themeId = r.theme_id as number;
+    map.set(themeId, {
+      themeId,
+      sealCount: (r.seal_count as number) ?? 0,
+      maxBoards: (r.max_boards as number) ?? 0,
+      totalSealFund: (r.total_seal_fund as number) ?? 0,
+      brokenCount: (r.broken_count as number) ?? 0,
+      leaderCode: (r.leader_code as string) ?? "",
+      leaderName: (r.leader_name as string) ?? "",
+    });
+  }
+  return map;
+}

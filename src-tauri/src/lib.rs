@@ -158,6 +158,11 @@ async fn get_auction() -> Result<market::eastmoney::AuctionData, String> {
 }
 
 #[tauri::command]
+async fn get_auction_page(page: i64, asc: i32) -> Result<Vec<market::eastmoney::AuctionStock>, String> {
+    market::sina::auction_page(page, asc).await
+}
+
+#[tauri::command]
 async fn get_zt_pool(date: String) -> Result<market::eastmoney::ZtPool, String> {
     market::get_zt_pool(date).await
 }
@@ -1975,6 +1980,7 @@ pub fn run() {
             get_restricted_queue,
             get_market_restricted,
             get_auction,
+            get_auction_page,
             get_zt_pool,
             get_zb_pool,
             get_announcements,

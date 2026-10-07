@@ -637,21 +637,18 @@ pub async fn get_zb_pool(date: String) -> Result<eastmoney::ZtPool, String> {
 /// 集合竞价（全市场开盘缺口排名，分页拉取）。
 /// 首选东方财富；东财 push2 被限流 / 超时 / 失败时自动降级新浪全市场榜单，返回结构一致。
 pub async fn get_auction() -> Result<eastmoney::AuctionData, String> {
-    let em = tokio::time::timeout(Duration::from_secs(12), eastmoney::auction()).await;
+    // 新浪优先（push2东财在当前网络下连不通，新浪344ms返回）
+    let sina = tokio::time::timeout(Duration::from_secs(5), sina::auction()).await;
+    match sina {
+        Ok(Ok(data)) => return Ok(data),
+        Ok(Err(e)) => log::warn!("新浪竞价失败，降级东财: {e}"),
+        Err(_) => log::warn!("新浪竞价超时(5s)，降级东财"),
+    }
+    let em = tokio::time::timeout(Duration::from_secs(5), eastmoney::auction()).await;
     match em {
         Ok(Ok(data)) => Ok(data),
-        Ok(Err(e)) => {
-            log::warn!("集合竞价东财源失败，降级新浪: {e}");
-            tokio::time::timeout(Duration::from_secs(30), sina::auction())
-                .await
-                .map_err(|_| "集合竞价新浪回退: 超时".to_string())?
-        }
-        Err(_) => {
-            log::warn!("集合竞价东财源超时(12s)，降级新浪");
-            tokio::time::timeout(Duration::from_secs(30), sina::auction())
-                .await
-                .map_err(|_| "集合竞价新浪回退: 超时".to_string())?
-        }
+        Ok(Err(e)) => Err(format!("竞价全部失败: 新浪+东财均不可用; 东财: {e}")),
+        Err(_) => Err("竞价全部失败: 新浪+东财均超时".to_string()),
     }
 }
 

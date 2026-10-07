@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>短线精灵UI方案 - 3套设计</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;color:#c9d1d9;font-family:"Microsoft YaHei",sans-serif;padding:20px}
+h1{font-size:18px;color:#e6edf3;margin-bottom:6px}
+.sub{font-size:12px;color:#8b949e;margin-bottom:20px}
+h2{font-size:14px;color:#d2af37;margin:24px 0 12px;padding-left:10px;border-left:3px solid #d2af37}
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;overflow:hidden}
+.ch{padding:10px 14px;border-bottom:1px solid #30363d;display:flex;justify-content:space-between;align-items:center}
+.ct{font-size:13px;font-weight:600;color:#e6edf3}
+.tag{font-size:10px;padding:2px 8px;border-radius:4px}
+.ta{background:rgba(212,175,55,.15);color:#d2af37}
+.tb{background:rgba(242,82,102,.15);color:#f25266}
+.tc{background:rgba(34,181,115,.15);color:#22b573}
+.up{color:#f25266}.down{color:#22b573}.dim{color:#8b949e}
+.num{font-variant-numeric:tabular-nums}
+.small{font-size:10px}
+
+/* 异动类型色标 */
+.zt{background:rgba(242,82,102,.15);color:#f25266}
+.ls{background:rgba(255,153,0,.15);color:#ff9900}
+.dd{background:rgba(212,175,55,.15);color:#d2af37}
+.fl{background:rgba(34,181,115,.15);color:#22b573}
+.dc{background:rgba(88,166,255,.15);color:#58a6ff}
+</style>
+</head>
+<body>
+<h1>短线精灵 — 3套UI方案</h1>
+<div class="sub">实时异动推送：拉升 / 涨停 / 大单 / 放量 / 下跌，支持自选股/持仓股过滤</div>
+
+<div class="grid">
+<!-- ========== 方案A：时间流版 ========== -->
+<div class="card">
+  <div class="ch">
+    <span class="ct">⚡ 短线精灵</span>
+    <span class="tag ta">方案A · 时间流</span>
+  </div>
+  <div style="padding:8px">
+    <!-- 筛选条 -->
+    <div style="display:flex;gap:4px;margin-bottom:8px">
+      <span style="font-size:10px;padding:2px 8px;background:#f25266;color:#fff;border-radius:10px">全部</span>
+      <span style="font-size:10px;padding:2px 8px;background:#0d1117;border-radius:10px;cursor:pointer">拉升</span>
+      <span style="font-size:10px;padding:2px 8px;background:#0d1117;border-radius:10px;cursor:pointer">涨停</span>
+      <span style="font-size:10px;padding:2px 8px;background:#0d1117;border-radius:10px;cursor:pointer">大单</span>
+      <span style="font-size:10px;padding:2px 8px;background:#0d1117;border-radius:10px;cursor:pointer">自选</span>
+    </div>
+    <!-- 异动流 -->
+    <div style="display:flex;flex-direction:column;gap:1px">
+      <div style="display:flex;gap:8px;padding:8px;background:#0d1117;border-radius:6px;align-items:center">
+        <span class="small dim num" style="width:32px;flex:none">9:31</span>
+        <span class="tag zt" style="flex:none">涨停</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600">宏柏新材 <span class="dim" style="font-weight:400;font-size:10px">603366</span></div>
+          <div class="small dim" style="margin-top:1px">封单3.8亿 · 首次封板</div>
+        </div>
+        <div style="text-align:right">
+          <div class="up num" style="font-weight:700">+10.0%</div>
+          <div class="small dim num">10.89</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;padding:8px;background:#0d1117;border-radius:6px;align-items:center">
+        <span class="small dim num" style="width:32px;flex:none">9:30</span>
+        <span class="tag ls" style="flex:none">拉升</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600">药石科技 <span class="dim" style="font-weight:400;font-size:10px">300725</span></div>
+          <div class="small dim" style="margin-top:1px">5分钟涨4.2% · 量比3.5</div>
+        </div>
+        <div style="text-align:right">
+          <div class="up num" style="font-weight:700">+5.9%</div>
+          <div class="small dim num">52.91</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;padding:8px;background:#0d1117;border-radius:6px;align-items:center">
+        <span class="small dim num" style="width:32px;flex:none">9:30</span>
+        <span class="tag dd" style="flex:none">大单</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600">芒果超媒 <span class="dim" style="font-weight:400;font-size:10px">300413</span></div>
+          <div class="small dim" style="margin-top:1px">主力净流入2.1亿</div>
+        </div>
+        <div style="text-align:right">
+          <div class="up num" style="font-weight:700">+6.1%</div>
+          <div class="small dim num">21.00</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;padding:8px;background:#0d1117;border-radius:6px;align-items:center">
+        <span class="small dim num" style="width:32px;flex:none">9:29</span>
+        <span class="tag fl" style="flex:none">放量</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600">佛塑科技 <span class="dim" style="font-weight:400;font-size:10px">000973</span></div>
+          <div class="small dim" style="margin-top:1px">成交量3倍于昨日同期</div>
+        </div>
+        <div style="text-align:right">
+          <div class="down num" style="font-weight:700">-2.1%</div>
+          <div class="small dim num">11.57</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;padding:8px;background:#0d1117;border-radius:6px;align-items:center">
+        <span class="small dim num" style="width:32px;flex:none">9:28</span>
+        <span class="tag dc" style="flex:none">跳水</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600">某AI股 <span class="dim" style="font-weight:400;font-size:10px">002xxx</span></div>
+          <div class="small dim" style="margin-top:1px">1分钟跌3.5%</div>
+        </div>
+        <div style="text-align:right">
+          <div class="down num" style="font-weight:700">-4.2%</div>
+          <div class="small dim num">--</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 方案B：统计面板版 ========== -->
+<div class="card">
+  <div class="ch">
+    <span class="ct">⚡ 短线精灵</span>
+    <span class="tag tb">方案B · 统计面板</span>
+  </div>
+  <div style="padding:12px">
+    <!-- 今日异动统计 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+      <div style="background:#0d1117;padding:8px;border-radius:6px;text-align:center">
+        <div class="up num" style="font-size:18px;font-weight:700">12</div>
+        <div class="small dim">涨停异动</div>
+      </div>
+      <div style="background:#0d1117;padding:8px;border-radius:6px;text-align:center">
+        <div style="font-size:18px;font-weight:700;color:#ff9900">28</div>
+        <div class="small dim">快速拉升</div>
+      </div>
+      <div style="background:#0d1117;padding:8px;border-radius:6px;text-align:center">
+        <div style="font-size:18px;font-weight:700;color:#d2af37">15</div>
+        <div class="small dim">主力大单</div>
+      </div>
+      <div style="background:#0d1117;padding:8px;border-radius:6px;text-align:center">
+        <div class="down num" style="font-size:18px;font-weight:700">8</div>
+        <div class="small dim">放量下跌</div>
+      </div>
+    </div>
+    <!-- 最新异动 -->
+    <div class="small dim" style="margin-bottom:6px">最新异动</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="background:#0d1117;padding:8px;border-radius:6px;display:flex;align-items:center;gap:8px">
+        <span class="tag zt" style="flex:none">涨停</span>
+        <div style="flex:1">
+          <div style="font-size:11px;font-weight:600">宏柏新材 <span class="up num">+10.0%</span></div>
+          <div class="small dim">9:31 · 封单3.8亿</div>
+        </div>
+      </div>
+      <div style="background:#0d1117;padding:8px;border-radius:6px;display:flex;align-items:center;gap:8px">
+        <span class="tag ls" style="flex:none">拉升</span>
+        <div style="flex:1">
+          <div style="font-size:11px;font-weight:600">药石科技 <span class="up num">+5.9%</span></div>
+          <div class="small dim">9:30 · 5分钟涨4.2%</div>
+        </div>
+      </div>
+      <div style="background:#0d1117;padding:8px;border-radius:6px;display:flex;align-items:center;gap:8px">
+        <span class="tag dd" style="flex:none">大单</span>
+        <div style="flex:1">
+          <div style="font-size:11px;font-weight:600">芒果超媒 <span class="up num">+6.1%</span></div>
+          <div class="small dim">9:30 · 主力净流入2.1亿</div>
+        </div>
+      </div>
+      <div style="background:#0d1117;padding:8px;border-radius:6px;display:flex;align-items:center;gap:8px">
+        <span class="tag fl" style="flex:none">放量跌</span>
+        <div style="flex:1">
+          <div style="font-size:11px;font-weight:600">佛塑科技 <span class="down num">-2.1%</span></div>
+          <div class="small dim">9:29 · 量比3.2</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 方案C：消息流版 ========== -->
+<div class="card">
+  <div class="ch">
+    <span class="ct">⚡ 短线精灵</span>
+    <span class="tag tc">方案C · 消息流</span>
+  </div>
+  <div style="padding:8px">
+    <!-- 顶部开关 -->
+    <div style="display:flex;gap:4px;margin-bottom:8px;align-items:center">
+      <span style="font-size:10px;padding:2px 8px;background:rgba(242,82,102,.15);color:#f25266;border-radius:10px">全部</span>
+      <span style="font-size:10px;padding:2px 8px;background:#0d1117;border-radius:10px;cursor:pointer">自选股</span>
+      <span style="font-size:10px;padding:2px 8px;background:#0d1117;border-radius:10px;cursor:pointer">持仓</span>
+      <span style="margin-left:auto;font-size:10px;color:#22b573">● 直播中</span>
+    </div>
+    <!-- 消息气泡流 -->
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="background:#0d1117;border-left:3px solid #f25266;padding:8px 10px;border-radius:0 6px 6px 0">
+        <div style="display:flex;justify-content:space-between">
+          <span style="font-size:12px;font-weight:600">宏柏新材 涨停！</span>
+          <span class="small dim num">9:31</span>
+        </div>
+        <div style="font-size:11px;color:#8b949e;margin-top:3px">
+          封单 <span class="up num">3.8亿</span> · 首次封板 · 连板0天
+        </div>
+      </div>
+      <div style="background:#0d1117;border-left:3px solid #ff9900;padding:8px 10px;border-radius:0 6px 6px 0">
+        <div style="display:flex;justify-content:space-between">
+          <span style="font-size:12px;font-weight:600">药石科技 快速拉升</span>
+          <span class="small dim num">9:30</span>
+        </div>
+        <div style="font-size:11px;color:#8b949e;margin-top:3px">
+          5分钟 <span class="up num">+4.2%</span> · 量比 <span class="num">3.5</span>
+        </div>
+      </div>
+      <div style="background:#0d1117;border-left:3px solid #d2af37;padding:8px 10px;border-radius:0 6px 6px 0">
+        <div style="display:flex;justify-content:space-between">
+          <span style="font-size:12px;font-weight:600">芒果超媒 主力扫货</span>
+          <span class="small dim num">9:30</span>
+        </div>
+        <div style="font-size:11px;color:#8b949e;margin-top:3px">
+          净流入 <span class="up num">2.1亿</span> · 超大单买入
+        </div>
+      </div>
+      <div style="background:#0d1117;border-left:3px solid #22b573;padding:8px 10px;border-radius:0 6px 6px 0">
+        <div style="display:flex;justify-content:space-between">
+          <span style="font-size:12px;font-weight:600">佛塑科技 放量下跌</span>
+          <span class="small dim num">9:29</span>
+        </div>
+        <div style="font-size:11px;color:#8b949e;margin-top:3px">
+          跌幅 <span class="down num">-2.1%</span> · 成交量3倍于昨日
+        </div>
+      </div>
+      <div style="background:#0d1117;border-left:3px solid #58a6ff;padding:8px 10px;border-radius:0 6px 6px 0">
+        <div style="display:flex;justify-content:space-between">
+          <span style="font-size:12px;font-weight:600">某某股份 跳水</span>
+          <span class="small dim num">9:28</span>
+        </div>
+        <div style="font-size:11px;color:#8b949e;margin-top:3px">
+          1分钟 <span class="down num">-3.5%</span> · 注意风险
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 对比 -->
+<h2>方案对比</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+  <div style="background:#161b22;padding:14px;border-radius:8px;font-size:12px;line-height:1.8">
+    <div style="color:#d2af37;font-weight:600;margin-bottom:6px">A · 时间流版</div>
+    <div class="dim">每一行=一条异动，时间+类型标签+股票+数据</div>
+    <div class="dim">优点：信息最全，一眼看到股票名和涨跌幅</div>
+    <div class="dim">缺点：密度高，快速扫过需要适应</div>
+  </div>
+  <div style="background:#161b22;padding:14px;border-radius:8px;font-size:12px;line-height:1.8">
+    <div style="color:#f25266;font-weight:600;margin-bottom:6px">B · 统计面板版</div>
+    <div class="dim">顶部4格统计今日异动总数，下方最新异动列表</div>
+    <div class="dim">优点：先看整体情绪，再看具体个股</div>
+    <div class="dim">缺点：统计数字多了可能占空间</div>
+  </div>
+  <div style="background:#161b22;padding:14px;border-radius:8px;font-size:12px;line-height:1.8">
+    <div style="color:#22b573;font-weight:600;margin-bottom:6px">C · 消息流版</div>
+    <div class="dim">聊天气泡式，左边框颜色=异动类型</div>
+    <div class="dim">优点：视觉轻松，像看消息通知</div>
+    <div class="dim">缺点：股票名和涨跌幅不够突出</div>
+  </div>
+</div>
+</body>
+</html>

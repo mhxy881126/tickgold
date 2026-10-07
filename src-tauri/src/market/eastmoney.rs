@@ -283,7 +283,7 @@ pub async fn rank_board(sort: &str, page: i64, num: i64) -> Result<Vec<RankRow>,
             let resp = http()
                 .get(&url)
                 .header("Referer", "https://quote.eastmoney.com/")
-                .timeout(std::time::Duration::from_secs(8))
+                .timeout(std::time::Duration::from_secs(4))
                 .send()
                 .await
                 .map_err(|e| format!("{host}: {e}"))?;
@@ -651,18 +651,23 @@ const CLIST_HOSTS: &[&str] = PUSH2_HOSTS;
 /// clist 单页实际请求（pz=100，服务端单页硬上限 100），返回 (全市场总数, 本页行情)。
 /// 依次尝试多个 push2 节点，任一返回可解析 JSON 即成功；全部失败才报错。
 async fn clist_page_once(fs: &str, pn: i32) -> Result<(i64, Vec<EmQuote>), String> {
-    // 全局并发闸门：无论上层几个引擎同时全市场翻页，clist 在途请求总数被统一限制（防请求雪崩）
+    clist_page_sorted_once(fs, "f3", 1, pn).await
+}
+
+/// clist 单页（自定义排序字段/升降序），返回本页行情。
+/// fid: 排序字段（f3=涨跌幅, f6=成交额）；po: 1=降序, 0=升序。
+async fn clist_page_sorted_once(fs: &str, fid: &str, po: i32, pn: i32) -> Result<(i64, Vec<EmQuote>), String> {
     let _permit = http_permit().await;
     let mut last = String::new();
     for host in CLIST_HOSTS {
         let url = format!(
-            "https://{}/api/qt/clist/get?pn={}&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f3&fs={}&fields=f12,f14,f17,f18,f6,f2,f3",
-            host, pn, fs
+            "https://{}/api/qt/clist/get?pn={}&pz=100&po={}&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid={}&fs={}&fields=f12,f14,f17,f18,f6,f2,f3",
+            host, pn, po, fid, fs
         );
         let resp = match http()
             .get(&url)
             .header("Referer", "https://quote.eastmoney.com/")
-            .timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(4))
             .send()
             .await
         {
@@ -688,21 +693,20 @@ async fn clist_page_once(fs: &str, pn: i32) -> Result<(i64, Vec<EmQuote>), Strin
     Err(format!("所有 clist 节点均失败；{}", last))
 }
 
-/// clist 单页（带 3 次退避重试，缓解 push2 偶发限流 / 连接重置）
+/// clist 单页（带 3 次退避重试）
 async fn clist_page(fs: &str, pn: i32) -> Result<(i64, Vec<EmQuote>), String> {
+    clist_page_sorted(fs, "f3", 1, pn).await
+}
+
+/// clist 单页（自定义排序 + 3 次退避重试）
+async fn clist_page_sorted(fs: &str, fid: &str, po: i32, pn: i32) -> Result<(i64, Vec<EmQuote>), String> {
     let mut last = String::new();
     for attempt in 0..3u32 {
-        match clist_page_once(fs, pn).await {
+        match clist_page_sorted_once(fs, fid, po, pn).await {
             Ok(v) => return Ok(v),
             Err(e) => {
                 last = e;
                 if attempt < 2 {
-                    log::warn!(
-                        "clist 第 {pn} 页第 {} 次尝试失败: {last}；指数退避后重试",
-                        attempt + 1
-                    );
-                    // 指数退避（500ms / 1000ms）+ 随页码与时间变化的随机抖动，
-                    // 避免一批被限流的请求在固定间隔同时重试、再次撞上限流
                     let base = 500u64 * 2u64.pow(attempt);
                     let jitter = (now_millis().unsigned_abs() / 10)
                         .wrapping_add(pn as u64 * 7919)
@@ -713,69 +717,60 @@ async fn clist_page(fs: &str, pn: i32) -> Result<(i64, Vec<EmQuote>), String> {
             }
         }
     }
-    log::error!("clist 第 {pn} 页 3 次尝试均失败: {last}");
     Err(last)
 }
 
 pub async fn auction() -> Result<AuctionData, String> {
     let fs = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048";
-    // 第 1 页：取全市场总数，计算总页数
-    let (total, first) = clist_page(fs, 1).await?;
-    let pages = ((total.max(0) + 99) / 100) as i32;
-    let mut all: Vec<EmQuote> = first;
-    // 其余页：每批 8 个并发，避免一次性约 60 并发触发限流
-    let mut pn = 2;
-    while pn <= pages {
-        let batch_end = (pn + 4).min(pages);
-        let mut handles = Vec::new();
-        for p in pn..=batch_end {
-            let fs_owned = fs.to_string();
-            handles.push(tokio::spawn(async move {
-                clist_page(&fs_owned, p).await
-            }));
-        }
-        for h in handles {
-            let (_, page) = h.await.map_err(|e| e.to_string())??;
-            all.extend(page);
-        }
-        pn = batch_end + 1;
-        // 批间小延迟，给服务端喘息，降低整段翻页被限流概率
-        if pn <= pages {
-            tokio::time::sleep(std::time::Duration::from_millis(180)).await;
+    // 只取前1页榜单（100条），2个并发请求
+    let fs_h = fs.to_string();
+    let fs_l = fs.to_string();
+    let (h, l) = tokio::join!(
+        clist_page_sorted_once(&fs_h, "f3", 1, 1),
+        clist_page_sorted_once(&fs_l, "f3", 0, 1),
+    );
+    let mut seen = std::collections::HashSet::new();
+    let mut high: Vec<AuctionStock> = Vec::new();
+    let mut low: Vec<AuctionStock> = Vec::new();
+    for (res, is_high) in [(h, true), (l, false)] {
+        if let Ok((_, quotes)) = res {
+            for q in quotes {
+                if !seen.insert(q.code.clone()) { continue; }
+                if let Some(s) = to_auction_stock(&q) {
+                    if is_high && s.gap > 0.0 { high.push(s); }
+                    else if !is_high && s.gap < 0.0 { low.push(s); }
+                }
+            }
         }
     }
-    let rows: Vec<AuctionStock> = all
-        .iter()
-        .filter_map(|q| {
-            let pc = nf(&q.prev_close);
-            let o = nf(&q.open);
-            if pc > 0.0 && o > 0.0 {
-                Some(AuctionStock {
-                    code: q.code.clone(),
-                    name: q.name.clone(),
-                    open: o,
-                    prev_close: pc,
-                    gap: (o - pc) / pc * 100.0,
-                    amount: nf(&q.amount),
-                    price: nf(&q.price),
-                    pct: nf(&q.pct),
-                })
-            } else {
-                None
-            }
-        })
-        .collect();
-    let total = rows.len();
-    let mut high: Vec<AuctionStock> = rows.iter().filter(|r| r.gap > 0.0).cloned().collect();
     high.sort_by(|a, b| b.gap.partial_cmp(&a.gap).unwrap());
-    let mut low: Vec<AuctionStock> = rows.iter().filter(|r| r.gap < 0.0).cloned().collect();
     low.sort_by(|a, b| a.gap.partial_cmp(&b.gap).unwrap());
+    let total = high.len() + low.len();
     Ok(AuctionData {
         updated: now_millis(),
         total,
         high_open: high,
         low_open: low,
     })
+}
+
+fn to_auction_stock(q: &EmQuote) -> Option<AuctionStock> {
+    let pc = nf(&q.prev_close);
+    let o = nf(&q.open);
+    if pc > 0.0 && o > 0.0 {
+        Some(AuctionStock {
+            code: q.code.clone(),
+            name: q.name.clone(),
+            open: o,
+            prev_close: pc,
+            gap: (o - pc) / pc * 100.0,
+            amount: nf(&q.amount),
+            price: nf(&q.price),
+            pct: nf(&q.pct),
+        })
+    } else {
+        None
+    }
 }
 
 // ===== 龙虎榜复盘（数据中心：每日个股 + 买卖前五席位）=====

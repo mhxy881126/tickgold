@@ -94,7 +94,7 @@ async fn build_pool(watch: &[String]) -> Vec<String> {
         }
     }
     for sort in ["gainers", "amount"] {
-        if let Ok(rows) = super::sina::rank_page(sort, 1, 80).await {
+        if let Ok(rows) = super::sina::rank_page(sort, 1, 200).await {
             for q in rows {
                 set.insert(q.code);
             }
@@ -146,41 +146,41 @@ fn detect(prev: &HashMap<String, Quote>, curr: &HashMap<String, Quote>) -> Vec<S
         let c_up = c.price >= lu - eps;
         let p_up = p.price >= lu - eps;
         if c_up && !p_up {
-            evs.push(mk("limit_up", "封涨停板", format!("封涨停板 {}", c.price), "up", c));
+            evs.push(mk("limit_up", "涨停突破", format!("现价{}", c.price), "up", c));
         } else if !c_up && p_up {
-            evs.push(mk("limit_up_open", "涨停打开", format!("涨停打开 {}", c.price), "down", c));
+            evs.push(mk("limit_up_open", "打开涨停板", format!("现价{}", c.price), "down", c));
         }
 
         // 封 / 开 跌停板
         let c_dn = c.price <= ld + eps && c.price > 0.0;
         let p_dn = p.price <= ld + eps && p.price > 0.0;
         if c_dn && !p_dn {
-            evs.push(mk("limit_down", "封跌停板", format!("封跌停板 {}", c.price), "down", c));
+            evs.push(mk("limit_down", "跌停突破", format!("现价{}", c.price), "down", c));
         } else if !c_dn && p_dn {
-            evs.push(mk("limit_down_open", "跌停打开", format!("跌停打开 {}", c.price), "up", c));
+            evs.push(mk("limit_down_open", "打开跌停板", format!("现价{}", c.price), "up", c));
         }
 
         // 快速拉升 / 下跌（区间涨跌幅变化）
         let dpct = c.pct - p.pct;
-        if dpct >= 0.8 {
-            evs.push(mk("surge", "快速拉升", format!("快速拉升 +{:.2}%", dpct), "up", c));
-        } else if dpct <= -0.8 {
-            evs.push(mk("plunge", "快速下跌", format!("快速下跌 {:.2}%", dpct), "down", c));
+        if dpct >= 0.5 {
+            evs.push(mk("surge", "急速拉升", format!("{:.2}%", dpct), "up", c));
+        } else if dpct <= -0.5 {
+            evs.push(mk("plunge", "猛烈打压", format!("{:.2}%", dpct), "down", c));
         }
 
-        // 大单（区间成交额增量 ≥ 3000 万，按价格方向定买卖）
+        // 大单（区间成交额增量 ≥ 1000 万，按价格方向定买卖）
         let d_amt = c.amount - p.amount;
-        if d_amt >= 3000.0 * 1e4 {
+        if d_amt >= 1000.0 * 1e4 {
             if c.price + eps >= p.price {
-                evs.push(mk("big_buy", "大单买入", format!("大单买入 {:.0}万", d_amt / 1e4), "up", c));
+                evs.push(mk("big_buy", "大笔买入", format!("{:.0}万", d_amt / 1e4), "up", c));
             } else {
-                evs.push(mk("big_sell", "大单卖出", format!("大单卖出 {:.0}万", d_amt / 1e4), "down", c));
+                evs.push(mk("big_sell", "大笔卖出", format!("{:.0}万", d_amt / 1e4), "down", c));
             }
         }
 
         // 量比放大（上穿 3，触发一次）
         if c.volume_ratio >= 3.0 && p.volume_ratio < 3.0 {
-            evs.push(mk("volume", "量比放大", format!("量比放大 {:.1}", c.volume_ratio), "neutral", c));
+            evs.push(mk("volume", "放量异动", format!("量比{:.1}", c.volume_ratio), "neutral", c));
         }
     }
     evs
@@ -209,7 +209,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<SpiderCtl>) {
                 SpiderStatus { trading, pool_size: pool.len(), time: now_millis() },
             );
             tick += 1;
-            for _ in 0..15 {
+            for _ in 0..5 {
                 if !ctl.running.load(Ordering::Acquire) {
                     break;
                 }

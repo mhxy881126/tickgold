@@ -442,3 +442,99 @@ fn urlencode(s: &str) -> String {
     }
     out
 }
+
+// ===== 集合竞价排行（腾讯快速源） =====
+/// 腾讯A股涨跌幅排行，返回 (高开榜, 低开榜)。
+pub async fn auction_rank() -> Result<(Vec<super::eastmoney::AuctionStock>, Vec<super::eastmoney::AuctionStock>), String> {
+    let (high_codes, low_codes) = tokio::join!(
+        fetch_rank_codes(0),
+        fetch_rank_codes(1),
+    );
+    let high_codes = high_codes?;
+    let low_codes = low_codes?;
+
+    // 合并代码列表，批量查行情
+    let mut all_codes: Vec<String> = Vec::new();
+    all_codes.extend(high_codes.iter().map(|(c, _)| c.clone()));
+    all_codes.extend(low_codes.iter().map(|(c, _)| c.clone()));
+    all_codes.dedup();
+
+    let quotes_map = if all_codes.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        // 分批查询（每批60只）
+        let mut map = std::collections::HashMap::new();
+        for chunk in all_codes.chunks(60) {
+            if let Ok(qs) = quotes(&chunk.to_vec()).await {
+                for q in qs {
+                    map.insert(q.code.clone(), q);
+                }
+            }
+        }
+        map
+    };
+
+    let high: Vec<_> = high_codes.iter().filter_map(|(code, pct)| {
+        let q = quotes_map.get(code)?;
+        let gap = if q.prev_close > 0.0 { (q.open - q.prev_close) / q.prev_close * 100.0 } else { *pct };
+        Some(super::eastmoney::AuctionStock {
+            code: code.clone(),
+            name: q.name.clone(),
+            open: q.open,
+            prev_close: q.prev_close,
+            gap,
+            amount: q.amount,
+            price: q.price,
+            pct: q.pct,
+        })
+    }).collect();
+
+    let low: Vec<_> = low_codes.iter().filter_map(|(code, pct)| {
+        let q = quotes_map.get(code)?;
+        let gap = if q.prev_close > 0.0 { (q.open - q.prev_close) / q.prev_close * 100.0 } else { *pct };
+        Some(super::eastmoney::AuctionStock {
+            code: code.clone(),
+            name: q.name.clone(),
+            open: q.open,
+            prev_close: q.prev_close,
+            gap,
+            amount: q.amount,
+            price: q.price,
+            pct: q.pct,
+        })
+    }).collect();
+
+    Ok((high, low))
+}
+
+/// 获取排行代码列表，返回 (代码, 涨跌幅%)
+async fn fetch_rank_codes(o: i32) -> Result<Vec<(String, f64)>, String> {
+    let url = format!(
+        "https://stock.gtimg.cn/data/view/rank.php?t=rankash/chr&p=1&o={o}&l=80&v=list_data"
+    );
+    let resp = http()
+        .get(&url)
+        .timeout(std::time::Duration::from_secs(4))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    let (txt, _, _) = encoding_rs::GBK.decode(&bytes);
+    let txt = txt.trim();
+    let json_str = if let Some(idx) = txt.find('[') {
+        let end = txt.rfind(']').map(|i| i + 1).unwrap_or(txt.len());
+        &txt[idx..end]
+    } else {
+        return Err("腾讯排行返回格式异常".to_string());
+    };
+    let arr: Vec<Vec<Value>> = serde_json::from_str(json_str).map_err(|e| format!("腾讯排行解析失败: {e}"))?;
+    let mut out = Vec::new();
+    for row in &arr {
+        let code_raw = row.get(1).and_then(|v| v.as_str()).unwrap_or("");
+        let code = code_raw.trim_start_matches("sh").trim_start_matches("sz").trim_start_matches("bj").to_string();
+        if code.len() != 6 { continue; }
+        let pct = row.get(3).and_then(|v| v.as_f64()).unwrap_or(0.0);
+        out.push((code, pct));
+    }
+    Ok(out)
+}

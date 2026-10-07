@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>交易盯盘顶栏重排方案</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23e8c878'/%3E%3Cpath d='M7 16l4-6 3 3 4-5' stroke='%230d1016' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0d1016; --bg2:#15181f; --bg3:#1b202a; --bd:#2a3344; --bd2:#38445c;
+    --tx:#e6ecf5; --dim:#7c8798; --gold:#e8c878; --gold-dim:rgba(232,200,120,.14);
+    --red:#e04a4a; --red-dim:rgba(224,74,74,.14); --green:#35c07c;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#080a0f;color:var(--tx);font-family:"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;font-size:14px;line-height:1.5;padding:28px 20px 60px}
+  .doc{max-width:1280px;margin:0 auto}
+  /* ===== 顶部：方案切换 ===== */
+  .doc-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+  .doc-title{font-size:20px;font-weight:700;letter-spacing:.5px}
+  .doc-title small{display:block;font-size:12px;font-weight:400;color:var(--dim);margin-top:2px}
+  .tabs{display:flex;gap:8px;flex-wrap:wrap}
+  .tab{border:1px solid var(--bd);background:var(--bg2);color:var(--dim);padding:8px 18px;border-radius:10px;cursor:pointer;font-size:13px;transition:.15s}
+  .tab:hover{color:var(--tx);border-color:var(--bd2)}
+  .tab.on{color:#0d1016;background:var(--gold);border-color:var(--gold);font-weight:700}
+  .plan-note{margin:2px 0 16px;font-size:13px;color:var(--dim)}
+  .plan-note b{color:var(--gold);font-weight:600}
+  /* ===== 方案块 ===== */
+  .plan{display:none}
+  .plan.on{display:block}
+  .plan-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  .plan-name{font-size:16px;font-weight:700;color:var(--gold)}
+  .plan-desc{font-size:13px;color:var(--dim);flex:1;min-width:240px}
+  .tags{display:flex;gap:6px;flex-wrap:wrap}
+  .tag{font-size:11px;color:var(--dim);border:1px solid var(--bd);border-radius:20px;padding:2px 10px;background:var(--bg2)}
+  .tag.g{color:var(--gold);border-color:rgba(232,200,120,.45)}
+  /* ===== 模拟窗口 ===== */
+  .win{border:1px solid var(--bd);border-radius:12px;overflow:hidden;background:var(--bg);box-shadow:0 10px 30px rgba(0,0,0,.4)}
+  .win-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg2);border-bottom:1px solid var(--bd);font-size:12px;color:var(--dim)}
+  .win-bar .dot{width:10px;height:10px;border-radius:50%;background:#26304a}
+  .win-bar .tt{color:var(--tx);font-weight:600}
+  .win-bar .sp{flex:1}
+  .win-body{padding:10px 12px 12px}
+  /* 通用控件 */
+  .btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--bd);background:var(--bg2);color:var(--dim);font-size:12px;cursor:pointer;white-space:nowrap;transition:.15s;font-family:inherit}
+  .btn:hover{color:var(--tx);border-color:var(--bd2)}
+  .btn svg{flex-shrink:0}
+  .btn.gold{color:var(--gold);border-color:rgba(232,200,120,.5)}
+  .btn.gold:hover{background:var(--gold-dim)}
+  .btn.kill{color:#ffd9d9;border-color:rgba(224,74,74,.65);background:rgba(224,74,74,.12)}
+  .btn.kill:hover{background:rgba(224,74,74,.22)}
+  .btn.kill.armed{background:var(--red);border-color:var(--red);color:#fff;animation:blink 1.1s infinite}
+  @keyframes blink{50%{opacity:.82}}
+  .btn.danger{background:var(--red);border-color:var(--red);color:#fff}
+  .btn.danger:hover{opacity:.9}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .split{width:1px;align-self:stretch;background:var(--bd);margin:0 4px}
+  .acct-cell{min-width:0}
+  .acct-k{font-size:11px;color:var(--dim);white-space:nowrap}
+  .acct-v{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:.3px}
+  .acct-v.up{color:var(--green)}
+  .acct-v.flat{color:var(--tx)}
+  /* 状态徽章 */
+  .badge{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:20px;background:var(--bg3);border:1px solid var(--bd);font-size:11px;color:var(--dim);white-space:nowrap}
+  .badge .bd{width:7px;height:7px;border-radius:50%;background:#6b7689}
+  .badge.on .bd{background:var(--green);box-shadow:0 0 6px rgba(53,192,124,.6)}
+  .badge.warn{color:#ffd9d9;border-color:rgba(224,74,74,.5);background:var(--red-dim)}
+  .badge.warn .bd{background:var(--red);box-shadow:0 0 6px rgba(224,74,74,.6)}
+  /* 合规条 */
+  .hint{font-size:11px;color:var(--dim);padding:8px 4px 0;display:flex;align-items:center;gap:6px}
+  .hint::before{content:"";width:3px;height:11px;background:var(--gold);border-radius:2px}
+  /* ===== 方案 A：单行三段分区 ===== */
+  .bar-a{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg2);border:1px solid var(--bd);border-radius:10px;flex-wrap:wrap}
+  .grp{display:flex;align-items:center;gap:8px;min-width:0}
+  .grp-label{font-size:10px;color:var(--dim);letter-spacing:1px;margin-right:2px;opacity:.8}
+  .grp.left{flex:1;min-width:300px}
+  /* ===== 方案 B：双行 ===== */
+  .bar-b1{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg2);border:1px solid var(--bd);border-radius:10px 10px 0 0;flex-wrap:wrap}
+  .bar-b2{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg3);border:1px solid var(--bd);border-top:none;border-radius:0 0 10px 10px;flex-wrap:wrap}
+  /* ===== 方案 C：精简单行 ===== */
+  .bar-c{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg2);border:1px solid var(--bd);border-radius:10px;flex-wrap:wrap}
+  /* 下拉 */
+  .pop{position:absolute;top:calc(100% + 6px);left:0;z-index:50;min-width:230px;background:var(--bg2);border:1px solid var(--bd2);border-radius:10px;box-shadow:0 10px 26px rgba(0,0,0,.45);padding:6px;display:none}
+  .pop.open{display:block}
+  .pop .ph{font-size:11px;color:var(--dim);padding:6px 8px 4px;border-bottom:1px solid var(--bd);margin-bottom:4px}
+  .pop-item{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:7px 8px;border-radius:7px;cursor:pointer;font-size:13px}
+  .pop-item:hover{background:var(--gold-dim);color:var(--gold)}
+  .pop-item .del{color:var(--dim);font-size:15px;padding:0 4px}
+  .pop-item .del:hover{color:var(--red)}
+  .pop-empty{font-size:12px;color:var(--dim);text-align:center;padding:14px 8px}
+  .pop-foot{padding:6px 8px 2px;border-top:1px solid var(--bd)}
+  .rel{position:relative}
+  /* 资产更多浮层 */
+  .more-pop{position:absolute;top:calc(100% + 6px);left:0;z-index:50;min-width:280px;background:var(--bg2);border:1px solid var(--bd2);border-radius:10px;box-shadow:0 10px 26px rgba(0,0,0,.45);padding:10px;display:none;grid-template-columns:repeat(2,1fr);gap:8px}
+  .more-pop.open{display:grid}
+  .more-cell .mk{font-size:11px;color:var(--dim)}
+  .more-cell .mv{font-size:15px;font-weight:700}
+  /* toast */
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--gold);color:#0d1016;font-size:13px;font-weight:600;padding:9px 20px;border-radius:20px;opacity:0;pointer-events:none;transition:.25s;z-index:99}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  /* 网格示意 */
+  .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:10px;margin-top:10px}
+  .card{grid-column:span 4;background:var(--bg2);border:1px solid var(--bd);border-radius:10px;padding:10px;min-height:150px;display:flex;flex-direction:column;gap:8px}
+  .card.ch{grid-column:span 6}.card.sg{grid-column:span 6}
+  .card-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
+  .card-head .acc{width:4px;height:14px;border-radius:2px;background:var(--gold)}
+  .card .ph-line{height:8px;border-radius:4px;background:var(--bg3)}
+  .card .ph-line.w50{width:50%}.card .ph-line.w70{width:70%}
+  .bar-mock{display:flex;align-items:flex-end;gap:4px;height:80px;margin-top:6px}
+  .bar-mock i{flex:1;background:linear-gradient(180deg,rgba(232,200,120,.7),rgba(232,200,120,.15));border-radius:3px 3px 0 0}
+  /* 方案对比表 */
+  .cmp{margin-top:16px;border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+  .cmp table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+  .cmp th,.cmp td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd);vertical-align:top}
+  .cmp th{background:var(--bg2);color:var(--dim);font-weight:600}
+  .cmp tr:last-child td{border-bottom:none}
+  .cmp td:first-child{width:18%;color:var(--gold);font-weight:600}
+  .cmp .cell{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  @media (max-width:860px){
+    .card.ch,.card.sg,.card{grid-column:span 12}
+    .doc-head{flex-direction:column;align-items:flex-start}
+    .grp.left{min-width:0;flex-basis:100%}
+  }
+</style>
+</head>
+<body>
+<div class="doc">
+  <header class="doc-head">
+    <div class="doc-title">交易盯盘 · 顶栏重排方案
+      <small>针对「模拟盘资产 + 布局/卡片管理 + Kill Switch 同排拥挤」出 3 套布局，点击顶部切换对比</small>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button class="tab on" data-plan="a">方案 A · 单行三段分区</button>
+      <button class="tab" data-plan="b">方案 B · 资产/工具双行</button>
+      <button class="tab" data-plan="c">方案 C · 压缩 + 管理抽屉</button>
+    </nav>
+  </header>
+  <div class="plan-note" id="note"></div>
+
+  <!-- ===== 方案 A：单行三段分区（数据 | 工具 | 安全） ===== -->
+  <section class="plan on" id="plan-a">
+    <div class="plan-head">
+      <div class="plan-name">方案 A</div>
+      <div class="plan-desc">单行三段分区：资产数据 / 视图工具 / 安全操作按底色块与分隔线物理分区，各自独立、互不挤占。</div>
+      <div class="tags"><span class="tag g">数据·工具·安全 三段分区</span><span class="tag">Kill Switch 独立红区</span><span class="tag">按钮文案精简为图标+短词</span></div>
+    </div>
+    <div class="win">
+      <div class="win-bar"><span class="dot"></span><span class="tt">TickGold · 交易盯盘</span><span class="sp"></span><span>盘后复盘 · 10/7 周三 20:56:34</span></div>
+      <div class="win-body">
+        <div class="bar-a">
+          <!-- 左：资产数据 -->
+          <div class="grp left">
+            <div class="acct-cell"><div class="acct-k">总资产</div><div class="acct-v flat">¥2,000,000</div></div>
+            <div class="acct-cell"><div class="acct-k">可用资金</div><div class="acct-v flat">¥2,000,000</div></div>
+            <div class="acct-cell"><div class="acct-k">持仓市值</div><div class="acct-v flat">¥0</div></div>
+            <div class="acct-cell"><div class="acct-k">仓位占比</div><div class="acct-v flat">--</div></div>
+            <div class="badge off">模拟账户 · 未连接</div>
+          </div>
+          <div class="split"></div>
+          <!-- 中：视图工具 -->
+          <div class="grp">
+            <div class="rel">
+              <button class="btn" id="a-layout">布局 ▾</button>
+              <div class="pop" id="a-layout-pop">
+                <div class="ph">命名布局</div>
+                <div class="pop-item"><span>盯盘双屏</span><span class="del">×</span></div>
+                <div class="pop-item"><span>盘中 6 卡</span><span class="del">×</span></div>
+                <div class="pop-item"><span>我的场景 20:11:06</span><span class="del">×</span></div>
+                <div class="pop-foot"><button class="btn gold" id="a-save">保存当前为新布局</button></div>
+              </div>
+            </div>
+            <button class="btn" id="a-add">＋ 卡片</button>
+            <button class="btn" id="a-reset">复位布局</button>
+          </div>
+          <div class="split"></div>
+          <!-- 右：安全操作 -->
+          <div class="grp">
+            <button class="btn kill" id="a-kill">KILL SWITCH · 紧急撤单</button>
+          </div>
+        </div>
+        <div class="hint">信号 → 人工确认 → 指令 → 券商端执行 · 系统不自动成交 · 模拟先行</div>
+        <div class="grid">
+          <div class="card ch"><div class="card-head"><span class="acc"></span>K线图</div><div class="ph-line w50"></div><div class="ph-line w70"></div><div class="bar-mock"><i style="height:34%"></i><i style="height:52%"></i><i style="height:46%"></i><i style="height:70%"></i><i style="height:62%"></i><i style="height:84%"></i></div></div>
+          <div class="card sg"><div class="card-head"><span class="acc"></span>逐笔成交</div><div class="ph-line w50"></div><div class="ph-line w70"></div><div class="ph-line w50"></div></div>
+          <div class="card"><div class="card-head"><span class="acc"></span>模拟交易</div><div class="ph-line w50"></div><div class="ph-line w70"></div><div class="ph-line w50"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 方案 B：资产/工具双行 ===== -->
+  <section class="plan" id="plan-b">
+    <div class="plan-head">
+      <div class="plan-name">方案 B</div>
+      <div class="plan-desc">彻底分层：第一行只放资产数据 + 状态徽章 + Kill Switch；第二行独立工具条放布局/卡片管理，合规提示并入工具条右侧弱化。</div>
+      <div class="tags"><span class="tag g">数据行与工具行物理分离</span><span class="tag">Kill Switch 独占右端</span><span class="tag">工具条可整体折叠</span></div>
+    </div>
+    <div class="win">
+      <div class="win-bar"><span class="dot"></span><span class="tt">TickGold · 交易盯盘</span><span class="sp"></span><span>盘后复盘 · 10/7 周三 20:56:34</span></div>
+      <div class="win-body">
+        <!-- 行 1：资产 + 状态 + Kill -->
+        <div class="bar-b1">
+          <div class="acct-cell"><div class="acct-k">总资产</div><div class="acct-v flat">¥2,000,000</div></div>
+          <div class="acct-cell"><div class="acct-k">可用资金</div><div class="acct-v flat">¥2,000,000</div></div>
+          <div class="acct-cell"><div class="acct-k">持仓市值</div><div class="acct-v flat">¥0</div></div>
+          <div class="acct-cell"><div class="acct-k">仓位占比</div><div class="acct-v flat">--</div></div>
+          <div class="badge off">模拟账户 · 未连接</div>
+          <div style="flex:1"></div>
+          <button class="btn kill" id="b-kill">KILL SWITCH · 紧急撤单</button>
+        </div>
+        <!-- 行 2：视图工具 -->
+        <div class="bar-b2">
+          <div class="rel">
+            <button class="btn" id="b-layout">布局 ▾</button>
+            <div class="pop" id="b-layout-pop">
+              <div class="ph">命名布局</div>
+              <div class="pop-item"><span>盯盘双屏</span><span class="del">×</span></div>
+              <div class="pop-item"><span>盘中 6 卡</span><span class="del">×</span></div>
+              <div class="pop-item"><span>我的场景 20:11:06</span><span class="del">×</span></div>
+              <div class="pop-foot"><button class="btn gold" id="b-save">保存当前为新布局</button></div>
+            </div>
+          </div>
+          <button class="btn" id="b-add">＋ 卡片</button>
+          <button class="btn" id="b-reset">恢复默认布局</button>
+          <div style="flex:1"></div>
+          <div class="hint" style="padding:0">信号 → 人工确认 → 指令 · 系统不自动成交 · 模拟先行</div>
+        </div>
+        <div class="grid">
+          <div class="card ch"><div class="card-head"><span class="acc"></span>K线图</div><div class="ph-line w50"></div><div class="ph-line w70"></div><div class="bar-mock"><i style="height:40%"></i><i style="height:58%"></i><i style="height:50%"></i><i style="height:76%"></i><i style="height:66%"></i><i style="height:88%"></i></div></div>
+          <div class="card sg"><div class="card-head"><span class="acc"></span>逐笔成交</div><div class="ph-line w50"></div><div class="ph-line w70"></div><div class="ph-line w50"></div></div>
+          <div class="card"><div class="card-head"><span class="acc"></span>模拟交易</div><div class="ph-line w50"></div><div class="ph-line w70"></div><div class="ph-line w50"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 方案 C：压缩 + 管理抽屉 ===== -->
+  <section class="plan" id="plan-c">
+    <div class="plan-head">
+      <div class="plan-name">方案 C</div>
+      <div class="plan-desc">控件最少：资产只留 2 个核心格 + 「更多」浮层；布局/卡片/保存/恢复全部收进「工作台管理」一个抽屉；Kill Switch 保持独立。</div>
+      <div class="tags"><span class="tag g">单行 3 控件</span><span class="tag">布局与卡片合并为管理抽屉</span><span class="tag">安全控件永不入抽屉</span></div>
+    </div>
+    <div class="win">
+      <div class="win-bar"><span class="dot"></span><span class="tt">TickGold · 交易盯盘</span><span class="sp"></span><span>盘后复盘 · 10/7 周三 20:56:34</span></div>
+      <div class="win-body">
+        <div class="bar-c">
+          <div class="acct-cell"><div class="acct-k">总资产</div><div class="acct-v flat">¥2,000,000</div></div>
+          <div class="acct-cell"><div class="acct-k">可用资金</div><div class="acct-v flat">¥2,000,000</div></div>
+          <div class="rel">
+            <button class="btn" id="c-more">更多 ▾</button>
+            <div class="more-pop" id="c-more-pop">
+              <div class="more-cell"><div class="mk">持仓市值</div><div class="mv">¥0</div></div>
+              <div class="more-cell"><div class="mk">仓位占比</div><div class="mv">--</div></div>
+              <div class="more-cell"><div class="mk">模拟账户</div><div class="mv" style="font-size:12px;color:var(--dim)">未连接</div></div>
+              <div class="more-cell"><div class="mk">Kill Switch</div><div class="mv" style="font-size:12px;color:var(--red)">未触发</div></div>
+            </div>
+          </div>
+          <div style="flex:1"></div>
+          <div class="rel">
+            <button class="btn gold" id="c-manage">工作台管理 ▾</button>
+            <div class="pop" id="c-manage-pop">
+              <div class="ph">布局</div>
+              <div class="pop-item"><span>盯盘双屏</span><span class="del">×</span></div>
+              <div class="pop-item"><span>盘中 6 卡</span><span class="del">×</span></div>
+              <div class="pop-item"><span>我的场景 20:11:06</span><span class="del">×</span></div>
+              <div class="ph" style="margin-top:6px">卡片</div>
+              <div class="pop-item"><span>＋ 添加卡片</span></div>
+              <div class="pop-foot">
+                <button class="btn gold" id="c-save">保存当前为新布局</button>
+                <button class="btn" id="c-reset">恢复默认布局</button>
+              </div>
+            </div>
+          </div>
+          <button class="btn kill" id="c-kill">KILL SWITCH</button>
+        </div>
+        <div class="hint">信号 → 人工确认 → 指令 → 券商端执行 · 系统不自动成交 · 模拟先行</div>
+        <div class="grid">
+          <div class="card ch"><div class="card-head"><span class="acc"></span>K线图</div><div class="ph-line w50"></div><div class="ph-line w70"></div><div class="bar-mock"><i style="height:46%"></i><i style="height:60%"></i><i style="height:54%"></i><i style="height:72%"></i><i style="height:68%"></i><i style="height:90%"></i></div></div>
+          <div class="card sg"><div class="card-head"><span class="acc"></span>逐笔成交</div><div class="ph-line w50"></div><div class="ph-line w70"></div><div class="ph-line w50"></div></div>
+          <div class="card"><div class="card-head"><span class="acc"></span>模拟交易</div><div class="ph-line w50"></div><div class="ph-line w70"></div><div class="ph-line w50"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 三方案对比表 ===== -->
+  <div class="cmp">
+    <table>
+      <tr><th>维度</th><th>方案 A · 单行三段分区</th><th>方案 B · 资产/工具双行</th><th>方案 C · 压缩 + 管理抽屉</th></tr>
+      <tr><td>核心思路</td><td>一行内用分隔线与底色块划分「数据 / 工具 / 安全」三区</td><td>资产行与工具行彻底分离，各司其职</td><td>控件最少化，布局与卡片并入「工作台管理」抽屉</td></tr>
+      <tr><td>顶栏控件数</td><td>9（4 资产 + 徽章 + 布局 + 卡片 + 复位 + Kill）</td><td>行1：6；行2：4（纵向占用 2 行）</td><td>5（2 资产 + 更多 + 管理 + Kill）</td></tr>
+      <tr><td>Kill Switch</td><td>独立红区，与普通按钮物理分隔</td><td>独占第一行右端，永不与工具混杂</td><td>独立红按钮，永不入抽屉</td></tr>
+      <tr><td>操作成本</td><td>布局/卡片/复位一眼可见，点选快</td><td>工具集中一行，视觉分组最强</td><td>管理需先开抽屉，多一步</td></tr>
+      <tr><td>纵向占用</td><td>1 行（最省）</td><td>2 行（网格区略收窄）</td><td>1 行（最省）</td></tr>
+      <tr><td>适合场景</td><td>默认推荐：信息密度与操作可达性平衡</td><td>重工具流用户：频繁切布局/加卡</td><td>极简党 / 小屏：只要核心资产与安全</td></tr>
+    </table>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+  var plans = ["a", "b", "c"];
+  var notes = {
+    a: "要点：数据区保留 4 资产格 + 状态徽章；工具按钮精简文案（布局 ▾ / ＋卡片 / 复位布局）；Kill Switch 独立成区。点击「布局 ▾」「KILL SWITCH」体验交互。",
+    b: "要点：第一行只有「资产 + 状态 + Kill」；第二行独立工具条（可整体折叠为一行图标），合规提示弱化并入右侧。点击「布局 ▾」「KILL SWITCH」体验交互。",
+    c: "要点：资产收成 2 核心格，「更多 ▾」浮层展示次要资产与状态；布局/卡片/保存/恢复全并入「工作台管理」抽屉。点击「更多 ▾」「工作台管理 ▾」「KILL SWITCH」体验交互。"
+  };
+  var noteEl = document.getElementById("note");
+  var toastEl = document.getElementById("toast");
+  function toast(m) {
+    toastEl.textContent = m;
+    toastEl.classList.add("show");
+    setTimeout(function () { toastEl.classList.remove("show"); }, 1800);
+  }
+  // 方案切换
+  document.getElementById("tabs").addEventListener("click", function (e) {
+    var t = e.target.closest(".tab");
+    if (!t) return;
+    document.querySelectorAll(".tab").forEach(function (x) { x.classList.remove("on"); });
+    t.classList.add("on");
+    var p = t.getAttribute("data-plan");
+    document.querySelectorAll(".plan").forEach(function (x) { x.classList.remove("on"); });
+    document.getElementById("plan-" + p).classList.add("on");
+    noteEl.innerHTML = notes[p];
+    closeAll();
+  });
+  noteEl.innerHTML = notes.a;
+  function closeAll() {
+    document.querySelectorAll(".pop, .more-pop").forEach(function (x) { x.classList.remove("open"); });
+  }
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest(".rel")) closeAll();
+  });
+  // 下拉开合（按 id 绑定）
+  [["a-layout", "a-layout-pop"], ["b-layout", "b-layout-pop"], ["c-more", "c-more-pop"], ["c-manage", "c-manage-pop"]].forEach(function (pair) {
+    var btn = document.getElementById(pair[0]);
+    var pop = document.getElementById(pair[1]);
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var open = pop.classList.toggle("open");
+      if (open) document.querySelectorAll(".pop, .more-pop").forEach(function (x) { if (x !== pop) x.classList.remove("open"); });
+    });
+    pop.addEventListener("click", function (e) {
+      if (e.target.classList.contains("del")) { e.target.closest(".pop-item").remove(); toast("布局已删除"); }
+      e.stopPropagation();
+    });
+  });
+  // 保存 / 复位 / 添加
+  [["a-save", "已保存为新布局"], ["b-save", "已保存为新布局"], ["c-save", "已保存为新布局"]].forEach(function (p) {
+    document.getElementById(p[0]).addEventListener("click", function () { closeAll(); toast(p[1]); });
+  });
+  [["a-reset", "已恢复默认布局（尺寸自定义保留）"], ["b-reset", "已恢复默认布局（尺寸自定义保留）"], ["c-reset", "已恢复默认布局（尺寸自定义保留）"]].forEach(function (p) {
+    document.getElementById(p[0]).addEventListener("click", function () { closeAll(); toast(p[1]); });
+  });
+  [["a-add", "添加卡片（集合竞价已加入网格）"], ["b-add", "添加卡片（集合竞价已加入网格）"]].forEach(function (p) {
+    document.getElementById(p[0]).addEventListener("click", function () { toast(p[1]); });
+  });
+  // Kill Switch：首次点击 armed，再次点击触发
+  [["a-kill"], ["b-kill"], ["c-kill"]].forEach(function (p) {
+    var el = document.getElementById(p[0]);
+    el.addEventListener("click", function () {
+      if (el.classList.contains("armed")) {
+        el.classList.remove("armed");
+        el.textContent = el.id === "c-kill" ? "KILL SWITCH" : "KILL SWITCH · 紧急撤单";
+        toast("已触发 Kill Switch：所有交易通道已断开");
+      } else {
+        el.classList.add("armed");
+        el.textContent = "再次点击确认触发";
+        setTimeout(function () {
+          if (el.classList.contains("armed")) {
+            el.classList.remove("armed");
+            el.textContent = el.id === "c-kill" ? "KILL SWITCH" : "KILL SWITCH · 紧急撤单";
+          }
+        }, 4000);
+      }
+    });
+  });
+</script>
+</body>
+</html>
