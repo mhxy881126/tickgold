@@ -58,6 +58,9 @@ function signalColor(s: SignalKind): string {
 function planCard(cardId: CardId) {
   const token = ++collectToken;
   lastCardId = cardId;
+  // 新一轮尝试：作废上一轮的完成状态与待执行推进（含 90 帧后采空的重新调度权）
+  roundDone = false;
+  if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = 0; }
   cancelAnimationFrame(collectRetry);
   let attempts = 0;
 
@@ -68,8 +71,9 @@ function planCard(cardId: CardId) {
       if (attempts++ < 90) {
         collectRetry = requestAnimationFrame(attempt);
       } else {
-        // 采空兜底：显式空路径等待（由引擎 30s 看门狗推进），不空转、不幻走
+        // 采空兜底：显式空路径并安排推进（600ms 后跳下一张，不等 30s 看门狗）
         sim.resetPath([]);
+        scheduleAdvance();
       }
       return;
     }
@@ -273,6 +277,17 @@ function roundRect(
   ctx.closePath();
 }
 
+/** 一轮收尾：路径走完（或判定空卡）后 600ms 推进引擎下一轮；定时器可被新路径撤销 */
+function scheduleAdvance() {
+  if (roundDone) return;
+  roundDone = true;
+  if (advanceTimer) clearTimeout(advanceTimer);
+  advanceTimer = window.setTimeout(() => {
+    advanceTimer = 0;
+    if (alive && roundDone) advanceRound();
+  }, 600);
+}
+
 function frame(now: number) {
   const ctx = ctx2d;
   if (!ctx) return;
@@ -288,13 +303,7 @@ function frame(now: number) {
     if (sig) sim.spawnPacket(ev.arrived);
   }
   // 事件驱动推进：路径走完且数据包全部飞完，静默 600ms 后通知引擎进下一轮
-  if (!sim.active && sim.packets.length === 0 && !roundDone) {
-    roundDone = true;
-    advanceTimer = window.setTimeout(() => {
-      advanceTimer = 0;
-      if (alive && roundDone) advanceRound();
-    }, 600);
-  }
+  if (!sim.active && sim.packets.length === 0) scheduleAdvance();
   draw(ctx, now);
   // 空闲停帧：无行走路径且无在飞数据包时不再占用 rAF，由 ensureFrame 唤醒
   if (alive && (sim.active || sim.packets.length > 0)) {
