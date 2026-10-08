@@ -2,8 +2,24 @@ import { ref, computed } from "vue";
 import { useWatchlistStore } from "../stores/watchlist";
 import { useQuotesStore } from "../stores/quotes";
 import { usePaperStore } from "../stores/paper";
+import { signalCreateSpider } from "../ai/api";
 import type { Quote } from "../api/types";
 import type { CardId } from "../lib/cards";
+
+// ===== 扫描事件总线：驱动程序化蜘蛛覆盖层行走路径（无监听者时零开销）=====
+export type SpiderSignalKind = "BUY" | "SELL" | null;
+export type SpiderScanEvent =
+  | { type: "card"; cardId: CardId }
+  | { type: "target"; cardId: CardId; code: string; signal: SpiderSignalKind };
+
+const scanListeners = new Set<(e: SpiderScanEvent) => void>();
+export function onSpiderScan(cb: (e: SpiderScanEvent) => void): () => void {
+  scanListeners.add(cb);
+  return () => { scanListeners.delete(cb); };
+}
+function emitScan(e: SpiderScanEvent) {
+  scanListeners.forEach((f) => f(e));
+}
 
 // ===== 智能漫游状态 =====
 const running = ref(false);
@@ -231,6 +247,52 @@ function collectFromStore(cardId: CardId): TargetPoint[] {
   return points;
 }
 
+// ===== 评分信号送「信号确认桥」（半自动/人工确认模式的落桥通道）=====
+// 后端按 code+side+pending 自动去重：同一只票同一方向已有待确认单时返回错误，静默忽略。
+function suggestTicketVol(score: StockScore, paperStore: ReturnType<typeof usePaperStore>): number {
+  if (score.recommendation === "SELL") {
+    const pos = paperStore.positions.find((p) => p.code === score.code);
+    if (pos && pos.vol > 0) return Math.floor(pos.vol / 100) * 100 || 100;
+    return 100;
+  }
+  // 买入：按现金 20% 预算向下取整到 100 股（与后端 maxSinglePct 默认一致；人工确认时可改）
+  try {
+    const budget = paperStore.account.cash * 0.2;
+    return Math.max(100, Math.floor(budget / (score.price * 100)) * 100);
+  } catch {
+    return 100;
+  }
+}
+
+async function pushTicketToBridge(
+  score: StockScore,
+  paperStore: ReturnType<typeof usePaperStore>,
+) {
+  // 卖出信号仅在实际持仓时落桥；未持仓不存在可卖标的，不产生无意义待确认单
+  if (score.recommendation === "SELL") {
+    const held = paperStore.positions.find((p) => p.code === score.code);
+    if (!held || held.vol <= 0) return;
+  }
+  try {
+    const strength = Math.min(0.95, Math.max(0.55, 0.5 + Math.abs(score.score) * 0.07));
+    await signalCreateSpider(
+      score.code,
+      score.name,
+      score.recommendation,
+      score.price,
+      suggestTicketVol(score, paperStore),
+      strength,
+      score.signals.join("，"),
+    );
+    addLog(
+      `🌉 信号已送确认桥：${score.name}(${score.code}) ${score.recommendation === "BUY" ? "买入" : "卖出"}`,
+      score.recommendation === "BUY" ? "buy" : "sell",
+    );
+  } catch {
+    // 已有同方向待确认单（去重）或后端未就绪：静默，不打扰扫描
+  }
+}
+
 // ===== 扫描自选股 =====
 function scanWatchlist(
   wl: ReturnType<typeof useWatchlistStore>,
@@ -250,6 +312,14 @@ function scanWatchlist(
     if (!q) return;
 
     const score = evaluateStock(q, s.code, q.name || s.name);
+    emitScan({
+      type: "target",
+      cardId: "watch",
+      code: s.code,
+      signal: score.recommendation === "BUY"
+        ? "BUY"
+        : score.recommendation === "SELL" ? "SELL" : null,
+    });
     scores.push(score);
 
     newPoints.push({
@@ -266,11 +336,16 @@ function scanWatchlist(
       opportunityFound = true;
       if (autoTrade.value) {
         executeBuy(score, paperStore);
+      } else {
+        // 非全自动：信号送确认桥，人工确认后再下单
+        void pushTicketToBridge(score, paperStore);
       }
     } else if (score.recommendation === "SELL") {
       addLog(`🔴 ${score.name}(${score.code}) 卖出信号: ${score.signals.join(", ")}`, "sell");
       if (autoTrade.value) {
         executeSell(score, paperStore);
+      } else {
+        void pushTicketToBridge(score, paperStore);
       }
     }
   });
@@ -422,7 +497,8 @@ function scanRound(
     // 切换卡片
     onSwitchCard(cardId);
     addLog(`🔄 智能切换到【${cardNames[cardId]}】`, "info");
-    
+    emitScan({ type: "card", cardId });
+
     // 直接从 Store 采集数据（不依赖 DOM）
     setTimeout(() => {
       const points = collectFromStore(cardId);

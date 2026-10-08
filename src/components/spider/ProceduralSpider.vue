@@ -78,8 +78,8 @@ function refreshFlyTarget() {
 
 // ===== 绘制 =====
 function draw(ctx: CanvasRenderingContext2D, now: number) {
-  const { w, h } = ctx.canvas;
-  ctx.clearRect(0, 0, w, h);
+  const { width, height } = ctx.canvas;
+  ctx.clearRect(0, 0, width, height);
   ctx.save();
   ctx.scale(dpr, dpr);
 

@@ -2,12 +2,50 @@
 import { ref, computed, onUnmounted, watch } from "vue";
 import { useSpiderBotEngine } from "../composables/useSpiderBotEngine";
 import { useWorkbench } from "../composables/useWorkbench";
+import {
+  autoexecGetConfig,
+  autoexecStart,
+  autoexecStop,
+  autoexecSetConfig,
+  type AutoExecConfigInfo,
+} from "../ai/api";
 import type { CardId } from "../lib/cards";
+import ProceduralSpider from "./spider/ProceduralSpider.vue";
 
 const engine = useSpiderBotEngine();
 const bench = useWorkbench();
 
 const visible = ref(false); // 本地控制显示
+const logPanelRef = ref<HTMLElement | null>(null);
+
+// ===== 后端快脑配置（悬浮层按钮真正联动后端，而不是只播动画）=====
+const backendCfg = ref<AutoExecConfigInfo | null>(null);
+
+/// 当前模式对应的后端参数：
+/// 半自动 = 全部信号落确认桥人工确认（manual + bridge 开）；
+/// 全自动 = 信号直接下单不打扰（full + bridge 关）。
+function modePatch(): Partial<AutoExecConfigInfo> {
+  if (engine.autoTrade.value) {
+    return { tradeMode: "full", fullAutoMode: true, bridgeEnabled: false };
+  }
+  return { tradeMode: "manual", fullAutoMode: false, bridgeEnabled: true };
+}
+
+async function loadBackendCfg() {
+  backendCfg.value = await autoexecGetConfig();
+}
+
+async function syncModeToBackend() {
+  try {
+    if (!backendCfg.value) await loadBackendCfg();
+    if (!backendCfg.value) return;
+    const next = { ...backendCfg.value, ...modePatch() };
+    backendCfg.value = next;
+    await autoexecSetConfig(next); // 运行中改模式立即生效；enabled 由后端保留
+  } catch (e) {
+    console.warn("同步交易模式到后端失败:", e);
+  }
+}
 
 // 监听引擎的 visible 状态，同步到本地
 watch(() => engine.visible.value, (v) => {
@@ -32,46 +70,69 @@ function switchCard(cardId: CardId) {
   }
 }
 
+// ===== A 股交易时段（与后端 spider::is_trading_time 一致）=====
+const marketOpen = ref(false);
+let statusTimer: number | undefined;
+function refreshMarketStatus() {
+  const now = new Date();
+  const wd = now.getDay(); // 0=周日 ... 6=周六
+  if (wd === 0 || wd === 6) { marketOpen.value = false; return; }
+  const hm = now.getHours() * 100 + now.getMinutes();
+  marketOpen.value = (hm >= 915 && hm <= 1131) || (hm >= 1259 && hm <= 1505);
+}
+
 // ===== 控制函数 =====
-function start() {
+async function start() {
   visible.value = true;
   engine.start(switchCard);
-  startWalking(); // 启动实时爬行动画
+  refreshMarketStatus();
+  statusTimer = window.setInterval(refreshMarketStatus, 1000);
+
+  // 联动后端「快脑自动执行器」：仅启动前端动画时，信号桥永远收不到信号
+  try {
+    await loadBackendCfg();
+    if (backendCfg.value) {
+      await autoexecStart({ ...backendCfg.value, enabled: true, ...modePatch() });
+    }
+  } catch (e) {
+    console.warn("后端快脑启动失败（前端评分仍会送桥）:", e);
+  }
+  if (!marketOpen.value) {
+    addEngineLog("⏸ 当前为休市时段，后端快脑不产信号；前端评分仍会送确认桥");
+  }
 }
 
-function stop() {
+async function stop() {
   engine.stop();
   visible.value = false;
+  if (statusTimer) { clearInterval(statusTimer); statusTimer = undefined; }
+  try {
+    await autoexecStop();
+  } catch (e) {
+    console.warn("后端快脑停止失败:", e);
+  }
 }
 
-// ===== 从 DOM 真实读取股票列表 =====
-function readStocksFromDOM() {
-  // 找到自选股卡片里的所有股票行
-  const rows = document.querySelectorAll('.watch-list tr, .card-watch tr, [data-card="watch"] tr');
-  const points: { x: number; y: number; label: string; action?: string; isCurrent?: boolean }[] = [];
+// 半自动 / 全自动：互斥模式，切换即同步后端
+async function setSemi(on: boolean) {
+  if (on) engine.setAutoTrade(false);
+  engine.setSemiAuto(on);
+  await syncModeToBackend();
+}
+async function setFull(on: boolean) {
+  if (on) engine.setSemiAuto(false);
+  engine.setAutoTrade(on);
+  await syncModeToBackend();
+}
 
-  rows.forEach((row, i) => {
-    const rect = row.getBoundingClientRect();
-    if (rect.height === 0) return; // 跳过隐藏的行
-
-    // 从 DOM 里读真实文字
-    const nameEl = row.querySelector('.nm');
-    const priceEl = row.querySelectorAll('.r')[0];
-    const pctEl = row.querySelectorAll('.r')[1];
-
-    const name = nameEl?.textContent?.trim() || `股票${i+1}`;
-    const price = priceEl?.textContent?.trim() || "--";
-    const pct = pctEl?.textContent?.trim() || "";
-
-    points.push({
-      x: rect.x + rect.width / 2,
-      y: rect.y + rect.height / 2,
-      label: `${name} ${price} ${pct}`,
-      isCurrent: i === 0,
-    });
+// 复用引擎日志面板
+function addEngineLog(text: string) {
+  engine.logs.value.unshift({
+    time: new Date().toLocaleTimeString("zh-CN", { hour12: false }),
+    text,
+    type: "warn",
   });
-
-  return points;
+  if (engine.logs.value.length > 40) engine.logs.value.pop();
 }
 
 // 当前卡片名称
@@ -87,128 +148,17 @@ const currentCardName = computed(() => {
   return names[engine.currentCard.value] || "未知";
 });
 
-// ===== 实时爬行动画 =====
-const spiderPos = ref({ x: 200, y: 250 });
-const spiderTarget = ref({ x: 200, y: 250 });
-const currentPointIdx = ref(0);
-const walkingPhase = ref(0); // 走路相位（腿摆动）
-
-// 启动爬行动画循环
-let animFrame: number;
-function startWalking() {
-  const points = engine.targetPoints.value;
-  if (points.length === 0) return;
-
-  // 每隔 2 秒，爬到下一个数据点
-  setInterval(() => {
-    currentPointIdx.value = (currentPointIdx.value + 1) % points.length;
-    const pt = points[currentPointIdx.value];
-    spiderTarget.value = { x: pt.x, y: pt.y };
-  }, 2000);
-
-  // 连续动画（每帧都在动）
-  function animate() {
-    // 1. 平滑移动到目标点
-    const dx = spiderTarget.value.x - spiderPos.value.x;
-    const dy = spiderTarget.value.y - spiderPos.value.y;
-    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-      spiderPos.value = {
-        x: spiderPos.value.x + dx * 0.05,
-        y: spiderPos.value.y + dy * 0.05,
-      };
-    }
-
-    // 2. 走路相位（腿摆动）
-    walkingPhase.value += 0.1;
-
-    animFrame = requestAnimationFrame(animate);
-  }
-  animate();
-}
-
 onUnmounted(() => {
-  cancelAnimationFrame(animFrame);
+  if (statusTimer) clearInterval(statusTimer);
   engine.stop();
 });
-
-// 生成一条抓取腿的路径
-function makeLeg(sx: number, sy: number, tx: number, ty: number, legIdx: number) {
-  // 腿的弯曲方向（左右交替）
-  const side = legIdx % 2 === 0 ? 1 : -1;
-  const bend = 40 + (legIdx % 3) * 20;
-  
-  const dx = tx - sx;
-  const dy = ty - sy;
-  
-  // 3 段折线
-  const p1x = sx + dx * 0.25;
-  const p1y = sy + dy * 0.25 + side * bend;
-  
-  const p2x = sx + dx * 0.6;
-  const p2y = sy + dy * 0.6 + side * bend * 0.5;
-  
-  return `M ${sx} ${sy} L ${p1x} ${p1y} L ${p2x} ${p2y} L ${tx} ${ty}`;
-}
 
 defineExpose({ start, stop, running: engine.running });
 </script>
 
 <template>
   <div v-if="visible" class="spider-overlay">
-    <svg class="spider-svg">
-      <defs>
-        <filter id="overlay-glow">
-          <feGaussianBlur stdDeviation="2.5" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-
-      <!-- ===== 蜘蛛腿（从身体伸出去连到数据点） ===== -->
-      <g v-for="(pt, i) in engine.targetPoints.value" :key="i">
-        <!-- 腿 -->
-        <path
-          :d="makeLeg(spiderPos.x, spiderPos.y, pt.x, pt.y, i)"
-          :stroke="pt.action === 'buy' ? '#00ff88' : pt.action === 'sell' ? '#ff4466' : '#00cccc'"
-          :stroke-width="pt.isCurrent ? 2 : 1.5"
-          fill="none"
-          :opacity="pt.isCurrent ? 1 : 0.7"
-          filter="url(#overlay-glow)"
-        />
-        
-        <!-- 关节点 -->
-        <circle :cx="spiderPos.x + (pt.x - spiderPos.x) * 0.3" :cy="spiderPos.y + (pt.y - spiderPos.y) * 0.3 + (i % 2 === 0 ? 20 : -20)" 
-                r="2.5" fill="#ff6699" opacity="0.8" />
-        <circle :cx="spiderPos.x + (pt.x - spiderPos.x) * 0.6" :cy="spiderPos.y + (pt.y - spiderPos.y) * 0.6 + (i % 2 === 0 ? 10 : -10)" 
-                r="2" fill="#ff6699" opacity="0.6" />
-        
-        <!-- 腿尖光点 -->
-        <circle :cx="pt.x" :cy="pt.y" r="pt.isCurrent ? 5 : 4"
-          :fill="pt.action === 'buy' ? '#00ff88' : pt.action === 'sell' ? '#ff4466' : '#ff6699'"
-          filter="url(#overlay-glow)"
-        />
-        
-        <!-- 标注文字 -->
-        <text :x="pt.x + 10" :y="pt.y + 4"
-          :fill="pt.action === 'buy' ? '#00ff88' : pt.action === 'sell' ? '#ff4466' : '#a0b0c0'"
-          font-size="11"
-          font-family="Consolas, monospace"
-        >{{ pt.label }}</text>
-      </g>
-
-      <!-- ===== 蜘蛛身体（实时移动） ===== -->
-      <g>
-        <circle :cx="spiderPos.x" :cy="spiderPos.y" r="20" fill="#0066cc" opacity="0.1" />
-        <circle :cx="spiderPos.x" :cy="spiderPos.y" r="15" fill="#0066cc" opacity="0.15" />
-        <rect :x="spiderPos.x - 8" :y="spiderPos.y - 10" width="16" height="20"
-          fill="#004488" rx="2" />
-        <rect :x="spiderPos.x - 6" :y="spiderPos.y - 8" width="12" height="16"
-          fill="#0066cc" rx="1" />
-        <circle :cx="spiderPos.x" :cy="spiderPos.y" r="3" fill="#fff" />
-      </g>
-    </svg>
+    <ProceduralSpider v-if="visible" :log-el="logPanelRef" />
 
     <!-- 顶部状态栏 -->
     <div class="sb-topbar">
@@ -218,10 +168,15 @@ defineExpose({ start, stop, running: engine.running });
         <span class="sb-step">已扫描 {{ engine.currentStep.value }} 轮</span>
       </div>
       <div class="sb-right">
-        <button class="sb-btn" :class="{ on: engine.semiAuto.value }" @click="engine.setSemiAuto(!engine.semiAuto.value)">
+        <span
+          class="sb-market"
+          :class="{ open: marketOpen }"
+          :title="marketOpen ? 'A股交易时段，快脑实时产生信号' : '休市时段（午休/未开盘/已收盘），后端快脑不产生信号'"
+        >{{ marketOpen ? "🟢 交易中" : "🔴 休市中" }}</span>
+        <button class="sb-btn" :class="{ on: engine.semiAuto.value }" @click="setSemi(!engine.semiAuto.value)">
           👆 半自动 {{ engine.semiAuto.value ? "ON" : "OFF" }}
         </button>
-        <button class="sb-btn" :class="{ on: engine.autoTrade.value }" @click="engine.setAutoTrade(!engine.autoTrade.value)">
+        <button class="sb-btn" :class="{ on: engine.autoTrade.value }" @click="setFull(!engine.autoTrade.value)">
           🤖 全自动 {{ engine.autoTrade.value ? "ON" : "OFF" }}
         </button>
         <button class="sb-btn danger" @click="stop">🛑 停止</button>
@@ -229,7 +184,7 @@ defineExpose({ start, stop, running: engine.running });
     </div>
 
     <!-- 日志面板 -->
-    <div class="sb-log-panel">
+    <div ref="logPanelRef" class="sb-log-panel">
       <div class="sb-log-title">📡 爬虫日志</div>
       <div class="sb-log-list">
         <div v-for="(log, i) in engine.logs.value" :key="i"
@@ -248,11 +203,6 @@ defineExpose({ start, stop, running: engine.running });
   top: 0; left: 0; right: 0; bottom: 0;
   z-index: 9999;
   pointer-events: none;
-}
-
-.spider-svg {
-  width: 100%;
-  height: 100%;
 }
 
 .sb-topbar {
@@ -274,7 +224,13 @@ defineExpose({ start, stop, running: engine.running });
 .sb-card { color: #ffb13d; font-size: 12px; }
 .sb-step { color: #6a7a72; font-size: 12px; }
 
-.sb-right { display: flex; gap: 8px; }
+.sb-right { display: flex; gap: 8px; align-items: center; }
+.sb-market {
+  padding: 4px 9px; border-radius: 4px; font-size: 11px;
+  border: 1px solid #6a2a2a; background: #241010; color: #f26464;
+  white-space: nowrap;
+}
+.sb-market.open { border-color: #1f6a45; background: #0c2418; color: #35d98a; }
 .sb-btn {
   padding: 4px 10px; border-radius: 4px;
   border: 1px solid #2a3a35; background: #14201c;
