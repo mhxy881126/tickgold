@@ -2,6 +2,7 @@
   <div
     ref="rootEl"
     class="card-shell"
+    :data-card-id="cardId"
     :class="{ focused, dragging, 'free-drag': freeDrag, collapsed, resizing, locked }"
     :style="[ { '--accent-var': effectiveColor }, lookVars ]"
     @contextmenu.prevent="onCtx"

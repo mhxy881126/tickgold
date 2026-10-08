@@ -747,6 +747,7 @@ onBeforeUnmount(() => {
                   :key="item.id"
                   type="button"
                   class="ge-item"
+                  :data-nav-id="item.id"
                   :class="{ on: item.id === bench.glassActive.value, closed: !bench.openCards.value.includes(item.id) }"
                   @click="onNavPick(item.id)"
                 >

@@ -4,7 +4,7 @@ import { boot } from "./support/helpers";
 test("chart 卡：默认经典 StockChart，编排微件后可一键还原", async ({ page }) => {
   await boot(page);
   // 极简看盘场景：chart 卡现在默认渲染经典完整 StockChart
-  await page.locator(".scene-chip", { hasText: "极简看盘" }).click();
+  await page.locator(".scene-pill", { hasText: "极简看盘" }).click();
   const chartCard = page.locator('[data-card-id="chart"]');
   await expect(chartCard).toBeVisible();
   await expect(chartCard.locator(".sc-tabs")).toBeVisible();

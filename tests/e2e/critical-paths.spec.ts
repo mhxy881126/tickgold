@@ -15,34 +15,23 @@ test("开卡：Mega 菜单打开 K线卡片", async ({ page }) => {
   expect(await cardCount(page)).toBe(before + 1);
 });
 
-// 2) 聚焦：卡片放大到主区，出现遮罩与切换栏；可还原
-test("聚焦：放大卡片并可还原", async ({ page }) => {
-  await boot(page);
-  // 用极简看盘场景：chart 为视口内大卡、天然挂载，无需滚动（避免滚动后遮罩与网格错位）
-  await page.locator(".scene-chip", { hasText: "极简看盘" }).click();
-  const chartSlot = page.locator('[data-card-id="chart"]');
-  await chartSlot.locator(".card-shell").waitFor({ state: "visible" });
+// 2) 聚焦放大（focus overlay）为已下线的「自由布局」专属能力，玻璃浮岛下不存在，跳过
+test.skip("聚焦：放大卡片并可还原（自由布局已下线）", async () => {});
 
-  await chartSlot.locator(".head-btn[title^='聚焦']").click();
-
-  await expect(page.locator(".focus-backdrop")).toBeVisible();
-  await expect(page.locator(".focus-rail")).toBeVisible();
-
-  // 直接在遮罩元素上派发 click 退出（不依赖命中检测，不受下层卡片影响）
-  await page.locator(".focus-backdrop").dispatchEvent("click");
-  await expect(page.locator(".focus-backdrop")).toBeHidden();
-});
-
-// 3) 场景切换：一键替换为「极简看盘」布局（chart / watch）
+// 3) 场景切换：一键切换「极简看盘」，chart 成为玻璃浮岛主卡
 test("场景切换：应用极简看盘模板", async ({ page }) => {
   await boot(page);
-  const chip = page.locator(".scene-chip", { hasText: "极简看盘" });
+  const chip = page.locator(".scene-pill", { hasText: "极简看盘" });
 
   await chip.click();
 
   await expect(chip).toHaveClass(/\bon\b/);
-  await expect(page.locator('[data-card-id="chart"]')).toBeVisible();
-  await expect(page.locator('[data-card-id="watch"]')).toBeVisible();
+  // 玻璃浮岛只渲染当前主卡，极简场景首卡为 chart
+  await expect(page.locator('[data-card-id="chart"].card-shell')).toBeVisible();
+  // watch 在该场景已开（导航项不带 closed）
+  await expect(
+    page.locator('.glass-edge .ge-item[data-nav-id="watch"]:not(.closed)')
+  ).toHaveCount(1);
 });
 
 // 4) 数据加载：K线 loading 消失、canvas 渲染、头部有名称

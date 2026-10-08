@@ -1,17 +1,24 @@
 // E2E 辅助：工作台启动、卡片计数、Mega 菜单开卡、关卡等通用操作。
 import type { Page } from "@playwright/test";
 
+// 玻璃浮岛模式只渲染一张主卡 DOM，「已开卡数」以左侧导航中未标 .closed 的项为准
 export async function cardCount(page: Page): Promise<number> {
-  return page.locator("[data-card-id]").count();
+  return page.locator(".glass-edge .ge-item:not(.closed)").count();
 }
 export async function isCardOpen(page: Page, id: string): Promise<boolean> {
-  return (await page.locator(`[data-card-id="${id}"]`).count()) > 0;
+  const cls =
+    (await page
+      .locator(`.glass-edge .ge-item[data-nav-id="${id}"]`)
+      .first()
+      .getAttribute("class")) ?? "";
+  return !!cls && !/\bclosed\b/.test(cls);
 }
 
 // 启动并等工作台完成初始渲染（卡片数量稳定），不依赖具体初始卡片集合。
 export async function boot(page: Page): Promise<void> {
   await page.goto("/");
-  await page.waitForSelector(".mega-nav");
+  // v2.12 起导航为左侧分组侧栏（.glass-edge），旧版顶部 Mega 菜单（.mega-nav）已移除
+  await page.waitForSelector(".glass-edge");
   await page.waitForSelector(".ws-body");
   let prev = -1;
   let cur = await cardCount(page);
@@ -22,80 +29,102 @@ export async function boot(page: Page): Promise<void> {
   }
 }
 
-// 通过顶部 Mega 菜单打开一张卡片（hover 分类 → 点击功能项）。
+// 通过左侧分组侧栏打开一张卡片。侧栏按钮带 data-nav-id（卡片 id 稳定），
+// groupName/itemLabel 仅为与旧用例签名兼容而保留，不再用于定位。
 export async function openViaMega(
   page: Page,
-  groupName: string,
-  itemLabel: string
+  _groupName: string,
+  _itemLabel: string,
+  cardId?: string
 ): Promise<void> {
-  const tab = page.locator(".mega-tab", { hasText: groupName }).first();
-  await tab.hover();
-  const item = page.locator(".mega-panel .mp-item", { hasText: itemLabel }).first();
+  const id = cardId ?? inferCardId(_itemLabel);
+  const item = page.locator(`.glass-edge .ge-item[data-nav-id="${id}"]`).first();
+  // 先展开所属分组（折叠时子项不可见）
+  const group = page
+    .locator(`.glass-edge .ge-group:has(.ge-item[data-nav-id="${id}"])`)
+    .first();
+  if (await group.count()) {
+    if (!(await group.evaluate((el) => el.classList.contains("open")))) {
+      await group.locator(".ge-group-head").click();
+    }
+  }
   await item.waitFor({ state: "visible" });
   await item.click();
+}
+
+// 旧 label → 卡片 id（仅给未显式传 id 的历史调用兜底）
+const LABEL_TO_ID: Record<string, string> = {
+  "K线/分时": "chart",
+  "预警": "alert",
+};
+function inferCardId(label: string): string {
+  return LABEL_TO_ID[label] ?? label;
 }
 
 export async function closeCard(page: Page, id: string): Promise<void> {
   await page.locator(`[data-card-id="${id}"] .head-btn[title="关闭卡片"]`).click();
 }
 
-//确保卡片已打开（幂等），并等其挂载。
+//确保卡片已打开（幂等），并等其挂载为玻璃浮岛主卡。
 export async function ensureCardOpen(
   page: Page,
   groupName: string,
   itemLabel: string,
   id: string
 ): Promise<void> {
-  const slot = page.locator(`[data-card-id="${id}"]`);
   if (!(await isCardOpen(page, id))) {
-    await openViaMega(page, groupName, itemLabel);
-    await slot.waitFor();
+    await openViaMega(page, groupName, itemLabel, id);
+  } else {
+    // 已开但不是当前主卡：点导航切到它
+    const active = page.locator(`.glass-edge .ge-item[data-nav-id="${id}"].on`);
+    if (!(await active.count())) {
+      await page.locator(`.glass-edge .ge-item[data-nav-id="${id}"]`).first().click();
+    }
   }
-  // 按需挂载：卡片可能在视口外，需滚入可视区触发 IntersectionObserver，
-  // 再等 CardShell 真正挂载（内部图表/按钮才会存在）。
-  await slot.scrollIntoViewIfNeeded();
-  await slot.locator(".card-shell").waitFor({ state: "visible", timeout: 10000 });
+  // CardShell 根节点同时带 data-card-id 与 .card-shell
+  const shell = page.locator(`[data-card-id="${id}"].card-shell`);
+  await shell.waitFor({ state: "visible", timeout: 10000 });
 }
 
-// 打开全部卡片：反复扫描 Mega 菜单，hover 分类后按组名确认面板渲染，再开未开项。
+// 打开全部卡片：逐个展开左侧分组，点击未开项（.closed），直到无未开项。
 export async function openAllCards(page: Page): Promise<void> {
-  const groupCount = await page.locator(".mega-tab").count();
-  for (let round = 0; round < 40; round++) {
+  for (let round = 0; round < 80; round++) {
     let opened = false;
-    for (let t = 0; t < groupCount && !opened; t++) {
-      const tab = page.locator(".mega-tab").nth(t);
-      const groupName = (await tab.innerText()).trim();
-      await tab.hover();
-      // 等当前组面板出现（Transition 期间可能新旧并存，按 h3 组名定位）
-      await page.waitForFunction(
-        (name) => [...document.querySelectorAll(".mega-panel .mp-head h3")].some((x) => x.textContent === name),
-        groupName
-      );
-      const panel = page.locator(".mega-panel", {
-        has: page.locator(".mp-head h3", { hasText: groupName }),
-      });
-      const items = panel.locator(".mp-item");
-      const m = await items.count();
-      for (let i = 0; i < m; i++) {
-        const cls = (await items.nth(i).getAttribute("class")) ?? "";
-        if (!/\bon\b/.test(cls)) {
-          await items.nth(i).click(); // 打开后 panel 关闭，需重新 hover
-          opened = true;
-          break;
-        }
+    const closed = page.locator(".glass-edge .ge-item.closed");
+    if (!(await closed.count())) break;
+    const navId = (await closed.first().getAttribute("data-nav-id")) ?? "";
+    const group = page
+      .locator(`.glass-edge .ge-group:has(.ge-item[data-nav-id="${navId}"])`)
+      .first();
+    if (await group.count()) {
+      if (!(await group.evaluate((el) => el.classList.contains("open")))) {
+        await group.locator(".ge-group-head").click();
       }
     }
+    await closed.first().click();
+    opened = true;
     if (!opened) break;
   }
 }
 
-// 逐个滚动到每个 slot，触发按需挂载，最终全部 CardShell 挂载（挂载后保持）。
+// 玻璃浮岛同一时刻只挂载主卡：逐一点击已开导航项，确保每张卡都完成过一次真实挂载。
 export async function mountAll(page: Page): Promise<void> {
-  const n = await page.locator("[data-card-id]").count();
+  const items = page.locator(".glass-edge .ge-item:not(.closed)");
+  const n = await items.count();
   for (let i = 0; i < n; i++) {
-    const s = page.locator("[data-card-id]").nth(i);
-    const id = (await s.getAttribute("data-card-id"))!;
-    await s.scrollIntoViewIfNeeded();
-    await page.locator(`[data-card-id="${id}"] .card-shell`).waitFor({ state: "visible", timeout: 8000 });
+    const item = items.nth(i);
+    const id = (await item.getAttribute("data-nav-id"))!;
+    const group = page
+      .locator(`.glass-edge .ge-group:has(.ge-item[data-nav-id="${id}"])`)
+      .first();
+    if (await group.count()) {
+      if (!(await group.evaluate((el) => el.classList.contains("open")))) {
+        await group.locator(".ge-group-head").click();
+      }
+    }
+    await item.click();
+    await page
+      .locator(`[data-card-id="${id}"].card-shell`)
+      .waitFor({ state: "visible", timeout: 10000 });
   }
 }
