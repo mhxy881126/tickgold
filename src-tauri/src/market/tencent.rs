@@ -325,6 +325,14 @@ fn parse_minute_rows(date_str: &str, arr: &[Value]) -> Result<Vec<KBar>, String>
         let parts: Vec<&str> = s.split_whitespace().collect();
         if parts.len() < 3 { continue; }
         let hhmm = parts[0];
+        // 只保留连续竞价时段：上午 09:30-11:30、下午 13:00-15:00。
+        // 腾讯会额外返回盘后 15:06-15:30 的静态 bar（25 根），不剔除会使总数变 267、
+        // 前端按 242 根铺满时 barSpace 失准，导致走势 / 量能与时间轴错位。
+        let hm: i64 = hhmm.parse().unwrap_or(-1);
+        let in_session = (930..=1130).contains(&hm) || (1300..=1500).contains(&hm);
+        if !in_session {
+            continue;
+        }
         let price: f64 = parts[1].parse().unwrap_or(0.0);
         let cumvol: f64 = parts[2].parse().unwrap_or(0.0);
         let vol = (cumvol - prev_vol).max(0.0);

@@ -41,6 +41,20 @@ struct EmQuote {
     open: Value,
     #[serde(rename = "f18", default)]
     prev_close: Value,
+    #[serde(rename = "f7", default)]
+    amplitude: Value,
+    #[serde(rename = "f8", default)]
+    turnover: Value,
+    #[serde(rename = "f9", default)]
+    pe: Value,
+    #[serde(rename = "f10", default)]
+    volume_ratio: Value,
+    #[serde(rename = "f20", default)]
+    total_mv: Value,
+    #[serde(rename = "f21", default)]
+    circ_mv: Value,
+    #[serde(rename = "f23", default)]
+    pb: Value,
 }
 
 /// 东财字段宽容转 f64：数字直接取，"-"/null/字符串一律 0
@@ -94,7 +108,7 @@ pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
         .map(|c| format!("{}.{}", secid_prefix(c), c))
         .collect();
     let path = format!(
-        "/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18&secids={}",
+        "/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f4,f5,f6,f7,f8,f9,f10,f15,f16,f17,f18,f20,f21,f23&secids={}",
         secids.join(",")
     );
     let json: ListResp = serde_json::from_value(push2_json(&path).await?)
@@ -119,13 +133,13 @@ pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
             amount: nf(&q.amount),
             time: now,
             source: "eastmoney".to_string(),
-            turnover: 0.0,
-            pe: 0.0,
-            pb: 0.0,
-            amplitude: 0.0,
-            volume_ratio: 0.0,
-            circ_mv: 0.0,
-            total_mv: 0.0,
+            turnover: nf(&q.turnover),
+            pe: nf(&q.pe),
+            pb: nf(&q.pb),
+            amplitude: nf(&q.amplitude),
+            volume_ratio: nf(&q.volume_ratio),
+            circ_mv: nf(&q.circ_mv) / 1e8,
+            total_mv: nf(&q.total_mv) / 1e8,
         })
         .collect();
     Ok(out)
