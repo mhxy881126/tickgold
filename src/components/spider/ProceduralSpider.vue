@@ -8,6 +8,7 @@ import { useSpiderAnchors } from "../../composables/useSpiderAnchors";
 import {
   onSpiderScan,
   advanceRound,
+  heartbeat,
   type SpiderScanEvent,
 } from "../../composables/useSpiderBotEngine";
 import { buildWaypoints, type Vec2 } from "./ik";
@@ -42,6 +43,7 @@ let lastCardId: CardId | null = null; // 最近规划的卡（滚动后按它重
 // 事件驱动推进：一轮走完（路径完+数据包飞完）后通知引擎进下一轮
 let roundDone = false;
 let advanceTimer = 0;
+let lastHeartbeat = 0;
 // 滚动重采去抖
 let scrollTimer = 0;
 let alive = false; // 卸载后任何异步回调都不得再唤醒 rAF
@@ -121,7 +123,10 @@ function onScan(ev: SpiderScanEvent) {
 }
 
 // ===== 滚动去抖：卡片内容滚动后锚点坐标变化，行走中按当前卡重新规划 =====
-function onScroll() {
+// 只响应卡片内部滚动（日志面板等外层滚动器重规划只会打断节奏）
+function onScroll(ev: Event) {
+  const target = ev.target as Element | null;
+  if (!target?.closest?.("[data-card-id]")) return;
   if (scrollTimer) clearTimeout(scrollTimer);
   scrollTimer = window.setTimeout(() => {
     scrollTimer = 0;
@@ -302,8 +307,11 @@ function frame(now: number) {
     ev.arrived.signal = sig; // 同步给本帧高亮
     if (sig) sim.spawnPacket(ev.arrived);
   }
-  // 事件驱动推进：路径走完且数据包全部飞完，静默 600ms 后通知引擎进下一轮
-  if (!sim.active && sim.packets.length === 0) scheduleAdvance();
+  // 事件驱动推进：路径走完且数据包全部飞完，静默 600ms 后通知引擎进下一轮。
+  // lastCardId 守卫：组件挂载时排队的首帧（尚未收到 card 事件）不得误挂推进。
+  if (lastCardId !== null && !sim.active && sim.packets.length === 0) scheduleAdvance();
+  // 活动心跳：正常行走（尤其大视口长路径）期间持续重置 30s 看门狗，防误切
+  if (now - lastHeartbeat > 5000) { lastHeartbeat = now; heartbeat(); }
   draw(ctx, now);
   // 空闲停帧：无行走路径且无在飞数据包时不再占用 rAF，由 ensureFrame 唤醒
   if (alive && (sim.active || sim.packets.length > 0)) {

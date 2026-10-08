@@ -495,11 +495,10 @@ function scanRound(
     // 深度分析留在当前卡：不回调切卡，按已切换处理并补发 card 事件驱动蜘蛛重走本轮
     emitScan({ type: "card", cardId });
   } else {
-    // 换下一个卡片（按优先级）
+    // 换下一个卡片（按优先级，先不写 currentCard——卡片未打开时不顶包顶栏）
     const step = currentStep.value;
     const cardIdx = step % priority.length;
     cardId = priority[cardIdx];
-    currentCard.value = cardId;
     opportunityFound = false;
     deepAnalysisCount = 0;
 
@@ -516,10 +515,13 @@ function scanRound(
     }, 300);
 
     if (switched) {
+      currentCard.value = cardId; // 确认打开后才更新「📍 当前」，避免顶栏为关闭卡背锅
       addLog(`🔄 智能切换到【${cardNames[cardId]}】`, "info");
       emitScan({ type: "card", cardId });
     } else {
-      // 卡片未打开：蜘蛛不规划该卡，50ms 后静默推进到下一张（跳过本轮计数）
+      // 卡片未打开：计数跳过该卡（否则下一轮又选回同一张，50ms 死循环），
+      // 蜘蛛不规划该卡，50ms 后静默推进到下一张
+      currentStep.value++;
       window.setTimeout(() => { if (running.value) advanceRound(); }, 50);
       return;
     }
@@ -571,8 +573,15 @@ export function advanceRound(): void {
   scanRound(wl, quotes, paperStore, (id) => (switchRef ? switchRef(id) : true));
 }
 
+/** 蜘蛛仍在活动时的心跳：重置看门狗，避免大视口下一轮正常行走被 30s 兜底误切 */
+export function heartbeat(): void {
+  if (running.value) armWatchdog();
+}
+
 // ===== 控制函数 =====
 function start(onSwitchCard: (cardId: CardId) => boolean) {
+  // 重入守卫：两个宿主（悬浮层/dock 卡片）重复启动会重叠 scanRound 并覆盖 switchRef
+  if (running.value) return;
   const wl = useWatchlistStore();
   const quotes = useQuotesStore();
   const paperStore = usePaperStore();
@@ -630,6 +639,7 @@ export function useSpiderBotEngine() {
     marketSentiment,
     // 方法
     start,
+    heartbeat,
     stop,
     advanceRound,
     setAutoTrade: (v: boolean) => { autoTrade.value = v; },
