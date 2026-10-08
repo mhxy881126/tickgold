@@ -168,4 +168,21 @@ describe("SpiderSim 数据包", () => {
     expect(done).toBe("600094");
     expect(sim.packets).toHaveLength(0);
   });
+
+  it("无信号/无代码不产生数据包；无桥时拖行包封顶 8 个", () => {
+    const sim = new SpiderSim({ x: 0, y: 0 });
+    sim.spawnPacket(pt(10, 0, null));
+    const noCode = pt(10, 0, "BUY");
+    noCode.anchor.code = undefined;
+    sim.spawnPacket(noCode);
+    expect(sim.packets).toHaveLength(0);
+    // 不设 flyTarget，连续塞 12 个买入包，trailing 封顶 8
+    for (let i = 0; i < 12; i++) {
+      const p = pt(10 + i, 0, "BUY");
+      p.anchor.code = `6000${i}`;
+      sim.spawnPacket(p);
+    }
+    expect(sim.packets).toHaveLength(8);
+    expect(sim.packets.every((p) => p.state === "trailing")).toBe(true);
+  });
 });

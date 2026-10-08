@@ -182,6 +182,10 @@ export class SpiderSim {
         : { x: from.x, y: from.y - 140 },
       to: this.flyTarget ? { ...this.flyTarget } : { ...from },
     });
+    // 无桥保护：拖行包上限 8，超出丢弃最老（正常产品路径 flyTarget 在组件挂载时即配置，
+    // 此分支只防止无头/异常调用下数据包无限堆积）
+    const trailing = this.packets.filter((x) => x.state === "trailing");
+    if (trailing.length > 8) this.packets.splice(this.packets.indexOf(trailing[0]), 1);
   }
 
   private hipWorld(h: { ox: number; oy: number }): Vec2 {
