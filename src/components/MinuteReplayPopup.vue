@@ -42,6 +42,16 @@
 
       <div class="mp-hostwrap">
         <div ref="popupHost" class="mp-host"></div>
+        <!-- 右侧涨跌百分比轴（HTML 层，不被 canvas 裁剪） -->
+        <div class="mp-rightaxis">
+          <span
+            v-for="(it, i) in mpAxisItems"
+            :key="i"
+            class="mp-rt"
+            :class="mpAxTone(it.pct)"
+            :style="{ top: it.coord + 'px' }"
+          >{{ it.pct > 0 ? "+" : "" }}{{ it.pct.toFixed(2) }}%</span>
+        </div>
         <div v-if="overlayN > 1" class="mp-legend">
           <div v-for="it in legendItems" :key="it.date" class="lg-item">
             <i class="lg-dot" :style="{ background: it.color }"></i>
@@ -87,11 +97,13 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onUnmounted } from "vue";
-import { init, dispose, type Chart, type KLineData } from "klinecharts";
+import { init, dispose, DomPosition, type Chart, type KLineData } from "klinecharts";
 import { fetchHistMinuteDays, fetchKLine } from "../api/market";
 import type { KBar } from "../api/types";
 import { pad, hhmmUTC, toKData } from "../lib/chart";
-import { UP, DOWN_K, FLAT, AVG_Y, line, buildStyles, type OverlayLine } from "../lib/chart-styles";
+import { onRightAxis, type RightAxisItem } from "../lib/rightAxisBus";
+import { UP, DOWN_K, DOWN_G, FLAT, AVG_Y, line, buildStyles, type OverlayLine } from "../lib/chart-styles";
+import { pushChart, popChart } from "../lib/tradingAxis";
 
 const props = defineProps<{ code: string; name: string }>();
 
@@ -110,6 +122,15 @@ const overlayN = ref(1);
 const popSub = ref<"vol" | "vr">("vol");
 const OVERLAY_COLORS = ["#ff7a3d", "#c060ff", "#19c3ff", "#ffd028"];
 
+// 右侧百分比轴
+const RIGHT_AXIS_W = 52;
+const mpAxisItems = ref<RightAxisItem[]>([]);
+const mpAxTone = (p: number) => (p > 0.05 ? "up" : p < -0.05 ? "dn" : "zero");
+let offRightAxis: (() => void) | null = null;
+// 遮罩指标实例所在 pane（主图 / 副图），播放时同步更新 progress
+let mainMaskPane = "candle_pane";
+let subMaskPane: string | null = null;
+
 const dayKey = (ts: number) => {
   const d = new Date(ts);
   return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
@@ -120,6 +141,9 @@ async function openPopup(kd: KLineData) {
   popup.value.visible = true;
   popup.value.name = props.name;
   histDays.value = []; dayIndex.value = 0; overlayN.value = 1; popSub.value = "vol";
+  mpAxisItems.value = [];
+  offRightAxis?.();
+  offRightAxis = onRightAxis("replay", (items) => { mpAxisItems.value = items; });
   await nextTick();
   try {
     const [days, kbars] = await Promise.all([
@@ -152,15 +176,14 @@ const barsMap = (bars: KBar[]) => {
   return m;
 };
 
-// 弹窗副图：量能 VOL / 分时量比 minuteVR
-function addPopupSub(pc: Chart, day: HistDay) {
+// 弹窗副图：量能 VOL / 分时量比 minuteVR；返回副图 paneId
+function addPopupSub(pc: Chart, day: HistDay): string | null {
   if (popSub.value === "vol") {
-    pc.createIndicator("VOL", false, { height: 80 });
-    return;
+    return pc.createIndicator("VOL", false, { height: 80 }) as string | null;
   }
   // 量比基准：除当日外其他交易日（最多 4 个）同时段均量
   const refs = histDays.value.filter((_, i) => i !== dayIndex.value).slice(0, 4);
-  if (!refs.length) { pc.createIndicator("VOL", false, { height: 80 }); return; }
+  if (!refs.length) { return pc.createIndicator("VOL", false, { height: 80 }) as string | null; }
   const sums: Record<string, { s: number; n: number }> = {};
   refs.forEach((d) => d.bars.forEach((b) => {
     const k = hhmmUTC(b.timestamp);
@@ -169,35 +192,40 @@ function addPopupSub(pc: Chart, day: HistDay) {
   }));
   const base: Record<string, number> = {};
   Object.keys(sums).forEach((k) => { base[k] = sums[k].s / sums[k].n; });
-  pc.createIndicator({ name: "minuteVR", extendData: base } as any, false, { height: 80 });
+  return pc.createIndicator({ name: "minuteVR", extendData: base } as any, false, { height: 80 }) as string | null;
 }
 
 function renderPopup() {
   if (!popupHost.value) return;
   stopPlay();
-  if (popupChart) { dispose(popupChart); popupChart = null; }
+  if (popupChart) { popChart(popupChart); dispose(popupChart); popupChart = null; }
   const day = histDays.value[dayIndex.value];
   if (!day) return;
   popupChart = init(popupHost.value);
   if (!popupChart) return;
   const pc: Chart = popupChart;
+  pushChart(pc);
+  pc.setPaneOptions({ id: "x_axis_pane", axisOptions: { name: "tradingTime" } } as any);
   pc.setTimezone("UTC");
   pc.setPriceVolumePrecision(2, 0);
   pc.setStyles(buildStyles(true, overlayN.value > 1));
   pc.createIndicator("sessionBg", true, { id: "candle_pane" });
   pc.applyNewData(toKData(day.bars));
-  // 全天分时铺满：每根 bar 空间按容器宽/根数自适应（回放截断时数据从左向右增长）
-  const popW = popupHost.value.clientWidth;
-  pc.setBarSpace(Math.max(1.2, popW / (day.bars.length + 2)));
-  pc.scrollToRealTime();
 
   if (overlayN.value === 1) {
     pc.createIndicator({ name: "AVG", styles: { lines: [line(AVG_Y)] } } as any, false, { id: "candle_pane" });
     pc.createIndicator({ name: "yAnchor", extendData: { prevClose: day.prevClose } } as any, true, { id: "candle_pane" });
-    pc.createIndicator({ name: "thsLevels", extendData: { prevClose: day.prevClose } } as any, true, { id: "candle_pane" });
-    addPopupSub(pc, day);
+    pc.createIndicator({ name: "thsLevels", extendData: { prevClose: day.prevClose, axisId: "replay" } } as any, true, { id: "candle_pane" });
+    const spId = addPopupSub(pc, day);
     rpMax.value = day.bars.length - 1;
     rpIndex.value = rpMax.value;
+    // 播放遮罩：主图 + 副图各一个，初始 progress=rpMax（全天可见）
+    pc.createIndicator({ name: "replayMask", extendData: { progress: rpMax.value } } as any, true, { id: "candle_pane" });
+    if (spId) {
+      pc.createIndicator({ name: "replayMask", extendData: { progress: rpMax.value } } as any, true, { id: spId });
+      subMaskPane = spId;
+    }
+    mainMaskPane = "candle_pane";
   } else {
     let start = dayIndex.value;
     if (start + overlayN.value > histDays.value.length) start = Math.max(0, histDays.value.length - overlayN.value);
@@ -215,9 +243,17 @@ function renderPopup() {
     }));
     pc.createIndicator({ name: "yAnchor", extendData: { lo, hi } } as any, true, { id: "candle_pane" });
     pc.overrideIndicator({ name: "sessionBg", extendData: { lines } } as any, "candle_pane");
-    pc.createIndicator({ name: "thsLevels", extendData: { prevClose: day.prevClose } } as any, true, { id: "candle_pane" });
+    pc.createIndicator({ name: "thsLevels", extendData: { prevClose: day.prevClose, axisId: "replay" } } as any, true, { id: "candle_pane" });
     addPopupSub(pc, day);
+    subMaskPane = null;
   }
+  // 所有指标 / pane 创建完毕后再布局（新 pane 会触发布局重算）：
+  // 用绘图区宽（getSize main，已扣 y 轴），右侧留 RIGHT_AXIS_W 给 HTML 轴，bar 铺满，全天时间轴固定
+  const mainSize = pc.getSize("candle_pane", DomPosition.Main) as { width: number } | null;
+  const P = mainSize?.width ?? popupHost.value.clientWidth;
+  pc.setBarSpace(Math.max(1.2, (P - RIGHT_AXIS_W) / day.bars.length));
+  pc.setOffsetRightDistance(RIGHT_AXIS_W);
+  pc.scrollToRealTime();
   pc.resize();
 }
 
@@ -281,11 +317,21 @@ const rpTone = computed(() => {
   return c > 0 ? UP : c < 0 ? DOWN_K : FLAT;
 });
 
-// 定位：只渲染到第 i 根（指标自动重算）
+// 定位：全天数据固定，仅更新主图 / 副图遮罩的 progress，盖住右侧未来区域。
+// 主副图共享同一份全天数据与坐标，因此严格同步，不会出现指标消失 / 错位。
 function onSeek() {
   if (!popupChart || !curDay.value) return;
   const i = Math.max(0, Math.min(rpIndex.value, rpMax.value));
-  popupChart.applyNewData(toKData(curDay.value.bars.slice(0, i + 1)));
+  popupChart.overrideIndicator(
+    { name: "replayMask", extendData: { progress: i } } as any,
+    mainMaskPane
+  );
+  if (subMaskPane) {
+    popupChart.overrideIndicator(
+      { name: "replayMask", extendData: { progress: i } } as any,
+      subMaskPane
+    );
+  }
 }
 function togglePlay() {
   if (playing.value) { stopPlay(); return; }
@@ -334,7 +380,9 @@ function popUp() {
 function closePopup() {
   stopPlay();
   popup.value.visible = false;
-  if (popupChart) { dispose(popupChart); popupChart = null; }
+  offRightAxis?.(); offRightAxis = null;
+  mpAxisItems.value = [];
+  if (popupChart) { popChart(popupChart); dispose(popupChart); popupChart = null; }
 }
 
 // 组件卸载时兜底清理（弹窗仍打开而父组件销毁的场景）
@@ -342,7 +390,8 @@ onUnmounted(() => {
   stopPlay();
   window.removeEventListener("mousemove", popMove);
   window.removeEventListener("mouseup", popUp);
-  if (popupChart) { dispose(popupChart); popupChart = null; }
+  offRightAxis?.(); offRightAxis = null;
+  if (popupChart) { popChart(popupChart); dispose(popupChart); popupChart = null; }
 });
 
 defineExpose({ open: openPopup });
@@ -374,6 +423,18 @@ defineExpose({ open: openPopup });
 .mp-btn.x:hover { background: rgba(255,60,60,.3); color: #ff8080; }
 .mp-hostwrap { flex: 1; min-height: 0; position: relative; }
 .mp-host { position: absolute; inset: 0; }
+/* 右侧涨跌百分比轴 */
+.mp-rightaxis {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 52px;
+  z-index: 6; pointer-events: none;
+}
+.mp-rt {
+  position: absolute; right: 5px; transform: translateY(-50%);
+  font-size: 10px; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.mp-rt.up { color: #ff5f5f; }
+.mp-rt.dn { color: #3cdc96; }
+.mp-rt.zero { color: #e1e7f4; font-weight: 600; }
 .mp-err {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   color: #ff8080; font-size: 12px; padding: 20px; text-align: center; background: #0d0f14;
