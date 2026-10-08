@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted, watch } from "vue";
+import { ref, computed, nextTick, onUnmounted, watch } from "vue";
 import { useSpiderBotEngine } from "../composables/useSpiderBotEngine";
 import { useWorkbench } from "../composables/useWorkbench";
 import {
@@ -84,6 +84,9 @@ function refreshMarketStatus() {
 // ===== 控制函数 =====
 async function start() {
   visible.value = true;
+  // v-if 的 ProceduralSpider 下一 tick 才挂载并注册扫描监听；
+  // 必须等它就绪后再启动引擎首轮扫描，否则首轮 card/target 事件无人接收（蜘蛛空等一轮）
+  await nextTick();
   engine.start(switchCard);
   refreshMarketStatus();
   statusTimer = window.setInterval(refreshMarketStatus, 1000);
