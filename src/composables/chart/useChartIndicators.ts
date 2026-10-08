@@ -5,7 +5,8 @@ import { registerIndicator } from "klinecharts";
 import type { KLineData } from "klinecharts";
 import type { Ref } from "vue";
 import { hhmmUTC, limitRateOf, round2 } from "../../lib/chart";
-import { UP, DOWN_K, DOWN_G } from "../../lib/chart-styles";
+import { emitRightAxis } from "../../lib/rightAxisBus";
+import { UP, DOWN_K, DOWN_G, line } from "../../lib/chart-styles";
 import type { OverlayLine } from "../../lib/chart-styles";
 
 export interface ChartIndicatorDeps {
@@ -30,6 +31,7 @@ export function registerCustomIndicators(deps: ChartIndicatorDeps) {
     draw: (params: any) => {
       const { ctx, yAxis, bounding, indicator } = params;
       const pc = indicator?.extendData?.prevClose || prevClose.value;
+      const axisId: string | undefined = indicator?.extendData?.axisId;
       if (!ctx || !(pc > 0)) return;
       const r = limitRateOf(code.value, headName.value);
       const lu = round2(pc * (1 + r)), ld = round2(pc * (1 - r));
@@ -42,7 +44,8 @@ export function registerCustomIndicators(deps: ChartIndicatorDeps) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
         ctx.setLineDash([]);
       };
-      hline(pc, "rgba(225,230,245,.55)", false);
+      // 昨收 0% 轴：虚线更醒目，便于一眼分清涨跌方向
+      hline(pc, "rgba(225,230,245,.75)", true);
       hline(lu, "rgba(255,50,50,.5)", true);
       hline(ld, "rgba(29,190,125,.5)", true);
 
@@ -63,7 +66,8 @@ export function registerCustomIndicators(deps: ChartIndicatorDeps) {
           items.push({ coord: y, pct });
         }
       }
-      scheduleRightAxis(items);
+      if (axisId) emitRightAxis(axisId, items);
+      else scheduleRightAxis(items);
     },
   } as any);
 
@@ -74,12 +78,35 @@ export function registerCustomIndicators(deps: ChartIndicatorDeps) {
     series: "price" as any,
     calcParams: [],
     figures: [{ key: "lo", type: "line" }, { key: "hi", type: "line" }],
-    styles: { lines: [{ color: "transparent", size: 1 }, { color: "transparent", size: 1 }] } as any,
+    styles: { lines: [line("transparent"), line("transparent")] } as any,
     calc: (dl: KLineData[], indicator: any) => {
       const ed = indicator?.extendData ?? {};
       const lo = ed.lo ?? ed.prevClose ?? 0;
       const hi = ed.hi ?? ed.prevClose ?? lo;
       return dl.map(() => ({ lo, hi }));
+    },
+  } as any);
+
+  // ===== 回放进度遮罩：全天数据始终加载，遮罩盖住 progress 右侧的"未来"区域。
+  // 主图 / VOL 副图各放一个，extendData.progress 同步更新，保证主副图严格同步。
+  // progress = -1（或缺失）时不遮罩（看全天）。
+  registerIndicator({
+    name: "replayMask",
+    shortName: "",
+    series: "normal" as any,
+    calcParams: [],
+    figures: [],
+    calc: (dl: KLineData[]) => dl.map(() => ({})),
+    draw: (params: any) => {
+      const { ctx, xAxis, bounding, indicator } = params;
+      const progress: number | undefined = indicator?.extendData?.progress;
+      if (progress == null || progress < 0) return;
+      const xEdge = xAxis.convertToPixel(progress);
+      if (xEdge == null) return;
+      const x0 = Math.max(0, Math.ceil(xEdge));
+      if (x0 >= bounding.width) return;
+      ctx.fillStyle = "#0d0f14";
+      ctx.fillRect(x0, 0, bounding.width - x0, bounding.height);
     },
   } as any);
 

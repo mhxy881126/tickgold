@@ -76,7 +76,7 @@
     <!-- ===== 主体 ===== -->
     <div class="sc-body">
       <div class="sc-chart">
-        <div ref="host" class="chart-host" @contextmenu.prevent="onContextMenu"></div>
+        <div ref="host" class="chart-host" @contextmenu.prevent="onContextMenu" @mouseenter="onEnterChart" @mouseleave="onLeaveChart"></div>
         <div v-if="tabs[active].minute" class="pct-axis">
           <span
             v-for="(it, i) in rightAxisItems"
@@ -233,7 +233,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
-import { init, dispose, ActionType } from "klinecharts";
+import { init, dispose, ActionType, DomPosition } from "klinecharts";
 import type { Chart, KLineData } from "klinecharts";
 import {
   fetchQuotes, fetchKLine, fetchMinute, fetchOrderBook,
@@ -243,6 +243,7 @@ import { db } from "../db/database";
 import { useChartDrawings } from "../composables/useChartDrawings";
 import { registerCustomIndicators } from "../composables/chart/useChartIndicators";
 import { useChartFloat } from "../composables/chart/useChartFloat";
+import { pushChart, popChart } from "../lib/tradingAxis";
 import { usePaperStore } from "../stores/paper";
 import { useWatchlistStore } from "../stores/watchlist";
 import {
@@ -392,15 +393,22 @@ function renderChart(bars: KBar[], minute: boolean) {
   currentBars.value = bars;
   avgMapCur = minute ? buildAvgMap(bars) : new Map();
   if (chart) {
+    popChart(chart);
     dispose(chart); chart = null;
     drawInstances.clear(); // 旧 chart 的 overlay 实例已失效
   }
   volPaneId = null; subPaneId = null;
   chart = init(host.value);
   if (!chart) return;
+  pushChart(chart);
+  // 自定义交易时间轴仅用于分时（按整点/半小时）；日K用默认轴（显示日期），
+  // 否则日K每根 bar 时间戳都是 15:00，会被错标成一串 15:00。
+  if (minute) chart.setPaneOptions({ id: "x_axis_pane", axisOptions: { name: "tradingTime" } } as any);
   chart.setTimezone("UTC");
   chart.setPriceVolumePrecision(2, 0);
   chart.setStyles(buildStyles(minute));
+  // 日K蜡烛图右侧默认有 80px 留白，改为 0 对齐 yAxis；分时预留 58px 给右侧 HTML 涨跌轴
+  chart.setOffsetRightDistance(minute ? 58 : 0);
   chart.applyNewData(toKData(bars));
 
   const ph = paneHeights(minute);
@@ -435,13 +443,20 @@ function renderChart(bars: KBar[], minute: boolean) {
 
   restoreDrawings(); // 数据与指标就绪后恢复该股票+周期的画线
   chart.resize();
+  // 容器尺寸在卡片布局 / 切换周期后可能尚未稳定，双帧后再重排一次，避免右侧留空
+  const c = chart;
+  requestAnimationFrame(() => requestAnimationFrame(() => c?.resize()));
   if (minute) fitMinute();
 }
 
 function fitMinute() {
   if (!chart || !host.value) return;
-  const w = host.value.clientWidth;
-  chart.setBarSpace(Math.max(1.5, w / 242));
+  const axisW = 58; // 右侧 HTML 涨跌轴（.pct-axis）预留宽度
+  // 用绘图区宽（getSize main，已扣除左侧 y 轴），避免误用 host 宽导致 barSpace 失准
+  const mainSize = chart.getSize("candle_pane", DomPosition.Main) as { width: number } | null;
+  const P = mainSize?.width ?? host.value.clientWidth;
+  chart.setBarSpace(Math.max(1.5, (P - axisW) / 242));
+  chart.setOffsetRightDistance(axisW);
   chart.scrollToRealTime();
 }
 
@@ -597,7 +612,7 @@ async function applyTemplatePayload(p: any) {
   }
 }
 
-const { float, onCrosshair } = useChartFloat({
+const { float, onCrosshair, onEnterChart, onLeaveChart } = useChartFloat({
   host, active, tabs, currentBars, q, amount, prevClose,
   getAvgMap: () => avgMapCur,
 });
@@ -777,7 +792,7 @@ onUnmounted(() => {
   window.clearInterval(chartTimer);
   window.removeEventListener("mousedown", onDocMousedown);
   ro?.disconnect();
-  if (chart) dispose(chart);
+  if (chart) { popChart(chart); dispose(chart); }
 });
 
 watch(() => props.code, async () => {

@@ -31,6 +31,11 @@ export function useChartFloat(ctx: ChartFloatContext) {
   interface FloatState { visible: boolean; x: number; y: number; rows: any[] }
   const float = ref<FloatState>({ visible: false, x: 0, y: 0, rows: [] });
 
+  // 仅当鼠标真正悬停在图表区域内时才显示浮窗；初始化 / 程序化 crosshair 不弹出
+  let hovering = false;
+  function onEnterChart() { hovering = true; }
+  function onLeaveChart() { hovering = false; float.value.visible = false; }
+
   const colOf = (v: number) => (v > 0 ? UP : v < 0 ? DOWN_K : FLAT);
   const frow = (label: string, value: string, color?: string) => ({ label, value, color });
 
@@ -92,12 +97,12 @@ export function useChartFloat(ctx: ChartFloatContext) {
   }
 
   function onCrosshair(data: any) {
-    if (!data || !data.kLineData) { float.value.visible = false; return; }
+    if (!hovering || !data || !data.kLineData) { float.value.visible = false; return; }
     const tab = tabs[active.value];
     const rows = tab.minute ? minuteFloatRows(data) : klineFloatRows(data);
     const pos = placeFloat(data.x, data.y, rows.length);
     float.value = { visible: true, x: pos.x, y: pos.y, rows };
   }
 
-  return { float, onCrosshair };
+  return { float, onCrosshair, onEnterChart, onLeaveChart };
 }
