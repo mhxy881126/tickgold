@@ -102,7 +102,12 @@ const marketSentiment = ref({
   level: "neutral" as "hot" | "neutral" | "cold",
 });
 
-let timer: number | null = null;
+// ===== 事件驱动推进 =====
+// 蜘蛛走完一张卡（含数据包飞完）由覆盖层调 advanceRound() 推进；
+// 30s 看门狗仅作兜底，防止异常情况下轮次永久停滞（旧实现固定 3s 切卡，蜘蛛单卡需 ~18s）。
+const WATCHDOG_MS = 30000;
+let switchRef: ((id: CardId) => boolean) | null = null;
+let watchdog: number | null = null;
 
 // ===== 评分逻辑 =====
 function evaluateStock(q: Quote, code: string, name: string): StockScore {
@@ -476,7 +481,7 @@ function scanRound(
   wl: ReturnType<typeof useWatchlistStore>,
   quotes: ReturnType<typeof useQuotesStore>,
   paperStore: ReturnType<typeof usePaperStore>,
-  onSwitchCard: (cardId: CardId) => void,
+  onSwitchCard: (cardId: CardId) => boolean,
 ) {
   // 智能决定下一个扫哪个卡片
   const priority = getCardPriority();
@@ -487,6 +492,8 @@ function scanRound(
     cardId = currentCard.value;
     deepAnalysisCount++;
     addLog(`🔍 发现好机会，继续深入分析【${cardNames[cardId]}】（第 ${deepAnalysisCount} 次）...`, "info");
+    // 深度分析留在当前卡：不回调切卡，按已切换处理并补发 card 事件驱动蜘蛛重走本轮
+    emitScan({ type: "card", cardId });
   } else {
     // 换下一个卡片（按优先级）
     const step = currentStep.value;
@@ -496,18 +503,26 @@ function scanRound(
     opportunityFound = false;
     deepAnalysisCount = 0;
 
-    // 切换卡片
-    onSwitchCard(cardId);
-    addLog(`🔄 智能切换到【${cardNames[cardId]}】`, "info");
-    emitScan({ type: "card", cardId });
+    // 切换卡片（回调返回卡片是否真的处于打开状态）
+    const switched = onSwitchCard(cardId);
 
-    // 直接从 Store 采集数据（不依赖 DOM）
+    // 直接从 Store 采集数据（不依赖 DOM）；无论切换成功与否都保留：
+    // SpiderBot.vue mini-stage 消费 targetPoints
     setTimeout(() => {
       const points = collectFromStore(cardId);
       if (points.length > 0) {
         targetPoints.value = points;
       }
     }, 300);
+
+    if (switched) {
+      addLog(`🔄 智能切换到【${cardNames[cardId]}】`, "info");
+      emitScan({ type: "card", cardId });
+    } else {
+      // 卡片未打开：蜘蛛不规划该卡，50ms 后静默推进到下一张（跳过本轮计数）
+      window.setTimeout(() => { if (running.value) advanceRound(); }, 50);
+      return;
+    }
   }
 
   // 根据卡片类型扫描
@@ -535,8 +550,29 @@ function scanRound(
   currentStep.value++;
 }
 
+// ===== 看门狗：30s 未收到蜘蛛完成推进时兜底进入下一轮 =====
+function armWatchdog(): void {
+  if (watchdog !== null) clearTimeout(watchdog);
+  watchdog = window.setTimeout(() => {
+    if (running.value) advanceRound();
+  }, WATCHDOG_MS);
+}
+
+/**
+ * 进入下一轮：由覆盖层在蜘蛛走完当前卡（身体到位且数据包飞完）后事件驱动调用，
+ * 也用于关卡跳过与看门狗兜底。每次调用重新装裱看门狗。
+ */
+export function advanceRound(): void {
+  if (!running.value) return;
+  armWatchdog();
+  const wl = useWatchlistStore();
+  const quotes = useQuotesStore();
+  const paperStore = usePaperStore();
+  scanRound(wl, quotes, paperStore, (id) => (switchRef ? switchRef(id) : true));
+}
+
 // ===== 控制函数 =====
-function start(onSwitchCard: (cardId: CardId) => void) {
+function start(onSwitchCard: (cardId: CardId) => boolean) {
   const wl = useWatchlistStore();
   const quotes = useQuotesStore();
   const paperStore = usePaperStore();
@@ -546,19 +582,21 @@ function start(onSwitchCard: (cardId: CardId) => void) {
   logs.value = [];
   addLog("🕷 AI 爬虫机器人启动...", "info");
 
-  // 立即执行一轮
-  scanRound(wl, quotes, paperStore, onSwitchCard);
+  // 切卡回调存引用：advanceRound 与看门狗通过它回调 UI 层
+  switchRef = onSwitchCard;
 
-  // 每 3 秒扫描一轮
-  timer = window.setInterval(() => {
-    scanRound(wl, quotes, paperStore, onSwitchCard);
-  }, 3000);
+  // 立即执行一轮
+  scanRound(wl, quotes, paperStore, (id) => (switchRef ? switchRef(id) : true));
+
+  // 后续轮次由蜘蛛完成事件 advanceRound() 推进；看门狗仅兜底
+  armWatchdog();
 }
 
 function stop() {
   running.value = false;
   visible.value = false; // 隐藏覆盖层
-  if (timer) { clearInterval(timer); timer = null; }
+  if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
+  switchRef = null;
   addLog("爬虫机器人已停止", "info");
 }
 
@@ -569,8 +607,8 @@ function addLog(text: string, type: LogEntry["type"] = "info") {
 }
 
 // HMR：模块热替换前必须停掉后台定时器。
-// 否则旧模块闭包攥着旧 bench/onSwitchCard，继续每 3 秒开卡切卡，
-// 而 UI 上点"停止"只清新模块的 timer，旧 interval 泄漏。
+// 否则旧模块闭包攥着旧 switchRef/onSwitchCard，看门狗到期仍会开卡切卡，
+// 而 UI 上点"停止"只清新模块的 watchdog，旧定时器泄漏。
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     stop();
@@ -593,6 +631,7 @@ export function useSpiderBotEngine() {
     // 方法
     start,
     stop,
+    advanceRound,
     setAutoTrade: (v: boolean) => { autoTrade.value = v; },
     setSemiAuto: (v: boolean) => { semiAuto.value = v; },
   };

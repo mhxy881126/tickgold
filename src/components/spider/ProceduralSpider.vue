@@ -3,8 +3,13 @@
 // pointer-events:none，所有业务（评分/落桥/后端）在引擎与 Rust 侧。
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { SpiderSim, type ScanPoint, type SignalKind } from "./sim";
+import { resolveSignal } from "./signals";
 import { useSpiderAnchors } from "../../composables/useSpiderAnchors";
-import { onSpiderScan } from "../../composables/useSpiderBotEngine";
+import {
+  onSpiderScan,
+  advanceRound,
+  type SpiderScanEvent,
+} from "../../composables/useSpiderBotEngine";
 import { buildWaypoints, type Vec2 } from "./ik";
 import type { Anchor } from "./anchors";
 import type { CardId } from "../../lib/cards";
@@ -30,7 +35,16 @@ let raf = 0;
 let last = 0;
 let signalByCode = new Map<string, SignalKind>();
 let flyTimer = 0;
+// 有界重采：令牌淘汰过期轮询，rAF 句柄用于取消（组件卸载/新 planCard 时）
+let collectToken = 0;
 let collectRetry = 0;
+let lastCardId: CardId | null = null; // 最近规划的卡（滚动后按它重采）
+// 事件驱动推进：一轮走完（路径完+数据包飞完）后通知引擎进下一轮
+let roundDone = false;
+let advanceTimer = 0;
+// 滚动重采去抖
+let scrollTimer = 0;
+let alive = false; // 卸载后任何异步回调都不得再唤醒 rAF
 let unlisten: (() => void) | null = null;
 let dpr = 1;
 
@@ -39,47 +53,83 @@ function signalColor(s: SignalKind): string {
 }
 
 // ===== 扫描事件 → 行走路径 =====
-function planCard(cardId: CardId, allowRetry = true) {
-  const list = anchors.collect(cardId);
-  if (!list.length) {
-    // 切卡是响应式更新，emit 时新卡片行可能尚未完成渲染；下一帧重采一次
-    if (allowRetry) collectRetry = requestAnimationFrame(() => planCard(cardId, false));
-    return;
-  }
-  const pts: ScanPoint[] = [];
-  let prev: Vec2 = { ...sim.body };
-  list.slice(0, 8).forEach((a: Anchor, i: number) => {
-    const via = i === 0 ? buildWaypoints(prev, a, { maxSeg: 3, segLen: 260 }) : [];
-    via.forEach((v) =>
-      pts.push({
-        x: v.x, y: v.y,
-        anchor: { ...a, x: v.x, y: v.y, width: 0, height: 0, id: `${a.id}:via${i}` },
-        signal: null, via: true,
-      }),
-    );
-    pts.push({ x: a.x, y: a.y, anchor: a, signal: null });
-    prev = { x: a.x, y: a.y };
-  });
-  if (pts.length) sim.resetPath(pts);
+// 切卡是响应式更新，emit 时新卡片行可能尚未完成渲染：立即采一次，空则按 rAF
+// 有界轮询最多 90 帧（~1.5s@60fps）；令牌保证更新的 planCard / 卸载能淘汰旧轮询。
+function planCard(cardId: CardId) {
+  const token = ++collectToken;
+  lastCardId = cardId;
+  cancelAnimationFrame(collectRetry);
+  let attempts = 0;
+
+  const attempt = () => {
+    if (token !== collectToken) return; // 已被更新的 planCard 接管
+    const list = anchors.collect(cardId);
+    if (!list.length) {
+      if (attempts++ < 90) {
+        collectRetry = requestAnimationFrame(attempt);
+      } else {
+        // 采空兜底：显式空路径等待（由引擎 30s 看门狗推进），不空转、不幻走
+        sim.resetPath([]);
+      }
+      return;
+    }
+    const pts: ScanPoint[] = [];
+    let prev: Vec2 = { ...sim.body };
+    // 6 个锚点：为 30s 看门狗留节奏余量（单卡行走+驻留+数据包飞完）
+    list.slice(0, 6).forEach((a: Anchor, i: number) => {
+      const via = i === 0 ? buildWaypoints(prev, a, { maxSeg: 3, segLen: 260 }) : [];
+      via.forEach((v) =>
+        pts.push({
+          x: v.x, y: v.y,
+          anchor: { ...a, x: v.x, y: v.y, width: 0, height: 0, id: `${a.id}:via${i}` },
+          signal: null, via: true,
+        }),
+      );
+      pts.push({ x: a.x, y: a.y, anchor: a, signal: null });
+      prev = { x: a.x, y: a.y };
+    });
+    if (pts.length) {
+      sim.resetPath(pts);
+      // 新一轮路径：撤销上一轮收尾时挂起的推进定时器
+      if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = 0; }
+      roundDone = false;
+      ensureFrame();
+    }
+  };
+  attempt();
 }
 
-function onScan(ev: { type: string; cardId?: CardId; code?: string; signal?: SignalKind }) {
-  if (ev.type === "card" && ev.cardId) {
+function onScan(ev: SpiderScanEvent) {
+  if (ev.type === "card") {
     // card 事件先于同 tick 的 target 事件：先建空信号路径，target 到达后在到达帧按 map 解析
     signalByCode = new Map();
     planCard(ev.cardId);
-  } else if (ev.type === "target" && ev.code) {
-    // null 信号必须删除旧值，防止同一行在两轮间由 BUY 翻成 HOLD 后旧信号复活
-    if (ev.signal) {
-      signalByCode.set(ev.code, ev.signal);
-      // 蜘蛛正停在该行驻留时，即时补上信号色（via 点不扫描，跳过）
-      if (sim.current && !sim.current.via && sim.current.anchor.code === ev.code) {
-        sim.current.signal = ev.signal;
-      }
-    } else {
-      signalByCode.delete(ev.code);
+  } else {
+    // null 信号必须显式保留（resolveSignal 的 staleness guard），
+    // 防止同一行在两轮间由 BUY 翻成 HOLD 后旧信号复活
+    const { code, signal } = ev;
+    signalByCode.set(code, signal);
+    // 蜘蛛正停在该行驻留时，即时补上信号色（via 点不扫描，跳过）
+    if (signal && sim.current && !sim.current.via && sim.current.anchor.code === code) {
+      sim.current.signal = signal;
     }
   }
+}
+
+// ===== 滚动去抖：卡片内容滚动后锚点坐标变化，行走中按当前卡重新规划 =====
+function onScroll() {
+  if (scrollTimer) clearTimeout(scrollTimer);
+  scrollTimer = window.setTimeout(() => {
+    scrollTimer = 0;
+    if (alive && sim.active && lastCardId !== null) planCard(lastCardId);
+  }, 150);
+}
+
+// 空闲停帧后重新唤醒循环（首帧 last=0，避免把 rAF 时间戳当作 dt）
+function ensureFrame() {
+  if (!alive || raf) return;
+  last = 0;
+  raf = requestAnimationFrame(frame);
 }
 
 function refreshFlyTarget() {
@@ -230,16 +280,28 @@ function frame(now: number) {
   const dt = Math.min(50, now - last);
   last = now;
   const ev = sim.update(dt, now);
-  // 信号在「到达帧」按最新 target 表解析（路径建号时 target 事件可能尚未到达）
+  // 信号在「到达帧」按最新 target 表解析（路径建号时 target 事件可能尚未到达）；
+  // map 中显式 null 也以 map 为准（staleness guard），不回退建点信号
   if (ev.arrived && !ev.arrived.via) {
-    const sig = signalByCode.get(ev.arrived.anchor.code ?? "") ?? ev.arrived.signal;
-    if (sig) {
-      ev.arrived.signal = sig; // 同步给本帧高亮
-      sim.spawnPacket(ev.arrived);
-    }
+    const sig = resolveSignal(signalByCode, ev.arrived.anchor.code, ev.arrived.signal);
+    ev.arrived.signal = sig; // 同步给本帧高亮
+    if (sig) sim.spawnPacket(ev.arrived);
+  }
+  // 事件驱动推进：路径走完且数据包全部飞完，静默 600ms 后通知引擎进下一轮
+  if (!sim.active && sim.packets.length === 0 && !roundDone) {
+    roundDone = true;
+    advanceTimer = window.setTimeout(() => {
+      advanceTimer = 0;
+      if (alive && roundDone) advanceRound();
+    }, 600);
   }
   draw(ctx, now);
-  raf = requestAnimationFrame(frame);
+  // 空闲停帧：无行走路径且无在飞数据包时不再占用 rAF，由 ensureFrame 唤醒
+  if (alive && (sim.active || sim.packets.length > 0)) {
+    raf = requestAnimationFrame(frame);
+  } else {
+    raf = 0;
+  }
 }
 
 function resize() {
@@ -253,21 +315,31 @@ function resize() {
 }
 
 onMounted(() => {
-  sim = new SpiderSim({ x: window.innerWidth * 0.3, y: window.innerHeight * 0.55 });
+  alive = true;
+  sim = new SpiderSim(
+    { x: window.innerWidth * 0.3, y: window.innerHeight * 0.55 },
+    { reducedMotion: reduced },
+  );
   resize();
   ctx2d = canvasRef.value?.getContext("2d") ?? null;
   refreshFlyTarget();
   flyTimer = window.setInterval(refreshFlyTarget, 250);
   window.addEventListener("resize", resize);
+  window.addEventListener("scroll", onScroll, { capture: true, passive: true });
   unlisten = onSpiderScan(onScan);
   raf = requestAnimationFrame(frame);
 });
 
 onBeforeUnmount(() => {
+  alive = false;
+  collectToken++; // 作废任何在途重采轮询
   cancelAnimationFrame(raf);
   cancelAnimationFrame(collectRetry);
   clearInterval(flyTimer);
+  if (advanceTimer) clearTimeout(advanceTimer);
+  if (scrollTimer) clearTimeout(scrollTimer);
   window.removeEventListener("resize", resize);
+  window.removeEventListener("scroll", onScroll, true);
   unlisten?.();
 });
 </script>

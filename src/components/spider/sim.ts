@@ -35,6 +35,7 @@ export interface SimOpts {
   maxTurnRate: number; // 最大转向角速度 rad/s（髋绕身体旋转，过快会把钉地的脚甩出骨长）
   trailMs: number;     // 数据包拖行时长
   flyMs: number;       // 数据包飞入信号桥时长
+  reducedMotion?: boolean; // 减少动态：驻留不原地踏步，数据包走直线
 }
 
 export interface SimEvents {
@@ -54,7 +55,6 @@ interface Leg {
   to: Vec2;
 }
 
-// 数据包状态机在 Task 4 追加；此处先给类型与字段占位由 Task 4 完整实现。
 export interface Packet {
   code: string;
   name: string;
@@ -63,7 +63,6 @@ export interface Packet {
   pct: number;
   state: "trailing" | "flying";
   pos: Vec2;
-  trail: Vec2[];
   age: number;
   t: number;
   from: Vec2;
@@ -84,6 +83,7 @@ const DEFAULTS: SimOpts = {
   reach: 14, stepMs: 80, stridePeriod: 0.4, liftHeight: 9,
   maxTurnRate: 1.4,
   trailMs: 1000, flyMs: 650,
+  reducedMotion: false,
 };
 
 export class SpiderSim {
@@ -172,7 +172,6 @@ export class SpiderSim {
       pct: p.anchor.pct ?? 0,
       state: "trailing",
       pos: from,
-      trail: [],
       age: 0,
       t: 0,
       from,
@@ -264,8 +263,8 @@ export class SpiderSim {
           const maxTurn = (o.maxTurnRate * dtMs) / 1000;
           this.angle += clamp(diff, -maxTurn, maxTurn);
         }
-        // 驻留：身体静止，步态慢拍原地小踏步（脚落回休息位）
-        this.advanceLegs(dtMs, null, 0.35);
+        // 驻留：身体静止，步态慢拍原地小踏步（脚落回休息位）；减少动态时不踏步
+        this.advanceLegs(dtMs, null, o.reducedMotion ? 0 : 0.35);
       } else if (d <= o.arriveDist) {
         this.body = { ...tgt };
         if (tgt.via) {
@@ -275,7 +274,7 @@ export class SpiderSim {
         } else {
           this.scanUntil = now + o.dwellMs;
           ev.arrived = tgt;
-          this.advanceLegs(dtMs, null, 0.35);
+          this.advanceLegs(dtMs, null, o.reducedMotion ? 0 : 0.35);
         }
       } else {
         const dir = scale(to, 1 / d);
@@ -310,7 +309,7 @@ export class SpiderSim {
 
   /**
    * 数据包状态机：
-   * trailing —— 拖在身体后方（随时间左右轻摆，留 10 点拖尾），满 trailMs 进入 flying；
+   * trailing —— 拖在身体后方（随时间左右轻摆），满 trailMs 进入 flying；
    * flying —— 沿二次贝塞尔弧线飞向信号桥，到点发 packetDone(code) 并移除。
    * 未设置信号桥（flyTarget=null）时数据包持续拖行，不会凭空飞走。
    */
@@ -326,17 +325,23 @@ export class SpiderSim {
         const sway = Math.sin(p.age / 130) * 6;
         const perp = rotate({ x: sway, y: 0 }, this.angle);
         p.pos = add(anchorPos, perp);
-        p.trail.unshift({ ...p.pos });
-        if (p.trail.length > 10) p.trail.pop();
         if (p.age >= o.trailMs && this.flyTarget) {
           p.state = "flying";
           p.t = 0;
           p.from = { ...p.pos };
           p.to = { ...this.flyTarget };
-          p.ctrl = {
-            x: (p.from.x + p.to.x) / 2,
-            y: Math.min(p.from.y, p.to.y) - 150,
-          };
+          if (o.reducedMotion) {
+            // 控制点取 from/to 精确中点：二次贝塞尔退化为直线
+            p.ctrl = {
+              x: (p.from.x + p.to.x) / 2,
+              y: (p.from.y + p.to.y) / 2,
+            };
+          } else {
+            p.ctrl = {
+              x: (p.from.x + p.to.x) / 2,
+              y: Math.min(p.from.y, p.to.y) - 150,
+            };
+          }
         }
         keep.push(p);
       } else {

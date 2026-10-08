@@ -78,6 +78,8 @@ async function start() {
     // 同时启动蜘蛛爬虫引擎（可视化）
     engine.start((cardId) => {
       emit("switchCard", cardId);
+      // mini-stage 内嵌卡片视角无 isOpen 状态：切卡事件已交父级，按可切换处理
+      return true;
     });
     
     // 启动决策日志定时器（每3秒拉一次）

@@ -54,9 +54,10 @@ watch(() => engine.visible.value, (v) => {
 
 // ===== 切换卡片 =====
 // 尊重用户关闭意图：只在卡片已打开时切焦点，不硬把用户关掉的卡重新 open 回来。
-function switchCard(cardId: CardId) {
+// 返回是否真的完成切换（卡片打开且无异常）：引擎据此跳过未打开的卡。
+function switchCard(cardId: CardId): boolean {
   try {
-    if (!bench.isOpen(cardId)) return;
+    if (!bench.isOpen(cardId)) return false;
     if (!bench.freeMode.value) {
       // 主卡+右导航：切主卡
       bench.setGlassActive(cardId);
@@ -65,8 +66,10 @@ function switchCard(cardId: CardId) {
       bench.focus(cardId);
       bench.focusId.value = cardId;
     }
+    return true;
   } catch (e) {
     console.warn("切换卡片失败:", e);
+    return false;
   }
 }
 
