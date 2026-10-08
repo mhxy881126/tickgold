@@ -160,8 +160,11 @@ const currentCardName = computed(() => {
 });
 
 onUnmounted(() => {
+  startSeq++;
   if (statusTimer) clearInterval(statusTimer);
   engine.stop();
+  // 组件随应用关闭时兜底停掉 Rust 端自动执行器（IPC，fire-and-forget；幂等）
+  autoexecStop().catch(() => {});
 });
 
 defineExpose({ start, stop, running: engine.running });

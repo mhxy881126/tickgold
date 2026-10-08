@@ -30,6 +30,7 @@ let raf = 0;
 let last = 0;
 let signalByCode = new Map<string, SignalKind>();
 let flyTimer = 0;
+let collectRetry = 0;
 let unlisten: (() => void) | null = null;
 let dpr = 1;
 
@@ -42,7 +43,7 @@ function planCard(cardId: CardId, allowRetry = true) {
   const list = anchors.collect(cardId);
   if (!list.length) {
     // 切卡是响应式更新，emit 时新卡片行可能尚未完成渲染；下一帧重采一次
-    if (allowRetry) requestAnimationFrame(() => planCard(cardId, false));
+    if (allowRetry) collectRetry = requestAnimationFrame(() => planCard(cardId, false));
     return;
   }
   const pts: ScanPoint[] = [];
@@ -67,11 +68,16 @@ function onScan(ev: { type: string; cardId?: CardId; code?: string; signal?: Sig
     // card 事件先于同 tick 的 target 事件：先建空信号路径，target 到达后在到达帧按 map 解析
     signalByCode = new Map();
     planCard(ev.cardId);
-  } else if (ev.type === "target" && ev.code && ev.signal) {
-    signalByCode.set(ev.code, ev.signal);
-    // 蜘蛛正停在该行驻留时，即时补上信号色（via 点不扫描，跳过）
-    if (sim.current && !sim.current.via && sim.current.anchor.code === ev.code) {
-      sim.current.signal = ev.signal;
+  } else if (ev.type === "target" && ev.code) {
+    // null 信号必须删除旧值，防止同一行在两轮间由 BUY 翻成 HOLD 后旧信号复活
+    if (ev.signal) {
+      signalByCode.set(ev.code, ev.signal);
+      // 蜘蛛正停在该行驻留时，即时补上信号色（via 点不扫描，跳过）
+      if (sim.current && !sim.current.via && sim.current.anchor.code === ev.code) {
+        sim.current.signal = ev.signal;
+      }
+    } else {
+      signalByCode.delete(ev.code);
     }
   }
 }
@@ -259,6 +265,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf);
+  cancelAnimationFrame(collectRetry);
   clearInterval(flyTimer);
   window.removeEventListener("resize", resize);
   unlisten?.();
