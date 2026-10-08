@@ -33,6 +33,8 @@ export interface SimOpts {
   stridePeriod: number;// 步态周期 s：同组 4 腿在一个周期内等相位错步
   liftHeight: number;  // 抬脚弧高
   maxTurnRate: number; // 最大转向角速度 rad/s（髋绕身体旋转，过快会把钉地的脚甩出骨长）
+  trailMs: number;     // 数据包拖行时长
+  flyMs: number;       // 数据包飞入信号桥时长
 }
 
 export interface SimEvents {
@@ -81,6 +83,7 @@ const DEFAULTS: SimOpts = {
   speed: 70, arriveDist: 10, dwellMs: 750,
   reach: 14, stepMs: 80, stridePeriod: 0.4, liftHeight: 9,
   maxTurnRate: 1.4,
+  trailMs: 1000, flyMs: 650,
 };
 
 export class SpiderSim {
@@ -96,7 +99,7 @@ export class SpiderSim {
   private scanUntil = 0;
   private legs: Leg[] = [];
   private gaitClock = 0; // 步态相位时钟（周期份额 0..1）
-  private flyTarget: Vec2 = { x: 0, y: 0 };
+  private flyTarget: Vec2 | null = null;
 
   constructor(start: Vec2, opts: Partial<SimOpts> = {}) {
     this.body = { ...start };
@@ -156,9 +159,29 @@ export class SpiderSim {
     this.flyTarget = p;
   }
 
-  /** Task 4 实现完整状态机；此处先空实现让 Task 3 编译通过。 */
-  spawnPacket(_p: ScanPoint): void {
-    void _p;
+  /** 驻留点产生数据包：无信号或缺 code 的点忽略。数据包先拖在身后，到点飞入信号桥。 */
+  spawnPacket(p: ScanPoint): void {
+    if (!p.signal || !p.anchor.code) return;
+    const back = rotate({ x: 0, y: 26 }, this.angle);
+    const from = add(this.body, back);
+    this.packets.push({
+      code: p.anchor.code,
+      name: p.anchor.name ?? p.anchor.code,
+      side: p.signal,
+      price: p.anchor.price ?? 0,
+      pct: p.anchor.pct ?? 0,
+      state: "trailing",
+      pos: from,
+      trail: [],
+      age: 0,
+      t: 0,
+      from,
+      // 初值在进入 flying 时会重算，此处给一个向上的弧形中点（未设信号桥时以原地占位）
+      ctrl: this.flyTarget
+        ? { x: (from.x + this.flyTarget.x) / 2, y: (from.y + this.flyTarget.y) / 2 - 140 }
+        : { x: from.x, y: from.y - 140 },
+      to: this.flyTarget ? { ...this.flyTarget } : { ...from },
+    });
   }
 
   private hipWorld(h: { ox: number; oy: number }): Vec2 {
@@ -277,8 +300,52 @@ export class SpiderSim {
       }
     }
 
-    // Task 4 在此更新数据包
+    this.updatePackets(dtMs, ev);
     return ev;
+  }
+
+  /**
+   * 数据包状态机：
+   * trailing —— 拖在身体后方（随时间左右轻摆，留 10 点拖尾），满 trailMs 进入 flying；
+   * flying —— 沿二次贝塞尔弧线飞向信号桥，到点发 packetDone(code) 并移除。
+   * 未设置信号桥（flyTarget=null）时数据包持续拖行，不会凭空飞走。
+   */
+  private updatePackets(dtMs: number, ev: SimEvents): void {
+    const o = this.opts;
+    const back = rotate({ x: 0, y: 26 }, this.angle);
+    const anchorPos = add(this.body, back);
+    const keep: Packet[] = [];
+    for (const p of this.packets) {
+      if (p.state === "trailing") {
+        p.age += dtMs;
+        // 拖在身体后方，随时间左右轻摆
+        const sway = Math.sin(p.age / 130) * 6;
+        const perp = rotate({ x: sway, y: 0 }, this.angle);
+        p.pos = add(anchorPos, perp);
+        p.trail.unshift({ ...p.pos });
+        if (p.trail.length > 10) p.trail.pop();
+        if (p.age >= o.trailMs && this.flyTarget) {
+          p.state = "flying";
+          p.t = 0;
+          p.from = { ...p.pos };
+          p.to = { ...this.flyTarget };
+          p.ctrl = {
+            x: (p.from.x + p.to.x) / 2,
+            y: Math.min(p.from.y, p.to.y) - 150,
+          };
+        }
+        keep.push(p);
+      } else {
+        p.t = clamp(p.t + dtMs / o.flyMs, 0, 1);
+        p.pos = quad(p.from, p.ctrl, p.to, p.t);
+        if (p.t >= 1) {
+          ev.packetDone = p.code; // 到达信号桥
+        } else {
+          keep.push(p);
+        }
+      }
+    }
+    this.packets = keep;
   }
 
   legsForRender(): RenderLeg[] {

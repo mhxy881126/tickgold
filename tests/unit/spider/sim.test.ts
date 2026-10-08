@@ -129,3 +129,43 @@ describe("SpiderSim 步态", () => {
     }
   });
 });
+
+describe("SpiderSim 数据包", () => {
+  it("BUY/SELL 驻留点产生数据包，普通扫描不产生", () => {
+    const sim = new SpiderSim({ x: 0, y: 0 }, { speed: 70, dwellMs: 100, trailMs: 100, flyMs: 200 });
+    const buy = pt(30, 0, "BUY");
+    (buy.anchor as Anchor).code = "600248";
+    buy.anchor.name = "大金重工"; buy.anchor.price = 47.61; buy.anchor.pct = 2.9;
+    sim.resetPath([buy, pt(60, 0, null)]);
+    let spawned = false;
+    for (let i = 0; i < 200; i++) {
+      const ev = sim.update(40, i * 40);
+      if (ev.arrived && ev.arrived.signal) sim.spawnPacket(ev.arrived);
+      if (sim.packets.length) spawned = true;
+    }
+    expect(spawned).toBe(true);
+    expect(sim.packets[0].side).toBe("BUY");
+  });
+
+  it("数据包先 trailing 后 flying 并最终移除，完成事件带 code", () => {
+    const sim = new SpiderSim({ x: 0, y: 0 }, { speed: 70, dwellMs: 40, trailMs: 80, flyMs: 120 });
+    sim.setFlyTarget({ x: 500, y: 0 });
+    const buy = pt(20, 0, "SELL");
+    buy.anchor.code = "600094"; buy.anchor.name = "大名城"; buy.anchor.price = 4.34; buy.anchor.pct = -1.2;
+    sim.resetPath([buy]);
+    let done: string | null = null;
+    let sawTrailing = false;
+    let sawFlying = false;
+    for (let i = 0; i < 200; i++) {
+      const ev = sim.update(40, i * 40);
+      if (ev.arrived) sim.spawnPacket(ev.arrived);
+      if (sim.packets.some((p) => p.state === "trailing")) sawTrailing = true;
+      if (sim.packets.some((p) => p.state === "flying")) sawFlying = true;
+      if (ev.packetDone) done = ev.packetDone;
+    }
+    expect(sawTrailing).toBe(true);
+    expect(sawFlying).toBe(true);
+    expect(done).toBe("600094");
+    expect(sim.packets).toHaveLength(0);
+  });
+});
