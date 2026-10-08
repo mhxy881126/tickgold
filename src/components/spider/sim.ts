@@ -106,8 +106,8 @@ export class SpiderSim {
 
   /**
    * 按稳态相位分布放 8 脚并分配 trot 相位（新一轮起步调用）：
-   * c=0 时站立腿 phase=φ 的脚在身体纵轴 fwd=−8.4+28φ 处
-   * （28=v×P=70×0.4；−8.4 = 14−28×0.8，含 swing 占空 0.2 的落地基准），
+   * c=0 时站立腿 phase=φ 的脚在身体纵轴 fwd=−14+28φ 处
+   * （落地脚髋前 8.4 = 14−v×swing，再按 (0.8−φ) 周期后流），
    * 保证等待 swing 期间身体位移不把脚甩出骨链。
    */
   private relayoutFeet(): void {
@@ -116,10 +116,11 @@ export class SpiderSim {
       const k = within[h.group]++;
       // g0: 0,.25,.5,.75；g1 错开半格 0.125 → 两组 swing 窗口尽量不重叠
       const phase = h.group === 0 ? k * 0.25 : (k * 0.25 + 0.125) % 1;
-      // 稳态分布（v×P=28，swing 占空 sf=0.2）：站立腿 phase=φ 自上次落地
-      // 已过 (1−φ−sf) 周期，脚在髋前 fwd = 14 − 28(0.8−φ) = −8.4+28φ。
-      // φ∈[.2,.8] 站立脚 fwd∈[−2.8,14]，等待自身窗口期间最远流到髋后 ~14，全在骨链内。
-      const fwd = -8.4 + 28 * phase;
+      // 稳态分布（v×P=28，sf=0.2）：开窗时定落点（髋前 14），swing 80ms 内身体
+      // 已进 5.6，故落地即在髋前 8.4；c=0 时站立腿 φ 自落地过了 (0.8−φ) 周期：
+      //   fwd = 8.4 − 28(0.8−φ) = −14+28φ
+      // φ∈[.2,.8] 站立脚 fwd∈[−8.4, 8.4]，等待自身窗口期间最远流到髋后 ~14，全在骨链内。
+      const fwd = -14 + 28 * phase;
       const local = { x: h.ox + h.side * 5.6, y: h.oy - fwd };
       const foot = add(this.body, rotate(local, this.angle));
       return {
@@ -266,7 +267,14 @@ export class SpiderSim {
         this.advanceLegs(dtMs, dir, 1);
       }
     } else {
-      // 空闲原地微动，腿不动
+      // 路径走完：摆动中的腿立即收回到落点（到站收腿，避免脚永久冻结在弧顶）
+      for (const l of this.legs) {
+        if (l.lifting) {
+          l.lifting = false;
+          l.t = 1;
+          l.foot = { ...l.to };
+        }
+      }
     }
 
     // Task 4 在此更新数据包

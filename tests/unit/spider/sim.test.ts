@@ -84,6 +84,12 @@ describe("SpiderSim 步态", () => {
       sim.update(30, i * 30);
       const lifting = sim.legsForRender().filter((l) => l.lifting);
       expect(lifting.length).toBeLessThanOrEqual(2);
+      // @ts-expect-error 读私有腿状态验证对角分组互斥
+      const byGroup = [0, 0];
+      // @ts-expect-error 同上
+      for (const l of sim.legs) if (l.lifting) byGroup[l.group]++;
+      expect(byGroup[0]).toBeLessThanOrEqual(1);
+      expect(byGroup[1]).toBeLessThanOrEqual(1);
     }
   });
 
@@ -102,8 +108,10 @@ describe("SpiderSim 步态", () => {
         return { x, y, anchor: anchor(x, y, `6000${i}${dv.x}${dv.y}`), signal: null };
       });
       sim.resetPath(points);
+      let frames = 0;
       for (let f = 0; f < 8000 && sim.active; f++) {
         sim.update(16, f * 16);
+        frames++;
         // @ts-expect-error 读取私有腿状态验证可达域
         for (const l of sim.legs) {
           // @ts-expect-error 同上
@@ -111,6 +119,13 @@ describe("SpiderSim 步态", () => {
           expect(Math.hypot(l.foot.x - hip.x, l.foot.y - hip.y)).toBeLessThanOrEqual(maxReach);
         }
       }
+      // 路径必须在帧预算内走完，否则上面的覆盖是空转
+      expect(sim.active).toBe(false);
+      expect(frames).toBeGreaterThan(0);
+      // 到站后任何一帧都不得有脚冻结在摆动弧上
+      sim.update(16, 8000 * 16);
+      // @ts-expect-error 读私有腿状态
+      expect(sim.legs.every((l: { lifting: boolean }) => !l.lifting)).toBe(true);
     }
   });
 });
