@@ -461,6 +461,27 @@ export function signalCreateManual(
   });
 }
 
+// 爬虫机器人前端评分信号 → 待确认桥（source=spider，后端自动去重）
+export function signalCreateSpider(
+  code: string,
+  name: string,
+  side: string,
+  price: number,
+  vol: number | null,
+  confidence: number | null,
+  reason?: string,
+) {
+  return invoke<string>("signal_create_spider", {
+    code,
+    name,
+    side,
+    price,
+    vol,
+    confidence,
+    reason: reason ?? null,
+  });
+}
+
 export function signalLaunchBroker(path: string) {
   return invoke<void>("signal_launch_broker", { path });
 }

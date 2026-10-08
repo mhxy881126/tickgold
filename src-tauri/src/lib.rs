@@ -2054,6 +2054,7 @@ pub fn run() {
             ai::bridge::signal_done,
             ai::bridge::signal_expire,
             ai::bridge::signal_create_manual,
+            ai::bridge::signal_create_spider,
             ai::bridge::signal_launch_broker,
             ai::bridge::signal_preview_order,
             // ===== v2.6 券商实盘对接 =====

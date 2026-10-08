@@ -559,6 +559,49 @@ pub fn signal_create_manual(
     Ok(sid)
 }
 
+/// 爬虫机器人前端评分信号：落待确认票（source=spider），复用去重。
+#[tauri::command]
+pub fn signal_create_spider(
+    state: State<'_, crate::ai::AiState>,
+    app: AppHandle,
+    code: String,
+    name: String,
+    side: String,
+    price: f64,
+    vol: Option<i64>,
+    confidence: Option<f64>,
+    reason: Option<String>,
+) -> Result<String, String> {
+    let trade_date = beijing_today_dashed();
+    let conn = maindb::open_readwrite(&state.dir())?;
+    let sid = create_ticket(
+        &conn,
+        SignalInput {
+            code: code.clone(),
+            name: name.clone(),
+            side: side.clone(),
+            source: "spider".to_string(),
+            model_version: "spider-rule-v1".to_string(),
+            strategy: "爬虫盯盘".to_string(),
+            confidence: confidence.unwrap_or(0.6).clamp(0.0, 1.0),
+            ref_price: price,
+            vol: vol.unwrap_or(100).max(100),
+            reason: reason.unwrap_or_default(),
+            trade_date: trade_date.clone(),
+        },
+    )
+    .ok_or_else(|| "已有相同方向待确认信号或价格无效".to_string())?;
+    checkpoint(&conn);
+    let _ = app.emit(
+        "signal:new",
+        json!({
+            "sigId": sid, "code": code, "name": name,
+            "side": side, "source": "spider", "price": price,
+        }),
+    );
+    Ok(sid)
+}
+
 #[tauri::command]
 pub fn signal_launch_broker(path: String) -> Result<(), String> {
     launch_broker(&path)
