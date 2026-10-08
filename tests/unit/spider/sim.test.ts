@@ -19,9 +19,9 @@ describe("SpiderSim 身体移动", () => {
   });
 
   it("沿路径移动并在终点驻留，到达时事件带当前点", () => {
-    const sim = new SpiderSim({ x: 0, y: 0 }, { speed: 100, dwellMs: 200 });
+    const sim = new SpiderSim({ x: 0, y: 0 }, { speed: 70, dwellMs: 200 });
     sim.resetPath([pt(50, 0), pt(100, 0)]);
-    let ev = sim.update(500, 0); // 0.5s 走完 50px 以上
+    let ev = sim.update(60, 0); // 单步推进（产品速度域，避免大 dt 跨整个步态周期）
     expect(sim.active).toBe(true);
     // 推进到第一个点
     let guard = 0;
@@ -35,7 +35,7 @@ describe("SpiderSim 身体移动", () => {
   });
 
   it("驻留结束后自动推进到下一点，全部走完 active=false", () => {
-    const sim = new SpiderSim({ x: 0, y: 0 }, { speed: 200, dwellMs: 50 });
+    const sim = new SpiderSim({ x: 0, y: 0 }, { speed: 70, dwellMs: 50 });
     sim.resetPath([pt(40, 0), pt(80, 0)]);
     let last: number | null = null;
     for (let i = 0; i < 200; i++) {
@@ -48,7 +48,7 @@ describe("SpiderSim 身体移动", () => {
   });
 
   it("via 中途点不驻留，直接通过且不产生 arrived", () => {
-    const sim = new SpiderSim({ x: 0, y: 0 }, { speed: 200, dwellMs: 50 });
+    const sim = new SpiderSim({ x: 0, y: 0 }, { speed: 70, dwellMs: 50 });
     sim.resetPath([
       { x: 40, y: 0, anchor: anchor(40, 0, "via1"), signal: null, via: true },
       pt(80, 0),
@@ -84,6 +84,33 @@ describe("SpiderSim 步态", () => {
       sim.update(30, i * 30);
       const lifting = sim.legsForRender().filter((l) => l.lifting);
       expect(lifting.length).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it("默认参数下多方向长距离行走：逻辑脚始终在骨链可达域内（不超伸/不滑步）", () => {
+    // 回归：固定相位 trot 的参数自洽契约。渲染投影只是兜底，逻辑脚本身不得超骨长。
+    const dirs = [
+      { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 0, y: -1 },
+      { x: 1, y: 1 }, { x: -1, y: 1 }, { x: 0.7, y: -0.7 },
+    ];
+    for (const dv of dirs) {
+      const sim = new SpiderSim({ x: 0, y: 0 });
+      const maxReach = sim.l1 + sim.l2;
+      const points = Array.from({ length: 40 }, (_, i) => {
+        const x = dv.x * (i + 1) * 50;
+        const y = dv.y * (i + 1) * 50;
+        return { x, y, anchor: anchor(x, y, `6000${i}${dv.x}${dv.y}`), signal: null };
+      });
+      sim.resetPath(points);
+      for (let f = 0; f < 8000 && sim.active; f++) {
+        sim.update(16, f * 16);
+        // @ts-expect-error 读取私有腿状态验证可达域
+        for (const l of sim.legs) {
+          // @ts-expect-error 同上
+          const hip = sim.hipWorld(l);
+          expect(Math.hypot(l.foot.x - hip.x, l.foot.y - hip.y)).toBeLessThanOrEqual(maxReach);
+        }
+      }
     }
   });
 });

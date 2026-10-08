@@ -2,7 +2,7 @@
 // 无 DOM / canvas；渲染层只读 body / legsForRender / current / packets。
 import {
   type Vec2, add, sub, scale, len, lerp, angleOf, rotate, clamp,
-  twoBoneKnee, quad, buildHips, shouldStep, restTarget,
+  twoBoneKnee, quad, buildHips, restTarget,
 } from "./ik";
 import type { Anchor } from "./anchors";
 
@@ -25,13 +25,14 @@ export interface RenderLeg {
 }
 
 export interface SimOpts {
-  speed: number;      // 身体移动 px/s
-  arriveDist: number; // 距目标多近算到达
-  dwellMs: number;    // 到达后扫描驻留
-  rMin: number; rMax: number; // 脚舒适环带
-  reach: number;      // 迈步前移量
-  stepMs: number;     // 单腿抬起时长
-  liftHeight: number; // 抬脚弧高
+  speed: number;       // 身体移动 px/s
+  arriveDist: number;  // 距目标多近算到达
+  dwellMs: number;     // 到达后扫描驻留
+  reach: number;       // 落脚点相对髋的前移量
+  stepMs: number;      // 单腿 swing 时长（抬脚弧）
+  stridePeriod: number;// 步态周期 s：同组 4 腿在一个周期内等相位错步
+  liftHeight: number;  // 抬脚弧高
+  maxTurnRate: number; // 最大转向角速度 rad/s（髋绕身体旋转，过快会把钉地的脚甩出骨长）
 }
 
 export interface SimEvents {
@@ -42,6 +43,8 @@ export interface SimEvents {
 interface Leg {
   ox: number; oy: number; group: 0 | 1; side: 1 | -1;
   l1: number; l2: number;
+  /** 该腿在步态周期中的固定相位 0..1（trot：组内等间隔、两组错开半拍） */
+  phase: number;
   foot: Vec2;
   lifting: boolean;
   t: number;
@@ -66,9 +69,18 @@ export interface Packet {
   to: Vec2;
 }
 
+// 步态采用「固定相位 trot」（非环带异步触发——后者会相位堆积导致超伸滑步）：
+// 同组 4 腿在 stridePeriod 内按 0/¼/½/¾ 等相位错步，g1 相对 g0 错开 1/8；
+// 每腿在自己的 swing 窗口（stepMs/period 占空）抬脚、落到髋前 reach 处，其余时间钉地。
+// 自洽性（骨长 l1+l2=26，speed=70, period=0.4, swing=0.08）：
+//   占空 0.2 < 组内相位间隔 0.25（同组至多 1 腿离地）；
+//   每腿站立 0.32s 身体位移 22.4px，脚从髋前 14 流到髋后 8.4，
+//   站立末脚距髋仅 ~10px，全周期恒在骨链内，不超伸、不滑步。
+// 转向：起步即对准+脚重落位；驻留期以 maxTurnRate 预转下一点（身体静止，腿从容重踏）。
 const DEFAULTS: SimOpts = {
-  speed: 130, arriveDist: 10, dwellMs: 750,
-  rMin: 14, rMax: 52, reach: 16, stepMs: 260, liftHeight: 12,
+  speed: 70, arriveDist: 10, dwellMs: 750,
+  reach: 14, stepMs: 80, stridePeriod: 0.4, liftHeight: 9,
+  maxTurnRate: 1.4,
 };
 
 export class SpiderSim {
@@ -82,18 +94,40 @@ export class SpiderSim {
   private path: ScanPoint[] = [];
   private idx = -1;
   private scanUntil = 0;
-  private legs: Leg[];
+  private legs: Leg[] = [];
+  private gaitClock = 0; // 步态相位时钟（周期份额 0..1）
   private flyTarget: Vec2 = { x: 0, y: 0 };
 
   constructor(start: Vec2, opts: Partial<SimOpts> = {}) {
     this.body = { ...start };
     this.opts = { ...DEFAULTS, ...opts };
-    // 初始 8 脚在身体周围环带内，避免首帧集体迈步
+    this.relayoutFeet();
+  }
+
+  /**
+   * 按稳态相位分布放 8 脚并分配 trot 相位（新一轮起步调用）：
+   * c=0 时站立腿 phase=φ 的脚在身体纵轴 fwd=−8.4+28φ 处
+   * （28=v×P=70×0.4；−8.4 = 14−28×0.8，含 swing 占空 0.2 的落地基准），
+   * 保证等待 swing 期间身体位移不把脚甩出骨链。
+   */
+  private relayoutFeet(): void {
+    const within = [0, 0];
     this.legs = buildHips().map((h) => {
-      const hip = this.hipWorld(h);
-      const foot = add(hip, rotate({ x: h.side * 10, y: 4 }, this.angle));
-      return { ...h, l1: this.l1, l2: this.l2, foot, lifting: false, t: 0, from: foot, to: foot };
+      const k = within[h.group]++;
+      // g0: 0,.25,.5,.75；g1 错开半格 0.125 → 两组 swing 窗口尽量不重叠
+      const phase = h.group === 0 ? k * 0.25 : (k * 0.25 + 0.125) % 1;
+      // 稳态分布（v×P=28，swing 占空 sf=0.2）：站立腿 phase=φ 自上次落地
+      // 已过 (1−φ−sf) 周期，脚在髋前 fwd = 14 − 28(0.8−φ) = −8.4+28φ。
+      // φ∈[.2,.8] 站立脚 fwd∈[−2.8,14]，等待自身窗口期间最远流到髋后 ~14，全在骨链内。
+      const fwd = -8.4 + 28 * phase;
+      const local = { x: h.ox + h.side * 5.6, y: h.oy - fwd };
+      const foot = add(this.body, rotate(local, this.angle));
+      return {
+        ...h, phase, l1: this.l1, l2: this.l2,
+        foot, lifting: false, t: 0, from: foot, to: foot,
+      };
     });
+    this.gaitClock = 0;
   }
 
   get active(): boolean {
@@ -108,6 +142,13 @@ export class SpiderSim {
     this.path = points;
     this.idx = points.length ? 0 : -1;
     this.scanUntil = 0;
+    // 起步即对准第一点，8 脚在新朝向下重新落位：避免 90° 起步转向把钉地的脚
+    // 甩出骨链（新一轮爬行刚开始，脚无历史位置，直接落位无可视瞬移感）。
+    if (points.length) {
+      const d = sub(points[0], this.body);
+      if (len(d) > 1) this.angle = angleOf(d) + Math.PI / 2;
+      this.relayoutFeet();
+    }
   }
 
   setFlyTarget(p: Vec2): void {
@@ -123,37 +164,51 @@ export class SpiderSim {
     return add(this.body, rotate({ x: h.ox, y: h.oy }, this.angle));
   }
 
-  private advanceLegs(dtMs: number, moveDir: Vec2 | null): void {
+  /**
+   * 固定相位 trot 步态：推进 gaitClock，每条腿仅在自己的 swing 相位窗口抬脚，
+   * 沿二次贝塞尔弧线落到髋前 reach 处（可达域内），窗口外钉地不动。
+   * clockSpeed：移动=1，驻留=慢拍小踏步，空闲=0。
+   * 结构性保证：swing 占空 stepMs/period < 组内相位间隔 0.25，
+   * 故同组至多 1 腿、全局至多 2 腿同时离地。
+   */
+  private advanceLegs(dtMs: number, moveDir: Vec2 | null, clockSpeed: number): void {
     const o = this.opts;
-    const groupLifting = [false, false];
-    let totalLifting = 0;
-    for (const l of this.legs) {
-      if (l.lifting) { groupLifting[l.group] = true; totalLifting++; }
-    }
+    const P = o.stridePeriod;
+    const swingFrac = clamp((o.stepMs / 1000 / P), 0.05, 0.24);
+    // gaitClock 用周期份额（0..1）：本帧推进 dt/周期 × 速度倍率
+    this.gaitClock = (this.gaitClock + ((dtMs / 1000) * clockSpeed) / P) % 1;
 
+    const c = this.gaitClock;
     for (const l of this.legs) {
+      // swing 是周期上的圆弧 [phase, phase+swingFrac)，允许跨 0 环绕
+      const start = l.phase;
+      const end = (l.phase + swingFrac) % 1;
+      const inSwing = start < end
+        ? c >= start && c < end
+        : c >= start || c < end;
+      const arc = (c - start + 1) % 1; // 沿弧从窗口起点走过的份额（0..swingFrac）
       const hip = this.hipWorld(l);
-      if (l.lifting) {
-        l.t = clamp(l.t + dtMs / o.stepMs, 0, 1);
+      if (inSwing) {
+        // 进入窗口瞬间定落点（站立脚钉到此刻为止）
+        if (!l.lifting) {
+          l.lifting = true;
+          l.from = { ...l.foot };
+          let to = restTarget(hip, this.angle, moveDir, l.side, o.reach);
+          // 落脚点钳在骨链可达域内（留 1.5px 余量）
+          const off = sub(to, hip);
+          const dd = len(off);
+          const reachable = l.l1 + l.l2 - 1.5;
+          if (dd > reachable) to = add(hip, scale(off, reachable / dd));
+          l.to = to;
+        }
+        l.t = clamp(arc / swingFrac, 0, 1);
         const mid = add(lerp(l.from, l.to, 0.5), { x: 0, y: -o.liftHeight });
         l.foot = quad(l.from, mid, l.to, l.t);
-        if (l.t >= 1) {
-          l.lifting = false;
-          l.foot = { ...l.to };
-          groupLifting[l.group] = false;
-          totalLifting--;
-        }
-      } else if (
-        totalLifting < 2 &&
-        !groupLifting[l.group] &&
-        shouldStep(l.foot, this.body, o.rMin, o.rMax)
-      ) {
-        l.lifting = true;
-        l.t = 0;
-        l.from = { ...l.foot };
-        l.to = restTarget(hip, this.angle, moveDir, l.side, o.reach);
-        groupLifting[l.group] = true;
-        totalLifting++;
+      } else if (l.lifting) {
+        // 离开窗口（含大 dt 跳变）：精确落位
+        l.lifting = false;
+        l.t = 1;
+        l.foot = { ...l.to };
       }
     }
   }
@@ -167,34 +222,48 @@ export class SpiderSim {
       const to = sub(tgt, this.body);
       const d = len(to);
       if (this.scanUntil > 0) {
-        // 驻留扫描：身体静止
+        // 驻留扫描：身体静止，但提前转向下一个路径点。
+        // 静止旋转时髋切向线速度很低，脚能从容重踏，移动段就无需大角度急转。
         if (now >= this.scanUntil) {
           this.scanUntil = 0;
           this.idx++;
+        } else if (this.idx + 1 < this.path.length) {
+          const nxt = this.path[this.idx + 1];
+          const want = angleOf(sub(nxt, this.body)) + Math.PI / 2;
+          let diff = want - this.angle;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          const maxTurn = (o.maxTurnRate * dtMs) / 1000;
+          this.angle += clamp(diff, -maxTurn, maxTurn);
         }
-        this.advanceLegs(dtMs, null);
+        // 驻留：身体静止，步态慢拍原地小踏步（脚落回休息位）
+        this.advanceLegs(dtMs, null, 0.35);
       } else if (d <= o.arriveDist) {
         this.body = { ...tgt };
         if (tgt.via) {
-          // 跨卡片中途点：直接通过，不驻留/不发光束
+          // 跨卡片中途点：直接通过，不驻留/不发光束；按当前朝向正常摆腿
           this.idx++;
-          this.advanceLegs(dtMs, null);
+          this.advanceLegs(dtMs, scale(to, 1 / Math.max(d, 0.001)), 1);
         } else {
           this.scanUntil = now + o.dwellMs;
           ev.arrived = tgt;
-          this.advanceLegs(dtMs, null);
+          this.advanceLegs(dtMs, null, 0.35);
         }
       } else {
-        const step = Math.min(d, (o.speed * dtMs) / 1000);
         const dir = scale(to, 1 / d);
-        this.body = add(this.body, scale(dir, step));
-        // 身体朝向移动方向缓动（前方 -y，故取 dir 角度 + 90°）
+        // 身体朝向移动方向（起步与预转后通常已对齐）；残余折角限速跟随
         const want = angleOf(dir) + Math.PI / 2;
         let diff = want - this.angle;
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
-        this.angle += diff * Math.min(1, dtMs / 120);
-        this.advanceLegs(dtMs, dir);
+        const maxTurn = (o.maxTurnRate * dtMs) / 1000;
+        this.angle += clamp(diff, -maxTurn, maxTurn);
+        // 残余大折角（via 折线）时减速，减少髋旋转对钉地脚的拉扯
+        const turning = Math.abs(diff) > 0.25;
+        const speedNow = turning ? o.speed * 0.5 : o.speed;
+        const step = Math.min(d, (speedNow * dtMs) / 1000);
+        this.body = add(this.body, scale(dir, step));
+        this.advanceLegs(dtMs, dir, 1);
       }
     } else {
       // 空闲原地微动，腿不动
