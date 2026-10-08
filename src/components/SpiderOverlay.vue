@@ -82,11 +82,16 @@ function refreshMarketStatus() {
 }
 
 // ===== 控制函数 =====
+let startSeq = 0; // 启停竞态令牌：废弃 stop 之后才 resolve 的后端启动
+
 async function start() {
+  if (visible.value) return; // 防重入：重复启动会覆盖定时器/interval 句柄
+  const seq = ++startSeq;
   visible.value = true;
   // v-if 的 ProceduralSpider 下一 tick 才挂载并注册扫描监听；
   // 必须等它就绪后再启动引擎首轮扫描，否则首轮 card/target 事件无人接收（蜘蛛空等一轮）
   await nextTick();
+  if (seq !== startSeq) return; // 等待期间已被停止
   engine.start(switchCard);
   refreshMarketStatus();
   statusTimer = window.setInterval(refreshMarketStatus, 1000);
@@ -94,18 +99,21 @@ async function start() {
   // 联动后端「快脑自动执行器」：仅启动前端动画时，信号桥永远收不到信号
   try {
     await loadBackendCfg();
+    if (seq !== startSeq) return; // await 期间已停止，放弃过期启动
     if (backendCfg.value) {
       await autoexecStart({ ...backendCfg.value, enabled: true, ...modePatch() });
     }
   } catch (e) {
     console.warn("后端快脑启动失败（前端评分仍会送桥）:", e);
   }
+  if (seq !== startSeq) return;
   if (!marketOpen.value) {
     addEngineLog("⏸ 当前为休市时段，后端快脑不产信号；前端评分仍会送确认桥");
   }
 }
 
 async function stop() {
+  startSeq++; // 使任何在途的 start() await 链失效
   engine.stop();
   visible.value = false;
   if (statusTimer) { clearInterval(statusTimer); statusTimer = undefined; }
@@ -161,7 +169,7 @@ defineExpose({ start, stop, running: engine.running });
 
 <template>
   <div v-if="visible" class="spider-overlay">
-    <ProceduralSpider v-if="visible" :log-el="logPanelRef" />
+    <ProceduralSpider :log-el="logPanelRef" />
 
     <!-- 顶部状态栏 -->
     <div class="sb-topbar">

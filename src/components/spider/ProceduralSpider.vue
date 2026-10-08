@@ -38,9 +38,13 @@ function signalColor(s: SignalKind): string {
 }
 
 // ===== 扫描事件 → 行走路径 =====
-function planCard(cardId: CardId) {
+function planCard(cardId: CardId, allowRetry = true) {
   const list = anchors.collect(cardId);
-  if (!list.length) return;
+  if (!list.length) {
+    // 切卡是响应式更新，emit 时新卡片行可能尚未完成渲染；下一帧重采一次
+    if (allowRetry) requestAnimationFrame(() => planCard(cardId, false));
+    return;
+  }
   const pts: ScanPoint[] = [];
   let prev: Vec2 = { ...sim.body };
   list.slice(0, 8).forEach((a: Anchor, i: number) => {
@@ -52,7 +56,7 @@ function planCard(cardId: CardId) {
         signal: null, via: true,
       }),
     );
-    pts.push({ x: a.x, y: a.y, anchor: a, signal: signalByCode.get(a.code ?? "") ?? null });
+    pts.push({ x: a.x, y: a.y, anchor: a, signal: null });
     prev = { x: a.x, y: a.y };
   });
   if (pts.length) sim.resetPath(pts);
@@ -60,12 +64,15 @@ function planCard(cardId: CardId) {
 
 function onScan(ev: { type: string; cardId?: CardId; code?: string; signal?: SignalKind }) {
   if (ev.type === "card" && ev.cardId) {
+    // card 事件先于同 tick 的 target 事件：先建空信号路径，target 到达后在到达帧按 map 解析
     signalByCode = new Map();
     planCard(ev.cardId);
   } else if (ev.type === "target" && ev.code && ev.signal) {
     signalByCode.set(ev.code, ev.signal);
-    // 蜘蛛正停在该行驻留时，即时补上信号色
-    if (sim.current?.anchor.code === ev.code) sim.current.signal = ev.signal;
+    // 蜘蛛正停在该行驻留时，即时补上信号色（via 点不扫描，跳过）
+    if (sim.current && !sim.current.via && sim.current.anchor.code === ev.code) {
+      sim.current.signal = ev.signal;
+    }
   }
 }
 
@@ -217,7 +224,14 @@ function frame(now: number) {
   const dt = Math.min(50, now - last);
   last = now;
   const ev = sim.update(dt, now);
-  if (ev.arrived && ev.arrived.signal) sim.spawnPacket(ev.arrived);
+  // 信号在「到达帧」按最新 target 表解析（路径建号时 target 事件可能尚未到达）
+  if (ev.arrived && !ev.arrived.via) {
+    const sig = signalByCode.get(ev.arrived.anchor.code ?? "") ?? ev.arrived.signal;
+    if (sig) {
+      ev.arrived.signal = sig; // 同步给本帧高亮
+      sim.spawnPacket(ev.arrived);
+    }
+  }
   draw(ctx, now);
   raf = requestAnimationFrame(frame);
 }

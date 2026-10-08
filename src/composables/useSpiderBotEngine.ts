@@ -7,6 +7,8 @@ import type { Quote } from "../api/types";
 import type { CardId } from "../lib/cards";
 
 // ===== 扫描事件总线：驱动程序化蜘蛛覆盖层行走路径（无监听者时零开销）=====
+// 开发提示：本文件 HMR 热替换后 Set 会重建，已挂载的蜘蛛组件仍持有旧总线订阅，
+// 表现为热更后蜘蛛不动——重启一次爬虫（或刷新窗口）即可，生产环境无此问题。
 export type SpiderSignalKind = "BUY" | "SELL" | null;
 export type SpiderScanEvent =
   | { type: "card"; cardId: CardId }
