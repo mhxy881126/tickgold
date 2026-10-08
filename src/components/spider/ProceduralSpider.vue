@@ -25,6 +25,7 @@ const anchors = useSpiderAnchors();
 const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
 let sim: SpiderSim;
+let ctx2d: CanvasRenderingContext2D | null = null; // 上下文只获取一次
 let raf = 0;
 let last = 0;
 let signalByCode = new Map<string, SignalKind>();
@@ -82,9 +83,9 @@ function draw(ctx: CanvasRenderingContext2D, now: number) {
   ctx.save();
   ctx.scale(dpr, dpr);
 
-  // 当前驻留行：高亮整行 + 光束
+  // 当前驻留行：高亮整行 + 光束（via 中途点不扫描、不高亮）
   const cur = sim.current;
-  if (cur) {
+  if (cur && !cur.via) {
     const color = signalColor(cur.signal);
     const a = cur.anchor;
     const pulse = 0.55 + 0.3 * Math.sin(now / 110);
@@ -210,11 +211,10 @@ function roundRect(
 }
 
 function frame(now: number) {
-  const c = canvasRef.value;
-  if (!c) return;
-  const ctx = c.getContext("2d");
+  const ctx = ctx2d;
   if (!ctx) return;
-  const dt = Math.min(50, now - last || 16);
+  if (!last) last = now; // 首帧懒初始化，避免把 rAF 绝对时间戳当作 dt
+  const dt = Math.min(50, now - last);
   last = now;
   const ev = sim.update(dt, now);
   if (ev.arrived && ev.arrived.signal) sim.spawnPacket(ev.arrived);
@@ -235,6 +235,7 @@ function resize() {
 onMounted(() => {
   sim = new SpiderSim({ x: window.innerWidth * 0.3, y: window.innerHeight * 0.55 });
   resize();
+  ctx2d = canvasRef.value?.getContext("2d") ?? null;
   refreshFlyTarget();
   flyTimer = window.setInterval(refreshFlyTarget, 250);
   window.addEventListener("resize", resize);
