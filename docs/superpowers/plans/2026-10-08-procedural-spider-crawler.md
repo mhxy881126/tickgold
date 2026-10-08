@@ -144,8 +144,8 @@ describe("quad 二次贝塞尔", () => {
     expect(quad(a, b, c, 0)).toEqual(a);
     expect(quad(a, b, c, 1)).toEqual(c);
     const m = quad(a, b, c, 0.5);
-    expect(m.x).toBeCloseTo(5);
-    expect(m.y).toBeCloseTo(-5);
+    expect(m.x).toBeCloseTo(2.5); // 0.25*a + 0.5*b + 0.25*c → 0.25*10
+    expect(m.y).toBeCloseTo(-5);  // 0.5*(-10)
   });
 });
 
@@ -575,6 +575,19 @@ git commit -m "feat(spider): 锚点几何纯函数与真实行DOM采集封装"
 
 ## Task 3: 蜘蛛仿真类 `sim.ts`（身体移动 + 8 腿步态 + 扫描驻留）
 
+> **执行修订（2026-10-08，controller 裁定）：** 本节 Step 1/Step 3 的初版「环带异步触发步态」
+> 在 TDD 中被证伪——脚到髋距离触发 + 组槽串行调度会产生相位堆积，默认参数下逻辑脚被甩出
+> 骨链可达域（实测 73–204px，骨长仅 26），仅靠渲染投影兜底会产生可见滑步。最终实现改为
+> **固定相位 trot 步态**：`SimOpts` 去掉 `rMin/rMax`，增加 `stridePeriod`；新增
+> `gaitClock`（周期份额 0..1）、`Leg.phase`、`relayoutFeet()`（稳态相位分布落脚）、
+> `advanceLegs(dtMs, moveDir, clockSpeed)`（圆弧 swing 窗口，支持跨 0 环绕；驻留 0.35 慢拍）；
+> `resetPath` 起步即对准第一点并重落 8 脚；驻留期限速预转下一点。
+> DEFAULTS：speed 70 / stridePeriod 0.4 / stepMs 80 / reach 14 / liftHeight 9 / maxTurnRate 1.4。
+> 测试装置 speed 100/200（超物理域的加速值）改为 70，并新增永久回归用例
+> 「默认参数多方向长距离行走，逻辑脚始终 ≤ l1+l2」。
+> **最终代码以仓库文件为唯一准绳：`src/components/spider/sim.ts`、
+> `tests/unit/spider/sim.test.ts`；下方原始步骤保留为决策留痕，不再逐字执行。**
+
 **Files:**
 - Create: `src/components/spider/sim.ts`
 - Test: `tests/unit/spider/sim.test.ts`
@@ -933,6 +946,10 @@ git commit -m "feat(spider): 仿真类身体移动/转向/对角步态与扫描�
 ---
 
 ## Task 4: 数据包状态机（拖行 → 飞入信号桥）
+
+> **执行修订（2026-10-08，controller 裁定）：** 本节测试用例中的 `speed: 300` 超出
+> trot 步态物理服务域（v×P 受骨长约束），改为 `speed: 70`；数据包时序仅由
+> dwellMs/trailMs/flyMs 决定，与速度无关，断言不变。其余按原文执行。
 
 **Files:**
 - Modify: `src/components/spider/sim.ts`（替换 `spawnPacket` 空实现，在 `update` 内更新数据包）
