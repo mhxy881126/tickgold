@@ -16,7 +16,7 @@ const stocks: SealStock[] = [
 const concepts = [
   { concept: "机器人", codes: ["300001", "300002", "300003", "900000"] },
   { concept: "设备", codes: ["300001", "300002", "300003"] }, // 与行业同名，应并入概念不重复
-  { concept: "孤独概念", codes: ["600001"] },                  // 仅 1 只涨停，concept 路径不入选
+  { concept: "孤独概念", codes: ["600001"] },                  // 仅 1 只涨停：归因放宽后 concept 路径仍入选，便于跟踪
 ];
 
 describe("isTradeableConcept (N1 通用准指数标签过滤)", () => {
@@ -81,8 +81,10 @@ describe("clusterThemes", () => {
     expect(out.filter((c) => c.name === "设备")).toHaveLength(0);
   });
 
-  it("rejects concept clusters with fewer than 2 sealed stocks", () => {
-    expect(clusterThemes(stocks, concepts).find((c) => c.name === "孤独概念")).toBeUndefined();
+  it("accepts a concept cluster with only 1 sealed stock (宽松归因)", () => {
+    // v2.15.0 起概念路径放宽：单只涨停也建簇便于跟踪，过滤靠 isTradeableConcept 与排序。
+    expect(clusterThemes(stocks, concepts).find((c) => c.name === "孤独概念"))
+      .toMatchObject({ path: "concept", sealCount: 1, codes: ["600001"] });
   });
 
   it("does not form an empty-named industry cluster when industry tags are blank", () => {
