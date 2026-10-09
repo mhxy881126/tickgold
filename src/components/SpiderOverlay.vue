@@ -480,7 +480,7 @@ defineExpose({ start, stop, running: engine.running });
   --ov-bg-hover: var(--bg-hover, #201b0e);
 }
 
-/* ===== 极简风格顶栏（居中） ===== */
+/* ===== 极简风格顶栏（居中，跟随全局主题） ===== */
 .sb-topbar {
   position: absolute;
   top: 8px;
@@ -490,13 +490,13 @@ defineExpose({ start, stop, running: engine.running });
   align-items: center;
   gap: 14px;
   padding: 6px 14px;
-  background: rgba(20, 24, 28, 0.92);
-  border: 1px solid rgba(0, 200, 180, 0.25);
+  background: var(--ov-bg, rgba(21, 18, 10, 0.92));
+  border: 1px solid var(--ov-border, rgba(232, 200, 120, 0.4));
   border-radius: 12px;
   pointer-events: auto;
   box-shadow:
     0 4px 20px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+    inset 0 1px 0 color-mix(in srgb, var(--ov-accent, #e8c878) 10%, transparent);
   backdrop-filter: blur(12px);
   white-space: nowrap;
 }
@@ -509,12 +509,12 @@ defineExpose({ start, stop, running: engine.running });
 
 .sb-title-icon {
   font-size: 16px;
-  filter: drop-shadow(0 0 4px rgba(0, 200, 180, 0.5));
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--ov-accent, #e8c878) 50%, transparent));
   cursor: default;
 }
 
 .sb-card {
-  color: #00c8b4;
+  color: var(--ov-accent, #e8c878);
   font-size: 13px;
   font-weight: 600;
   max-width: 80px;
@@ -523,11 +523,11 @@ defineExpose({ start, stop, running: engine.running });
 }
 
 .sb-step {
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--ov-text-muted, #7a6f52);
   font-size: 12px;
 }
 .sb-step b {
-  color: #ffd76a;
+  color: var(--ov-accent-2, #f0d69a);
   font-family: Consolas, monospace;
   font-weight: 600;
 }
@@ -537,7 +537,7 @@ defineExpose({ start, stop, running: engine.running });
   gap: 6px;
   align-items: center;
   padding-left: 12px;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 1px solid color-mix(in srgb, var(--ov-accent, #e8c878) 15%, transparent);
 }
 
 /* 市场状态指示灯 */
@@ -545,15 +545,15 @@ defineExpose({ start, stop, running: engine.running });
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #f23645;
-  box-shadow: 0 0 6px #f23645;
+  background: var(--ov-danger, #f23645);
+  box-shadow: 0 0 6px var(--ov-danger, #f23645);
   cursor: help;
   animation: marketBlink 2s ease-in-out infinite;
   flex-shrink: 0;
 }
 .sb-market-dot.open {
-  background: #26d07c;
-  box-shadow: 0 0 8px #26d07c;
+  background: var(--ov-success, #26d07c);
+  box-shadow: 0 0 8px var(--ov-success, #26d07c);
 }
 @keyframes marketBlink {
   0%, 100% { opacity: 1; }
@@ -565,9 +565,9 @@ defineExpose({ start, stop, running: engine.running });
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(255, 255, 255, 0.6);
+  border: 1px solid color-mix(in srgb, var(--ov-accent, #e8c878) 25%, transparent);
+  background: color-mix(in srgb, var(--ov-accent, #e8c878) 8%, transparent);
+  color: var(--ov-text-dim, #b8a878);
   cursor: pointer;
   font-size: 13px;
   display: flex;
@@ -577,13 +577,15 @@ defineExpose({ start, stop, running: engine.running });
   flex-shrink: 0;
 }
 .sb-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: color-mix(in srgb, var(--ov-accent, #e8c878) 15%, transparent);
+  color: var(--ov-text, #e6edf3);
+  border-color: color-mix(in srgb, var(--ov-accent, #e8c878) 50%, transparent);
 }
 .sb-icon-btn.on {
-  border-color: rgba(0, 200, 180, 0.4);
-  background: rgba(0, 200, 180, 0.12);
-  color: #00c8b4;
+  border-color: color-mix(in srgb, var(--ov-accent, #e8c878) 60%, transparent);
+  background: color-mix(in srgb, var(--ov-accent, #e8c878) 20%, transparent);
+  color: var(--ov-accent, #e8c878);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--ov-accent, #e8c878) 25%, transparent);
 }
 
 /* 模式切换按钮 */
@@ -594,9 +596,9 @@ defineExpose({ start, stop, running: engine.running });
   padding: 4px 10px;
   height: 28px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(255, 255, 255, 0.5);
+  border: 1px solid color-mix(in srgb, var(--ov-accent, #e8c878) 25%, transparent);
+  background: color-mix(in srgb, var(--ov-accent, #e8c878) 8%, transparent);
+  color: var(--ov-text-dim, #b8a878);
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
@@ -604,26 +606,28 @@ defineExpose({ start, stop, running: engine.running });
   white-space: nowrap;
 }
 .sb-mode-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: color-mix(in srgb, var(--ov-accent, #e8c878) 15%, transparent);
+  color: var(--ov-text, #e6edf3);
+  border-color: color-mix(in srgb, var(--ov-accent, #e8c878) 50%, transparent);
 }
 .sb-mode-btn.on {
-  border-color: rgba(0, 200, 180, 0.4);
-  background: rgba(0, 200, 180, 0.12);
-  color: #00c8b4;
+  border-color: color-mix(in srgb, var(--ov-accent, #e8c878) 60%, transparent);
+  background: color-mix(in srgb, var(--ov-accent, #e8c878) 20%, transparent);
+  color: var(--ov-accent, #e8c878);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--ov-accent, #e8c878) 20%, transparent);
 }
 .sb-mode-state {
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.4);
+  background: color-mix(in srgb, var(--ov-accent, #e8c878) 10%, transparent);
+  color: var(--ov-text-muted, #7a6f52);
   font-family: Consolas, monospace;
   font-weight: 600;
 }
 .sb-mode-btn.on .sb-mode-state {
-  background: rgba(0, 200, 180, 0.2);
-  color: #00c8b4;
+  background: color-mix(in srgb, var(--ov-accent, #e8c878) 25%, transparent);
+  color: var(--ov-accent, #e8c878);
 }
 
 /* 停止按钮 */
@@ -631,9 +635,9 @@ defineExpose({ start, stop, running: engine.running });
   padding: 4px 14px;
   height: 28px;
   border-radius: 6px;
-  border: 1px solid rgba(242, 54, 69, 0.4);
-  background: rgba(242, 54, 69, 0.12);
-  color: #ff6b78;
+  border: 1px solid color-mix(in srgb, var(--ov-danger, #ff6b78) 50%, transparent);
+  background: color-mix(in srgb, var(--ov-danger, #ff6b78) 15%, transparent);
+  color: var(--ov-danger, #ff6b78);
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
@@ -641,8 +645,9 @@ defineExpose({ start, stop, running: engine.running });
   white-space: nowrap;
 }
 .sb-stop-btn:hover {
-  background: rgba(242, 54, 69, 0.2);
-  border-color: rgba(242, 54, 69, 0.6);
+  background: color-mix(in srgb, var(--ov-danger, #ff6b78) 25%, transparent);
+  border-color: color-mix(in srgb, var(--ov-danger, #ff6b78) 70%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--ov-danger, #ff6b78) 30%, transparent);
 }
 
 /* ===== 日志面板（鎏金风） ===== */
