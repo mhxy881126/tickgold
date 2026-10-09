@@ -5,6 +5,7 @@ import { useQuotesStore } from "../stores/quotes";
 import { useSpiderBotEngine } from "../composables/useSpiderBotEngine";
 import { autoexecGetConfig, autoexecStart, autoexecStop } from "../ai/api";
 import { startSelectorCheck, type SelectorIssue } from "./spider/selectorCheck";
+import { getTradingPhase, phaseLabel, phaseAction, type TradingPhase } from "./spider/tradingDay";
 
 const emit = defineEmits<{
   switchCard: [cardId: string];
@@ -19,26 +20,49 @@ const running = computed(() => engine.running.value);
 const autoTrade = computed(() => engine.autoTrade.value);
 const semiAuto = computed(() => engine.semiAuto.value);
 
+// ===== 时段状态机 =====
+const currentPhase = computed(() => getTradingPhase());
+const PHASES = [
+  { phase: "pre-market", time: "08:30–09:15", label: "盘前", action: "读消息/日历，预扫描自选与题材", open: "否" },
+  { phase: "auction", time: "09:15–09:25", label: "集合竞价", action: "竞价抢筹判定，定挂单计划", open: "否" },
+  { phase: "open", time: "09:25–09:35", label: "开盘", action: "观察方向，不追高", open: "否" },
+  { phase: "morning", time: "09:35–11:30", label: "上午盘", action: "环境→主线→个股巡回，研判+交易", open: "是" },
+  { phase: "midday", time: "11:30–13:00", label: "午间", action: "复盘上午，更新候选与仓位", open: "否" },
+  { phase: "afternoon", time: "13:00–14:45", label: "下午盘", action: "持仓跟踪+交易", open: "是" },
+  { phase: "close", time: "14:45–15:00", label: "尾盘", action: "尾盘决策：新开/减仓/持有", open: "否" },
+  { phase: "post-market", time: "15:00–16:00", label: "盘后", action: "自动复盘+研究卡扫描", open: "模拟盘" },
+] as const;
+
+// ===== 时间轴选中（默认跟随真实当前时段）=====
+const selectedPhase = ref<TradingPhase>(currentPhase.value);
+watch(currentPhase, (p) => { selectedPhase.value = p; });
+
+const PHASE_ORDER: TradingPhase[] = ["pre-market", "auction", "open", "morning", "midday", "afternoon", "close", "post-market"];
+function nodeState(phase: TradingPhase): string {
+  const cur = currentPhase.value;
+  if (phase === cur) return "active";
+  if (cur === "closed") return "done";
+  return PHASE_ORDER.indexOf(phase) < PHASE_ORDER.indexOf(cur) ? "done" : "";
+}
+const selectedDetail = computed(() => {
+  const p = selectedPhase.value;
+  if (p === "closed") return { label: "休市", time: "其余/周末", action: "研究卡扫描 + 复盘记录", open: "模拟盘" };
+  const row = PHASES.find((x) => x.phase === p);
+  return { label: row!.label, time: row!.time, action: row!.action, open: row!.open };
+});
+
+// ===== 工作区 Tab（复盘 / 日志）=====
+const activeWorkTab = ref<"review" | "logs">("review");
+
 // ===== 自动交易配置 =====
 const aiCfg = ref<any>(null);
 const aiBusy = ref(false);
-
 async function loadAiCfg() {
-  try {
-    aiCfg.value = await autoexecGetConfig();
-  } catch (e) {
-    console.warn("加载自动交易配置失败:", e);
-  }
+  try { aiCfg.value = await autoexecGetConfig(); } catch (e) { console.warn("加载自动交易配置失败:", e); }
 }
 
-// ===== 全屏爬行模式 =====
+// ===== 全屏爬行 =====
 const fullscreenRunning = ref(false);
-
-// ===== 选择器自检角标（仅开发模式；DOM 改版导致采不到行时告警）=====
-const selectorIssues = ref<SelectorIssue[]>([]);
-let stopSelectorCheck: (() => void) | null = null;
-const selectorIssueCount = computed(() => selectorIssues.value.length);
-
 function toggleFullscreen() {
   if (fullscreenRunning.value) {
     window.dispatchEvent(new CustomEvent("spider-overlay-stop"));
@@ -48,46 +72,37 @@ function toggleFullscreen() {
     fullscreenRunning.value = true;
   }
 }
-
 function onFullscreenStopped() { fullscreenRunning.value = false; }
 function onFullscreenStarted() { fullscreenRunning.value = true; }
+
+// ===== 选择器自检角标 =====
+const selectorIssues = ref<SelectorIssue[]>([]);
+let stopSelectorCheck: (() => void) | null = null;
+const selectorIssueCount = computed(() => selectorIssues.value.length);
 
 // ===== 模式切换 =====
 async function setSemi(on: boolean) {
   if (!aiCfg.value) await loadAiCfg();
-  if (on) {
-    engine.setAutoTrade(false);
-    engine.setSemiAuto(true);
-  } else {
-    engine.setSemiAuto(false);
-  }
+  if (on) { engine.setAutoTrade(false); engine.setSemiAuto(true); }
+  else { engine.setSemiAuto(false); }
   syncBackendMode();
 }
-
 async function setFull(on: boolean) {
   if (!aiCfg.value) await loadAiCfg();
-  if (on) {
-    engine.setSemiAuto(false);
-    engine.setAutoTrade(true);
-  } else {
-    engine.setAutoTrade(false);
-  }
+  if (on) { engine.setSemiAuto(false); engine.setAutoTrade(true); }
+  else { engine.setAutoTrade(false); }
   syncBackendMode();
 }
-
 async function syncBackendMode() {
   try {
     if (!aiCfg.value) return;
-    // 模式变更时如果正在运行，同步到后端
     if (running.value) {
       const patch = autoTrade.value
         ? { tradeMode: "full" as const, fullAutoMode: true, bridgeEnabled: false }
         : { tradeMode: "manual" as const, fullAutoMode: false, bridgeEnabled: true };
       await autoexecStart({ ...aiCfg.value, enabled: true, ...patch });
     }
-  } catch (e) {
-    console.warn("同步模式到后端失败:", e);
-  }
+  } catch (e) { console.warn("同步模式到后端失败:", e); }
 }
 
 // ===== 启动/停止 =====
@@ -95,46 +110,33 @@ async function start() {
   if (!aiCfg.value) await loadAiCfg();
   aiBusy.value = true;
   try {
-    // 启动后端自动交易
     if (aiCfg.value) {
       const patch = autoTrade.value
         ? { tradeMode: "full" as const, fullAutoMode: true, bridgeEnabled: false }
         : { tradeMode: "manual" as const, fullAutoMode: false, bridgeEnabled: true };
       await autoexecStart({ ...aiCfg.value, enabled: true, ...patch });
     }
-    // 启动前端引擎
-    engine.start((cardId) => {
-      emit("switchCard", cardId);
-      return true;
-    });
-    // 开始生成 mock 扫描动画日志
+    engine.start((cardId) => { emit("switchCard", cardId); return true; });
     startMockScanLoop();
-  } finally {
-    aiBusy.value = false;
-  }
+  } finally { aiBusy.value = false; }
 }
-
 async function stop() {
   aiBusy.value = true;
   try {
     await autoexecStop();
     engine.stop();
     stopMockScanLoop();
-  } finally {
-    aiBusy.value = false;
-  }
+  } finally { aiBusy.value = false; }
 }
-
 function emergencyStop() {
   stop();
   window.dispatchEvent(new CustomEvent("spider-overlay-stop"));
   fullscreenRunning.value = false;
 }
 
-// ===== Mock 扫描循环（驱动卡片内的可视化 + 日志流）=====
+// ===== Mock 扫描循环 =====
 let mockTimer: number | null = null;
 let mockStep = 0;
-
 const scanCards = [
   { id: "watch", name: "自选股", icon: "📋" },
   { id: "rank", name: "涨幅榜", icon: "📈" },
@@ -143,64 +145,27 @@ const scanCards = [
   { id: "radar", name: "涨停雷达", icon: "🚀" },
   { id: "market", name: "大盘指数", icon: "📊" },
 ];
-
-function startMockScanLoop() {
-  mockStep = 0;
-  tickMock();
-  mockTimer = window.setInterval(tickMock, 2500);
-}
-
-function stopMockScanLoop() {
-  if (mockTimer) { clearInterval(mockTimer); mockTimer = null; }
-}
-
+function startMockScanLoop() { mockStep = 0; tickMock(); mockTimer = window.setInterval(tickMock, 2500); }
+function stopMockScanLoop() { if (mockTimer) { clearInterval(mockTimer); mockTimer = null; } }
 function tickMock() {
   const card = scanCards[mockStep % scanCards.length];
   currentCard.value = card.id;
   mockStep++;
   scanStep.value = mockStep;
 }
-
-function scanWatchMock() {
-  const list = wl.currentStocks;
-  if (!list.length) return;
-  // 仅驱动蜘蛛动画，日志由 engine 产生
-}
-
-function scanRankMock() {
-  // 仅驱动蜘蛛动画，日志由 engine 产生
-}
-
-function scanSectorMock() {
-  // 仅驱动蜘蛛动画，日志由 engine 产生
-}
-
-function scanConceptMock() {
-  // 仅驱动蜘蛛动画，日志由 engine 产生
-}
-
-function scanRadarMock() {
-  // 仅驱动蜘蛛动画，日志由 engine 产生
-}
-
-function scanMarketMock() {
-  // 仅驱动蜘蛛动画，日志由 engine 产生
-}
-
-// ===== 当前扫描卡片 =====
 const currentCard = ref("watch");
 const scanStep = ref(0);
 const positionCount = ref(0);
+const currentCardName = computed(() => scanCards[scanStep.value % scanCards.length]?.name || "自选股");
 
-// ===== 策略选择菜单 =====
+// ===== 策略菜单 =====
 const showStrategyMenu = ref(false);
-
 function selectStrategy(key: "conservative" | "balanced" | "aggressive" | "scalping") {
   engine.applyStrategy(key);
   showStrategyMenu.value = false;
 }
 
-// ===== 绩效数据（mock + 实时）=====
+// ===== 绩效 =====
 const perfData = computed(() => {
   const perf = engine.performance.value;
   return {
@@ -211,10 +176,7 @@ const perfData = computed(() => {
     totalTrades: perf.totalTrades || positionCount.value + 15,
   };
 });
-
-function perfColor(v: number): string {
-  return v > 0 ? "up" : v < 0 ? "down" : "neutral";
-}
+function perfColor(v: number): string { return v > 0 ? "up" : v < 0 ? "down" : "neutral"; }
 
 // ===== 市场情绪 =====
 const sentiment = computed(() => engine.marketSentiment.value);
@@ -227,7 +189,7 @@ const sentimentLevelClass = computed(() => {
   return l === "hot" ? "hot" : l === "cold" ? "cold" : "neutral";
 });
 
-// ===== 风控数据 =====
+// ===== 风控 =====
 const riskData = computed(() => {
   const cfg = engine.riskConfig.value;
   const maxPos = cfg.maxPositions ?? 5;
@@ -242,7 +204,7 @@ const riskData = computed(() => {
   };
 });
 
-// ====== 数据源标签 ======
+// ===== 数据源标签 =====
 const dataSources = computed(() => {
   const src = engine.crawlSources.value;
   return [
@@ -260,37 +222,16 @@ const dataSources = computed(() => {
   ];
 });
 
-// ====== 日志系统 ======
-
+// ===== 日志系统 =====
 type LogCategory = "scan" | "signal" | "trade" | "risk" | "system";
-
 interface SpiderLogEntry {
-  id: number;
-  time: string;
-  category: LogCategory;
-  icon: string;
-  title: string;
-  subtitle?: string;
-  detail?: string;
-  code?: string;
-  name?: string;
-  price?: number;
-  pct?: number;
-  score?: number;
-  signals?: string[];
-  amount?: number;
-  qty?: number;
-  side?: "BUY" | "SELL";
-  reason?: string;
-  level: "info" | "success" | "warn" | "error";
-  isNew?: boolean;
+  id: number; time: string; category: LogCategory; icon: string;
+  title: string; subtitle?: string; level: "info" | "success" | "warn" | "error"; isNew?: boolean;
 }
-
 const activeLogTab = ref<LogCategory | "all">("all");
 const autoScroll = ref(true);
 const logListRef = ref<HTMLElement | null>(null);
 const showLogMenu = ref(false);
-
 const logTabs = [
   { key: "all" as const, name: "全部", icon: "📋" },
   { key: "scan" as const, name: "扫描", icon: "🔍" },
@@ -299,120 +240,43 @@ const logTabs = [
   { key: "risk" as const, name: "风控", icon: "🛡️" },
   { key: "system" as const, name: "系统", icon: "⚙️" },
 ];
-
-// 将 engine 日志智能分类转换为 6 分类格式
-function classifyEngineLog(text: string): {
-  category: LogCategory;
-  icon: string;
-  title: string;
-  subtitle?: string;
-  level: "info" | "success" | "warn" | "error";
-} {
-  // 风控类
+function classifyEngineLog(text: string) {
   if (text.includes("风控") || text.includes("拦截") || text.includes("止盈") || text.includes("止损") || text.includes("最大持仓") || text.includes("最大回撤") || text.includes("单日最大亏损")) {
-    return {
-      category: "risk",
-      icon: "🛡️",
-      title: text.replace(/^[⚠️✅🛡️]\s*/, ""),
-      level: text.includes("拦截") || text.includes("⚠️") ? "warn" : "info",
-    };
+    return { category: "risk" as LogCategory, icon: "🛡️", title: text.replace(/^[⚠️✅🛡️]\s*/, ""), level: text.includes("拦截") || text.includes("⚠️") ? ("warn" as const) : ("info" as const) };
   }
-
-  // 交易类
   if (text.includes("买入") || text.includes("卖出") || text.includes("确认桥") || text.includes("交易") || text.includes("成交")) {
     const isBuy = text.includes("买入") && !text.includes("卖出");
     const isSell = text.includes("卖出");
-    return {
-      category: "trade",
-      icon: "💰",
-      title: text.replace(/^[✅🌉💰]\s*/, ""),
-      level: isBuy ? "success" : isSell ? "warn" : "info",
-    };
+    return { category: "trade" as LogCategory, icon: "💰", title: text.replace(/^[✅🌉💰]\s*/, ""), level: isBuy ? ("success" as const) : isSell ? ("warn" as const) : ("info" as const) };
   }
-
-  // 信号类
   if (text.includes("信号") || text.includes("评分") || text.includes("买入信号") || text.includes("卖出信号")) {
     const isBuy = text.includes("买入");
-    return {
-      category: "signal",
-      icon: "🎯",
-      title: text.replace(/^[🟢🔴🎯]\s*/, ""),
-      level: isBuy ? "success" : "warn",
-    };
+    return { category: "signal" as LogCategory, icon: "🎯", title: text.replace(/^[🟢🔴🎯]\s*/, ""), level: isBuy ? ("success" as const) : ("warn" as const) };
   }
-
-  // 扫描/采集类
-  if (
-    text.includes("扫描") || text.includes("采集") ||
-    text.includes("自选股") || text.includes("涨幅榜") ||
-    text.includes("板块") || text.includes("概念") ||
-    text.includes("大盘") || text.includes("指数") ||
-    text.includes("雷达") || text.includes("TOP") ||
-    text.includes("领涨")
-  ) {
-    return {
-      category: "scan",
-      icon: "✅",
-      title: text.replace(/^[✅📈🏭💡📊🚀📋🔍]\s*/, ""),
-      level: "info",
-    };
+  if (text.includes("扫描") || text.includes("采集") || text.includes("自选股") || text.includes("涨幅榜") || text.includes("板块") || text.includes("概念") || text.includes("大盘") || text.includes("指数") || text.includes("雷达") || text.includes("TOP") || text.includes("领涨")) {
+    return { category: "scan" as LogCategory, icon: "✅", title: text.replace(/^[✅📈🏭💡📊🚀📋🔍]\s*/, ""), level: "info" as const };
   }
-
-  // 系统类（启停、策略切换、切卡等）
-  return {
-    category: "system",
-    icon: "⚙️",
-    title: text.replace(/^[🕷🔄⚙️⏸▶]\s*/, ""),
-    level: "info",
-  };
+  return { category: "system" as LogCategory, icon: "⚙️", title: text.replace(/^[🕷🔄⚙️⏸▶]\s*/, ""), level: "info" as const };
 }
-
-// 从 engine.logs 转换来的结构化日志
-const logEntries = computed<SpiderLogEntry[]>(() => {
-  return engine.logs.value.map((raw, idx) => {
-    const classified = classifyEngineLog(raw.text);
-    return {
-      id: idx,
-      time: raw.time,
-      category: classified.category,
-      icon: classified.icon,
-      title: classified.title,
-      subtitle: classified.subtitle,
-      level: classified.level as any,
-      isNew: idx === 0,
-    };
-  });
-});
-
-const filteredLogs = computed(() => {
-  if (activeLogTab.value === "all") return logEntries.value;
-  return logEntries.value.filter(l => l.category === activeLogTab.value);
-});
-
+const logEntries = computed<SpiderLogEntry[]>(() =>
+  engine.logs.value.map((raw, idx) => {
+    const c = classifyEngineLog(raw.text);
+    return { id: idx, time: raw.time, category: c.category, icon: c.icon, title: c.title, level: c.level, isNew: idx === 0 };
+  })
+);
+const filteredLogs = computed(() => activeLogTab.value === "all" ? logEntries.value : logEntries.value.filter((l) => l.category === activeLogTab.value));
 const logCounts = computed(() => {
   const counts: Record<string, number> = { all: logEntries.value.length };
-  for (const tab of logTabs) {
-    if (tab.key === "all") continue;
-    counts[tab.key] = logEntries.value.filter(l => l.category === tab.key).length;
-  }
+  for (const t of logTabs) { if (t.key !== "all") counts[t.key] = logEntries.value.filter((l) => l.category === t.key).length; }
   return counts;
 });
-
-function clearLogs() {
-  engine.logs.value = [];
-  showLogMenu.value = false;
-}
-
-// 复制完整日志：按时间正序（旧→新）拼成纯文本写入剪贴板
+function clearLogs() { engine.logs.value = []; showLogMenu.value = false; }
 const copyTip = ref("");
 async function writeClipboard(text: string) {
-  try { await navigator.clipboard.writeText(text); return; } catch { /* 走降级 */ }
+  try { await navigator.clipboard.writeText(text); return; } catch { /* fallback */ }
   const ta = document.createElement("textarea");
-  ta.value = text;
-  ta.style.position = "fixed";
-  ta.style.opacity = "0";
-  document.body.appendChild(ta);
-  ta.select();
+  ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
   try { document.execCommand("copy"); } finally { document.body.removeChild(ta); }
 }
 async function copyLogs() {
@@ -423,107 +287,79 @@ async function copyLogs() {
   copyTip.value = `✓ 已复制 ${all.length} 条完整日志`;
   setTimeout(() => { copyTip.value = ""; }, 2500);
 }
-
-function toggleLogExpand(id: number) {
-  const entry = logEntries.value.find(l => l.id === id);
-  if (entry) {
-    (entry as any).expanded = !(entry as any).expanded;
-  }
-}
-
-// 自动滚动
 watch(filteredLogs, () => {
   if (autoScroll.value && logListRef.value) {
-    nextTick(() => {
-      if (logListRef.value) {
-        logListRef.value.scrollTop = 0;
-      }
-    });
+    nextTick(() => { if (logListRef.value) logListRef.value.scrollTop = 0; });
   }
 }, { deep: false });
-
 function onLogScroll(e: Event) {
   const el = e.target as HTMLElement;
-  if (el.scrollTop > 10) {
-    autoScroll.value = false;
-  } else if (el.scrollTop <= 0) {
-    autoScroll.value = true;
-  }
+  if (el.scrollTop > 10) autoScroll.value = false;
+  else if (el.scrollTop <= 0) autoScroll.value = true;
 }
 
-// ===== 蜘蛛节点布局（保留原有可视化） =====
+// ===== 蛛网径向节点（同心圆布局）=====
 const stockNodes = computed(() => {
   const list = wl.currentStocks;
-  const bodyX = 180, bodyY = 140;
+  const cx = 200, cy = 160, R = 118;
+  const n = list.length;
   const nodes: {
-    x: number; y: number;
-    code: string; name: string;
-    price: number; pct: number;
-    isCurrent: boolean;
-    legPath: string;
-    signalType: "buy" | "sell" | "scan";
+    x: number; y: number; code: string; name: string; price: number; pct: number;
+    isCurrent: boolean; signalType: "buy" | "sell" | "scan"; path: string;
   }[] = [];
-
   list.forEach((s, i) => {
+    const ang = ((-90 + (360 / n) * i) * Math.PI) / 180;
+    const x = cx + R * Math.cos(ang);
+    const y = cy + R * Math.sin(ang);
     const q = quotes.map[s.code];
-    const side = i % 2 === 0 ? -1 : 1;
-    const row = Math.floor(i / 2);
-    const x = bodyX + side * (100 + (i % 3) * 18);
-    const y = bodyY - 60 + row * 45;
-
-    const legPath = makeLegPath(bodyX, bodyY, x, y, i);
-
     const pct = q?.pct ?? 0;
-    const signalType: "buy" | "sell" | "scan" =
-      pct > 3 && pct < 9 ? "buy" : pct < -3 ? "sell" : "scan";
-
+    const signalType: "buy" | "sell" | "scan" = pct > 3 && pct < 9 ? "buy" : pct < -3 ? "sell" : "scan";
     nodes.push({
-      x, y,
-      code: s.code,
-      name: q?.name || s.name || "",
-      price: q?.price || 0,
-      pct,
-      isCurrent: running.value && i === mockStep % Math.max(list.length, 1),
-      legPath,
-      signalType,
+      x, y, code: s.code, name: q?.name || s.name || "", price: q?.price || 0, pct,
+      isCurrent: running.value && i === mockStep % Math.max(n, 1),
+      signalType, path: `M ${cx} ${cy} L ${x} ${y}`,
     });
   });
-
   return nodes;
 });
 
-function makeLegPath(x1: number, y1: number, x2: number, y2: number, seed: number): string {
-  const midX = (x1 + x2) / 2;
-  const midY = (y1 + y2) / 2;
-  const offset = 22 + (seed % 3) * 12;
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const len = Math.sqrt(dx * dx + dy * dy) || 1;
-  const nx = -dy / len;
-  const ny = dx / len;
-
-  const p1x = x1 + dx * 0.25 + nx * offset;
-  const p1y = y1 + dy * 0.25 + ny * offset;
-  const p2x = x1 + dx * 0.5 + nx * offset * 0.5;
-  const p2y = y1 + dy * 0.5 + ny * offset * 0.5;
-  const p3x = x1 + dx * 0.75 + nx * offset * 0.3;
-  const p3y = y1 + dy * 0.75 + ny * offset * 0.3;
-
-  return `M ${x1} ${y1} L ${p1x} ${p1y} L ${p2x} ${p2y} L ${p3x} ${p3y} L ${x2} ${y2}`;
-}
+// ===== 复盘 chips 分组（解析 dailyReview.reviews 的 title）=====
+const reviewGroups = computed(() => {
+  const r = engine.dailyReview.value;
+  if (!r) return [];
+  const groups: { key: string; label: string; cls: string; items: { label: string; hot: boolean }[] }[] = [
+    { key: "market", label: "市场", cls: "chip-market", items: [] },
+    { key: "trade", label: "交易", cls: "chip-trade", items: [] },
+    { key: "sector", label: "题材", cls: "chip-sector", items: [] },
+    { key: "stock", label: "个股", cls: "chip-stock", items: [] },
+  ];
+  r.reviews.forEach((rv) => {
+    const raw = (rv.title || rv.scope || "").replace(/（规则生成）/g, "").trim();
+    const parts = raw.split(/\s*·\s*/);
+    const prefix = parts[0] || "";
+    const sub = parts.slice(1).join("·") || raw;
+    const g = prefix.includes("市场") ? groups[0] : prefix.includes("交易") ? groups[1]
+      : prefix.includes("题材") ? groups[2] : prefix.includes("个股") ? groups[3] : null;
+    if (!g) return;
+    let hot = false;
+    if (g.key === "stock") {
+      const code = sub.match(/\d{6}/)?.[0];
+      hot = code ? (quotes.map[code]?.pct ?? 0) > 3 : false;
+    }
+    g.items.push({ label: sub, hot });
+  });
+  return groups.filter((g) => g.items.length);
+});
+function openReview() { emit("switchCard", "review"); }
+function openPlan() { emit("switchCard", "battleplan"); }
+function openEvolution() { emit("switchCard", "evolution"); }
 
 // ===== 生命周期 =====
 onMounted(() => {
   loadAiCfg();
   window.addEventListener("spider-overlay-stopped", onFullscreenStopped);
   window.addEventListener("spider-overlay-started", onFullscreenStarted);
-
-  // 启动选择器自检（开发模式才真正运行，生产为空操作）
-  stopSelectorCheck = startSelectorCheck((iss) => {
-    selectorIssues.value = iss;
-  });
-
-  // 初始欢迎日志（仅在引擎日志为空时添加）
+  stopSelectorCheck = startSelectorCheck((iss) => { selectorIssues.value = iss; });
   if (engine.logs.value.length === 0) {
     engine.logs.value.push({
       time: new Date().toLocaleTimeString("zh-CN", { hour12: false }),
@@ -532,1534 +368,678 @@ onMounted(() => {
     });
   }
 });
-
 onBeforeUnmount(() => {
   stopMockScanLoop();
   if (stopSelectorCheck) { stopSelectorCheck(); stopSelectorCheck = null; }
   window.removeEventListener("spider-overlay-stopped", onFullscreenStopped);
   window.removeEventListener("spider-overlay-started", onFullscreenStarted);
 });
-
 onUnmounted(() => { stopMockScanLoop(); });
 </script>
 
 <template>
   <div class="spider-bot">
-    <!-- ===== 选择器自检角标（仅开发模式、有失效项时出现；hover 看详情）===== -->
+    <!-- 选择器自检角标 -->
     <div v-if="selectorIssueCount" class="selector-warn-badge">
-      <span class="swb-icon">⚠️</span>
-      <span class="swb-count">{{ selectorIssueCount }}</span>
+      <span class="swb-icon">⚠️</span><span class="swb-count">{{ selectorIssueCount }}</span>
       <div class="swb-panel">
         <div class="swb-panel-title">🕷 选择器自检告警（开发模式）</div>
         <div v-for="(it, i) in selectorIssues" :key="i" class="swb-item">
-          <span class="swb-card">{{ it.cardId }}</span>
-          <span class="swb-msg">{{ it.message }}</span>
+          <span class="swb-card">{{ it.cardId }}</span><span class="swb-msg">{{ it.message }}</span>
         </div>
         <div class="swb-hint">请修正 spider/anchors.ts 中对应卡片的选择器</div>
       </div>
     </div>
 
-    <!-- ========== 顶部控制栏 ========== -->
-    <div class="sb-header">
-      <div class="sb-title-row">
-        <div class="sb-title">
-          <span class="sb-title-icon">🕷</span>
-          <span class="sb-title-text">AI爬虫机器人</span>
-        </div>
-        <div class="sb-controls">
-          <button
-            class="sb-btn sb-btn-main"
-            :class="{ on: running, 'is-loading': aiBusy }"
-            :disabled="aiBusy"
-            @click="running ? stop() : start()"
-          >
-            {{ running ? "⏸ 停止爬取" : "▶ 启动爬虫" }}
-          </button>
-          <button
-            class="sb-btn sb-btn-semi"
-            :class="{ on: semiAuto }"
-            @click="setSemi(!semiAuto)"
-            :disabled="!running"
-          >
-            <span class="sb-btn-dot"></span>
-            半自动
-            <span class="sb-btn-state">{{ semiAuto ? "ON" : "OFF" }}</span>
-          </button>
-          <button
-            class="sb-btn sb-btn-full"
-            :class="{ on: autoTrade }"
-            @click="setFull(!autoTrade)"
-            :disabled="!running"
-          >
-            <span class="sb-btn-dot"></span>
-            全自动
-            <span class="sb-btn-state">{{ autoTrade ? "ON" : "OFF" }}</span>
-          </button>
-          <button class="sb-btn sb-btn-danger" @click="emergencyStop" :disabled="!running">
-            🛑 急停
-          </button>
-        </div>
-      </div>
-
-      <!-- 状态行 -->
-      <div class="sb-status-bar" v-if="running">
-        <div class="sb-status-item">
-          <span class="sb-status-label">📍 当前</span>
-          <span class="sb-status-value sb-val-accent">
-            {{ scanCards[scanStep % scanCards.length]?.name || '自选股' }}
-          </span>
-        </div>
-        <div class="sb-status-divider"></div>
-        <div class="sb-status-item">
-          <span class="sb-status-label">⟳ 已扫描</span>
-          <span class="sb-status-value sb-val-num">{{ scanStep }} 轮</span>
-        </div>
-        <div class="sb-status-divider"></div>
-        <div class="sb-status-item">
-          <span class="sb-status-label">📊 步数</span>
-          <span class="sb-status-value sb-val-num">{{ scanStep * 5 }}</span>
-        </div>
-        <div class="sb-status-divider"></div>
-        <div class="sb-status-item">
-          <span class="sb-status-label">🕷 全屏</span>
-          <span class="sb-status-link" @click="toggleFullscreen">
-            {{ fullscreenRunning ? '退出' : '开启' }}
-          </span>
-        </div>
-      </div>
-      <div class="sb-status-bar sb-status-idle" v-else>
-        <span class="sb-idle-dot"></span>
-        <span class="sb-idle-text">爬虫未启动，点击「启动爬虫」开始扫描</span>
-      </div>
+    <!-- ========== 控制条 ========== -->
+    <div class="sb-ctrl">
+      <span class="sb-title">
+        <svg width="17" height="17" viewBox="0 0 32 32"><g fill="none" stroke="#00e8d8" stroke-width="1.8"><circle cx="16" cy="16" r="9"/><path d="M16 7v18M7 16h18"/></g><circle cx="16" cy="16" r="3" fill="#ffd76a"/></svg>
+        AI爬虫机器人
+      </span>
+      <span class="pill" :class="running ? 'pill-run' : 'pill-idle'">
+        <span class="pdot"></span>
+        <span>{{ running ? `运行中 · ${currentCardName}` : `休市 · 待机` }}</span>
+      </span>
+      <span class="spacer"></span>
+      <button class="btn btn-main" :class="{ run: running }" :disabled="aiBusy" @click="running ? stop() : start()">
+        {{ running ? "⏸ 停止爬取" : "▶ 启动爬虫" }}
+      </button>
+      <button class="btn btn-mode" :class="{ 'on-semi': semiAuto }" :disabled="!running" @click="setSemi(!semiAuto)">
+        <span class="mdot"></span>半自动<span class="mstate">{{ semiAuto ? "ON" : "OFF" }}</span>
+      </button>
+      <button class="btn btn-mode" :class="{ 'on-full': autoTrade }" :disabled="!running" @click="setFull(!autoTrade)">
+        <span class="mdot"></span>全自动<span class="mstate">{{ autoTrade ? "ON" : "OFF" }}</span>
+      </button>
+      <button class="btn btn-danger" :disabled="!running" @click="emergencyStop">🛑 急停</button>
     </div>
 
-    <!-- ========== 中部主区（左右分栏） ========== -->
-    <div class="sb-main">
-      <!-- 左栏：蜘蛛可视化舞台 -->
-      <div class="sb-stage">
-        <div class="sb-stage-title">
-          <span class="sb-stage-dot" :class="{ active: running }"></span>
-          <span>蛛网上的猎物</span>
-        </div>
-        <div class="spider-stage">
-          <svg viewBox="0 0 360 280" class="spider-svg">
-            <defs>
-              <filter id="glow-card">
-                <feGaussianBlur stdDeviation="2" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-              <linearGradient id="threadGradCard" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="#0a8ab0" stop-opacity="0.3" />
-                <stop offset="50%" stop-color="#00dcff" stop-opacity="1" />
-                <stop offset="100%" stop-color="#0a8ab0" stop-opacity="0.3" />
-              </linearGradient>
-              <radialGradient id="scanBeamCard" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stop-color="#00dcff" stop-opacity="0.4" />
-                <stop offset="100%" stop-color="#00dcff" stop-opacity="0" />
-              </radialGradient>
-              <radialGradient id="buyBeamCard" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stop-color="#ff6478" stop-opacity="0.4" />
-                <stop offset="100%" stop-color="#ff6478" stop-opacity="0" />
-              </radialGradient>
-            </defs>
-
-            <!-- 背景网格 -->
-            <g opacity="0.06">
-              <line v-for="i in 10" :key="'h'+i"
-                :x1="0" :y1="280 / 10 * i" :x2="360" :y2="280 / 10 * i"
-                stroke="#00dcff" stroke-width="0.5" />
-              <line v-for="i in 14" :key="'v'+i"
-                :x1="360 / 14 * i" :y1="0" :x2="360 / 14 * i" :y2="280"
-                stroke="#00dcff" stroke-width="0.5" />
-            </g>
-
-            <!-- 蜘蛛腿（蛛丝） -->
-            <g v-for="(node, i) in stockNodes" :key="i" class="spider-leg">
-              <path
-                :d="node.legPath"
-                :stroke="node.isCurrent ? '#00dcff' : node.signalType === 'buy' ? '#ff6478' : '#0a4a60'"
-                :stroke-width="node.isCurrent ? 1.5 : 0.8"
-                fill="none"
-                :opacity="node.isCurrent ? 0.9 : 0.35"
-              />
-              <!-- 流动光点 -->
-              <circle
-                v-for="j in 2"
-                :key="'p'+j"
-                r="1.5"
-                :fill="node.isCurrent ? '#00ffff' : node.signalType === 'buy' ? '#ff6478' : '#0a8ab0'"
-                :opacity="node.isCurrent ? 0.9 : 0.4"
-                filter="url(#glow-card)"
-              >
-                <animateMotion
-                  :dur="(2 + j * 0.8) + 's'"
-                  repeatCount="indefinite"
-                  :path="node.legPath"
-                  :begin="(j * 0.7) + 's'"
-                />
-              </circle>
-              <!-- 扫描光束 -->
-              <circle v-if="node.isCurrent" :cx="node.x" :cy="node.y" r="20"
-                :fill="node.signalType === 'buy' ? 'url(#buyBeamCard)' : 'url(#scanBeamCard)'"
-                class="scan-beam-sm" />
-              <!-- 节点光环 -->
-              <circle :cx="node.x" :cy="node.y" :r="node.isCurrent ? 10 : 5"
-                :fill="node.signalType === 'buy' ? '#ff5096' : node.signalType === 'sell' ? '#00e0a0' : '#ff88aa'"
-                :opacity="node.isCurrent ? 0.25 : 0.1"
-                :class="{ 'pulse-ring-sm': node.isCurrent }"
-              />
-              <!-- 节点核心 -->
-              <circle :cx="node.x" :cy="node.y" :r="node.isCurrent ? 5 : 3.5"
-                :fill="node.signalType === 'buy' ? '#ff5096' : node.signalType === 'sell' ? '#00e0a0' : '#00d4ff'"
-                :opacity="node.isCurrent ? 1 : 0.7"
-                filter="url(#glow-card)"
-                :class="{ 'node-pulse-sm': node.isCurrent }"
-              />
-              <!-- 节点名称 -->
-              <text :x="node.x" :y="node.y - 11"
-                text-anchor="middle"
-                :fill="node.isCurrent ? '#00ffff' : '#7aa'"
-                font-size="9"
-                font-family="Consolas, monospace"
-              >{{ node.name }}</text>
-              <!-- 价格 -->
-              <text :x="node.x" :y="node.y + 15"
-                text-anchor="middle"
-                :fill="node.pct >= 0 ? '#ff6478' : '#00e0a0'"
-                font-size="8"
-                font-family="Consolas, monospace"
-                font-weight="500"
-              >{{ node.price.toFixed(2) }} {{ node.pct >= 0 ? '+' : '' }}{{ node.pct.toFixed(1) }}%</text>
-            </g>
-
-            <!-- 蜘蛛身体 -->
-            <g class="spider-body-sm" :class="{ crawling: running }">
-              <circle cx="180" cy="140" r="26" fill="#00d4ff" opacity="0.06" />
-              <circle cx="180" cy="140" r="20" fill="#00d4ff" opacity="0.1" />
-              <circle cx="180" cy="140" r="14" fill="#00d4ff" opacity="0.18" />
-              <ellipse cx="180" cy="140" rx="13" ry="11"
-                fill="#0a1628" stroke="#00d4ff" stroke-width="1.2"
-                filter="url(#glow-card)" />
-              <rect x="173" y="134" width="14" height="12" fill="#004466" rx="1.5" />
-              <line x1="176" y1="137" x2="184" y2="137" stroke="#00d4ff" stroke-width="0.8" opacity="0.8" />
-              <line x1="176" y1="140" x2="184" y2="140" stroke="#00d4ff" stroke-width="0.8" opacity="0.6" />
-              <line x1="176" y1="143" x2="184" y2="143" stroke="#00d4ff" stroke-width="0.8" opacity="0.4" />
-              <circle cx="180" cy="140" r="3" fill="#fff" class="core-eye-sm">
-                <animate attributeName="opacity" values="1;0.6;1" dur="2s" repeatCount="indefinite" />
-              </circle>
-              <circle cx="180" cy="140" r="1.5" fill="#ff5096" />
-            </g>
-
-            <text v-if="!stockNodes.length" x="180" y="140" text-anchor="middle"
-              fill="#4a5a52" font-size="12">
-              等待自选股数据...
-            </text>
-          </svg>
-        </div>
-      </div>
-
-      <!-- 右栏：指标面板 -->
-      <div class="sb-side">
-        <!-- 策略 & 绩效 -->
-        <div class="sb-panel">
-          <div class="sb-panel-head" @click="showStrategyMenu = !showStrategyMenu">
-            <span class="sb-panel-title">🎯 策略</span>
-            <span class="sb-panel-strategy">
-              {{ engine.strategyNames[engine.currentStrategy.value] }}
-              <span class="sb-chevron">▾</span>
-            </span>
-          </div>
-          <div v-if="showStrategyMenu" class="sb-strategy-menu">
-            <button
-              v-for="(label, key) in engine.strategyNames"
-              :key="key"
-              class="sb-strategy-item"
-              :class="{ active: engine.currentStrategy.value === key }"
-              @click="selectStrategy(key as any)"
-            >
-              {{ label }}
-            </button>
-          </div>
-          <div class="sb-perf-grid">
-            <div class="sb-perf-item">
-              <div class="sb-perf-label">收益率</div>
-              <div class="sb-perf-value" :class="perfColor(perfData.totalReturnPct)">
-                {{ perfData.totalReturnPct >= 0 ? '+' : '' }}{{ perfData.totalReturnPct.toFixed(2) }}%
-              </div>
-            </div>
-            <div class="sb-perf-item">
-              <div class="sb-perf-label">交易次数</div>
-              <div class="sb-perf-value neutral">{{ perfData.totalTrades }}</div>
-            </div>
-            <div class="sb-perf-item">
-              <div class="sb-perf-label">胜率</div>
-              <div class="sb-perf-value neutral">{{ perfData.winRate.toFixed(1) }}%</div>
-            </div>
-            <div class="sb-perf-item">
-              <div class="sb-perf-label">最大回撤</div>
-              <div class="sb-perf-value down">-{{ perfData.maxDrawdownPct.toFixed(2) }}%</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 市场情绪 -->
-        <div class="sb-panel">
-          <div class="sb-panel-head">
-            <span class="sb-panel-title">🔥 市场情绪</span>
-            <span class="sb-sentiment-tag" :class="sentimentLevelClass">
-              {{ sentimentLevelText }}
-            </span>
-          </div>
-          <div class="sb-sentiment-bar">
-            <div class="sb-sentiment-track">
-              <div
-                class="sb-sentiment-fill"
-                :class="sentimentLevelClass"
-                :style="{ width: Math.min(100, sentiment.limitUp) + '%' }"
-              ></div>
-            </div>
-            <span class="sb-sentiment-num">{{ sentiment.limitUp }}家</span>
-          </div>
-          <div class="sb-sentiment-stats">
-            <span>涨停 <b>{{ sentiment.limitUp }}</b></span>
-            <span>跌停 <b>{{ sentiment.limitDown }}</b></span>
-            <span>炸板率 <b>{{ (sentiment.bombRate * 100).toFixed(0) }}%</b></span>
-          </div>
-          <div class="sb-sentiment-board">
-            最高连板: <b>{{ sentiment.maxBoard }} 板</b>
-          </div>
-        </div>
-
-        <!-- 风控 -->
-        <div class="sb-panel">
-          <div class="sb-panel-head">
-            <span class="sb-panel-title">🛡️ 风控</span>
-          </div>
-          <div class="sb-risk-position">
-            <div class="sb-risk-label">
-              <span>持仓</span>
-              <b>{{ riskData.positionCount }}/{{ riskData.maxPositions }}</b>
-            </div>
-            <div class="sb-risk-bar">
-              <div class="sb-risk-fill" :style="{ width: riskData.positionPct + '%' }"></div>
-            </div>
-          </div>
-          <div class="sb-risk-row">
-            <span class="sb-risk-k">今日盈亏</span>
-            <span class="sb-risk-v" :class="perfColor(riskData.todayPnlPct)">
-              {{ riskData.todayPnlPct >= 0 ? '+' : '' }}{{ riskData.todayPnlPct.toFixed(2) }}%
-            </span>
-          </div>
-          <div class="sb-risk-row">
-            <span class="sb-risk-k">止盈 / 止损</span>
-            <span class="sb-risk-v">{{ riskData.takeProfitPct }}% / {{ riskData.stopLossPct }}%</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ========== 智能日志中心 ========== -->
-    <div class="sb-log-section">
-      <div class="sb-log-head">
-        <div class="sb-log-title">
-          <span class="sb-log-icon">📡</span>
-          <span>智能日志中心</span>
-          <span class="sb-log-count">{{ logEntries.length }} 条</span>
-        </div>
-        <div class="sb-log-tools">
-          <span v-if="!autoScroll" class="sb-log-paused">⏸ 已暂停</span>
-          <button class="sb-log-more" @click="showLogMenu = !showLogMenu">⋯</button>
-          <span v-if="copyTip" class="sb-log-copytip">{{ copyTip }}</span>
-          <div v-if="showLogMenu" class="sb-log-menu">
-            <button @click="copyLogs">📋 复制全部日志</button>
-            <button @click="clearLogs">🗑️ 清空日志</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 分类 Tab -->
-      <div class="sb-log-tabs">
-        <button
-          v-for="tab in logTabs"
-          :key="tab.key"
-          class="sb-log-tab"
-          :class="{ active: activeLogTab === tab.key, 'has-new': logCounts[tab.key] > 0 && activeLogTab !== tab.key }"
-          @click="activeLogTab = tab.key; autoScroll = true"
+    <!-- ========== 横向时段轴 ========== -->
+    <div class="panel panel-c sb-axis-panel">
+      <div class="h-timeline">
+        <div
+          v-for="p in PHASES" :key="p.phase"
+          class="h-node" :class="[nodeState(p.phase as TradingPhase), { selected: selectedPhase === p.phase }]"
+          @click="selectedPhase = p.phase as TradingPhase"
         >
-          <span class="sb-tab-icon">{{ tab.icon }}</span>
-          <span class="sb-tab-name">{{ tab.name }}</span>
-          <span class="sb-tab-badge" v-if="logCounts[tab.key] > 0">{{ logCounts[tab.key] }}</span>
+          <span class="h-dot"></span>
+          <b>{{ p.label }}</b><small>{{ p.time.split("–")[0] }}</small>
+        </div>
+        <div
+          class="h-node" :class="[{ active: currentPhase === 'closed' }, { selected: selectedPhase === 'closed' }]"
+          @click="selectedPhase = 'closed'"
+        >
+          <span class="h-dot"></span><b>休市</b><small>周末</small>
+        </div>
+      </div>
+      <div class="h-detail">
+        <span class="hd-name">{{ selectedDetail.label }}</span>
+        <span class="hd-time">{{ selectedDetail.time }}</span>
+        <span class="hd-action">{{ selectedDetail.action }}</span>
+        <span class="pill" :class="selectedDetail.open === '否' ? 'pill-idle' : 'pill-run'">
+          <span class="pdot"></span>开仓 · {{ selectedDetail.open }}
+        </span>
+        <span class="h-stats">
+          <span class="h-stat"><span class="hs-l">已扫描</span><span class="hs-v">{{ scanStep }} 轮</span></span>
+          <span class="h-stat"><span class="hs-l">总步数</span><span class="hs-v">{{ scanStep * 5 }}</span></span>
+          <span class="h-stat"><span class="hs-l">全屏爬行</span>
+            <span class="hs-v cyan" @click="toggleFullscreen">{{ fullscreenRunning ? "退出" : "开启" }}</span>
+          </span>
+        </span>
+      </div>
+    </div>
+
+    <!-- ========== 舞台区 ========== -->
+    <div class="sb-stage-area">
+      <div class="panel panel-c sb-stage">
+        <span class="stage-tag">
+          <i :class="{ active: running }"></i>
+          {{ running ? `扫描中 · ${currentCardName} · 第${scanStep}轮` : "休市 · 蛛网待机" }}
+        </span>
+        <svg viewBox="0 0 400 320" preserveAspectRatio="xMidYMid meet" class="spider-svg">
+          <defs>
+            <filter id="glowE"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            <radialGradient id="beamE" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#00dcff" stop-opacity=".25"/><stop offset="100%" stop-color="#00dcff" stop-opacity="0"/></radialGradient>
+          </defs>
+          <g opacity=".05">
+            <line v-for="i in 10" :key="'h'+i" x1="0" :y1="32*i" x2="400" :y2="32*i" stroke="#00dcff" stroke-width=".5"/>
+            <line v-for="i in 12" :key="'v'+i" :x1="33.3*i" y1="0" :x2="33.3*i" y2="320" stroke="#00dcff" stroke-width=".5"/>
+          </g>
+          <circle cx="200" cy="160" r="130" fill="url(#beamE)"/>
+          <circle v-for="r in [40,78,116]" :key="r" cx="200" cy="160" :r="r" fill="none" stroke="#0a8ab0" stroke-width=".7" stroke-dasharray="3 4" opacity=".3"/>
+          <g v-for="(node, i) in stockNodes" :key="i">
+            <line x1="200" y1="160" :x2="node.x" :y2="node.y" stroke="#0a8ab0" stroke-width=".7" stroke-dasharray="2 3" opacity=".35"/>
+            <circle v-for="j in 2" :key="'p'+j" r="1.6" fill="#bff" :opacity="node.isCurrent ? 1 : .5">
+              <animateMotion :dur="(2.2 + i * .15) + 's'" repeatCount="indefinite" :path="node.path" :begin="(j*.7)+'s'"/>
+            </circle>
+            <circle :cx="node.x" :cy="node.y" :r="node.isCurrent ? 7 : 5"
+              :fill="node.signalType === 'buy' ? '#ff5096' : node.signalType === 'sell' ? '#00e0a0' : '#00d4ff'" opacity=".2"/>
+            <circle :cx="node.x" :cy="node.y" :r="node.isCurrent ? 4 : 3.2"
+              :fill="node.signalType === 'buy' ? '#ff5096' : node.signalType === 'sell' ? '#00e0a0' : '#00d4ff'"
+              filter="url(#glowE)" :class="{ np: node.isCurrent }"/>
+            <text :x="node.x" :y="node.y - 11" text-anchor="middle"
+              :fill="node.isCurrent ? '#00ffff' : '#8aa'" font-size="9.5" font-family="Consolas,monospace">{{ node.name || node.code }}</text>
+            <text :x="node.x" :y="node.y + 16" text-anchor="middle"
+              :fill="node.pct >= 0 ? '#ff8aa0' : '#5fd6b0'" font-size="8.5" font-family="Consolas,monospace">
+              {{ node.price ? node.price.toFixed(2) : "--" }} {{ node.pct >= 0 ? "+" : "" }}{{ node.pct.toFixed(1) }}%
+            </text>
+          </g>
+          <!-- 中心蜘蛛 -->
+          <g class="spider-body" :class="{ crawling: running }">
+            <circle cx="200" cy="160" r="27" fill="#00d4ff" opacity=".07"/>
+            <circle cx="200" cy="160" r="19" fill="#00d4ff" opacity=".12"/>
+            <template v-for="sx in [-1,1]" :key="'lx'+sx">
+              <path :d="`M ${200+sx*11} 155 Q ${200+sx*24} 154 ${200+sx*30} 144`" fill="none" stroke="#00d4ff" stroke-width="1.3" opacity=".85"/>
+              <path :d="`M ${200+sx*11} 162 Q ${200+sx*24} 166 ${200+sx*30} 176`" fill="none" stroke="#00d4ff" stroke-width="1.3" opacity=".85"/>
+            </template>
+            <ellipse cx="200" cy="164" rx="12" ry="10" fill="#0a1628" stroke="#00d4ff" stroke-width="1.2" filter="url(#glowE)"/>
+            <circle cx="200" cy="153" r="7.5" fill="#0a1628" stroke="#00d4ff" stroke-width="1.2" filter="url(#glowE)"/>
+            <circle cx="197.4" cy="152" r="1.7" fill="#fff"/>
+            <circle cx="202.6" cy="152" r="1.7" fill="#fff"/>
+            <circle cx="197.4" cy="152.4" r=".8" fill="#ff5096"/>
+            <circle cx="202.6" cy="152.4" r=".8" fill="#ff5096"/>
+          </g>
+          <text v-if="!stockNodes.length" x="200" y="164" text-anchor="middle" fill="#4a5a52" font-size="12">等待自选股数据...</text>
+        </svg>
+      </div>
+
+      <!-- 右侧指标 -->
+      <div class="sb-side">
+        <div class="panel">
+          <div class="panel-head" @click="showStrategyMenu = !showStrategyMenu">
+            <span class="panel-title">◎ 绩效</span>
+            <span class="ph-right strategy-link">
+              {{ engine.strategyNames[engine.currentStrategy.value] }} <span class="chevron">▾</span>
+            </span>
+          </div>
+          <div v-if="showStrategyMenu" class="strategy-menu">
+            <button v-for="(label, key) in engine.strategyNames" :key="key" class="strategy-item"
+              :class="{ active: engine.currentStrategy.value === key }" @click="selectStrategy(key as any)">{{ label }}</button>
+          </div>
+          <div class="kpi-grid">
+            <div class="kpi"><div class="kpi-label">收益率</div>
+              <div class="kpi-value" :class="perfColor(perfData.totalReturnPct)">{{ perfData.totalReturnPct >= 0 ? "+" : "" }}{{ perfData.totalReturnPct.toFixed(2) }}%</div></div>
+            <div class="kpi"><div class="kpi-label">交易</div><div class="kpi-value neutral">{{ perfData.totalTrades }}</div></div>
+            <div class="kpi"><div class="kpi-label">胜率</div><div class="kpi-value neutral">{{ perfData.winRate.toFixed(1) }}%</div></div>
+            <div class="kpi"><div class="kpi-label">回撤</div><div class="kpi-value down">-{{ perfData.maxDrawdownPct.toFixed(2) }}%</div></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><span class="panel-title">♨ 市场情绪</span>
+            <span class="sent-tag" :class="sentimentLevelClass">{{ sentimentLevelText }}</span></div>
+          <div class="mini-rows">
+            <div class="mini-row"><span>涨停 / 跌停</span><b>{{ sentiment.limitUp }} / {{ sentiment.limitDown }}</b></div>
+            <div class="mini-row"><span>炸板率</span><b>{{ (sentiment.bombRate * 100).toFixed(0) }}%</b></div>
+            <div class="mini-row"><span>最高连板</span><b class="pink">{{ sentiment.maxBoard }} 板</b></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><span class="panel-title">⛨ 风控</span>
+            <span class="ph-right" style="cursor:pointer;color:var(--cyan)" @click="openEvolution">进化详情</span></div>
+          <div class="mini-rows">
+            <div class="mini-row"><span>持仓</span><b>{{ riskData.positionCount }}/{{ riskData.maxPositions }}</b></div>
+            <div class="bar"><i :style="{ width: riskData.positionPct + '%' }"></i></div>
+            <div class="mini-row"><span>今日盈亏</span>
+              <b :class="perfColor(riskData.todayPnlPct)">{{ riskData.todayPnlPct >= 0 ? "+" : "" }}{{ riskData.todayPnlPct.toFixed(2) }}%</b></div>
+            <div class="mini-row"><span>止盈 / 止损</span><b>{{ riskData.takeProfitPct }}% / {{ riskData.stopLossPct }}%</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== Tab 工作区 ========== -->
+    <div class="panel sb-work">
+      <div class="work-tabs">
+        <button class="work-tab" :class="{ active: activeWorkTab === 'review' }" @click="activeWorkTab = 'review'">☷ 复盘记录</button>
+        <button class="work-tab" :class="{ active: activeWorkTab === 'logs' }" @click="activeWorkTab = 'logs'">
+          📡 运行日志 <span class="tab-count">{{ logEntries.length }}</span>
         </button>
       </div>
-
-      <!-- 日志列表 -->
-      <div
-        ref="logListRef"
-        class="sb-log-list"
-        @scroll="onLogScroll"
-      >
-        <div
-          v-for="log in filteredLogs"
-          :key="log.id"
-          class="sb-log-item"
-          :class="[log.category, log.level, { new: log.isNew, expanded: (log as any).expanded }]"
-          @click="toggleLogExpand(log.id)"
-        >
-          <div class="sb-log-left">
-            <div class="sb-log-icon-badge" :class="log.category">
-              {{ log.icon }}
+      <div class="work-body">
+        <!-- 复盘 -->
+        <div v-if="activeWorkTab === 'review'" class="pane-review">
+          <div class="chips-half">
+            <div v-if="reviewGroups.length" class="chip-groups" style="max-height:100%">
+              <div v-for="g in reviewGroups" :key="g.key" class="chip-group">
+                <span class="chip-group-label">{{ g.label }}</span>
+                <div class="chip-list">
+                  <span v-for="(it, k) in g.items" :key="k" class="chip" :class="[g.cls, { hot: it.hot }]" @click="openReview">
+                    <span class="cdot"></span>{{ it.label }}
+                    <small v-if="g.key !== 'stock'">规则</small>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="pane-empty">
+              盘后/休市自动复盘后生成。当前时段：{{ phaseLabel(currentPhase) }} — {{ phaseAction(currentPhase) }}
             </div>
           </div>
-          <div class="sb-log-body">
-            <div class="sb-log-main">
-              <span class="sb-log-time">{{ log.time }}</span>
-              <span class="sb-log-title-text">{{ log.title }}</span>
+          <div class="side-half">
+            <div class="sh-card">
+              策略进化：<b>{{ engine.dailyReview.value?.evolutionNote || "无" }}</b>
+              <button class="btn btn-ghost sh-btn" @click="openEvolution">查看进化详情</button>
             </div>
-            <div v-if="log.subtitle" class="sb-log-subtitle">{{ log.subtitle }}</div>
-            <div v-if="(log as any).expanded && log.detail" class="sb-log-detail">
-              {{ log.detail }}
+            <div class="sh-card">
+              次日计划：<b>{{ engine.dailyReview.value?.planTitle || "未生成" }}</b>
+              （{{ engine.dailyReview.value?.planInstructions ?? 0 }} 条指令）
+              <button class="btn btn-ghost sh-btn" @click="openPlan">查看作战计划</button>
             </div>
-            <div v-if="(log as any).expanded && log.signals && log.signals.length" class="sb-log-signals">
-              <span v-for="(s, i) in log.signals" :key="i" class="sb-signal-tag">{{ s }}</span>
-            </div>
-          </div>
-          <div v-if="log.detail || log.signals" class="sb-log-expand-icon">
-            {{ (log as any).expanded ? '▴' : '▾' }}
           </div>
         </div>
-
-        <div v-if="!filteredLogs.length" class="sb-log-empty">
-          暂无日志
+        <!-- 日志 -->
+        <div v-else class="pane-logs">
+          <div class="logs-head">
+            <span class="logs-title">📡 智能日志中心 <b>{{ logEntries.length }} 条</b></span>
+            <span class="logs-tools">
+              <span v-if="!autoScroll" class="paused">⏸ 已暂停</span>
+              <span v-if="copyTip" class="copy-tip">{{ copyTip }}</span>
+              <button class="more-btn" @click="showLogMenu = !showLogMenu">⋯</button>
+              <div v-if="showLogMenu" class="log-menu">
+                <button @click="copyLogs">📋 复制全部日志</button>
+                <button @click="clearLogs">🗑️ 清空日志</button>
+              </div>
+            </span>
+          </div>
+          <div class="log-cat-tabs">
+            <button v-for="t in logTabs" :key="t.key" class="log-cat"
+              :class="{ active: activeLogTab === t.key }" @click="activeLogTab = t.key; autoScroll = true">
+              {{ t.icon }} {{ t.name }}
+              <span class="cat-badge" v-if="t.key !== 'all' && logCounts[t.key]">{{ logCounts[t.key] }}</span>
+            </button>
+          </div>
+          <div ref="logListRef" class="log-list" @scroll="onLogScroll">
+            <div v-for="log in filteredLogs" :key="log.id" class="log-item"
+              :class="['cat-' + log.category, log.level]">
+              <span class="log-badge">{{ log.icon }}</span>
+              <span class="log-time">{{ log.time }}</span>
+              <span class="log-text" :class="log.level">{{ log.title }}</span>
+            </div>
+            <div v-if="!filteredLogs.length" class="log-empty">暂无日志</div>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- ========== 底部数据源标签 ========== -->
+    <!-- ========== 数据源 ========== -->
     <div class="sb-sources">
-      <div
-        v-for="src in dataSources"
-        :key="src.key"
-        class="sb-source-tag"
-        :class="{
-          enabled: src.enabled,
-          active: running && currentCard === src.key
-        }"
-      >
-        <span class="sb-source-icon">{{ src.icon }}</span>
-        <span class="sb-source-name">{{ src.name }}</span>
-      </div>
+      <span v-for="src in dataSources" :key="src.key" class="src-tag"
+        :class="{ enabled: src.enabled, active: running && currentCard === src.key }">
+        <span class="sdot"></span>{{ src.name }}
+      </span>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* ============ 主题变量（跟随全局主题，原型色兜底） ============ */
 .spider-bot {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: linear-gradient(180deg, var(--bg, #0a0f0d) 0%, var(--bg-card, #0d1412) 100%);
-  color: var(--text, #e6edf3);
-  font-size: 12px;
-  gap: 8px;
-  overflow: hidden;
-  padding: 10px;
-  box-sizing: border-box;
-
-  /* 主题变量映射：跟随全局配色主题
-     主色 = --accent（金色/蓝色等）
-     次色 = --accent-2（更亮的主色）
-     青色（科技感）单独保留，但也会跟随主题色变化
-  */
   --sb-gold: var(--accent, #e8c878);
-  --sb-gold-2: var(--accent-2, #f0d69a);
   --sb-cyan: var(--accent-2, #00e8d8);
-  --sb-bg: var(--bg-panel, #0d1412);
-  --sb-bg2: var(--bg-card, #0a0f0d);
-  --sb-border: var(--border, rgba(232, 200, 120, 0.4));
-  --sb-text: var(--text, #e6edf3);
-  --sb-text-dim: var(--text-dim, #9fb3aa);
-  --sb-text-muted: var(--text-dim, #6a7a72);
-  --sb-hover: var(--bg-hover, #1a2a24);
-}
-
-/* ========== 顶部控制栏 ========== */
-.sb-header {
-  flex: none;
-  background: linear-gradient(180deg, var(--sb-bg2, rgba(18, 14, 8, 0.95)) 0%, var(--sb-bg, rgba(12, 10, 6, 0.92)) 100%);
-  border: 1px solid var(--sb-border, rgba(212, 175, 55, 0.35));
-  border-radius: 8px;
-  padding: 8px 10px;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--sb-gold, #ffd76a) 8%, transparent);
-}
-
-.sb-title-row {
+  --sb-bg: var(--bg-panel, #0a0f0d);
+  --sb-bg2: var(--bg-card, #0d1412);
+  --sb-line: var(--border-color, rgba(0, 212, 255, .12));
+  --sb-text: var(--text-primary, #cfe8e2);
+  --sb-t2: var(--text-secondary, #8aa39c);
+  --sb-t3: var(--text-tertiary, #566a63);
+  --up: var(--up-color, #ff6478);
+  --down: var(--down-color, #00e8a0);
+  --warn: var(--warn-color, #ffb13d);
+  --danger: var(--danger-color, #f23645);
+  --pink: #ff5096;
+  position: relative;
+  height: 100%;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 6px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  color: var(--sb-text);
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  overflow: hidden;
 }
 
+/* ============ 通用面板 ============ */
+.panel {
+  background: var(--sb-bg);
+  border: 1px solid var(--sb-line);
+  border-radius: 8px;
+  position: relative;
+}
+.panel-c { overflow: hidden; }
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--sb-line);
+}
+.panel-title {
+  font-size: 11px; font-weight: 600; letter-spacing: .5px;
+  color: var(--sb-gold);
+}
+.ph-right { font-size: 10px; color: var(--sb-t2); }
+
+/* ============ 控制条 ============ */
+.sb-ctrl {
+  flex: none;
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px;
+  background: var(--sb-bg);
+  border: 1px solid var(--sb-line);
+  border-radius: 8px;
+}
 .sb-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; letter-spacing: .5px;
+  color: var(--sb-cyan);
+}
+.spacer { flex: 1; }
+
+/* 状态 pill */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 20px;
+  font-size: 10px; font-weight: 600; letter-spacing: .5px;
+}
+.pill-idle { background: rgba(120, 140, 132, .1); color: var(--sb-t2); border: 1px solid rgba(120, 140, 132, .25); }
+.pill-run { background: rgba(0, 232, 216, .1); color: var(--sb-cyan); border: 1px solid rgba(0, 232, 216, .35); }
+.pdot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor;
+}
+.pill-run .pdot { animation: blink 1.2s infinite; }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+/* ============ 按钮 ============ */
+.btn {
+  border: 1px solid var(--sb-line);
+  background: var(--sb-bg2);
+  color: var(--sb-text);
+  padding: 5px 11px; border-radius: 6px;
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) { border-color: var(--sb-cyan); color: var(--sb-cyan); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-main {
+  background: linear-gradient(135deg, rgba(0, 232, 216, .18), rgba(0, 212, 255, .1));
+  border-color: rgba(0, 232, 216, .4);
+  color: var(--sb-cyan);
+}
+.btn-main:hover:not(:disabled) { background: rgba(0, 232, 216, .28); color: #fff; }
+.btn-main.run {
+  background: linear-gradient(135deg, rgba(242, 54, 69, .2), rgba(255, 80, 150, .12));
+  border-color: rgba(242, 54, 69, .45); color: #ff8a98;
+}
+.btn-mode { display: inline-flex; align-items: center; gap: 5px; }
+.mdot { width: 6px; height: 6px; border-radius: 50%; background: var(--sb-t3); }
+.mstate { font-size: 9px; color: var(--sb-t3); font-family: Consolas, monospace; }
+.btn-mode.on-semi { border-color: rgba(255, 177, 61, .5); color: var(--warn); }
+.btn-mode.on-semi .mdot { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+.btn-mode.on-semi .mstate { color: var(--warn); }
+.btn-mode.on-full { border-color: rgba(0, 232, 216, .5); color: var(--sb-cyan); }
+.btn-mode.on-full .mdot { background: var(--sb-cyan); box-shadow: 0 0 6px var(--sb-cyan); }
+.btn-mode.on-full .mstate { color: var(--sb-cyan); }
+.btn-danger { border-color: rgba(242, 54, 69, .4); color: var(--danger); }
+.btn-danger:hover:not(:disabled) { background: rgba(242, 54, 69, .15); color: #fff; }
+.btn-ghost {
+  margin-top: 6px; padding: 3px 9px; font-size: 10px;
+  background: transparent; border: 1px solid var(--sb-line); color: var(--sb-cyan);
 }
 
-.sb-title-icon {
-  font-size: 16px;
-  filter: drop-shadow(0 0 4px rgba(0, 232, 216, 0.6));
+/* ============ 选择器自检角标 ============ */
+.selector-warn-badge {
+  position: absolute; top: 6px; right: 6px; z-index: 20;
+  display: flex; align-items: center; gap: 3px;
+  background: rgba(255, 177, 61, .15); border: 1px solid rgba(255, 177, 61, .4);
+  color: var(--warn); font-size: 10px; font-weight: 700;
+  padding: 2px 7px; border-radius: 10px; cursor: pointer;
 }
+.swtb-panel {
+  display: none; position: absolute; top: 100%; right: 0; margin-top: 5px;
+  width: 280px; max-height: 260px; overflow: auto;
+  background: var(--sb-bg2); border: 1px solid rgba(255, 177, 61, .4);
+  border-radius: 8px; padding: 8px; z-index: 30;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+}
+.selector-warn-badge:hover .swtb-panel { display: block; }
+.swtb-panel-title { font-size: 11px; font-weight: 700; color: var(--warn); margin-bottom: 6px; }
+.swtb-item { display: flex; gap: 6px; margin-bottom: 4px; font-size: 10px; }
+.swtb-card { color: var(--sb-cyan); font-family: Consolas, monospace; flex: none; }
+.swtb-msg { color: var(--sb-t2); }
+.swtb-hint { font-size: 9px; color: var(--sb-t3); margin-top: 6px; }
 
-.sb-title-text {
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--sb-cyan, #00e8d8);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--sb-cyan, #00e8d8) 40%, transparent);
-  letter-spacing: 0.5px;
+/* ============ 横向时段轴 ============ */
+.sb-axis-panel { flex: none; padding: 10px 12px 0; }
+.h-timeline {
+  display: flex; align-items: flex-start;
+  overflow-x: auto; overflow-y: hidden;
+  padding-bottom: 4px;
 }
+.h-node {
+  flex: 1 0 0; min-width: 62px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  cursor: pointer; position: relative; padding: 0 2px;
+}
+.h-node::before {
+  content: ""; position: absolute; top: 4px; left: 50%;
+  width: 100%; height: 1px; background: rgba(10, 138, 176, .3); z-index: 0;
+}
+.h-node:last-child::before { display: none; }
+.h-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--sb-bg); border: 1.5px solid var(--sb-t3);
+  z-index: 1; transition: all .2s;
+}
+.h-node b { font-size: 10px; color: var(--sb-t2); font-weight: 600; }
+.h-node small { font-size: 8.5px; color: var(--sb-t3); font-family: Consolas, monospace; }
+.h-node.done .h-dot { background: var(--sb-cyan); border-color: var(--sb-cyan); opacity: .55; }
+.h-node.done::before { background: var(--sb-cyan); opacity: .35; }
+.h-node.active .h-dot {
+  background: var(--sb-cyan); border-color: var(--sb-cyan);
+  box-shadow: 0 0 0 3px rgba(0, 232, 216, .15), 0 0 10px rgba(0, 232, 216, .6);
+}
+.h-node.active b { color: var(--sb-cyan); }
+.h-node.selected .h-dot {
+  border-color: var(--sb-gold);
+  box-shadow: 0 0 0 3px rgba(232, 200, 120, .18), 0 0 10px rgba(232, 200, 120, .6);
+}
+.h-node.selected b { color: var(--sb-gold); }
+.h-node:hover .h-dot { transform: scale(1.2); }
 
-.sb-controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+/* ============ 详情条 ============ */
+.h-detail {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 -12px; padding: 7px 12px;
+  border-top: 1px solid var(--sb-line);
+  background: rgba(0, 232, 216, .03);
 }
+.hd-name { font-size: 12px; font-weight: 700; color: var(--sb-gold); }
+.hd-time { font-size: 10px; color: var(--sb-t2); font-family: Consolas, monospace; }
+.hd-action { font-size: 10px; color: var(--sb-t2); flex: 1; min-width: 140px; }
+.h-stats { display: inline-flex; align-items: center; gap: 14px; margin-left: auto; }
+.h-stat { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.hs-l { font-size: 8.5px; color: var(--sb-t3); }
+.hs-v { font-size: 11px; color: var(--sb-text); font-family: Consolas, monospace; font-weight: 700; }
+.hs-v.cyan { color: var(--sb-cyan); cursor: pointer; }
+.hs-v.cyan:hover { text-shadow: 0 0 8px var(--sb-cyan); }
 
-.sb-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 5px;
-  border: 1px solid rgba(212, 175, 55, 0.3);
-  background: linear-gradient(180deg, rgba(30, 25, 15, 0.8) 0%, rgba(20, 16, 10, 0.8) 100%);
-  color: #c8b98a;
-  cursor: pointer;
-  font-size: 11px;
-  transition: all 0.2s ease;
-  font-weight: 500;
+/* ============ 舞台区 ============ */
+.sb-stage-area {
+  flex: 1.2; min-height: 0;
+  display: flex; gap: 8px;
 }
-
-.sb-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.sb-btn-main {
-  border-color: rgba(38, 208, 124, 0.5);
-  background: linear-gradient(180deg, rgba(10, 40, 25, 0.8) 0%, rgba(8, 30, 20, 0.8) 100%);
-  color: #26d07c;
-  font-weight: 600;
-}
-.sb-btn-main:hover:not(:disabled) {
-  border-color: rgba(38, 208, 124, 0.8);
-  box-shadow: 0 0 10px rgba(38, 208, 124, 0.25);
-}
-.sb-btn-main.on {
-  border-color: rgba(242, 54, 69, 0.6);
-  background: linear-gradient(180deg, rgba(50, 15, 20, 0.8) 0%, rgba(35, 10, 15, 0.8) 100%);
-  color: #ff6b78;
-}
-.sb-btn-main.on:hover:not(:disabled) {
-  box-shadow: 0 0 10px rgba(242, 54, 69, 0.3);
-}
-
-.sb-btn-semi {
-  position: relative;
-}
-.sb-btn-semi .sb-btn-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #6a5f42;
-  transition: all 0.3s;
-}
-.sb-btn-semi.on {
-  border-color: rgba(255, 183, 61, 0.7);
-  background: linear-gradient(180deg, rgba(60, 40, 15, 0.8) 0%, rgba(40, 26, 10, 0.8) 100%);
-  color: #ffb13d;
-  box-shadow: 0 0 8px rgba(255, 183, 61, 0.2);
-}
-.sb-btn-semi.on .sb-btn-dot {
-  background: #ffb13d;
-  box-shadow: 0 0 6px #ffb13d;
-}
-
-.sb-btn-full {
-  position: relative;
-}
-.sb-btn-full .sb-btn-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #6a5f42;
-  transition: all 0.3s;
-}
-.sb-btn-full.on {
-  border-color: rgba(255, 80, 150, 0.7);
-  background: linear-gradient(180deg, rgba(60, 15, 40, 0.8) 0%, rgba(40, 10, 26, 0.8) 100%);
-  color: #ff6ba8;
-  box-shadow: 0 0 8px rgba(255, 80, 150, 0.25);
-}
-.sb-btn-full.on .sb-btn-dot {
-  background: #ff5096;
-  box-shadow: 0 0 6px #ff5096;
-}
-
-.sb-btn-state {
-  font-size: 9px;
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #8a7e5a;
-  font-family: Consolas, monospace;
-}
-.sb-btn-semi.on .sb-btn-state {
-  background: rgba(255, 183, 61, 0.15);
-  color: #ffb13d;
-}
-.sb-btn-full.on .sb-btn-state {
-  background: rgba(255, 80, 150, 0.15);
-  color: #ff6ba8;
-}
-
-.sb-btn-danger {
-  border-color: rgba(242, 54, 69, 0.5);
-  background: linear-gradient(180deg, rgba(50, 10, 15, 0.7) 0%, rgba(35, 8, 12, 0.7) 100%);
-  color: #ff6b78;
-}
-.sb-btn-danger:hover:not(:disabled) {
-  border-color: rgba(242, 54, 69, 0.8);
-  box-shadow: 0 0 10px rgba(242, 54, 69, 0.3);
-}
-
-/* 状态行 */
-.sb-status-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 8px;
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: 5px;
-  border: 1px solid rgba(212, 175, 55, 0.15);
-}
-
-.sb-status-idle {
-  justify-content: center;
-  padding: 6px 8px;
-}
-
-.sb-idle-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #5a5a5a;
-  margin-right: 6px;
-}
-
-.sb-idle-text {
-  color: #6a7a72;
-  font-size: 11px;
-}
-
-.sb-status-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-}
-
-.sb-status-label {
-  color: #6a7a72;
-}
-
-.sb-status-value {
-  color: #c8b98a;
-  font-weight: 500;
-}
-
-.sb-val-accent {
-  color: #00e8d8;
-  font-weight: 600;
-}
-
-.sb-val-num {
-  font-family: Consolas, monospace;
-  color: #ffd76a;
-}
-
-.sb-status-link {
-  color: #00e8d8;
-  cursor: pointer;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-}
-.sb-status-link:hover {
-  text-decoration-style: solid;
-}
-
-.sb-status-divider {
-  width: 1px;
-  height: 14px;
-  background: linear-gradient(180deg, transparent 0%, rgba(212, 175, 55, 0.3) 50%, transparent 100%);
-}
-
-/* ========== 中部主区 ========== */
-.sb-main {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  gap: 8px;
-}
-
-/* 左栏：蜘蛛舞台 */
 .sb-stage {
-  flex: 1.2;
-  min-width: 0;
-  background: linear-gradient(180deg, rgba(10, 18, 16, 0.9) 0%, rgba(8, 14, 12, 0.9) 100%);
-  border: 1px solid rgba(0, 232, 216, 0.2);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
+  flex: 1.85; min-width: 0; position: relative;
+  display: flex; align-items: center; justify-content: center;
   overflow: hidden;
-  box-shadow: inset 0 1px 0 rgba(0, 232, 216, 0.06);
 }
+.stage-tag {
+  position: absolute; top: 8px; left: 10px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 9.5px; color: var(--sb-t2);
+  background: rgba(7, 11, 10, .7); border: 1px solid var(--sb-line);
+  padding: 2px 8px; border-radius: 10px;
+}
+.stage-tag i {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--sb-t3);
+}
+.stage-tag i.active { background: var(--sb-cyan); box-shadow: 0 0 6px var(--sb-cyan); animation: blink 1.2s infinite; }
+.spider-svg { width: 100%; height: 100%; }
+.spider-body.crawling { animation: bodyPulse 1.4s ease-in-out infinite; transform-origin: 200px 160px; }
+@keyframes bodyPulse { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
+.np { animation: nodePulse 1s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+@keyframes nodePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.5); } }
 
-.sb-stage-title {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  font-size: 11px;
-  color: #00e8d8;
-  font-weight: 600;
-  border-bottom: 1px solid rgba(0, 232, 216, 0.12);
-  letter-spacing: 0.3px;
-}
-
-.sb-stage-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #3a5a52;
-}
-.sb-stage-dot.active {
-  background: #00e8d8;
-  box-shadow: 0 0 6px #00e8d8;
-  animation: dotPulse 1.5s ease-in-out infinite;
-}
-@keyframes dotPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(0.8); }
-}
-
-.spider-stage {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-}
-
-.spider-svg {
-  width: 100%;
-  height: 100%;
-}
-
-/* 蜘蛛身体动画（小尺寸） */
-.spider-body-sm.crawling {
-  animation: bodyBreathSm 2s ease-in-out infinite;
-  transform-origin: center;
-}
-@keyframes bodyBreathSm {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-}
-
-.core-eye-sm {
-  filter: drop-shadow(0 0 3px #fff);
-}
-
-.node-pulse-sm {
-  animation: nodePulseSm 1.2s ease-in-out infinite;
-}
-@keyframes nodePulseSm {
-  0%, 100% { r: 5; }
-  50% { r: 6.5; }
-}
-
-.pulse-ring-sm {
-  animation: pulseRingSm 1.5s ease-out infinite;
-  transform-origin: center;
-}
-@keyframes pulseRingSm {
-  0% { r: 10; opacity: 0.25; }
-  100% { r: 22; opacity: 0; }
-}
-
-.scan-beam-sm {
-  animation: scanBeamSm 1.5s ease-in-out infinite;
-}
-@keyframes scanBeamSm {
-  0%, 100% { opacity: 0.35; }
-  50% { opacity: 0.65; }
-}
-
-/* 右栏 */
+/* 右侧指标 */
 .sb-side {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.sb-panel {
-  background: linear-gradient(180deg, rgba(18, 14, 8, 0.9) 0%, rgba(12, 10, 6, 0.88) 100%);
-  border: 1px solid rgba(212, 175, 55, 0.25);
-  border-radius: 7px;
-  padding: 8px 10px;
-  box-shadow: inset 0 1px 0 rgba(255, 215, 100, 0.05);
-}
-
-.sb-panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgba(212, 175, 55, 0.12);
-  cursor: pointer;
-}
-
-.sb-panel-title {
-  font-size: 11px;
-  font-weight: 600;
-  color: #ffd76a;
-  letter-spacing: 0.3px;
-}
-
-.sb-panel-strategy {
-  font-size: 11px;
-  color: #00e8d8;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.sb-chevron {
-  font-size: 9px;
-  opacity: 0.7;
-}
-
-.sb-strategy-menu {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  margin-bottom: 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(212, 175, 55, 0.1);
-}
-
-.sb-strategy-item {
-  padding: 5px 8px;
-  border-radius: 4px;
-  border: 1px solid rgba(212, 175, 55, 0.2);
-  background: rgba(30, 25, 15, 0.5);
-  color: #b8a878;
-  cursor: pointer;
-  font-size: 10.5px;
-  text-align: left;
-  transition: all 0.2s;
-}
-.sb-strategy-item:hover {
-  border-color: rgba(212, 175, 55, 0.5);
-  color: #ffd76a;
-}
-.sb-strategy-item.active {
-  border-color: rgba(0, 232, 216, 0.5);
-  background: rgba(0, 60, 55, 0.4);
-  color: #00e8d8;
-}
-
-/* 绩效网格 */
-.sb-perf-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-
-.sb-perf-item {
-  text-align: center;
-  padding: 4px;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 5px;
-  border: 1px solid rgba(212, 175, 55, 0.08);
-}
-
-.sb-perf-label {
-  font-size: 9.5px;
-  color: #7a6f52;
-  margin-bottom: 2px;
-}
-
-.sb-perf-value {
-  font-size: 14px;
-  font-weight: 700;
-  font-family: Consolas, monospace;
-}
-.sb-perf-value.up { color: #ff6478; }
-.sb-perf-value.down { color: #00e8a0; }
-.sb-perf-value.neutral { color: #ffd76a; }
-
-/* 市场情绪 */
-.sb-sentiment-tag {
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 8px;
-  font-weight: 600;
-}
-.sb-sentiment-tag.hot {
-  background: rgba(255, 100, 120, 0.15);
-  color: #ff6478;
-  border: 1px solid rgba(255, 100, 120, 0.3);
-}
-.sb-sentiment-tag.neutral {
-  background: rgba(255, 183, 61, 0.15);
-  color: #ffb13d;
-  border: 1px solid rgba(255, 183, 61, 0.3);
-}
-.sb-sentiment-tag.cold {
-  background: rgba(0, 232, 160, 0.12);
-  color: #00e8a0;
-  border: 1px solid rgba(0, 232, 160, 0.3);
-}
-
-.sb-sentiment-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.sb-sentiment-track {
-  flex: 1;
-  height: 14px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 7px;
-  overflow: hidden;
-  border: 1px solid rgba(212, 175, 55, 0.1);
-}
-
-.sb-sentiment-fill {
-  height: 100%;
-  border-radius: 7px;
-  transition: width 0.5s ease;
-  background: linear-gradient(90deg, rgba(255,183,61,0.6), rgba(255,100,120,0.8));
-}
-.sb-sentiment-fill.hot {
-  background: linear-gradient(90deg, rgba(255,100,120,0.5), rgba(255,80,150,0.85));
-}
-.sb-sentiment-fill.neutral {
-  background: linear-gradient(90deg, rgba(255,183,61,0.5), rgba(255,215,106,0.8));
-}
-.sb-sentiment-fill.cold {
-  background: linear-gradient(90deg, rgba(0,232,160,0.5), rgba(0,232,216,0.8));
-}
-
-.sb-sentiment-num {
-  font-size: 11px;
-  font-weight: 600;
-  color: #ffd76a;
-  font-family: Consolas, monospace;
-  min-width: 36px;
-  text-align: right;
-}
-
-.sb-sentiment-stats {
-  display: flex;
-  justify-content: space-between;
-  font-size: 10px;
-  color: #7a6f52;
-  margin-bottom: 4px;
-}
-.sb-sentiment-stats b {
-  color: #c8b98a;
-  font-weight: 600;
-}
-
-.sb-sentiment-board {
-  font-size: 10px;
-  color: #7a6f52;
-  text-align: center;
-  padding-top: 4px;
-  border-top: 1px solid rgba(212, 175, 55, 0.08);
-}
-.sb-sentiment-board b {
-  color: #ff5096;
-  font-weight: 700;
-}
-
-/* 风控 */
-.sb-risk-position {
-  margin-bottom: 6px;
-}
-
-.sb-risk-label {
-  display: flex;
-  justify-content: space-between;
-  font-size: 10.5px;
-  color: #7a6f52;
-  margin-bottom: 3px;
-}
-.sb-risk-label b {
-  color: #ffd76a;
-  font-family: Consolas, monospace;
-  font-weight: 600;
-}
-
-.sb-risk-bar {
-  height: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 4px;
-  overflow: hidden;
-  border: 1px solid rgba(212, 175, 55, 0.1);
-}
-
-.sb-risk-fill {
-  height: 100%;
-  background: linear-gradient(90deg, rgba(0, 232, 216, 0.6), rgba(0, 232, 160, 0.85));
-  border-radius: 4px;
-  transition: width 0.4s ease;
-}
-
-.sb-risk-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 10px;
-  color: #7a6f52;
-  padding: 3px 0;
-}
-
-.sb-risk-v {
-  font-family: Consolas, monospace;
-  font-weight: 500;
-}
-.sb-risk-v.up { color: #ff6478; }
-.sb-risk-v.down { color: #00e8a0; }
-
-/* ========== 日志中心 ========== */
-.sb-log-section {
-  flex: none;
-  height: 42%;
-  min-height: 150px;
-  background: linear-gradient(180deg, rgba(18, 14, 8, 0.95) 0%, rgba(12, 10, 6, 0.92) 100%);
-  border: 1px solid rgba(212, 175, 55, 0.3);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: inset 0 1px 0 rgba(255, 215, 100, 0.06);
-}
-
-.sb-log-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  border-bottom: 1px solid rgba(212, 175, 55, 0.15);
-}
-
-.sb-log-title {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #ffd76a;
-  letter-spacing: 0.3px;
-}
-
-.sb-log-icon {
-  font-size: 13px;
-}
-
-.sb-log-count {
-  font-size: 10px;
-  color: #7a6f52;
-  font-weight: 400;
-  margin-left: 4px;
-  font-family: Consolas, monospace;
-}
-
-.sb-log-tools {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  position: relative;
-}
-
-.sb-log-paused {
-  font-size: 10px;
-  color: #ffb13d;
-}
-
-.sb-log-copytip {
-  font-size: 10px;
-  color: #4ade80;
-  white-space: nowrap;
-}
-
-.sb-log-more {
-  width: 20px;
-  height: 20px;
-  border: none;
-  background: transparent;
-  color: #7a6f52;
-  cursor: pointer;
-  font-size: 14px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.sb-log-more:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #c8b98a;
-}
-
-.sb-log-menu {
-  position: absolute;
-  top: 24px;
-  right: 0;
-  background: rgba(18, 14, 8, 0.98);
-  border: 1px solid rgba(212, 175, 55, 0.3);
-  border-radius: 6px;
-  padding: 4px;
-  z-index: 10;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-}
-
-.sb-log-menu button {
-  display: block;
-  width: 100%;
-  padding: 5px 10px;
-  background: transparent;
-  border: none;
-  color: #c8b98a;
-  cursor: pointer;
-  font-size: 11px;
-  text-align: left;
-  border-radius: 4px;
-  white-space: nowrap;
-}
-.sb-log-menu button:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #ff6b78;
-}
-
-/* 日志 Tab */
-.sb-log-tabs {
-  flex: none;
-  display: flex;
-  gap: 2px;
-  padding: 4px 6px;
-  border-bottom: 1px solid rgba(212, 175, 55, 0.1);
-  overflow-x: auto;
-}
-
-.sb-log-tab {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 3px 8px;
-  border: none;
-  background: transparent;
-  color: #7a6f52;
-  cursor: pointer;
-  font-size: 10.5px;
-  border-radius: 4px;
-  white-space: nowrap;
-  transition: all 0.15s;
-  flex-shrink: 0;
-}
-
-.sb-log-tab:hover {
-  background: rgba(255, 255, 255, 0.04);
-  color: #b8a878;
-}
-
-.sb-log-tab.active {
-  background: rgba(255, 215, 106, 0.1);
-  color: #ffd76a;
-  font-weight: 600;
-}
-
-.sb-tab-icon {
-  font-size: 11px;
-}
-
-.sb-tab-badge {
-  font-size: 9px;
-  padding: 1px 4px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #8a7e5a;
-  font-family: Consolas, monospace;
-  min-width: 12px;
-  text-align: center;
-}
-.sb-log-tab.active .sb-tab-badge {
-  background: rgba(255, 215, 106, 0.15);
-  color: #ffd76a;
-}
-
-.sb-log-tab.has-new .sb-tab-badge {
-  animation: badgeBounce 0.4s ease;
-}
-@keyframes badgeBounce {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.2); }
-}
-
-/* 日志列表 */
-.sb-log-list {
-  flex: 1;
+  flex: 1; min-width: 150px;
+  display: flex; flex-direction: column; gap: 8px;
   overflow-y: auto;
-  padding: 4px 6px;
-  scroll-behavior: smooth;
 }
+.strategy-link { cursor: pointer; color: var(--sb-gold) !important; }
+.chevron { font-size: 8px; }
+.strategy-menu {
+  position: absolute; top: 30px; right: 8px; z-index: 10;
+  background: var(--sb-bg2); border: 1px solid var(--sb-line);
+  border-radius: 6px; padding: 4px; min-width: 110px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .5);
+}
+.strategy-item {
+  display: block; width: 100%; text-align: left;
+  background: none; border: none; color: var(--sb-t2);
+  font-size: 10px; padding: 4px 8px; border-radius: 4px; cursor: pointer;
+}
+.strategy-item:hover { background: rgba(0, 232, 216, .08); color: var(--sb-cyan); }
+.strategy-item.active { color: var(--sb-gold); }
 
-.sb-log-item {
-  display: flex;
-  gap: 8px;
-  padding: 5px 6px;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: all 0.15s;
-  border-left: 2px solid transparent;
-  margin-bottom: 2px;
+.kpi-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px 10px;
 }
+.kpi { display: flex; flex-direction: column; gap: 2px; }
+.kpi-label { font-size: 9px; color: var(--sb-t3); }
+.kpi-value { font-size: 14px; font-weight: 700; font-family: Consolas, monospace; }
+.kpi-value.up { color: var(--up); }
+.kpi-value.down { color: var(--down); }
+.kpi-value.neutral { color: var(--sb-text); }
 
-.sb-log-item:hover {
-  background: rgba(255, 255, 255, 0.03);
-}
+.mini-rows { padding: 7px 10px; display: flex; flex-direction: column; gap: 5px; }
+.mini-row { display: flex; justify-content: space-between; font-size: 10px; color: var(--sb-t2); }
+.mini-row b { color: var(--sb-text); font-family: Consolas, monospace; font-weight: 600; }
+.mini-row b.pink { color: var(--pink); }
+.bar { height: 4px; background: rgba(120, 140, 132, .12); border-radius: 2px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--sb-cyan), var(--sb-gold)); border-radius: 2px; }
+.sent-tag { font-size: 9px; padding: 1px 7px; border-radius: 8px; }
+.sent-tag.hot { color: var(--up); background: rgba(255, 100, 120, .12); }
+.sent-tag.cold { color: var(--sb-cyan); background: rgba(0, 232, 216, .1); }
+.sent-tag.neutral { color: var(--warn); background: rgba(255, 177, 61, .1); }
 
-.sb-log-item.new {
-  animation: logFlash 0.8s ease;
+/* ============ Tab 工作区 ============ */
+.sb-work { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.work-tabs {
+  display: flex; gap: 2px; padding: 5px 8px 0;
+  border-bottom: 1px solid var(--sb-line); flex: none;
 }
-@keyframes logFlash {
-  0% { background: rgba(255, 215, 106, 0.2); }
-  100% { background: transparent; }
+.work-tab {
+  background: none; border: 1px solid transparent; border-bottom: none;
+  color: var(--sb-t2); font-size: 10.5px; font-weight: 600;
+  padding: 5px 12px; border-radius: 6px 6px 0 0; cursor: pointer;
 }
+.work-tab:hover { color: var(--sb-cyan); }
+.work-tab.active {
+  color: var(--sb-gold); background: var(--sb-bg2);
+  border-color: var(--sb-line);
+}
+.tab-count { color: var(--sb-t3); font-size: 9px; font-family: Consolas, monospace; }
+.work-body { flex: 1; min-height: 0; overflow: hidden; }
 
-/* 左侧图标条 */
-.sb-log-left {
-  flex: none;
-  display: flex;
-  align-items: flex-start;
-  padding-top: 1px;
+/* 复盘 pane */
+.pane-review {
+  height: 100%; display: flex; gap: 8px; padding: 8px 10px;
+  box-sizing: border-box;
 }
-
-.sb-log-icon-badge {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  background: rgba(255, 255, 255, 0.05);
-  flex-shrink: 0;
-}
-
-.sb-log-item.scan .sb-log-icon-badge {
-  background: rgba(0, 232, 216, 0.12);
-  color: #00e8d8;
-  border: 1px solid rgba(0, 232, 216, 0.25);
-}
-.sb-log-item.scan {
-  border-left-color: rgba(0, 232, 216, 0.4);
-}
-
-.sb-log-item.signal .sb-log-icon-badge {
-  background: rgba(255, 80, 150, 0.12);
-  color: #ff5096;
-  border: 1px solid rgba(255, 80, 150, 0.25);
-}
-.sb-log-item.signal {
-  border-left-color: rgba(255, 80, 150, 0.4);
-}
-
-.sb-log-item.trade .sb-log-icon-badge {
-  background: rgba(255, 215, 106, 0.12);
-  color: #ffd76a;
-  border: 1px solid rgba(255, 215, 106, 0.25);
-}
-.sb-log-item.trade {
-  border-left-color: rgba(255, 215, 106, 0.4);
-}
-
-.sb-log-item.risk .sb-log-icon-badge {
-  background: rgba(255, 183, 61, 0.12);
-  color: #ffb13d;
-  border: 1px solid rgba(255, 183, 61, 0.25);
-}
-.sb-log-item.risk {
-  border-left-color: rgba(255, 183, 61, 0.4);
-}
-
-.sb-log-item.system .sb-log-icon-badge {
-  background: rgba(150, 170, 180, 0.12);
-  color: #9fb3aa;
-  border: 1px solid rgba(150, 170, 180, 0.25);
-}
-.sb-log-item.system {
-  border-left-color: rgba(150, 170, 180, 0.4);
-}
-
-/* 日志主体 */
-.sb-log-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.sb-log-main {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
-}
-
-.sb-log-time {
-  font-size: 10px;
-  color: #5a5242;
-  font-family: Consolas, monospace;
-  flex-shrink: 0;
-}
-
-.sb-log-title-text {
-  font-size: 11px;
-  color: #c8d4ce;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sb-log-item.success .sb-log-title-text {
-  color: #00e8a0;
-}
-.sb-log-item.warn .sb-log-title-text {
-  color: #ffb13d;
-}
-.sb-log-item.error .sb-log-title-text {
-  color: #ff6478;
-}
-
-.sb-log-subtitle {
-  font-size: 10px;
-  color: #7a7262;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sb-log-detail {
-  font-size: 10px;
-  color: #9fb3aa;
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
+.chips-half { flex: 1.7; min-width: 0; overflow-y: auto; }
+.side-half { flex: 1; min-width: 130px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.sh-card {
+  background: var(--sb-bg2); border: 1px solid var(--sb-line);
+  border-radius: 7px; padding: 8px 10px; font-size: 10px; color: var(--sb-t2);
   line-height: 1.5;
 }
+.sh-card b { color: var(--sb-gold); font-weight: 600; }
+.sh-btn { display: block; width: 100%; box-sizing: border-box; }
 
-.sb-log-signals {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
+/* chips */
+.chip-group { margin-bottom: 8px; }
+.chip-group-label {
+  display: block; font-size: 9px; color: var(--sb-t3);
+  margin-bottom: 4px; letter-spacing: 1px;
 }
-
-.sb-signal-tag {
-  font-size: 9.5px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: rgba(255, 80, 150, 0.12);
-  color: #ff6ba8;
-  border: 1px solid rgba(255, 80, 150, 0.2);
+.chip-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px; border-radius: 12px;
+  font-size: 10px; font-weight: 600; cursor: pointer;
+  border: 1px solid; transition: all .15s;
 }
-
-.sb-log-expand-icon {
-  flex-shrink: 0;
-  color: #5a5242;
-  font-size: 9px;
-  align-self: center;
+.chip small { font-size: 8px; opacity: .6; }
+.cdot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.chip-market { color: var(--warn); border-color: rgba(255, 177, 61, .35); background: rgba(255, 177, 61, .08); }
+.chip-trade { color: var(--sb-cyan); border-color: rgba(0, 232, 216, .35); background: rgba(0, 232, 216, .08); }
+.chip-sector { color: #b07cff; border-color: rgba(176, 124, 255, .35); background: rgba(176, 124, 255, .08); }
+.chip-stock { color: var(--up); border-color: rgba(255, 100, 120, .3); background: rgba(255, 100, 120, .07); }
+.chip:hover { filter: brightness(1.3); transform: translateY(-1px); }
+.chip.hot {
+  color: #fff; border-color: var(--up);
+  background: linear-gradient(135deg, rgba(255, 100, 120, .35), rgba(255, 80, 150, .2));
+  box-shadow: 0 0 10px rgba(255, 100, 120, .3);
 }
-
-.sb-log-empty {
-  text-align: center;
-  padding: 20px;
-  color: #4a5a52;
-  font-size: 11px;
-}
-
-/* 滚动条 */
-.sb-log-list::-webkit-scrollbar {
-  width: 4px;
-}
-.sb-log-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-.sb-log-list::-webkit-scrollbar-thumb {
-  background: rgba(212, 175, 55, 0.25);
-  border-radius: 2px;
-}
-.sb-log-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(212, 175, 55, 0.45);
+.pane-empty {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; color: var(--sb-t3); font-size: 10.5px; text-align: center; line-height: 1.7;
 }
 
-.sb-log-tabs::-webkit-scrollbar {
-  height: 2px;
+/* 日志 pane */
+.pane-logs {
+  height: 100%; display: flex; flex-direction: column;
+  padding: 6px 10px 8px; box-sizing: border-box;
 }
-.sb-log-tabs::-webkit-scrollbar-thumb {
-  background: rgba(212, 175, 55, 0.2);
-  border-radius: 1px;
+.logs-head {
+  display: flex; align-items: center; justify-content: space-between;
+  flex: none; margin-bottom: 5px;
 }
+.logs-title { font-size: 10.5px; font-weight: 600; color: var(--sb-gold); }
+.logs-title b { color: var(--sb-t3); font-family: Consolas, monospace; font-weight: 400; }
+.logs-tools { display: inline-flex; align-items: center; gap: 8px; position: relative; }
+.paused { font-size: 9px; color: var(--warn); }
+.copy-tip { font-size: 9px; color: var(--down); }
+.more-btn {
+  background: none; border: 1px solid var(--sb-line); color: var(--sb-t2);
+  width: 20px; height: 20px; border-radius: 5px; cursor: pointer; line-height: 1;
+}
+.more-btn:hover { color: var(--sb-cyan); border-color: var(--sb-cyan); }
+.log-menu {
+  position: absolute; top: 24px; right: 0; z-index: 10;
+  background: var(--sb-bg2); border: 1px solid var(--sb-line);
+  border-radius: 6px; padding: 4px; min-width: 130px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .5);
+}
+.log-menu button {
+  display: block; width: 100%; text-align: left;
+  background: none; border: none; color: var(--sb-t2);
+  font-size: 10px; padding: 5px 8px; border-radius: 4px; cursor: pointer;
+}
+.log-menu button:hover { background: rgba(0, 232, 216, .08); color: var(--sb-cyan); }
 
-/* ========== 底部数据源 ========== */
+.log-cat-tabs {
+  display: flex; gap: 4px; flex: none; margin-bottom: 5px;
+  overflow-x: auto; padding-bottom: 2px;
+}
+.log-cat {
+  display: inline-flex; align-items: center; gap: 3px;
+  background: none; border: 1px solid var(--sb-line);
+  color: var(--sb-t2); font-size: 9.5px;
+  padding: 2px 8px; border-radius: 10px; cursor: pointer; white-space: nowrap;
+}
+.log-cat:hover { color: var(--sb-cyan); }
+.log-cat.active { color: var(--sb-cyan); border-color: rgba(0, 232, 216, .45); background: rgba(0, 232, 216, .08); }
+.cat-badge {
+  font-size: 8px; background: var(--sb-cyan); color: #041210;
+  border-radius: 7px; padding: 0 4px; font-family: Consolas, monospace;
+}
+.log-list {
+  flex: 1; min-height: 0; overflow-y: auto;
+  background: var(--sb-bg2); border: 1px solid var(--sb-line);
+  border-radius: 6px; padding: 4px 6px;
+}
+.log-item {
+  display: flex; align-items: flex-start; gap: 6px;
+  padding: 3px 5px; border-radius: 4px; margin-bottom: 1px;
+  font-size: 10px; line-height: 1.5;
+}
+.log-item:hover { background: rgba(0, 232, 216, .05); }
+.log-badge { flex: none; width: 16px; text-align: center; font-size: 9px; }
+.log-time { flex: none; color: var(--sb-t3); font-family: Consolas, monospace; font-size: 9px; padding-top: 1px; }
+.log-text { color: var(--sb-t2); word-break: break-all; }
+.log-text.success { color: var(--down); }
+.log-text.warn { color: var(--warn); }
+.log-text.error { color: var(--danger); }
+.log-empty { text-align: center; color: var(--sb-t3); font-size: 10px; padding: 20px; }
+
+/* ============ 数据源 ============ */
 .sb-sources {
-  flex: none;
-  display: flex;
-  gap: 4px;
-  overflow-x: auto;
-  padding: 2px 4px;
+  flex: none; display: flex; flex-wrap: wrap; gap: 5px;
 }
-
-.sb-source-tag {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 3px 8px;
-  border-radius: 5px;
-  font-size: 10px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(212, 175, 55, 0.1);
-  color: #5a5242;
-  opacity: 0.5;
-  transition: all 0.2s;
+.src-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 10px;
+  font-size: 9.5px; color: var(--sb-t3);
+  background: var(--sb-bg); border: 1px solid var(--sb-line);
 }
-
-.sb-source-tag.enabled {
-  opacity: 1;
-  color: #b8a878;
-  border-color: rgba(212, 175, 55, 0.25);
-  background: rgba(30, 25, 15, 0.4);
+.sdot { width: 4px; height: 4px; border-radius: 50%; background: var(--sb-t3); }
+.src-tag.enabled { color: var(--sb-t2); }
+.src-tag.enabled .sdot { background: var(--down); }
+.src-tag.active {
+  color: var(--sb-cyan); border-color: rgba(0, 232, 216, .5);
+  background: rgba(0, 232, 216, .1);
 }
-
-.sb-source-tag.active {
-  color: #00e8d8;
-  border-color: rgba(0, 232, 216, 0.5);
-  background: rgba(0, 60, 55, 0.3);
-  box-shadow: 0 0 8px rgba(0, 232, 216, 0.15);
-  animation: sourcePulse 2s ease-in-out infinite;
-}
-@keyframes sourcePulse {
-  0%, 100% { box-shadow: 0 0 6px rgba(0, 232, 216, 0.15); }
-  50% { box-shadow: 0 0 12px rgba(0, 232, 216, 0.3); }
-}
-
-.sb-source-icon {
-  font-size: 11px;
-}
-
-.sb-sources::-webkit-scrollbar {
-  height: 2px;
-}
-.sb-sources::-webkit-scrollbar-thumb {
-  background: rgba(212, 175, 55, 0.2);
-  border-radius: 1px;
-}
-/* ===== 选择器自检角标 ===== */
-.selector-warn-badge {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #ffd6d6;
-  background: rgba(60, 12, 16, 0.82);
-  border: 1px solid rgba(255, 86, 86, 0.6);
-  box-shadow: 0 0 12px rgba(255, 60, 60, 0.35);
-  cursor: pointer;
-}
-.selector-warn-badge .swb-icon { font-size: 13px; }
-.selector-warn-badge .swb-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 4px;
-  border-radius: 9px;
-  background: #ff4d4d;
-  color: #fff;
-  font-size: 11px;
-}
-.selector-warn-badge .swb-panel {
-  display: none;
-  position: absolute;
-  top: 30px;
-  right: 0;
-  width: 320px;
-  max-height: 300px;
-  overflow-y: auto;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(14, 17, 24, 0.97);
-  border: 1px solid rgba(255, 86, 86, 0.45);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
-  text-align: left;
-  font-weight: 500;
-  cursor: default;
-}
-.selector-warn-badge:hover .swb-panel,
-.selector-warn-badge:focus-within .swb-panel { display: block; }
-.swb-panel-title { font-size: 12px; font-weight: 700; color: #ff9a9a; margin-bottom: 8px; }
-.swb-item {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 6px 0;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
-}
-.swb-card {
-  align-self: flex-start;
-  padding: 1px 7px;
-  border-radius: 5px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #ffd6d6;
-  background: rgba(255, 86, 86, 0.16);
-  border: 1px solid rgba(255, 86, 86, 0.4);
-}
-.swb-msg { font-size: 11px; line-height: 1.5; color: rgba(255, 255, 255, 0.78); word-break: break-all; }
-.swb-hint { margin-top: 8px; font-size: 11px; color: rgba(255, 255, 255, 0.5); }
+.src-tag.active .sdot { background: var(--sb-cyan); box-shadow: 0 0 5px var(--sb-cyan); }
 </style>

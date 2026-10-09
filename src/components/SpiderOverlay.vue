@@ -276,6 +276,14 @@ defineExpose({ start, stop, running: engine.running });
           全自动
           <span class="sb-mode-state">{{ engine.autoTrade.value ? "ON" : "OFF" }}</span>
         </button>
+        <button
+          class="sb-pause-btn"
+          :class="{ paused: engine.paused.value }"
+          :title="engine.paused.value ? '继续爬虫' : '暂停爬虫'"
+          @click="engine.paused.value ? engine.resume() : engine.pause()"
+        >
+          {{ engine.paused.value ? "继续" : "暂停" }}
+        </button>
         <button class="sb-stop-btn" title="停止爬虫" @click="stop">
           停止
         </button>
@@ -644,6 +652,32 @@ defineExpose({ start, stop, running: engine.running });
 }
 
 /* 停止按钮 */
+.sb-pause-btn {
+  padding: 4px 14px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--ov-warn, #ffb13d) 50%, transparent);
+  background: color-mix(in srgb, var(--ov-warn, #ffb13d) 15%, transparent);
+  color: var(--ov-warn, #ffb13d);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.sb-pause-btn:hover {
+  background: color-mix(in srgb, var(--ov-warn, #ffb13d) 25%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--ov-warn, #ffb13d) 30%, transparent);
+}
+.sb-pause-btn.paused {
+  border-color: color-mix(in srgb, var(--ov-success, #4ade80) 50%, transparent);
+  background: color-mix(in srgb, var(--ov-success, #4ade80) 15%, transparent);
+  color: var(--ov-success, #4ade80);
+}
+.sb-pause-btn.paused:hover {
+  background: color-mix(in srgb, var(--ov-success, #4ade80) 25%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--ov-success, #4ade80) 30%, transparent);
+}
 .sb-stop-btn {
   padding: 4px 14px;
   height: 28px;

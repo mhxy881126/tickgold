@@ -59,6 +59,7 @@ import {
   tourCardsForPhase,
   phaseAction,
   phaseLabel,
+  canOpenNewPosition,
   type TradingPhase,
 } from "../components/spider/tradingDay";
 
@@ -82,10 +83,22 @@ function emitScan(e: SpiderScanEvent) {
 // ===== 智能漫游状态 =====
 const running = ref(false);
 const visible = ref(false); // 覆盖层是否显示
+const paused = ref(false);  // 暂停（不推进轮次，蜘蛛停原地）
 export const autoTrade = ref(false);
 const semiAuto = ref(true); // 半自动模式（弹窗确认）
 const currentStep = ref(0);
 const currentCard = ref<CardId>("watch");
+
+// ===== 每日复盘记录（盘后/休市自动产出，供面板展示）=====
+export interface DailyReviewRecord {
+  tradeDate: string;
+  reviewedAt: string;
+  reviews: { title?: string; scope?: string }[];
+  evolutionNote: string;
+  planTitle: string;
+  planInstructions: number;
+}
+const dailyReview = ref<DailyReviewRecord | null>(null);
 
 // ===== 爬取源配置：哪些数据源参与扫描 =====
 export interface CrawlSourceConfig {
@@ -378,6 +391,9 @@ async function maybeAutoReview(): Promise<void> {
   if (phase !== "post-market" && phase !== "closed") return;
   if (autoReviewInflight) return;
   autoReviewInflight = true;
+  let evolutionNote = "";
+  let planTitle = "";
+  let planCount = 0;
   try {
     addLog("🌆 盘后自动复盘启动：复盘 → 进化 → 次日计划", "info");
 
@@ -411,6 +427,7 @@ async function maybeAutoReview(): Promise<void> {
       const stats = await evolutionStats();
       const next = evolveFromStats(stats as unknown as EvolutionStatsLike, loadEvolvedParams());
       saveEvolvedParams(next);
+      evolutionNote = next.note;
       addLog(`🧠 参数进化（样本 ${next.samples}）：${next.note}`, "info");
     } catch (e) {
       addLog(`⚠️ 参数调权失败：${e}`, "warn");
@@ -419,12 +436,23 @@ async function maybeAutoReview(): Promise<void> {
     // 4) 次日作战计划
     try {
       const plan = await generatePlan(null, null);
+      planTitle = plan.title || "";
+      planCount = plan.instructions?.length ?? 0;
       addLog(`🗺 次日作战计划：${plan.title || "已生成"}（${plan.instructions?.length ?? 0} 条指令）`, "buy");
     } catch (e) {
       addLog(`⚠️ 生成作战计划失败：${e}`, "warn");
     }
 
     if (tdate) autoReviewedTradeDate = tdate;
+    dailyReview.value = {
+      tradeDate: tdate || new Date().toISOString().slice(0, 10),
+      reviewedAt: new Date().toLocaleString("zh-CN"),
+      reviews: reviews.map((r) => ({ title: r.title, scope: r.scope })),
+      evolutionNote,
+      planTitle,
+      planInstructions: planCount,
+    };
+    addLog(`📋 每日复盘记录已生成（${dailyReview.value.tradeDate}），可在面板查看`, "buy");
   } finally {
     autoReviewInflight = false;
   }
@@ -1063,6 +1091,14 @@ async function scanSpider(wl: ReturnType<typeof useWatchlistStore>) {
 // ===== 执行交易（带完整风控检查）=====
 async function executeBuy(score: StockScore, paperStore: ReturnType<typeof usePaperStore>, volOverride?: number) {
   try {
+    const phase = getTradingPhase();
+    const afterHours = !canOpenNewPosition(phase);
+    if (afterHours) {
+      addLog(
+        `🌙 【盘后模拟】非交易时段（${phaseLabel(phase)}），按当前价模拟买入（仅模拟盘，实盘不生效）`,
+        "info",
+      );
+    }
     const priceMap: Record<string, number> = {};
     paperStore.positions.forEach(p => {
       priceMap[p.code] = p.costAmount / Math.max(p.vol, 1);
@@ -1098,7 +1134,10 @@ async function executeBuy(score: StockScore, paperStore: ReturnType<typeof usePa
     // 凯利仓位（已含大盘/单票上限）再与风控资金/总仓上限取小，双重兜底
     const vol = volOverride && volOverride > 0 ? Math.min(volOverride, riskVol) : riskVol;
     await paperStore.buy(score.code, score.name, score.price, vol);
-    addLog(`✅ 买入 ${score.name}(${score.code}) ${vol}股 @ ${score.price.toFixed(2)} (${score.signals.slice(0, 2).join("、")})`, "buy");
+    addLog(
+      `${afterHours ? "🌙" : "✅"} 买入 ${score.name}(${score.code}) ${vol}股 @ ${score.price.toFixed(2)} (${score.signals.slice(0, 2).join("、")})`,
+      "buy",
+    );
   } catch (e) {
     addLog(`❌ 买入失败 ${score.code}: ${e}`, "warn");
   }
@@ -1212,6 +1251,9 @@ function scanRound(
   paperStore: ReturnType<typeof usePaperStore>,
   onSwitchCard: (cardId: CardId) => boolean,
 ) {
+  // 暂停中不推进轮次
+  if (paused.value) return;
+
   // 时段切换：日志提示当前阶段与动作（交易大脑的时间节奏）
   const phase = getTradingPhase();
   if (phase !== lastPhase) {
@@ -1385,7 +1427,7 @@ async function start(onSwitchCard: (cardId: CardId) => boolean) {
 
   running.value = true;
   visible.value = true; // 显示覆盖层
-  logs.value = [];
+  paused.value = false;
   addLog("🕷 AI 爬虫机器人启动...", "info");
 
   // 切卡回调存引用：advanceRound 与看门狗通过它回调 UI 层
@@ -1409,15 +1451,35 @@ async function start(onSwitchCard: (cardId: CardId) => boolean) {
 function stop() {
   running.value = false;
   visible.value = false; // 隐藏覆盖层
+  paused.value = false;
   if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
   switchRef = null;
   addLog("爬虫机器人已停止", "info");
 }
 
+function pause() {
+  if (!running.value || paused.value) return;
+  paused.value = true;
+  addLog("⏸ 爬虫已暂停（蜘蛛停在原地，不推进扫描）", "info");
+}
+
+function resume() {
+  if (!running.value || !paused.value) return;
+  paused.value = false;
+  addLog("▶️ 爬虫已继续", "info");
+  window.setTimeout(() => {
+    if (running.value && !paused.value) advanceRound();
+  }, 150);
+}
+
 export function addLog(text: string, type: LogEntry["type"] = "info") {
   const now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
   logs.value.unshift({ time: now, text, type });
-  if (logs.value.length > 40) logs.value.pop();
+  if (logs.value.length > 500) logs.value.pop();
+}
+
+function clearLogs() {
+  logs.value = [];
 }
 
 // HMR：模块热替换前必须停掉后台定时器。
@@ -1434,6 +1496,8 @@ export function useSpiderBotEngine() {
     // 状态
     running,
     visible,
+    paused,
+    dailyReview,
     autoTrade,
     semiAuto,
     currentStep,
@@ -1448,6 +1512,9 @@ export function useSpiderBotEngine() {
     start,
     heartbeat,
     stop,
+    pause,
+    resume,
+    clearLogs,
     advanceRound,
     setAutoTrade: (v: boolean) => { autoTrade.value = v; },
     setSemiAuto: (v: boolean) => { semiAuto.value = v; },

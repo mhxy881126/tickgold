@@ -46,6 +46,12 @@ const OPEN_CARDS: CardId[] = ["market", "radar", "rank", "watch"];
 const MIDDAY_CARDS: CardId[] = ["watch", "market", "sector", "rank", "trade"];
 const CLOSE_CARDS: CardId[] = ["watch", "market", "trade", "radar", "rank"];
 
+// 盘后 / 休市的研究巡回：交易相关卡片（不含交易执行卡 trade），用于非交易时段做研究扫描与模拟验证
+const RESEARCH_CARDS: CardId[] = [
+  "market", "rank", "radar", "sector", "concept", "themelib",
+  "auction", "spider", "limitpool", "dragon", "screener", "watch",
+];
+
 /** 该时段的巡回卡片顺序（closed 返回空数组，系统空转等待） */
 export function tourCardsForPhase(phase: TradingPhase): CardId[] {
   switch (phase) {
@@ -56,10 +62,10 @@ export function tourCardsForPhase(phase: TradingPhase): CardId[] {
     case "midday": return MIDDAY_CARDS;
     case "afternoon": return tradingTourCards();
     case "close": return CLOSE_CARDS;
-    case "post-market": return reviewTourCards();
+    case "post-market": return [...reviewTourCards(), ...RESEARCH_CARDS];
     case "closed":
-      // 休市（晚间 / 周末 / 盘前盘后之外）：进入复盘研究巡回——只研究、不交易、不开仓，持续进化
-      return [...reviewTourCards(), "watch"];
+      // 休市（晚间 / 周末）：研究卡优先（让用户随时能看到扫描与模拟交易），复盘卡随后
+      return [...RESEARCH_CARDS, ...reviewTourCards()];
   }
 }
 
