@@ -5,6 +5,7 @@ use crate::ai::decision::build_pack;
 use crate::ai::maindb::open_readwrite;
 use crate::ai::now_millis;
 use crate::ai::provider::{chat_stream, ChatMsg, StreamEv};
+use crate::ai::rule_review::rule_review;
 use serde_json::{json, Value};
 use std::path::Path;
 
@@ -211,10 +212,48 @@ pub async fn run_review(
                 });
             }
             Err(e) => {
-                if scope == "market" {
-                    market_failed = true;
-                }
                 log::error!("复盘 {scope}/{subject} 失败: {e}");
+                // 降级：大模型不可用（无 Key / 鉴权失败 / 网络错 / Ollama 未启动）时，
+                // 用规则引擎生成复盘并写库，保证盘后复盘闭环不中断。
+                let mut rr = rule_review(&scope, &subject, &focus);
+                // 透传大模型真实失败原因（鉴权 / 模型名无效 / 网络 / Ollama 未启动），
+                // 避免前端笼统误报"未配置 Key"，便于用户定位。
+                let e_short = e.lines().next().unwrap_or(&e).to_string();
+                rr.evidence = format!(
+                    "⚠️ 大模型调用失败，已用规则引擎降级。真实原因：{e_short}\n{}",
+                    rr.evidence
+                );
+                if let Err(we) = wdb.execute(
+                    "INSERT INTO ai_review(trade_date,scope,subject,title,summary,content,evidence,model,created_at)
+                     VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)
+                     ON CONFLICT(trade_date,scope,subject) DO UPDATE SET
+                        title=excluded.title, summary=excluded.summary, content=excluded.content,
+                        evidence=excluded.evidence, model=excluded.model, created_at=excluded.created_at",
+                    rusqlite::params![date, scope, subject, rr.title, rr.summary, rr.content,
+                        rr.evidence, "rule-based", now_millis()],
+                ) {
+                    log::error!("规则复盘写库失败: {we}");
+                    if scope == "market" {
+                        market_failed = true;
+                    }
+                    continue;
+                }
+                let id = wdb
+                    .query_row(
+                        "SELECT id FROM ai_review WHERE trade_date=?1 AND scope=?2 AND subject=?3",
+                        rusqlite::params![date, scope, subject],
+                        |r| r.get::<_, i64>(0),
+                    )
+                    .unwrap_or(wdb.last_insert_rowid());
+                out.push(ReviewSummary {
+                    id,
+                    trade_date: date.clone(),
+                    scope: scope.clone(),
+                    subject: subject.clone(),
+                    title: rr.title,
+                    summary: rr.summary,
+                    reused: false,
+                });
             }
         }
     }

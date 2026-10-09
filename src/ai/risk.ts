@@ -337,15 +337,6 @@ export function checkSellRisk(
     };
   }
 
-  // 止损
-  if (pnlPct <= c.stopLossPct) {
-    return {
-      allowed: true,
-      reason: `止损触发（${(pnlPct * 100).toFixed(1)}%）`,
-      side: "stop_loss",
-    };
-  }
-
   // 移动止盈（优先于固定止盈：达到盈利目标后，从高点回撤才卖，让利润奔跑）
   if (c.trailingStopEnabled && highestPrice > 0 && pnlPct > c.takeProfitPct * 0.5) {
     const drawdownFromHigh = (currentPrice - highestPrice) / highestPrice;

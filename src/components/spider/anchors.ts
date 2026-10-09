@@ -166,31 +166,39 @@ export const CARD_ANCHOR_CONFIGS: Record<string, CardAnchorConfig> = {
     },
   },
 
-  // ===== 龙虎榜 =====
+  // ===== 龙虎榜：.stock-row（DragonTiger.vue 真实行，含真实代码）=====
   dragon: {
-    rowSel: '[data-card-id="dragon"] .list-row, [data-card-id="dragon"] .stock-item',
-    headerSel: '[data-card-id="dragon"] .card-header, [data-card-id="dragon"] .tabs',
+    rowSel: '[data-card-id="dragon"] .stock-row',
+    headerSel: '[data-card-id="dragon"] .dt-bar, [data-card-id="dragon"] .dt-stat',
     maxRows: 6,
     extract: (el) => {
-      const name = el.querySelector(".name, .nm")?.textContent?.trim() || undefined;
-      const pctText = el.querySelector(".pct")?.textContent?.trim();
+      const code = el.querySelector(".sr-code")?.textContent?.trim() || undefined;
+      const name = el.querySelector(".sr-name")?.textContent?.trim() || undefined;
+      const pctText = el.querySelector(".sr-pct")?.textContent?.trim();
       return {
-        code: undefined,
+        code,
         name,
         pct: pctText ? parseFloat(pctText.replace("%", "")) : undefined,
       };
     },
   },
 
-  // ===== 条件选股 =====
+  // ===== 条件选股：.tbody .trow（Screener.vue 真实结果行）=====
   screener: {
-    rowSel: '[data-card-id="screener"] .result-row, [data-card-id="screener"] .vrow, [data-card-id="screener"] .trow',
-    headerSel: '[data-card-id="screener"] .filter-bar, [data-card-id="screener"] .card-header',
+    rowSel: '[data-card-id="screener"] .tbody .trow',
+    headerSel: '[data-card-id="screener"] .result-bar, [data-card-id="screener"] .presets',
     maxRows: 6,
     extract: (el) => {
-      const code = el.querySelector(".code, .cd")?.textContent?.trim() || undefined;
-      const name = el.querySelector(".name, .nm")?.textContent?.trim() || undefined;
-      return { code, name };
+      const code = el.querySelector(".cd")?.textContent?.trim() || undefined;
+      const name = el.querySelector(".nm")?.textContent?.trim() || undefined;
+      const priceText = el.querySelector(".c-price")?.textContent?.trim();
+      const pctText = el.querySelector(".c-pct")?.textContent?.trim();
+      return {
+        code,
+        name,
+        price: priceText ? parseFloat(priceText) : undefined,
+        pct: pctText ? parseFloat(pctText.replace("%", "")) : undefined,
+      };
     },
   },
 
@@ -291,10 +299,10 @@ export const CARD_ANCHOR_CONFIGS: Record<string, CardAnchorConfig> = {
     },
   },
 
-  // ===== 大盘指数 =====
+  // ===== 大盘指数：横向顶栏 .indices（无独立标题，容器即兜底落点）=====
   market: {
     rowSel: '[data-card-id="market"] .idx',
-    headerSel: '[data-card-id="market"] .card-head',
+    headerSel: '[data-card-id="market"] .indices',
     maxRows: 5,
     extract: (el) => {
       const name = el.querySelector(".name")?.textContent?.trim() || undefined;
@@ -309,27 +317,26 @@ export const CARD_ANCHOR_CONFIGS: Record<string, CardAnchorConfig> = {
     },
   },
 
-  // ===== 连板选股器 =====
+  // ===== 连板选股器：.body .row（SieveCard.vue 真实行，无 code/pct，价格在 .pc）=====
   sieve: {
-    rowSel: '[data-card-id="sieve"] .rows .row',
-    headerSel: '[data-card-id="sieve"] .tabs, [data-card-id="sieve"] .card-head',
+    rowSel: '[data-card-id="sieve"] .body .row',
+    headerSel: '[data-card-id="sieve"] .lvl-row, [data-card-id="sieve"] .env',
     maxRows: 6,
     extract: (el) => {
-      const name = el.querySelector(".nm, .name")?.textContent?.trim() || undefined;
-      const code = el.querySelector(".cd, .code")?.textContent?.trim() || undefined;
-      const pctText = el.querySelector(".pct")?.textContent?.trim();
+      const name = el.querySelector(".nm")?.textContent?.trim() || undefined;
+      const priceText = el.querySelector(".pc")?.textContent?.trim();
       return {
-        code: code || `sieve:${name || ""}`,
+        code: name ? `sieve:${name}` : undefined,
         name,
-        pct: pctText ? parseFloat(pctText.replace("%", "")) : undefined,
+        price: priceText ? parseFloat(priceText.replace(/[¥,\s]/g, "")) : undefined,
       };
     },
   },
 
-  // ===== 题材库 =====
+  // ===== 题材库：.tl-head（ThemeLibrary.vue 真实标题）=====
   themelib: {
     rowSel: '[data-card-id="themelib"] .tl-row',
-    headerSel: '[data-card-id="themelib"] .card-head',
+    headerSel: '[data-card-id="themelib"] .tl-head',
     maxRows: 6,
     extract: (el) => {
       const name = el.querySelector(".tl-row-top")?.textContent?.trim() || undefined;
@@ -340,24 +347,26 @@ export const CARD_ANCHOR_CONFIGS: Record<string, CardAnchorConfig> = {
     },
   },
 
-  // ===== 复盘时间线 =====
+  // ===== 复盘时间线：.tl-item（ReviewTimeline.vue 真实节点）=====
   reviewtimeline: {
     rowSel: '[data-card-id="reviewtimeline"] .tl-item',
-    headerSel: '[data-card-id="reviewtimeline"] .card-head',
+    headerSel: '[data-card-id="reviewtimeline"] .rt-toolbar',
     maxRows: 6,
     extract: (el) => {
-      const text = el.textContent?.trim().slice(0, 20) || "";
+      const time = el.querySelector(".tl-time")?.textContent?.trim() || "";
+      const title = el.querySelector(".tl-tag")?.textContent?.trim() || "";
+      const text = title || el.textContent?.trim().slice(0, 20) || "";
       return {
-        code: `review:${text}`,
+        code: `review:${time}:${text.slice(0, 12)}`,
         name: text,
       };
     },
   },
 
-  // ===== 盯盘日记 =====
+  // ===== 盯盘日记：.jlist .jitem（Journal.vue 列表视图）=====
   journal: {
-    rowSel: '[data-card-id="journal"] .jitem',
-    headerSel: '[data-card-id="journal"] .card-head',
+    rowSel: '[data-card-id="journal"] .jlist .jitem',
+    headerSel: '[data-card-id="journal"] .view-seg, [data-card-id="journal"] .cal-nav',
     maxRows: 5,
     extract: (el) => {
       const text = el.textContent?.trim().slice(0, 20) || "";

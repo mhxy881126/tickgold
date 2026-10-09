@@ -3,7 +3,7 @@
 // 纯函数，无 DOM / 无状态，可在 node 下单测。
 import type { Quote } from "../api/types";
 
-export type SignalLevel = "BUY_STRONG" | "BUY" | "SCAN" | "SELL" | "SELL_STRONG";
+export type SignalLevel = "BUY_STRONG" | "BUY" | "HOLD" | "SCAN" | "SELL" | "SELL_STRONG";
 
 export interface StockScore {
   code: string;
@@ -65,7 +65,7 @@ export interface ScoringConfig {
 }
 
 export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
-  buyThreshold: 4,
+  buyThreshold: 3.5,
   buyStrongThreshold: 8,
   sellThreshold: -3,
   sellStrongThreshold: -7,
@@ -224,10 +224,10 @@ export function evaluateStock(
 
   // 成交额：上涨时加分，下跌时不加分（下跌放量是坏事，后面单独扣）
   if (isRising && amountYi >= c.amountStrong) {
-    volumeScore += c.volumeWeight * 0.6;
+    volumeScore += c.volumeWeight * 0.7;
     signals.push("成交额充足");
   } else if (isRising && amountYi >= c.amountMild) {
-    volumeScore += c.volumeWeight * 0.3;
+    volumeScore += c.volumeWeight * 0.5;
     signals.push("成交额尚可");
   } else if (amountYi < c.amountMild * 0.5 && amountYi > 0) {
     volumeScore -= c.volumeWeight * 0.2;
@@ -261,18 +261,19 @@ export function evaluateStock(
 
   // ===== 3. 波动率分（满分 volatilityWeight）=====
   let volScore = 0;
-  const amp = q.amplitude ?? 0;
+  const amp = q.amplitude;
+  const hasAmp = amp !== undefined && amp !== null;
 
-  if (amp <= c.ampLow) {
+  if (hasAmp && (amp as number) <= c.ampLow) {
     volScore += c.volatilityWeight * 0.3;
     signals.push("低波动");
-  } else if (amp >= c.ampHigh) {
+  } else if (hasAmp && (amp as number) >= c.ampHigh) {
     volScore -= c.volatilityWeight * 0.5;
     risks.push("高波动");
   }
 
   // 振幅大且上涨 = 分歧大，减分；振幅大且下跌 = 恐慌，减分
-  if (amp >= c.ampHigh && pct > 0) {
+  if (hasAmp && (amp as number) >= c.ampHigh && pct > 0) {
     volScore -= c.volatilityWeight * 0.3;
     risks.push("高位分歧");
   }
@@ -340,7 +341,7 @@ export function evaluateStock(
   const maxScore = c.trendWeight + c.volumeWeight + c.volatilityWeight + c.valuationWeight + c.sentimentWeight;
 
   // 评级
-  let recommendation: SignalLevel = "SCAN";
+  let recommendation: SignalLevel;
   if (totalScore >= c.buyStrongThreshold) {
     recommendation = "BUY_STRONG";
   } else if (totalScore >= c.buyThreshold) {
@@ -349,6 +350,10 @@ export function evaluateStock(
     recommendation = "SELL_STRONG";
   } else if (totalScore <= c.sellThreshold) {
     recommendation = "SELL";
+  } else if (pct !== 0) {
+    recommendation = "HOLD";   // 有方向但未到买卖线：持有 / 观望
+  } else {
+    recommendation = "SCAN";   // 平盘 / 无方向：继续扫描
   }
 
   return {

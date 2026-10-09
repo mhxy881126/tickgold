@@ -15,6 +15,8 @@ export interface ScanPoint {
   signal: SignalKind;
   /** 跨卡片中途点：经过不驻留、不发光束、不抽包 */
   via?: boolean;
+  /** 该点滑行扫描时长 ms（缺省用全局 dwellMs）；路过标题快速一瞟用更短值 */
+  glideMs?: number;
 }
 
 export interface RenderLeg {
@@ -105,6 +107,7 @@ export class SpiderSim {
   private arrivedEmitted = false;
   private glideEntryDist = 0;
   private glideDir: Vec2 | null = null; // 滑行方向（到达时锁定）
+  private glideDwell = 0; // 本点滑行扫描时长（per-point）
   private legs: Leg[] = [];
   private gaitClock = 0; // 步态相位时钟（周期份额 0..1）
   private flyTarget: Vec2 | null = null;
@@ -148,8 +151,10 @@ export class SpiderSim {
   get scanProgress(): number {
     if (!this.active || this.path[this.idx]?.via) return 0;
     if (this.scanUntil <= 0) return 0;
-    const elapsed = this.opts.dwellMs - (this.scanUntil - this._lastNow);
-    return Math.max(0, Math.min(1, elapsed / this.opts.dwellMs));
+    // 支持 per-point 滑行时长（标题快扫/总览），缺省回退全局 dwellMs
+    const dwell = this.glideDwell > 0 ? this.glideDwell : this.opts.dwellMs;
+    const elapsed = dwell - (this.scanUntil - this._lastNow);
+    return Math.max(0, Math.min(1, elapsed / dwell));
   }
 
   /** 是否处于扫描驻留状态（已到达非 via 点且尚未离开） */
@@ -163,6 +168,7 @@ export class SpiderSim {
     this.scanUntil = 0;
     this.arrivedEmitted = false;
     this.glideDir = null;
+    this.glideDwell = 0;
     this._currentRowAnchor = null;
     this.glideEntryDist = this.opts.speed * 0.6;
     if (points.length) {
@@ -363,13 +369,14 @@ export class SpiderSim {
           if (d <= o.arriveDist) {
             ev.arrived = tgt;
             this.arrivedEmitted = true;
-            this.scanUntil = now + o.dwellMs;
+            this.glideDwell = tgt.glideMs ?? o.dwellMs;
+            this.scanUntil = now + this.glideDwell;
             this.glideDir = { ...dir };
           }
         } else if (now < this.scanUntil) {
           // 滑行扫描中：先慢后快的滑出（bell curve）
-          const elapsed = o.dwellMs - (this.scanUntil - now);
-          const progress = clamp(elapsed / o.dwellMs, 0, 1);
+          const elapsed = this.glideDwell - (this.scanUntil - now);
+          const progress = clamp(elapsed / this.glideDwell, 0, 1);
           // 前 30% 慢速驻留扫描，后 70% 逐渐加速离开
           const glidePhase = progress < 0.3
             ? 0.15  // 最慢：超慢

@@ -237,6 +237,11 @@ pub fn secid_prefix(code: &str) -> &'static str {
 
 /// 新浪/腾讯 symbol：6/9/5=sh，4/8=bj（北交所），其余=sz
 pub fn cnc_symbol(code: &str) -> String {
+    let lower = code.trim().to_lowercase();
+    // 已带 sh/sz/bj 前缀（如指数 sh000001）：直接采用
+    if lower.starts_with("sh") || lower.starts_with("sz") || lower.starts_with("bj") {
+        return lower;
+    }
     let prefix = match code.chars().next().unwrap_or('0') {
         '6' | '9' | '5' => "sh",
         '4' | '8' => "bj",

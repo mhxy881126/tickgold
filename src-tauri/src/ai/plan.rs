@@ -135,7 +135,7 @@ fn save_plan(
     plan_date: &str,
     source_date: &str,
     profile_key: Option<&str>,
-    cfg: &AiConfig,
+    model: &str,
     pj: &Value,
 ) -> Result<(), String> {
     let title = pj["title"].as_str().unwrap_or("");
@@ -147,7 +147,7 @@ fn save_plan(
          ON CONFLICT(plan_date) DO UPDATE SET title=excluded.title, market_view=excluded.market_view,
             profile_key=excluded.profile_key, source_review_date=excluded.source_review_date,
             model=excluded.model, updated_at=excluded.updated_at",
-        rusqlite::params![plan_date, title, market_view, pk, source_date, cfg.chat_model, now_millis()],
+        rusqlite::params![plan_date, title, market_view, pk, source_date, model, now_millis()],
     )
     .map_err(|e| e.to_string())?;
     let plan_id: i64 = c
@@ -215,14 +215,23 @@ pub async fn generate_plan(
 
     let mut acc = String::new();
     let msgs = [msg("system", &sys), msg("user", &user)];
-    chat_stream(cfg, api_key, &msgs, &[], &mut |ev| {
+    let (pj, model_used) = match chat_stream(cfg, api_key, &msgs, &[], &mut |ev| {
         if let StreamEv::Delta(d) = ev {
             acc.push_str(&d);
         }
     })
-    .await?;
-    let pj = extract_plan_json(&acc);
-    save_plan(&c, &plan_date, &source_date, profile_key, cfg, &pj)?;
+    .await
+    {
+        Ok(_) => (extract_plan_json(&acc), cfg.chat_model.clone()),
+        Err(e) => {
+            log::error!("大模型作战计划生成失败: {e}，降级规则计划");
+            (
+                crate::ai::rule_review::rule_plan(&pack, &plan_date),
+                "rule-based".to_string(),
+            )
+        }
+    };
+    save_plan(&c, &plan_date, &source_date, profile_key, &model_used, &pj)?;
     let id: i64 = c
         .query_row("SELECT id FROM plan WHERE plan_date=?1", [&plan_date], |r| r.get(0))
         .map_err(|e| e.to_string())?;

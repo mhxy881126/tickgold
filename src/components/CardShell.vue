@@ -262,7 +262,7 @@ function startResize(e: PointerEvent) {
   border: var(--card-skin-border, var(--card-border, 1px)) solid var(--card-border-color, var(--border));
   border-radius: var(--card-skin-radius, var(--card-radius, 10px));
   overflow: hidden;
-  transition: border-color 0.18s, box-shadow 0.18s;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, opacity 0.22s ease;
   /* 常驻外发光（静态；强度 0 时无可视化）*/
   box-shadow:
     0 0 12px color-mix(in srgb, var(--card-glow, transparent) calc(var(--card-glow-strength, 0) * 100%), transparent);
@@ -298,6 +298,37 @@ function startResize(e: PointerEvent) {
   opacity: 0.94;
   border-color: var(--accent-var);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+}
+
+/* ===== AI 蜘蛛切卡视觉呼应（class 由 ProceduralSpider 按三幕切换）===== */
+/* ACT3 入场：新卡边框/标题辉光 + 内容聚焦 */
+.card-shell.spider-focus {
+  border-color: color-mix(in srgb, var(--accent-var) 75%, var(--border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent-var) 55%, transparent),
+    0 0 26px color-mix(in srgb, var(--accent-var) 38%, transparent),
+    0 18px 44px rgba(0, 0, 0, 0.45);
+}
+.card-shell.spider-focus .card-title {
+  color: color-mix(in srgb, var(--accent-var) 82%, var(--title-color, var(--text)));
+  text-shadow: 0 0 12px color-mix(in srgb, var(--accent-var) 55%, transparent);
+}
+/* 非当前卡轻微暗化（0.92，保证可读性） */
+.card-shell.spider-dim {
+  opacity: 0.92;
+}
+/* ACT2 路过标题：短暂一圈辉光脉冲 */
+.card-shell.spider-pass {
+  animation: spider-pass-ring 0.62s ease-out 1;
+}
+@keyframes spider-pass-ring {
+  0% {
+    border-color: color-mix(in srgb, var(--accent-var) 80%, var(--border));
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-var) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 16px color-mix(in srgb, var(--accent-var) 0%, transparent);
+  }
 }
 .card-bar {
   position: absolute;

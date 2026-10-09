@@ -1,7 +1,7 @@
 {
   "name": "tickgold",
   "private": true,
-  "version": "2.18.0",
+  "version": "2.19.0",
   "type": "module",
   "description": "TickGold - 娑撴挷绗熸禍銈嗘閼板懓娉曢獮鍐插酱 A 閼诧紕娲撮惄妯肩矒缁?(Tauri 2 + Vue 3)",
   "scripts": {

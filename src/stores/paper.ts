@@ -219,7 +219,7 @@ export const usePaperStore = defineStore("paper", () => {
 
   return {
     account, positions, orders, priceMap, loaded,
-    load, stop, buy, sell, reset, resetWith,
+    load, stop, buy, sell, reset, resetWith, reloadAll, settle, refreshQuotes,
     marketValue, totalAssets, totalPnl, pnlPct, floatPnl, dayPnl,
   };
 });

@@ -12,6 +12,7 @@ pub mod maindb;
 pub mod plan;
 pub mod provider;
 pub mod review;
+pub mod rule_review;
 pub mod tools;
 pub mod vectordb;
 

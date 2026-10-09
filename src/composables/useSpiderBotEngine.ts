@@ -2,8 +2,25 @@ import { ref, computed } from "vue";
 import { useWatchlistStore } from "../stores/watchlist";
 import { useQuotesStore } from "../stores/quotes";
 import { usePaperStore } from "../stores/paper";
-import { signalCreateSpider } from "../ai/api";
-import { fetchZtPool, fetchZbPool, fetchRankBoard, fetchSectors, fetchIndexQuotes } from "../api/market";
+import {
+  signalCreateSpider,
+  runReview,
+  evolutionRunLabeling,
+  evolutionStats,
+  generatePlan,
+} from "../ai/api";
+import {
+  evolveFromStats,
+  loadEvolvedParams,
+  saveEvolvedParams,
+  type EvolutionStatsLike,
+} from "../ai/evolve";
+import {
+  fetchZtPool, fetchZbPool, fetchRankBoard, fetchSectors, fetchIndexQuotes, fetchKLine,
+  fetchSectorStocks, fetchAuction, startSpider,
+  type ZtStock, type AuctionStock, type SpiderEvent,
+} from "../api/market";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   evaluateStock as evalStockScoring,
   STRATEGY_PRESETS,
@@ -21,8 +38,29 @@ import {
   type RiskConfig,
   type TradeRecord,
 } from "../ai/risk";
-import type { Quote } from "../api/types";
-import type { CardId } from "../lib/cards";
+import type { Quote, RankRow } from "../api/types";
+import { decide, type Decision } from "../ai/decision";
+import { planPosition, type MarketRegime } from "../ai/position";
+import {
+  boardReseal,
+  boardWeak2Strong,
+  auctionGrab,
+  elfSurge,
+  themeLeader,
+  type SpecialSignal,
+  type SpecialStrategy,
+  type BoardStock,
+  type ElfEventLike,
+} from "../ai/specialStrategies";
+import { regimeOfIndex } from "../ai/indicators";
+import { CARD_META, type CardId } from "../lib/cards";
+import {
+  getTradingPhase,
+  tourCardsForPhase,
+  phaseAction,
+  phaseLabel,
+  type TradingPhase,
+} from "../components/spider/tradingDay";
 
 // ===== 扫描事件总线：驱动程序化蜘蛛覆盖层行走路径（无监听者时零开销）=====
 // 开发提示：本文件 HMR 热替换后 Set 会重建，已挂载的蜘蛛组件仍持有旧总线订阅，
@@ -44,7 +82,7 @@ function emitScan(e: SpiderScanEvent) {
 // ===== 智能漫游状态 =====
 const running = ref(false);
 const visible = ref(false); // 覆盖层是否显示
-const autoTrade = ref(false);
+export const autoTrade = ref(false);
 const semiAuto = ref(true); // 半自动模式（弹窗确认）
 const currentStep = ref(0);
 const currentCard = ref<CardId>("watch");
@@ -59,6 +97,9 @@ export interface CrawlSourceConfig {
   market: boolean;    // 大盘指数
   dragon: boolean;    // 龙虎榜
   screener: boolean;  // 条件选股
+  auction: boolean;   // 集合竞价
+  elf: boolean;       // 短线精灵
+  themelib: boolean;  // 题材库
 }
 const crawlSources = ref<CrawlSourceConfig>({
   watch: true,
@@ -69,6 +110,9 @@ const crawlSources = ref<CrawlSourceConfig>({
   market: true,
   dragon: false,
   screener: false,
+  auction: true,
+  elf: true,
+  themelib: true,
 });
 
 // ===== 自动交易白名单：哪些来源的信号允许自动交易 =====
@@ -82,6 +126,9 @@ const autoTradeSources = ref<CrawlSourceConfig>({
   market: false,     // 大盘只作参考，不直接交易
   dragon: false,
   screener: false,
+  auction: false,    // 竞价抢筹，需显式授权
+  elf: false,        // 精灵异动，需显式授权
+  themelib: false,   // 题材库成分股，需显式授权
 });
 
 /** 将卡片 ID 映射到爬取源 key */
@@ -95,6 +142,9 @@ function cardToSource(cardId: CardId): keyof CrawlSourceConfig | null {
     market: "market",
     dragon: "dragon",
     screener: "screener",
+    auction: "auction",
+    spider: "elf",
+    themelib: "themelib",
   };
   return map[cardId] ?? null;
 }
@@ -114,25 +164,16 @@ const maxDeepAnalysis = 2; // 最多深度分析几次就换下一个
 
 // ===== 卡片优先级（根据市场情况动态调整，且只包含启用的源）=====
 function getCardPriority(): CardId[] {
-  const allCards: CardId[] = [];
+  // 由交易日时间状态机决定当前时段巡回哪些卡（盘前/竞价/开盘/盘中/尾盘/盘后各有节奏）
+  const tour = tourCardsForPhase(getTradingPhase());
   const src = crawlSources.value;
-
-  // 按优先级顺序加入已启用的卡片
-  const hotOrder: CardId[] = ["radar", "rank", "market", "concept", "sector", "watch", "dragon", "screener"];
-  const coldOrder: CardId[] = ["watch", "market", "sector", "rank", "radar", "concept", "dragon", "screener"];
-  const neutralOrder: CardId[] = ["watch", "rank", "market", "sector", "concept", "radar", "dragon", "screener"];
-
-  const order = marketSentiment.value.level === "hot" ? hotOrder
-    : marketSentiment.value.level === "cold" ? coldOrder
-    : neutralOrder;
-
-  for (const card of order) {
+  // 数据源卡受 crawlSources 勾选过滤；其余浏览 / 分析 / 交易 / 复盘卡始终巡回
+  const filtered = tour.filter((card) => {
     const source = cardToSource(card);
-    if (source && src[source]) allCards.push(card);
-  }
-
-  // 兜底：至少有一个
-  return allCards.length ? allCards : ["watch"];
+    return source ? !!src[source] : true;
+  });
+  // 兜底：休市等空清单时至少停在自选，不产生 undefined 空转
+  return filtered.length ? filtered : ["watch"];
 }
 const cardNames: Record<string, string> = {
   watch: "自选股",
@@ -146,6 +187,11 @@ const cardNames: Record<string, string> = {
   dragon: "龙虎榜",
   screener: "条件选股",
 };
+
+// 卡片显示名：优先 CARD_META（覆盖全部 38 卡），其次旧映射，最后兜底 id（不再出现 undefined）
+function cardTitle(id: CardId): string {
+  return CARD_META[id]?.title ?? cardNames[id] ?? id;
+}
 
 // ===== 目标点（蜘蛛腿要连到哪里） =====
 interface TargetPoint {
@@ -227,111 +273,9 @@ export function evaluateStock(q: Quote, code: string, name: string): StockScore 
   return evalStockScoring(q, code, name, marketSentiment.value.level, scoringConfig.value);
 }
 
-// ===== 从 Store 采集不同卡片的数据（不依赖 DOM） =====
-function collectFromStore(cardId: CardId): TargetPoint[] {
-  const points: TargetPoint[] = [];
-  const wl = useWatchlistStore();
-  const quotes = useQuotesStore();
-
-  switch (cardId) {
-    case "watch":
-      // 自选股：直接从 watchlist store 拿
-      const list = wl.currentStocks;
-      list.forEach((s, i) => {
-        const q = quotes.map[s.code];
-        points.push({
-          x: 150 + Math.random() * 20,
-          y: 200 + i * 40,
-          label: `${s.name} ${q?.price?.toFixed(2) || "—"} ${q?.pct >= 0 ? "+" : ""}${q?.pct?.toFixed(1) || "—"}%`,
-          type: "stock",
-          isCurrent: i === 0,
-        });
-      });
-      // 日志显示具体股票
-      const topStock = list[0];
-      const topQ = topStock ? quotes.map[topStock.code] : null;
-      addLog(`✅ 自选股 5 只 | ${topStock?.name} ${topQ?.price?.toFixed(2)} ${(topQ?.pct ?? 0) >= 0 ? "+" : ""}${topQ?.pct?.toFixed(1)}%`, "info");
-      break;
-
-    case "rank":
-      // 涨幅榜：从 quotes store 按涨幅排序取前 5
-      const allQuotes = Object.values(quotes.map);
-      const sorted = allQuotes.sort((a, b) => (b.pct || 0) - (a.pct || 0)).slice(0, 5);
-      sorted.forEach((q, i) => {
-        points.push({
-          x: 200,
-          y: 220 + i * 40,
-          label: `涨幅榜第${i+1}名 ${q.name} ${q.pct >= 0 ? "+" : ""}${q.pct?.toFixed(1)}%`,
-          type: "stock",
-          isCurrent: i === 0,
-        });
-      });
-      // 日志显示前 3 名
-      const top3 = sorted.slice(0, 3).map(q => `${q.name} ${q.pct >= 0 ? "+" : ""}${q.pct?.toFixed(1)}%`).join(" | ");
-      addLog(`✅ 涨幅榜 TOP3：${top3}`, "info");
-      break;
-
-    case "sector":
-    case "concept":
-      // 板块/概念：mock 几个点供可视化
-      const mockSectors = [
-        { name: "热点板块一", pct: 2.46 },
-        { name: "热点板块二", pct: 2.11 },
-        { name: "热点板块三", pct: 1.80 },
-      ];
-      mockSectors.forEach((s, i) => {
-        points.push({
-          x: 200,
-          y: 220 + i * 40,
-          label: `${s.name} +${s.pct}%`,
-          type: "index",
-          isCurrent: i === 0,
-        });
-      });
-      addLog(`✅ 采集到板块数据 ${mockSectors.length} 个`, "info");
-      break;
-
-    case "market":
-      // 大盘指数
-      const marketItems = [
-        { name: "上证指数", pct: 0.85 },
-        { name: "深证成指", pct: 1.12 },
-        { name: "创业板指", pct: 1.56 },
-      ];
-      marketItems.forEach((m, i) => {
-        points.push({
-          x: 200,
-          y: 220 + i * 45,
-          label: `${m.name} ${m.pct >= 0 ? "+" : ""}${m.pct}%`,
-          type: "index",
-          isCurrent: i === 0,
-        });
-      });
-      addLog(`✅ 采集到大盘指数 ${marketItems.length} 个`, "info");
-      break;
-
-    case "radar":
-      // 涨停雷达：从市场情绪拿
-      const stats = [
-        { label: `涨停 ${marketSentiment.value.limitUp} 家`, x: 200, y: 200 },
-        { label: `跌停 ${marketSentiment.value.limitDown} 家`, x: 350, y: 200 },
-        { label: `最高板 ${marketSentiment.value.maxBoard} 板`, x: 500, y: 200 },
-      ];
-      stats.forEach((s, i) => {
-        points.push({
-          x: s.x,
-          y: s.y,
-          label: s.label,
-          type: "index",
-          isCurrent: i === 0,
-        });
-      });
-      addLog(`✅ 采集到涨停雷达统计 ${stats.length} 个`, "info");
-      break;
-  }
-
-  return points;
-}
+// ===== 各卡片真实采集：见下方 scanWatchlist / scanRank / scanMarket / scanSector / scanConcept / scanRadar =====
+// 说明：旧的 collectFromStore（含 mock 板块/指数 + 硬编码坐标）已整体删除，
+// 它与真实 scan* 函数重复，且会在 300ms 后覆盖真实结果，造成假数据与闪烁。
 
 // ===== 评分信号送「信号确认桥」（半自动/人工确认模式的落桥通道）=====
 // 后端按 code+side+pending 自动去重：同一只票同一方向已有待确认单时返回错误，静默忽略。
@@ -380,7 +324,218 @@ async function pushTicketToBridge(
 }
 
 // ===== 扫描自选股 =====
-function scanWatchlist(
+// 大盘状态：拉上证指数日K判定 up/flat/down，缓存 60s
+let regimeAt = 0;
+let regimeCache: MarketRegime = "flat";
+let regimeInflight: Promise<MarketRegime> | null = null;
+async function getMarketRegime(): Promise<MarketRegime> {
+  const now = Date.now();
+  if (now - regimeAt < 60_000) return regimeCache;
+  if (regimeInflight) return regimeInflight;
+  regimeInflight = (async () => {
+    try {
+      const bars = await fetchKLine("sh000001", 101, 80);
+      if (bars.length >= 25) {
+        let r = regimeOfIndex(bars);
+        // 情绪修正：指数走弱但情绪亢奋（涨停多 / 炸板率低 / 有连板高度）属结构性行情，
+        // 不全面禁买，降为震荡，允许在强势方向按纪律开仓；指数弱且情绪冰点才保持 down。
+        if (r === "down") {
+          await ensureSentiment();
+          const s = marketSentiment.value;
+          if (s.limitUp >= 50 && s.bombRate < 0.3 && s.maxBoard >= 3) r = "flat";
+        }
+        regimeCache = r;
+        regimeAt = now;
+      }
+    } catch {
+      /* 保留旧值 */
+    }
+    return regimeCache;
+  })();
+  const r = await regimeInflight;
+  regimeInflight = null;
+  return r;
+}
+
+// ===== 盘后自动复盘流水线：复盘 → 结果标注 → 参数调权 → 次日作战计划（按交易日幂等）=====
+let autoReviewInflight = false;
+let autoReviewedTradeDate = "";
+
+// 买入信号冷却：同一 code 在冷却期内不重复发买入信号 / 下单 / 送桥（针对被资金拦截或
+// 送桥未成交，避免短时间反复"信号→拦截"空转）。成功买入后另由"已持仓"去重。
+const buySignalAt = new Map<string, number>();
+const BUY_SIGNAL_COOLDOWN_MS = 30 * 60 * 1000;
+function buyInCooldown(code: string): boolean {
+  const last = buySignalAt.get(code);
+  return last !== undefined && Date.now() - last < BUY_SIGNAL_COOLDOWN_MS;
+}
+function markBuySignal(code: string): void {
+  buySignalAt.set(code, Date.now());
+}
+
+async function maybeAutoReview(): Promise<void> {
+  const phase = getTradingPhase();
+  if (phase !== "post-market" && phase !== "closed") return;
+  if (autoReviewInflight) return;
+  autoReviewInflight = true;
+  try {
+    addLog("🌆 盘后自动复盘启动：复盘 → 进化 → 次日计划", "info");
+
+    // 1) 三层复盘（后端同日幂等，返回含真实最近交易日）
+    let reviews: Awaited<ReturnType<typeof runReview>> = [];
+    try {
+      reviews = await runReview(null, false);
+    } catch (e) {
+      addLog(`⚠️ 自动复盘失败：${e}`, "warn");
+    }
+    const tdate = reviews[0]?.trade_date;
+    if (tdate && autoReviewedTradeDate === tdate) {
+      addLog("✅ 该交易日已复盘，跳过", "info");
+      return;
+    }
+    addLog(
+      `📖 复盘 ${reviews.length} 篇：${reviews.slice(0, 4).map((r) => r.title || r.scope).join("、") || "无"}`,
+      "info",
+    );
+
+    // 2) 交易结果标注（结果回灌，false 不重复标注）
+    try {
+      const lab = await evolutionRunLabeling(null, false);
+      addLog(`🧬 结果标注：新增 ${lab.labeled} 条（止损线 ${lab.stopPct}% / 目标线 ${lab.targetPct}%）`, "info");
+    } catch (e) {
+      addLog(`⚠️ 进化标注失败：${e}`, "warn");
+    }
+
+    // 3) 依据统计有界调权并持久化
+    try {
+      const stats = await evolutionStats();
+      const next = evolveFromStats(stats as unknown as EvolutionStatsLike, loadEvolvedParams());
+      saveEvolvedParams(next);
+      addLog(`🧠 参数进化（样本 ${next.samples}）：${next.note}`, "info");
+    } catch (e) {
+      addLog(`⚠️ 参数调权失败：${e}`, "warn");
+    }
+
+    // 4) 次日作战计划
+    try {
+      const plan = await generatePlan(null, null);
+      addLog(`🗺 次日作战计划：${plan.title || "已生成"}（${plan.instructions?.length ?? 0} 条指令）`, "buy");
+    } catch (e) {
+      addLog(`⚠️ 生成作战计划失败：${e}`, "warn");
+    }
+
+    if (tdate) autoReviewedTradeDate = tdate;
+  } finally {
+    autoReviewInflight = false;
+  }
+}
+
+/** 榜单行 → Quote（缺失字段补默认，供统一评分 / 决策使用）。 */
+function quoteFromRank(r: RankRow): Quote {
+  const prev = r.pct ? r.price / (1 + r.pct / 100) : r.price;
+  return {
+    code: r.code, name: r.name, price: r.price, change: r.price - prev, pct: r.pct,
+    open: r.price, high: r.price, low: r.price, prevClose: prev,
+    volume: 0, amount: r.amount, time: Date.now(), source: "rank",
+    turnover: r.turnover, pe: 0, pb: 0, amplitude: 0, volumeRatio: r.volumeRatio,
+    circMv: 0, totalMv: 0,
+  };
+}
+
+/**
+ * 单票统一交易管线：评分 → K线 → decide 三重否决 → 信号冷却 → 凯利仓位 → 下单 / 送桥 → 看回报。
+ * 自选 / 涨幅榜 / 涨停雷达等所有"出个股"的卡共用，保证交易口径一致、可无人值守。
+ */
+async function evaluateAndTrade(
+  code: string,
+  name: string,
+  quote: Quote,
+  category: CardId,
+  regime: MarketRegime,
+  paperStore: ReturnType<typeof usePaperStore>,
+  points: TargetPoint[],
+  rowIndex: number,
+): Promise<"BUY" | "SELL" | "WATCH"> {
+  const held = paperStore.positions.some((p) => p.code === code);
+  const score = evaluateStock(quote, code, name);
+  const daily = await withTimeout(fetchKLine(code, 101, 80), 8000, `${name} K线`);
+  const evolved = loadEvolvedParams();
+  let decision: Decision | null = null;
+  if (daily.length >= 25) {
+    decision = decide({ code, name, daily, quote, marketRegime: regime, held, params: evolved });
+  }
+
+  // 无 decision（数据不足）只允许卖出 / 观望；买入必须过 decide 三重否决。
+  let action: "BUY" | "SELL" | "WATCH" = decision
+    ? decision.action === "BUY" ? "BUY" : decision.action === "SELL" ? "SELL" : "WATCH"
+    : score.recommendation === "SELL" ? "SELL" : "WATCH";
+
+  // 买入信号冷却：同票冷却期内降级观望。
+  if (action === "BUY") {
+    if (buyInCooldown(code)) action = "WATCH";
+    else markBuySignal(code);
+  }
+
+  emitScan({
+    type: "target",
+    cardId: category,
+    code,
+    signal: action === "BUY" ? "BUY" : action === "SELL" ? "SELL" : null,
+  });
+
+  points.push({
+    x: 150,
+    y: 200 + rowIndex * 42,
+    label: `${score.name} ${score.price.toFixed(2)} ${score.pct >= 0 ? "+" : ""}${score.pct.toFixed(1)}%${decision ? ` | ${decision.score}分` : ""}`,
+    type: "stock",
+    isCurrent: rowIndex === 0,
+    action: action === "BUY" ? "buy" : action === "SELL" ? "sell" : "scan",
+  });
+
+  if (action === "BUY") {
+    const basis = decision ? decision.reasons.join("、") : score.signals.join(", ");
+    addLog(
+      `🟢 ${score.name}(${score.code}) 买入信号${decision ? ` [${decision.score}分·${decision.setup}·置信${(decision.confidence * 100).toFixed(0)}%]` : ""}: ${basis}`,
+      "buy",
+    );
+    opportunityFound = true;
+    if (canAutoTrade(category)) {
+      let vol: number | undefined;
+      if (decision) {
+        const conf = Math.max(0, Math.min(1, decision.confidence * evolved.confidenceScale));
+        const plan = planPosition({
+          code,
+          price: score.price,
+          confidence: conf,
+          cash: paperStore.account.cash,
+          totalAssets: paperStore.totalAssets || paperStore.account.initCash,
+          holdings: paperStore.positions.map((p) => ({ code: p.code, value: p.costAmount })),
+          marketRegime: regime,
+        });
+        vol = plan.vol || undefined;
+        addLog(`   ${plan.reason}`, "info");
+      }
+      await executeBuy(score, paperStore, vol);
+    } else {
+      void pushTicketToBridge(score, paperStore);
+      addLog(`   ↪ 未授权【${cardTitle(category)}】自动交易，信号已送确认桥，可人工确认`, "info");
+    }
+  } else if (action === "SELL") {
+    const basis = decision ? decision.reasons.join("、") : score.signals.join(", ");
+    addLog(`🔴 ${score.name}(${score.code}) 卖出信号: ${basis}`, "sell");
+    if (canAutoTrade(category)) {
+      await executeSell(score, paperStore);
+    } else {
+      void pushTicketToBridge(score, paperStore);
+      addLog(`   ↪ 未授权【${cardTitle(category)}】自动交易，信号已送确认桥，可人工确认`, "info");
+    }
+  } else if (decision && decision.risks.length) {
+    addLog(`👁 ${score.name}(${code}) 观望：${decision.risks[0]}`, "info");
+  }
+  return action;
+}
+
+async function scanWatchlist(
   wl: ReturnType<typeof useWatchlistStore>,
   quotes: ReturnType<typeof useQuotesStore>,
   paperStore: ReturnType<typeof usePaperStore>,
@@ -389,55 +544,53 @@ function scanWatchlist(
   if (!list.length) return;
 
   addLog(`📋 扫描自选股（${list.length} 只）...`, "info");
+  const regime = await getMarketRegime();
+  addLog(
+    `🧭 大盘状态：${regime === "up" ? "偏多" : regime === "down" ? "走弱" : "震荡"}`,
+    regime === "down" ? "warn" : "info",
+  );
 
   const scores: StockScore[] = [];
   const newPoints: TargetPoint[] = [];
 
-  list.forEach((s) => {
+  let row = 0;
+  let noQuote = 0;
+  for (const s of list) {
     const q = quotes.map[s.code];
-    if (!q) return;
-
-    const score = evaluateStock(q, s.code, q.name || s.name);
-    emitScan({
-      type: "target",
-      cardId: "watch",
-      code: s.code,
-      signal: score.recommendation === "BUY"
-        ? "BUY"
-        : score.recommendation === "SELL" ? "SELL" : null,
-    });
-    scores.push(score);
-
-    newPoints.push({
-      x: 150,
-      y: 200,
-      label: `${score.name} ${score.price.toFixed(2)} ${score.pct >= 0 ? "+" : ""}${score.pct.toFixed(1)}%`,
-      type: "stock",
-      isCurrent: newPoints.length === 0,
-      action: score.recommendation === "BUY" ? "buy" : score.recommendation === "SELL" ? "sell" : "scan",
-    });
-
-    if (score.recommendation === "BUY") {
-      addLog(`🟢 ${score.name}(${score.code}) 买入信号: ${score.signals.join(", ")}`, "buy");
-      opportunityFound = true;
-      if (canAutoTrade("watch")) {
-        executeBuy(score, paperStore);
-      } else {
-        // 非全自动或该分类未开：信号送确认桥，人工确认后再下单
-        void pushTicketToBridge(score, paperStore);
-      }
-    } else if (score.recommendation === "SELL") {
-      addLog(`🔴 ${score.name}(${score.code}) 卖出信号: ${score.signals.join(", ")}`, "sell");
-      if (canAutoTrade("watch")) {
-        executeSell(score, paperStore);
-      } else {
-        void pushTicketToBridge(score, paperStore);
-      }
+    if (!q) {
+      noQuote++;
+      addLog(`   ⏭ ${s.name || s.code} 暂无实时行情，跳过（可检查行情订阅 / 刷新）`, "info");
+      continue;
     }
-  });
+    const nm = q.name || s.name;
+    try {
+      // 单票隔离 + 硬超时：一只挂起 / 抛错不影响其余票
+      await withTimeout(
+        evaluateAndTrade(s.code, nm, q, "watch", regime, paperStore, newPoints, row),
+        14000,
+        `${nm}研判`,
+      );
+    } catch (e) {
+      addLog(
+        `⚠️ ${nm}(${s.code}) 研判/交易异常，已跳过不影响其他票：${String((e as Error)?.message ?? e)}`,
+        "warn",
+      );
+    }
+    scores.push(evaluateStock(q, s.code, nm)); // 评分供面板 / K线点选复用
+    row++;
+  }
 
   stockScores.value = scores;
   targetPoints.value = newPoints;
+
+  // 整轮无买点：明确数量与原因，避免用户误以为系统不工作
+  if (!newPoints.some((p) => p.action === "buy")) {
+    addLog(
+      `📭 自选 ${list.length} 只本轮均无符合纪律买点（下跌 / 下降趋势 / 数据不足${noQuote ? `，其中 ${noQuote} 只无行情` : ""}）`,
+      "info",
+    );
+    addLog(`   ↪ 想捕捉强势机会：爬虫配置 → 自动交易授权勾选「涨幅榜 / 涨停雷达 / 题材库」`, "info");
+  }
 }
 
 // ===== 市场情绪：从真实涨跌停池读取（60s TTL，启动首轮前先确定，避免首轮全 neutral）=====
@@ -495,87 +648,121 @@ async function ensureSentiment(force = false): Promise<void> {
 }
 
 // ===== 扫描涨停雷达（情绪判断） =====
-async function scanRadar(quotes: ReturnType<typeof useQuotesStore>) {
-  addLog(`🚀 扫描涨停雷达，判断市场情绪...`, "info");
+/** 无数据时显式提示等待（不使用虚构数据），下一轮 scanRound 会自动重试 */
+function showWaiting(what: string): void {
+  targetPoints.value = [
+    { x: 120, y: 260, label: `⏳ 等待${what}行情…`, type: "index", isCurrent: true, action: "scan" },
+  ];
+}
+
+async function scanRadar(_quotes: ReturnType<typeof useQuotesStore>) {
+  addLog(`🚀 扫描涨停雷达，判断情绪并找炸板回封 / 弱转强...`, "info");
 
   await ensureSentiment(true);
   const { limitUp, limitDown, maxBoard, level } = marketSentiment.value;
   const levelText = level === "hot" ? "亢奋" : level === "cold" ? "冷清" : "中性";
   addLog(`📊 市场情绪：${levelText}（涨停${limitUp}家，最高${maxBoard}板）`, "info");
 
-  // 在右侧设置几个情绪点
+  // 涨停池：逐只判定炸板回封 / 弱转强（其余不盲目打板）
+  let zt: ZtStock[] = [];
+  try {
+    const pool = await withTimeout(fetchZtPool(), 8000, "涨停池");
+    zt = pool?.list ?? [];
+  } catch (e) {
+    addLog(`⚠️ 涨停池获取失败：${String((e as Error)?.message ?? e)}`, "warn");
+  }
+
   targetPoints.value = [
     { x: 1100, y: 250, label: `涨停 ${limitUp}家`, type: "index", isCurrent: true },
     { x: 1100, y: 300, label: `跌停 ${limitDown}家`, type: "index" },
     { x: 1100, y: 350, label: `最高 ${maxBoard}板`, type: "index" },
-    { x: 1100, y: 400, label: `情绪 ${levelText}`, type: "index", action: marketSentiment.value.level === "hot" ? "buy" : "scan" },
+    ...zt.slice(0, 6).map((z, i) => ({
+      x: 150, y: 200 + i * 42,
+      label: `${z.name} ${z.boards}板 封单${(z.fund / 1e8).toFixed(1)}亿 炸${z.broken}`,
+      type: "stock" as const, isCurrent: i === 0, action: "scan" as const,
+    })),
   ];
+
+  let n = 0;
+  for (const z of zt) {
+    const sig =
+      boardReseal(z as unknown as BoardStock) ?? boardWeak2Strong(z as unknown as BoardStock);
+    if (sig) { await executeSpecialBuy(sig, "radar"); n++; }
+  }
+  addLog(
+    `🎯 涨停池 ${zt.length} 只：回封 / 弱转强信号 ${n} 个（其余不盲目打板）`,
+    n ? "buy" : "info",
+  );
 }
 
 // ===== 扫描涨幅榜（真实数据）=====
-let rankCache: Quote[] = [];
+let rankCache: RankRow[] = [];
 let rankCacheAt = 0;
 const RANK_CACHE_MS = 15_000; // 榜单缓存 15s
 
-async function scanRank(quotes: ReturnType<typeof useQuotesStore>) {
+async function scanRank(_quotes: ReturnType<typeof useQuotesStore>) {
   addLog(`📈 扫描涨幅榜，找领涨股...`, "info");
 
-  // 缓存命中直接用
+  let rows: RankRow[] | null = null;
   if (Date.now() - rankCacheAt < RANK_CACHE_MS && rankCache.length) {
-    processRankData(rankCache);
-    return;
+    rows = rankCache; // 缓存命中
+  } else {
+    try {
+      rows = await fetchRankBoard("gainers", 1, 20);
+      rankCache = rows;
+      rankCacheAt = Date.now();
+    } catch (e) {
+      addLog(`⚠️ 涨幅榜数据获取失败: ${e}`, "warn");
+      rows = rankCache; // 回退上次缓存
+    }
   }
-
-  try {
-    const gainers = await fetchRankBoard("gainers", 1, 10);
-    rankCache = gainers as unknown as Quote[];
-    rankCacheAt = Date.now();
-    processRankData(rankCache);
-  } catch (e) {
-    addLog(`⚠️ 涨幅榜数据获取失败: ${e}`, "warn");
-    // 失败回退到本地已有行情排序
-    const allQuotes = Object.values(quotes.map);
-    const sorted = allQuotes.sort((a, b) => (b.pct || 0) - (a.pct || 0)).slice(0, 8);
-    processRankData(sorted);
-  }
+  await processRankData(rows);
 }
 
-function processRankData(list: Array<{ code: string; name?: string; price?: number; pct?: number; amount?: number }>) {
-  const top = list.slice(0, 6);
-  const newPoints: TargetPoint[] = top.map((g, i) => {
+async function processRankData(list: RankRow[]) {
+  if (!list || !list.length) {
+    addLog(`⏳ 涨幅榜暂无数据，等待下一轮重试`, "warn");
+    showWaiting("涨幅榜");
+    return;
+  }
+  const regime = await getMarketRegime();
+  const paperStore = usePaperStore();
+  const top = list.slice(0, 8);
+  const newPoints: TargetPoint[] = [];
+  let row = 0;
+  for (const g of top) {
     const pct = g.pct ?? 0;
-    const actionType: "buy" | "sell" | "scan" = pct >= 2 && pct <= 8 ? "buy" : pct > 9.5 ? "sell" : "scan";
-    return {
-      x: 100,
-      y: 230 + i * 42,
-      label: `${i + 1}. ${g.name || g.code} ${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`,
-      type: "stock",
-      isCurrent: i === 0,
-      action: actionType,
-    };
-  });
-
+    if (pct >= 2 && pct <= 8) {
+      // 领涨未涨停：走统一决策 / 交易管线（受涨幅榜授权控制，未授权送确认桥）
+      try {
+        await withTimeout(
+          evaluateAndTrade(g.code, g.name || g.code, quoteFromRank(g), "rank", regime, paperStore, newPoints, row),
+          14000,
+          `${g.name || g.code}研判`,
+        );
+      } catch (e) {
+        addLog(`⚠️ ${g.name || g.code} 研判异常已跳过：${String((e as Error)?.message ?? e)}`, "warn");
+      }
+    } else {
+      // 已涨停(>9.5)不追 / 涨幅过小：仅作扫描点
+      newPoints.push({
+        x: 150,
+        y: 200 + row * 42,
+        label: `${g.name || g.code} ${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`,
+        type: "stock",
+        isCurrent: false,
+        action: pct > 9.5 ? "sell" : "scan",
+      });
+    }
+    row++;
+  }
   targetPoints.value = newPoints;
 
-  // 前 3 名生成信号事件（供蜘蛛可视化）
-  top.slice(0, 6).forEach((g, i) => {
-    const code = g.code;
-    const pct = g.pct ?? 0;
-    const amount = g.amount ?? 0;
-    const signal: SpiderSignalKind = pct >= 2 && pct <= 7 && amount >= 5e7 ? "BUY" : null;
-
-    setTimeout(() => {
-      emitScan({
-        type: "target",
-        cardId: "rank",
-        code,
-        signal,
-      });
-    }, 120 * i); // 错开发射，模拟逐行扫描
-  });
-
-  const top3 = top.slice(0, 3).map(g => `${g.name || g.code} ${(g.pct ?? 0) >= 0 ? "+" : ""}${(g.pct ?? 0).toFixed(1)}%`).join(" | ");
+  const top3 = top.slice(0, 3).map((g) => `${g.name || g.code} ${(g.pct ?? 0) >= 0 ? "+" : ""}${(g.pct ?? 0).toFixed(1)}%`).join(" | ");
   addLog(`✅ 涨幅榜 TOP3：${top3}`, "info");
+  if (!newPoints.some((p) => p.action === "buy")) {
+    addLog(`📭 涨幅榜本轮无符合纪律买点（多已涨停不追 / 趋势不达标）`, "info");
+  }
 }
 
 // ===== 扫描大盘指数 =====
@@ -598,17 +785,17 @@ async function scanMarket() {
     processMarketData(indices);
   } catch (e) {
     addLog(`⚠️ 大盘指数获取失败: ${e}`, "warn");
-    // 兜底：显示占位
-    const fallback = [
-      { code: "sh000001", name: "上证指数", pct: 0, price: 0 },
-      { code: "sz399001", name: "深证成指", pct: 0, price: 0 },
-      { code: "sz399006", name: "创业板指", pct: 0, price: 0 },
-    ];
-    processMarketData(fallback as Quote[]);
+    addLog(`⏳ 不使用虚构数据，下一轮自动重试`, "warn");
+    showWaiting("大盘指数");
   }
 }
 
 function processMarketData(list: Quote[]) {
+  if (!list || !list.length) {
+    addLog(`⏳ 大盘指数暂无数据，等待下一轮重试`, "warn");
+    showWaiting("大盘指数");
+    return;
+  }
   const items = list.slice(0, 5);
   const newPoints: TargetPoint[] = items.map((q, i) => ({
     x: 120,
@@ -653,17 +840,17 @@ async function scanSector() {
     processSectorData(sectors);
   } catch (e) {
     addLog(`⚠️ 行业板块数据获取失败: ${e}`, "warn");
-    const fallback = [
-      { name: "银行", changePct: 2.3 },
-      { name: "白酒", changePct: 1.8 },
-      { name: "新能源", changePct: 1.5 },
-      { name: "半导体", changePct: -0.8 },
-    ];
-    processSectorData(fallback);
+    addLog(`⏳ 不使用虚构数据，下一轮自动重试`, "warn");
+    showWaiting("行业板块");
   }
 }
 
 function processSectorData(list: Array<{ name: string; changePct?: number; pct?: number; leadStock?: string; leader?: string }>) {
+  if (!list || !list.length) {
+    addLog(`⏳ 行业板块暂无数据，等待下一轮重试`, "warn");
+    showWaiting("行业板块");
+    return;
+  }
   const top = list.slice(0, 5);
   const newPoints: TargetPoint[] = top.map((s, i) => {
     const pct = s.changePct ?? s.pct ?? 0;
@@ -713,17 +900,17 @@ async function scanConcept() {
     processConceptData(concepts);
   } catch (e) {
     addLog(`⚠️ 概念板块数据获取失败: ${e}`, "warn");
-    const fallback = [
-      { name: "人工智能", changePct: 3.2 },
-      { name: "华为概念", changePct: 2.8 },
-      { name: "新能源汽车", changePct: 2.1 },
-      { name: "芯片", changePct: 1.5 },
-    ];
-    processConceptData(fallback);
+    addLog(`⏳ 不使用虚构数据，下一轮自动重试`, "warn");
+    showWaiting("概念板块");
   }
 }
 
 function processConceptData(list: Array<{ name: string; changePct?: number; pct?: number }>) {
+  if (!list || !list.length) {
+    addLog(`⏳ 概念板块暂无数据，等待下一轮重试`, "warn");
+    showWaiting("概念板块");
+    return;
+  }
   const top = list.slice(0, 5);
   const newPoints: TargetPoint[] = top.map((c, i) => {
     const pct = c.changePct ?? c.pct ?? 0;
@@ -743,8 +930,138 @@ function processConceptData(list: Array<{ name: string; changePct?: number; pct?
   addLog(`✅ 热门概念：${topNames}`, "info");
 }
 
+// ═══════════════════════ 集合竞价抢筹 ═══════════════════════
+async function scanAuction() {
+  addLog(`🔔 扫描集合竞价，找高开抢筹标的...`, "info");
+  let data;
+  try {
+    data = await withTimeout(fetchAuction(), 8000, "集合竞价");
+  } catch (e) {
+    addLog(`⚠️ 集合竞价获取失败：${String((e as Error)?.message ?? e)}`, "warn");
+    showWaiting("集合竞价");
+    return;
+  }
+  const high = data?.highOpen ?? [];
+  if (!high.length) {
+    addLog(`⏳ 暂无高开抢筹数据（仅 9:15–9:25 有效）`, "info");
+    return;
+  }
+  const regime = await getMarketRegime();
+  targetPoints.value = high.slice(0, 8).map((a, i) => ({
+    x: 150, y: 200 + i * 42,
+    label: `${a.name} 高开${(a.gap ?? a.pct).toFixed(2)}% 竞价${(a.amount / 1e8).toFixed(2)}亿`,
+    type: "stock", isCurrent: i === 0, action: "scan",
+  }));
+  let n = 0;
+  for (const a of high.slice(0, 8)) {
+    const sig = auctionGrab(a as AuctionStock, regime);
+    if (sig) { await executeSpecialBuy(sig, "auction"); n++; }
+  }
+  if (!n) addLog(`📭 竞价无符合纪律抢筹标的（高开幅度 / 竞价额不达标，或大盘走弱）`, "info");
+}
+
+// ═══════════════════════ 题材库 / 板块成分股 ═══════════════════════
+function normalizeThemeStock(x: any): { code: string; name: string; price: number; pct: number } | null {
+  const code = String(x.symbol || x.code || "").replace(/^(sh|sz)/, "");
+  if (!code) return null;
+  return {
+    code,
+    name: x.name || x.stockname || code,
+    price: parseFloat(x.trade || x.price || 0),
+    pct: parseFloat(x.changeratio || x.changepercent || x.pct || 0),
+  };
+}
+
+async function scanThemeStocks(category: "sector" | "concept" | "themelib") {
+  const kind: "industry" | "concept" = category === "sector" ? "industry" : "concept";
+  addLog(`🏭 扫描【${cardTitle(category)}】，定位最强题材并下钻成分股...`, "info");
+  let boards: Array<{ name: string; changePct?: number; pct?: number }> = [];
+  try {
+    boards = await withTimeout(fetchSectors(kind), 8000, "板块列表");
+  } catch (e) {
+    addLog(`⚠️ 板块列表获取失败：${String((e as Error)?.message ?? e)}`, "warn");
+    showWaiting(cardTitle(category));
+    return;
+  }
+  if (!boards.length) { showWaiting(cardTitle(category)); return; }
+
+  const sorted = [...boards].sort(
+    (a, b) => (b.changePct ?? b.pct ?? 0) - (a.changePct ?? a.pct ?? 0),
+  );
+  const topBoards = sorted.slice(0, 5);
+  targetPoints.value = topBoards.map((s, i) => {
+    const pct = s.changePct ?? s.pct ?? 0;
+    return {
+      x: 100, y: 230 + i * 52, label: `${s.name} ${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`,
+      type: "index", isCurrent: i === 0,
+      action: pct >= 2 ? "buy" : pct <= -2 ? "sell" : "scan",
+    };
+  });
+  addLog(
+    `✅ 强势题材：${topBoards.slice(0, 3).map((s) => `${s.name} +${(s.changePct ?? s.pct ?? 0).toFixed(1)}%`).join(" | ")}`,
+    "info",
+  );
+
+  // 下钻最强 2 个板块，在成分股里找领涨未涨停
+  let bought = 0;
+  for (const b of topBoards.slice(0, 2)) {
+    let members: any[] = [];
+    try {
+      members = await withTimeout(fetchSectorStocks(b.name, kind), 8000, `${b.name}成分股`);
+    } catch { continue; }
+    for (const x of members.slice(0, 10)) {
+      const m = normalizeThemeStock(x);
+      if (!m) continue;
+      const sig = themeLeader(m);
+      if (sig) { await executeSpecialBuy(sig, category); bought++; }
+    }
+  }
+  if (!bought) {
+    addLog(`📭 【${cardTitle(category)}】成分股本轮无未涨停领涨买点（多已涨停 / 涨幅不足）`, "info");
+  }
+}
+
+// ═══════════════════════ 短线精灵异动 ═══════════════════════
+const elfBuffer: ElfEventLike[] = [];
+const elfHandled = new Set<string>();
+let elfUnlisten: UnlistenFn | null = null;
+
+async function ensureSpiderFeed(wl: ReturnType<typeof useWatchlistStore>): Promise<void> {
+  if (!elfUnlisten) {
+    elfUnlisten = await listen<SpiderEvent[]>("spider:events", (e) => {
+      (e.payload ?? []).forEach((ev) => {
+        elfBuffer.unshift(ev as unknown as ElfEventLike);
+      });
+      if (elfBuffer.length > 120) elfBuffer.length = 120;
+    });
+  }
+  try {
+    if (!wl.loaded) await wl.load();
+    await startSpider(wl.codes);
+  } catch { /* 后端未就绪则用已有 buffer */ }
+}
+
+async function scanSpider(wl: ReturnType<typeof useWatchlistStore>) {
+  addLog(`⚡ 扫描短线精灵异动...`, "info");
+  await ensureSpiderFeed(wl);
+  const recent = elfBuffer.slice(0, 30);
+  targetPoints.value = recent.slice(0, 8).map((e, i) => ({
+    x: 150, y: 200 + i * 42,
+    label: `${e.name} ${e.kind} ${e.pct >= 0 ? "+" : ""}${e.pct.toFixed(2)}%`,
+    type: "stock", isCurrent: i === 0, action: "scan",
+  }));
+  let n = 0;
+  for (const e of recent) {
+    const key = `${e.code}:${e.kind}:${e.time}`;
+    if (elfHandled.has(key)) continue;
+    const sig = elfSurge(e);
+    if (sig) { elfHandled.add(key); await executeSpecialBuy(sig, "spider"); n++; }
+  }
+  if (!n) addLog(`📭 短线精灵近期无符合纪律强异动（或已处理）`, "info");
+}
+
 // ===== 执行交易（带完整风控检查）=====
-async function executeBuy(score: StockScore, paperStore: ReturnType<typeof usePaperStore>) {
+async function executeBuy(score: StockScore, paperStore: ReturnType<typeof usePaperStore>, volOverride?: number) {
   try {
     const priceMap: Record<string, number> = {};
     paperStore.positions.forEach(p => {
@@ -777,7 +1094,9 @@ async function executeBuy(score: StockScore, paperStore: ReturnType<typeof usePa
       return;
     }
 
-    const vol = dec.suggestedVol ?? 100;
+    const riskVol = dec.suggestedVol ?? 100;
+    // 凯利仓位（已含大盘/单票上限）再与风控资金/总仓上限取小，双重兜底
+    const vol = volOverride && volOverride > 0 ? Math.min(volOverride, riskVol) : riskVol;
     await paperStore.buy(score.code, score.name, score.price, vol);
     addLog(`✅ 买入 ${score.name}(${score.code}) ${vol}股 @ ${score.price.toFixed(2)} (${score.signals.slice(0, 2).join("、")})`, "buy");
   } catch (e) {
@@ -821,6 +1140,71 @@ async function executeSell(score: StockScore, paperStore: ReturnType<typeof useP
   }
 }
 
+let lastPhase: TradingPhase | null = null;
+
+// ===== 特殊策略信号 → 统一交易执行（打板 / 竞价 / 精灵 / 题材，复用冷却·凯利·风控·成交）=====
+const STRATEGY_LABEL: Record<SpecialStrategy, string> = {
+  "board-reseal": "炸板回封打板",
+  "board-weak2strong": "弱转强打板",
+  "auction-grab": "集合竞价抢筹",
+  "elf-surge": "短线精灵异动",
+  "theme-leader": "题材领涨",
+};
+
+function scoreFromSpecial(sig: SpecialSignal): StockScore {
+  return {
+    code: sig.code,
+    name: sig.name,
+    price: sig.price,
+    pct: sig.pct,
+    score: Math.round(sig.confidence * 100),
+    maxScore: 100,
+    signals: sig.reasons,
+    risks: [],
+    recommendation: "BUY",
+    breakdown: { trend: 0, volume: 0, volatility: 0, valuation: 0, sentiment: 0, riskPenalty: 0 },
+  };
+}
+
+async function executeSpecialBuy(
+  sig: SpecialSignal,
+  category: CardId,
+  paperStore?: ReturnType<typeof usePaperStore>,
+): Promise<void> {
+  if (buyInCooldown(sig.code)) {
+    addLog(`⏳ ${sig.name} 买入信号冷却中，本轮跳过`, "info");
+    return;
+  }
+  markBuySignal(sig.code);
+  const store = paperStore ?? usePaperStore();
+  const score = scoreFromSpecial(sig);
+  addLog(
+    `🟢 ${sig.name}(${sig.code}) ${STRATEGY_LABEL[sig.strategy]}信号 [置信${(sig.confidence * 100).toFixed(0)}%]：${sig.reasons.join("、")}`,
+    "buy",
+  );
+  opportunityFound = true;
+
+  if (canAutoTrade(category)) {
+    const regime = await getMarketRegime();
+    const conf = Math.max(0, Math.min(1, sig.confidence * loadEvolvedParams().confidenceScale));
+    const plan = planPosition({
+      code: sig.code,
+      price: sig.price,
+      confidence: conf,
+      cash: store.account.cash,
+      totalAssets: store.totalAssets || store.account.initCash,
+      holdings: store.positions.map((p) => ({ code: p.code, value: p.costAmount })),
+      marketRegime: regime,
+    });
+    addLog(`   ${plan.reason}`, "info");
+    await executeBuy(score, store, plan.vol || undefined);
+  } else {
+    void pushTicketToBridge(score, store);
+    addLog(`   ↪ 未授权【${cardTitle(category)}】自动交易，信号已送确认桥，可人工确认`, "info");
+  }
+}
+
+
 // ===== 扫描一轮（智能决策，不是机械循环） =====
 function scanRound(
   wl: ReturnType<typeof useWatchlistStore>,
@@ -828,6 +1212,16 @@ function scanRound(
   paperStore: ReturnType<typeof usePaperStore>,
   onSwitchCard: (cardId: CardId) => boolean,
 ) {
+  // 时段切换：日志提示当前阶段与动作（交易大脑的时间节奏）
+  const phase = getTradingPhase();
+  if (phase !== lastPhase) {
+    lastPhase = phase;
+    addLog(`🕐 进入【${phaseLabel(phase)}】：${phaseAction(phase)}`, "info");
+  }
+
+  // 盘后 / 休市：自动复盘流水线（按交易日幂等，异步不阻断巡回）
+  void maybeAutoReview();
+
   // 智能决定下一个扫哪个卡片
   const priority = getCardPriority();
   let cardId: CardId;
@@ -836,7 +1230,7 @@ function scanRound(
   if (opportunityFound && deepAnalysisCount < maxDeepAnalysis) {
     cardId = currentCard.value;
     deepAnalysisCount++;
-    addLog(`🔍 发现好机会，继续深入分析【${cardNames[cardId]}】（第 ${deepAnalysisCount} 次）...`, "info");
+    addLog(`🔍 发现好机会，继续深入分析【${cardTitle(cardId)}】（第 ${deepAnalysisCount} 次）...`, "info");
     // 深度分析留在当前卡：不回调切卡，按已切换处理并补发 card 事件驱动蜘蛛重走本轮
     emitScan({ type: "card", cardId });
   } else {
@@ -850,18 +1244,12 @@ function scanRound(
     // 切换卡片（回调返回卡片是否真的处于打开状态）
     const switched = onSwitchCard(cardId);
 
-    // 直接从 Store 采集数据（不依赖 DOM）；无论切换成功与否都保留：
-    // SpiderBot.vue mini-stage 消费 targetPoints
-    setTimeout(() => {
-      const points = collectFromStore(cardId);
-      if (points.length > 0) {
-        targetPoints.value = points;
-      }
-    }, 300);
+    // targetPoints 一律由下方各 scan* 真实函数产出；
+    // 已移除旧的 collectFromStore + 300ms 二次覆盖（那是面板闪烁 / mock 假数据的根源）。
 
     if (switched) {
       currentCard.value = cardId; // 确认打开后才更新「📍 当前」，避免顶栏为关闭卡背锅
-      addLog(`🔄 智能切换到【${cardNames[cardId]}】`, "info");
+      addLog(`🔄 智能切换到【${cardTitle(cardId)}】`, "info");
       emitScan({ type: "card", cardId });
     } else {
       // 卡片未打开：沿优先级顺序向后找下一张已打开的卡片，最多找一整轮
@@ -876,7 +1264,7 @@ function scanRound(
           cardId = tryCard;
           currentStep.value = currentStep.value - (currentStep.value % priority.length) + tryIdx;
           currentCard.value = cardId;
-          addLog(`🔄 智能切换到【${cardNames[cardId]}】`, "info");
+          addLog(`🔄 智能切换到【${cardTitle(cardId)}】`, "info");
           emitScan({ type: "card", cardId });
           found = true;
           break;
@@ -894,22 +1282,31 @@ function scanRound(
   // 根据卡片类型扫描
   switch (cardId) {
     case "watch":
-      scanWatchlist(wl, quotes, paperStore);
+      safeAsync(scanWatchlist(wl, quotes, paperStore), "自选扫描");
       break;
     case "rank":
-      void scanRank(quotes);
+      safeAsync(scanRank(quotes), "榜单扫描");
       break;
     case "sector":
-      void scanSector();
+      safeAsync(scanThemeStocks("sector"), "板块成分股");
       break;
     case "concept":
-      void scanConcept();
+      safeAsync(scanThemeStocks("concept"), "概念成分股");
+      break;
+    case "themelib":
+      safeAsync(scanThemeStocks("themelib"), "题材库成分股");
+      break;
+    case "auction":
+      safeAsync(scanAuction(), "集合竞价");
+      break;
+    case "spider":
+      safeAsync(scanSpider(wl), "短线精灵");
       break;
     case "market":
-      void scanMarket();
+      safeAsync(scanMarket(), "大盘扫描");
       break;
     case "radar":
-      void scanRadar(quotes);
+      safeAsync(scanRadar(quotes), "雷达扫描");
       break;
     case "chart":
       addLog(`📈 分析 K 线图...`, "info");
@@ -923,9 +1320,29 @@ function scanRound(
     case "screener":
       addLog(`🔍 条件选股扫描...`, "info");
       break;
+    default:
+      // 无专属深度扫描器的卡：蜘蛛已按 card 事件逐行扫描，这里记录真实浏览，不产出假研判
+      addLog(`👁 浏览【${cardTitle(cardId)}】，逐行扫描中...`, "info");
+      break;
   }
 
   currentStep.value++;
+}
+
+/** 异步扫描统一兜底：捕获 reject 并写日志，避免静默中断、无任何记录。 */
+function safeAsync(p: Promise<unknown>, tag: string): void {
+  p.catch((e) => {
+    addLog(`⚠️ ${tag}异常（已兜底，看门狗将继续推进）：${String((e as Error)?.message ?? e)}`, "warn");
+  });
+}
+
+/** 给任意 Promise 加硬超时：IPC / 请求挂起时到时 reject，绝不永久等待。 */
+function withTimeout<T>(p: Promise<T>, ms: number, tag: string): Promise<T> {
+  let t = 0;
+  const timer = new Promise<never>((_, reject) => {
+    t = window.setTimeout(() => reject(new Error(`${tag}超时(${Math.round(ms / 1000)}s)`)), ms);
+  });
+  return Promise.race([p, timer]).finally(() => clearTimeout(t));
 }
 
 // ===== 看门狗：30s 未收到蜘蛛完成推进时兜底进入下一轮 =====
@@ -942,11 +1359,15 @@ function armWatchdog(): void {
  */
 export function advanceRound(): void {
   if (!running.value) return;
-  armWatchdog();
-  const wl = useWatchlistStore();
-  const quotes = useQuotesStore();
-  const paperStore = usePaperStore();
-  scanRound(wl, quotes, paperStore, (id) => (switchRef ? switchRef(id) : true));
+  armWatchdog();   // 先装看门狗：即使本轮同步抛错，30s 后仍能自愈推进
+  try {
+    const wl = useWatchlistStore();
+    const quotes = useQuotesStore();
+    const paperStore = usePaperStore();
+    scanRound(wl, quotes, paperStore, (id) => (switchRef ? switchRef(id) : true));
+  } catch (e) {
+    addLog(`⚠️ 本轮同步异常（已兜底，看门狗将重试）：${String((e as Error)?.message ?? e)}`, "warn");
+  }
 }
 
 /** 蜘蛛仍在活动时的心跳：重置看门狗，避免大视口下一轮正常行走被 30s 兜底误切 */
@@ -974,8 +1395,12 @@ async function start(onSwitchCard: (cardId: CardId) => boolean) {
   await ensureSentiment();
   if (!running.value) return; // await 期间已被停止
 
-  // 立即执行一轮
-  scanRound(wl, quotes, paperStore, (id) => (switchRef ? switchRef(id) : true));
+  // 立即执行一轮（同步异常兜底，绝不静默退出）
+  try {
+    scanRound(wl, quotes, paperStore, (id) => (switchRef ? switchRef(id) : true));
+  } catch (e) {
+    addLog(`⚠️ 首轮异常（已兜底）：${String((e as Error)?.message ?? e)}`, "warn");
+  }
 
   // 后续轮次由蜘蛛完成事件 advanceRound() 推进；看门狗仅兜底
   armWatchdog();
@@ -989,7 +1414,7 @@ function stop() {
   addLog("爬虫机器人已停止", "info");
 }
 
-function addLog(text: string, type: LogEntry["type"] = "info") {
+export function addLog(text: string, type: LogEntry["type"] = "info") {
   const now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
   logs.value.unshift({ time: now, text, type });
   if (logs.value.length > 40) logs.value.pop();

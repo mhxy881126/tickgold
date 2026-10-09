@@ -97,7 +97,9 @@ function buildStructure(
 
   const limitUp = ztList.length;
   const brokenInZt = ztList.filter((s: any) => s.broken > 0).length;
-  const broken = zbList.length + brokenInZt;
+  // 炸板数取炸板池 total（list 可能只加载了部分），无 total 才退回 list.length
+  const zbTotal = (zbPool as any).total ?? zbList.length;
+  const broken = zbTotal + brokenInZt;
   const sealRate = limitUp + broken > 0 ? (limitUp / (limitUp + broken)) * 100 : 0;
 
   // 主力资金：板块净流入总和（亿）
@@ -130,8 +132,8 @@ function buildStructure(
 
 // ===== 情绪数据 =====
 function buildEmotion(ztPool: ZtPool, zbPool: ZtPool): ReviewEmotion {
-  const ztCount = (ztPool as any).list?.length || 0;
-  const zbCount = (zbPool as any).list?.length || 0;
+  const ztCount = (ztPool as any).total ?? (ztPool as any).list?.length ?? 0;
+  const zbCount = (zbPool as any).total ?? (zbPool as any).list?.length ?? 0;
   const total = ztCount + zbCount;
 
   // 情绪计算（参考 limitup.rs 算法简化版）

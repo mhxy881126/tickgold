@@ -4,6 +4,7 @@ import { useWatchlistStore } from "../stores/watchlist";
 import { useQuotesStore } from "../stores/quotes";
 import { useSpiderBotEngine } from "../composables/useSpiderBotEngine";
 import { autoexecGetConfig, autoexecStart, autoexecStop } from "../ai/api";
+import { startSelectorCheck, type SelectorIssue } from "./spider/selectorCheck";
 
 const emit = defineEmits<{
   switchCard: [cardId: string];
@@ -32,6 +33,11 @@ async function loadAiCfg() {
 
 // ===== 全屏爬行模式 =====
 const fullscreenRunning = ref(false);
+
+// ===== 选择器自检角标（仅开发模式；DOM 改版导致采不到行时告警）=====
+const selectorIssues = ref<SelectorIssue[]>([]);
+let stopSelectorCheck: (() => void) | null = null;
+const selectorIssueCount = computed(() => selectorIssues.value.length);
 
 function toggleFullscreen() {
   if (fullscreenRunning.value) {
@@ -248,6 +254,9 @@ const dataSources = computed(() => {
     { key: "market", name: "大盘", icon: "📊", enabled: src.market },
     { key: "dragon", name: "龙虎", icon: "🐉", enabled: src.dragon },
     { key: "screener", name: "选股", icon: "🔍", enabled: src.screener },
+    { key: "auction", name: "竞价", icon: "🔔", enabled: src.auction },
+    { key: "elf", name: "精灵", icon: "⚡", enabled: src.elf },
+    { key: "themelib", name: "题材库", icon: "📚", enabled: src.themelib },
   ];
 });
 
@@ -394,6 +403,27 @@ function clearLogs() {
   showLogMenu.value = false;
 }
 
+// 复制完整日志：按时间正序（旧→新）拼成纯文本写入剪贴板
+const copyTip = ref("");
+async function writeClipboard(text: string) {
+  try { await navigator.clipboard.writeText(text); return; } catch { /* 走降级 */ }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); } finally { document.body.removeChild(ta); }
+}
+async function copyLogs() {
+  const all = [...engine.logs.value].reverse();
+  const text = all.map((l) => `[${l.time}] ${l.text}`).join("\r\n");
+  await writeClipboard(text);
+  showLogMenu.value = false;
+  copyTip.value = `✓ 已复制 ${all.length} 条完整日志`;
+  setTimeout(() => { copyTip.value = ""; }, 2500);
+}
+
 function toggleLogExpand(id: number) {
   const entry = logEntries.value.find(l => l.id === id);
   if (entry) {
@@ -488,6 +518,11 @@ onMounted(() => {
   window.addEventListener("spider-overlay-stopped", onFullscreenStopped);
   window.addEventListener("spider-overlay-started", onFullscreenStarted);
 
+  // 启动选择器自检（开发模式才真正运行，生产为空操作）
+  stopSelectorCheck = startSelectorCheck((iss) => {
+    selectorIssues.value = iss;
+  });
+
   // 初始欢迎日志（仅在引擎日志为空时添加）
   if (engine.logs.value.length === 0) {
     engine.logs.value.push({
@@ -500,6 +535,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopMockScanLoop();
+  if (stopSelectorCheck) { stopSelectorCheck(); stopSelectorCheck = null; }
   window.removeEventListener("spider-overlay-stopped", onFullscreenStopped);
   window.removeEventListener("spider-overlay-started", onFullscreenStarted);
 });
@@ -509,6 +545,20 @@ onUnmounted(() => { stopMockScanLoop(); });
 
 <template>
   <div class="spider-bot">
+    <!-- ===== 选择器自检角标（仅开发模式、有失效项时出现；hover 看详情）===== -->
+    <div v-if="selectorIssueCount" class="selector-warn-badge">
+      <span class="swb-icon">⚠️</span>
+      <span class="swb-count">{{ selectorIssueCount }}</span>
+      <div class="swb-panel">
+        <div class="swb-panel-title">🕷 选择器自检告警（开发模式）</div>
+        <div v-for="(it, i) in selectorIssues" :key="i" class="swb-item">
+          <span class="swb-card">{{ it.cardId }}</span>
+          <span class="swb-msg">{{ it.message }}</span>
+        </div>
+        <div class="swb-hint">请修正 spider/anchors.ts 中对应卡片的选择器</div>
+      </div>
+    </div>
+
     <!-- ========== 顶部控制栏 ========== -->
     <div class="sb-header">
       <div class="sb-title-row">
@@ -822,7 +872,9 @@ onUnmounted(() => { stopMockScanLoop(); });
         <div class="sb-log-tools">
           <span v-if="!autoScroll" class="sb-log-paused">⏸ 已暂停</span>
           <button class="sb-log-more" @click="showLogMenu = !showLogMenu">⋯</button>
+          <span v-if="copyTip" class="sb-log-copytip">{{ copyTip }}</span>
           <div v-if="showLogMenu" class="sb-log-menu">
+            <button @click="copyLogs">📋 复制全部日志</button>
             <button @click="clearLogs">🗑️ 清空日志</button>
           </div>
         </div>
@@ -905,6 +957,7 @@ onUnmounted(() => { stopMockScanLoop(); });
 
 <style scoped>
 .spider-bot {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -1559,6 +1612,12 @@ onUnmounted(() => { stopMockScanLoop(); });
   color: #ffb13d;
 }
 
+.sb-log-copytip {
+  font-size: 10px;
+  color: #4ade80;
+  white-space: nowrap;
+}
+
 .sb-log-more {
   width: 20px;
   height: 20px;
@@ -1932,4 +1991,75 @@ onUnmounted(() => { stopMockScanLoop(); });
   background: rgba(212, 175, 55, 0.2);
   border-radius: 1px;
 }
+/* ===== 选择器自检角标 ===== */
+.selector-warn-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffd6d6;
+  background: rgba(60, 12, 16, 0.82);
+  border: 1px solid rgba(255, 86, 86, 0.6);
+  box-shadow: 0 0 12px rgba(255, 60, 60, 0.35);
+  cursor: pointer;
+}
+.selector-warn-badge .swb-icon { font-size: 13px; }
+.selector-warn-badge .swb-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: #ff4d4d;
+  color: #fff;
+  font-size: 11px;
+}
+.selector-warn-badge .swb-panel {
+  display: none;
+  position: absolute;
+  top: 30px;
+  right: 0;
+  width: 320px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(14, 17, 24, 0.97);
+  border: 1px solid rgba(255, 86, 86, 0.45);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  text-align: left;
+  font-weight: 500;
+  cursor: default;
+}
+.selector-warn-badge:hover .swb-panel,
+.selector-warn-badge:focus-within .swb-panel { display: block; }
+.swb-panel-title { font-size: 12px; font-weight: 700; color: #ff9a9a; margin-bottom: 8px; }
+.swb-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+}
+.swb-card {
+  align-self: flex-start;
+  padding: 1px 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffd6d6;
+  background: rgba(255, 86, 86, 0.16);
+  border: 1px solid rgba(255, 86, 86, 0.4);
+}
+.swb-msg { font-size: 11px; line-height: 1.5; color: rgba(255, 255, 255, 0.78); word-break: break-all; }
+.swb-hint { margin-top: 8px; font-size: 11px; color: rgba(255, 255, 255, 0.5); }
 </style>

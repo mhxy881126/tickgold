@@ -9,7 +9,7 @@ import {
   autoexecSetConfig,
   type AutoExecConfigInfo,
 } from "../ai/api";
-import type { CardId } from "../lib/cards";
+import { CARD_META, type CardId } from "../lib/cards";
 import ProceduralSpider from "./spider/ProceduralSpider.vue";
 
 const engine = useSpiderBotEngine();
@@ -58,21 +58,34 @@ watch(() => engine.visible.value, (v) => {
 // 锚点采集采不到行也没关系，会自动走漫游兜底。
 function switchCard(cardId: CardId): boolean {
   try {
-    const el = document.querySelector(`[data-card-id="${cardId}"]`);
-    if (!el) return false;
-    // 尝试聚焦（workbench 可用的话），失败也不影响爬行
+    let el = document.querySelector(`[data-card-id="${cardId}"]`);
+    if (!el) {
+      // 卡片未打开：蜘蛛像真人点导航/加卡一样，主动通过真实工作台打开
+      try {
+        bench.open(cardId);
+      } catch (e) {
+        console.warn("主动打开卡片失败:", e);
+        return false;
+      }
+    }
+    // 聚焦 / 设为主卡（工作台可用时）；失败不影响，beginCut 会等待渲染
     try {
-      if (bench && bench.isOpen?.(cardId)) {
-        if (!bench.freeMode.value) {
-          bench.setGlassActive(cardId);
-        } else {
-          bench.focus(cardId);
-          bench.focusId.value = cardId;
-        }
+      if (bench.freeMode.value) {
+        bench.focus(cardId);
+        bench.focusId.value = cardId;
+      } else {
+        bench.setGlassActive(cardId);
       }
     } catch {
-      // 静默失败：即使不能切换卡片，只要 DOM 存在就能爬
+      // 静默：卡片已请求打开，蜘蛛侧有重试兜底
     }
+    // 若卡片在滚动区外，稍后滚动到可视区
+    window.setTimeout(() => {
+      const e2 = document.querySelector(`[data-card-id="${cardId}"]`) as HTMLElement | null;
+      if (e2 && typeof e2.scrollIntoView === "function") {
+        try { e2.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch { /* noop */ }
+      }
+    }, 80);
     return true;
   } catch (e) {
     console.warn("切换卡片失败:", e);
@@ -160,22 +173,10 @@ function addEngineLog(text: string) {
   if (engine.logs.value.length > 40) engine.logs.value.pop();
 }
 
-// 当前卡片名称
-const currentCardName = computed(() => {
-  const names: Record<string, string> = {
-    watch: "自选股",
-    rank: "涨幅榜",
-    sector: "行业板块",
-    concept: "概念题材",
-    radar: "涨停雷达",
-    chart: "K线图",
-    trade: "交易面板",
-    market: "大盘指数",
-    dragon: "龙虎榜",
-    screener: "条件选股",
-  };
-  return names[engine.currentCard.value] || "未知";
-});
+// 当前卡片名称（CARD_META 覆盖全部卡片，不再对复盘 / 计划 / 进化等卡显示"未知"）
+const currentCardName = computed(
+  () => CARD_META[engine.currentCard.value]?.title ?? engine.currentCard.value,
+);
 
 // 设置面板
 const showSettings = ref(false);
@@ -362,6 +363,18 @@ defineExpose({ start, stop, running: engine.running });
           <label class="sb-setting-item">
             <input type="checkbox" v-model="engine.autoTradeSources.value.radar" />
             <span>涨停雷达</span>
+          </label>
+          <label class="sb-setting-item">
+            <input type="checkbox" v-model="engine.autoTradeSources.value.auction" />
+            <span>集合竞价</span>
+          </label>
+          <label class="sb-setting-item">
+            <input type="checkbox" v-model="engine.autoTradeSources.value.elf" />
+            <span>短线精灵</span>
+          </label>
+          <label class="sb-setting-item">
+            <input type="checkbox" v-model="engine.autoTradeSources.value.themelib" />
+            <span>题材库</span>
           </label>
         </div>
       </div>
