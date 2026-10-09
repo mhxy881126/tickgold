@@ -3,7 +3,7 @@
   "private": true,
   "version": "2.21.0",
   "type": "module",
-  "description": "TickGold - 濞戞挻鎸风粭鐔哥閵堝棙顫滈柤鏉挎嚀濞夋洟鐛崘鎻掗叡 A 闁艰绱曞ú鎾儎濡偐鐭掔紒?(Tauri 2 + Vue 3)",
+  "description": "TickGold - 专业交易者跨平台 A 股盯盘终端 (Tauri 2 + Vue 3)",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
