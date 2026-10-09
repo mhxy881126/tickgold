@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>AI爬虫系统 · 矩阵模式</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    color: #00ff41;
+    font-family: 'Courier New', Consolas, monospace;
+    overflow: hidden;
+    height: 100vh;
+    position: relative;
+  }
+
+  /* ===== 矩阵代码雨背景 ===== */
+  #matrix-canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    opacity: 0.15;
+    z-index: 0;
+  }
+
+  /* ===== 扫描线效果 ===== */
+  .scanlines {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 255, 65, 0.03) 2px,
+      rgba(0, 255, 65, 0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  /* ===== 顶部状态栏 ===== */
+  .top-bar {
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 10px 24px;
+    background: rgba(0, 20, 5, 0.85);
+    border: 1px solid #00ff41;
+    border-radius: 4px;
+    z-index: 50;
+    box-shadow:
+      0 0 20px rgba(0, 255, 65, 0.3),
+      inset 0 0 20px rgba(0, 255, 65, 0.05);
+    backdrop-filter: blur(4px);
+  }
+
+  .status-blink {
+    width: 10px; height: 10px;
+    background: #00ff41;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #00ff41;
+    animation: blink 1s infinite;
+  }
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .title {
+    font-size: 16px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px #00ff41;
+  }
+
+  .info-group {
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+  }
+
+  .info-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .info-label { opacity: 0.6; }
+  .info-value {
+    color: #00ff41;
+    font-weight: bold;
+    text-shadow: 0 0 8px rgba(0, 255, 65, 0.5);
+  }
+
+  .divider {
+    width: 1px; height: 24px;
+    background: #00ff41;
+    opacity: 0.4;
+  }
+
+  /* ===== 模式按钮组 ===== */
+  .mode-group {
+    display: flex;
+    gap: 8px;
+  }
+  .mode-btn {
+    padding: 6px 14px;
+    border: 1px solid rgba(0, 255, 65, 0.4);
+    background: transparent;
+    color: rgba(0, 255, 65, 0.6);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+  }
+  .mode-btn.active {
+    border-color: #00ff41;
+    background: rgba(0, 255, 65, 0.15);
+    color: #00ff41;
+    box-shadow: 0 0 10px rgba(0, 255, 65, 0.3);
+    text-shadow: 0 0 5px #00ff41;
+  }
+  .mode-btn .state {
+    font-size: 10px;
+    padding: 1px 5px;
+    border: 1px solid currentColor;
+    margin-left: 6px;
+    opacity: 0.8;
+  }
+
+  .stop-btn {
+    padding: 6px 18px;
+    border: 1px solid #ff3333;
+    background: rgba(255, 51, 51, 0.1);
+    color: #ff3333;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 2px;
+    text-shadow: 0 0 5px rgba(255, 51, 51, 0.5);
+    box-shadow: 0 0 10px rgba(255, 51, 51, 0.2);
+    letter-spacing: 2px;
+  }
+
+  /* ===== 四角装饰框 ===== */
+  .corner {
+    position: fixed;
+    width: 40px; height: 40px;
+    border-color: #00ff41;
+    border-style: solid;
+    border-width: 0;
+    opacity: 0.4;
+    z-index: 10;
+  }
+  .corner.tl { top: 60px; left: 20px; border-top-width: 2px; border-left-width: 2px; }
+  .corner.tr { top: 60px; right: 20px; border-top-width: 2px; border-right-width: 2px; }
+  .corner.bl { bottom: 20px; left: 20px; border-bottom-width: 2px; border-left-width: 2px; }
+  .corner.br { bottom: 20px; right: 20px; border-bottom-width: 2px; border-right-width: 2px; }
+
+  /* ===== 左侧终端日志 ===== */
+  .terminal-panel {
+    position: fixed;
+    top: 110px;
+    left: 20px;
+    width: 380px;
+    height: calc(100vh - 200px);
+    background: rgba(0, 10, 2, 0.85);
+    border: 1px solid rgba(0, 255, 65, 0.3);
+    border-radius: 4px;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+  }
+  .terminal-header {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(0, 255, 65, 0.2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    letter-spacing: 1px;
+  }
+  .terminal-dots { display: flex; gap: 5px; }
+  .terminal-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .terminal-dot.r { background: #ff5f56; }
+  .terminal-dot.y { background: #ffbd2e; }
+  .terminal-dot.g { background: #27c93f; }
+  .terminal-title { opacity: 0.6; }
+  .terminal-count {
+    margin-left: auto;
+    font-size: 11px;
+    opacity: 0.5;
+  }
+
+  .terminal-body {
+    flex: 1;
+    padding: 10px 12px;
+    overflow-y: auto;
+    font-size: 11px;
+    line-height: 1.8;
+  }
+  .log-line {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 2px;
+  }
+  .log-time {
+    color: rgba(0, 255, 65, 0.4);
+    flex-shrink: 0;
+    font-size: 10px;
+  }
+  .log-tag {
+    flex-shrink: 0;
+    font-size: 9px;
+    padding: 0 4px;
+    border: 1px solid currentColor;
+    opacity: 0.7;
+    height: 14px;
+    line-height: 12px;
+  }
+  .log-tag.scan { color: #00ff41; }
+  .log-tag.signal { color: #ffaa00; border-color: #ffaa00; }
+  .log-tag.trade { color: #ff6b6b; border-color: #ff6b6b; }
+  .log-tag.risk { color: #00d4ff; border-color: #00d4ff; }
+  .log-text { color: rgba(0, 255, 65, 0.8); }
+  .log-text.highlight { color: #00ff41; text-shadow: 0 0 5px rgba(0, 255, 65, 0.5); }
+
+  /* ===== 右侧数据面板 ===== */
+  .data-panel {
+    position: fixed;
+    top: 110px;
+    right: 20px;
+    width: 320px;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .data-card {
+    background: rgba(0, 10, 2, 0.85);
+    border: 1px solid rgba(0, 255, 65, 0.3);
+    border-radius: 4px;
+    padding: 12px 14px;
+  }
+  .card-title {
+    font-size: 11px;
+    letter-spacing: 2px;
+    opacity: 0.6;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(0, 255, 65, 0.15);
+  }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .stat-item {
+    text-align: center;
+  }
+  .stat-label {
+    font-size: 10px;
+    opacity: 0.5;
+    margin-bottom: 4px;
+    letter-spacing: 1px;
+  }
+  .stat-value {
+    font-size: 18px;
+    font-weight: bold;
+    text-shadow: 0 0 8px rgba(0, 255, 65, 0.5);
+  }
+  .stat-value.up { color: #ff6b6b; text-shadow: 0 0 8px rgba(255, 107, 107, 0.5); }
+  .stat-value.down { color: #00ff41; }
+
+  /* ===== 市场情绪进度条 ===== */
+  .sentiment-bar {
+    height: 8px;
+    background: rgba(0, 255, 65, 0.1);
+    border: 1px solid rgba(0, 255, 65, 0.2);
+    position: relative;
+    margin: 8px 0;
+    overflow: hidden;
+  }
+  .sentiment-fill {
+    height: 100%;
+    width: 68%;
+    background: linear-gradient(90deg, #00ff41, #ffaa00, #ff6b6b);
+    box-shadow: 0 0 10px rgba(255, 170, 0, 0.5);
+  }
+  .sentiment-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    opacity: 0.6;
+  }
+
+  /* ===== 底部股票滚动条 ===== */
+  .ticker-tape {
+    position: fixed;
+    bottom: 0;
+    left: 0; right: 0;
+    height: 36px;
+    background: rgba(0, 10, 2, 0.9);
+    border-top: 1px solid rgba(0, 255, 65, 0.2);
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    z-index: 30;
+  }
+  .ticker-content {
+    display: flex;
+    gap: 40px;
+    animation: tickerScroll 30s linear infinite;
+    white-space: nowrap;
+    padding-left: 100%;
+  }
+  @keyframes tickerScroll {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-100%); }
+  }
+  .ticker-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .ticker-code { font-weight: bold; }
+  .ticker-price { opacity: 0.8; }
+  .ticker-pct.up { color: #ff6b6b; }
+  .ticker-pct.down { color: #00ff41; }
+
+  /* ===== 中央蜘蛛可视化 ===== */
+  .center-stage {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 400px;
+    height: 400px;
+    z-index: 20;
+  }
+  .radar-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    border: 1px solid rgba(0, 255, 65, 0.2);
+    border-radius: 50%;
+  }
+  .radar-ring.r1 { width: 100px; height: 100px; }
+  .radar-ring.r2 { width: 200px; height: 200px; }
+  .radar-ring.r3 { width: 300px; height: 300px; }
+  .radar-ring.r4 { width: 400px; height: 400px; }
+
+  .radar-sweep {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 200px;
+    height: 200px;
+    transform-origin: top left;
+    background: conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      rgba(0, 255, 65, 0.3) 30deg,
+      transparent 60deg
+    );
+    animation: sweep 3s linear infinite;
+    border-radius: 0 0 200px 0;
+    clip-path: polygon(0 0, 100% 0, 100% 100%);
+  }
+  @keyframes sweep {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .spider-core {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60px; height: 60px;
+    background: #00ff41;
+    border-radius: 50%;
+    box-shadow:
+      0 0 30px #00ff41,
+      0 0 60px rgba(0, 255, 65, 0.5),
+      inset 0 0 20px rgba(0, 0, 0, 0.3);
+    animation: corePulse 2s ease-in-out infinite;
+  }
+  @keyframes corePulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.1); }
+  }
+  .spider-core::after {
+    content: 'AI';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: #000;
+    font-weight: bold;
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+
+  .target-dot {
+    position: absolute;
+    width: 8px; height: 8px;
+    background: #ff6b6b;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #ff6b6b;
+  }
+  .target-dot.scan {
+    background: #00ff41;
+    box-shadow: 0 0 10px #00ff41;
+  }
+  .target-dot.t1 { top: 30%; left: 65%; animation: targetPulse 1.5s infinite; }
+  .target-dot.t2 { top: 55%; left: 25%; animation: targetPulse 2s infinite 0.3s; }
+  .target-dot.t3 { top: 70%; left: 70%; animation: targetPulse 1.8s infinite 0.6s; }
+  .target-dot.t4 { top: 25%; left: 30%; animation: targetPulse 2.2s infinite 0.9s; }
+  .target-dot.scan.t5 { top: 45%; left: 75%; }
+  .target-dot.scan.t6 { top: 65%; left: 40%; }
+  @keyframes targetPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.5); opacity: 0.6; }
+  }
+
+  /* 滚动条样式 */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(0, 255, 65, 0.3); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<canvas id="matrix-canvas"></canvas>
+<div class="scanlines"></div>
+
+<!-- 四角装饰 -->
+<div class="corner tl"></div>
+<div class="corner tr"></div>
+<div class="corner bl"></div>
+<div class="corner br"></div>
+
+<!-- 顶部状态栏 -->
+<div class="top-bar">
+  <div class="status-blink"></div>
+  <span class="title">AI SPIDER SYSTEM v2.4</span>
+  <div class="divider"></div>
+  <div class="info-group">
+    <div class="info-item">
+      <span class="info-label">TARGET:</span>
+      <span class="info-value" id="currentTarget">概念题材</span>
+    </div>
+    <div class="info-item">
+      <span class="info-label">SCAN:</span>
+      <span class="info-value" id="scanCount">1091</span>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="mode-group">
+    <button class="mode-btn">
+      ⚙ CONFIG
+    </button>
+    <button class="mode-btn">
+      SEMI<span class="state">OFF</span>
+    </button>
+    <button class="mode-btn active">
+      AUTO<span class="state">ON</span>
+    </button>
+    <button class="stop-btn">■ STOP</button>
+  </div>
+</div>
+
+<!-- 中央雷达 -->
+<div class="center-stage">
+  <div class="radar-ring r4"></div>
+  <div class="radar-ring r3"></div>
+  <div class="radar-ring r2"></div>
+  <div class="radar-ring r1"></div>
+  <div class="radar-sweep"></div>
+  <div class="spider-core"></div>
+  <div class="target-dot t1"></div>
+  <div class="target-dot t2"></div>
+  <div class="target-dot t3"></div>
+  <div class="target-dot t4"></div>
+  <div class="target-dot scan t5"></div>
+  <div class="target-dot scan t6"></div>
+</div>
+
+<!-- 左侧终端日志 -->
+<div class="terminal-panel">
+  <div class="terminal-header">
+    <div class="terminal-dots">
+      <div class="terminal-dot r"></div>
+      <div class="terminal-dot y"></div>
+      <div class="terminal-dot g"></div>
+    </div>
+    <span class="terminal-title">spider@trade:~# live_log</span>
+    <span class="terminal-count">47 条</span>
+  </div>
+  <div class="terminal-body" id="terminalBody">
+    <!-- 日志由 JS 填充 -->
+  </div>
+</div>
+
+<!-- 右侧数据面板 -->
+<div class="data-panel">
+  <div class="data-card">
+    <div class="card-title">▌ 交易绩效 PERFORMANCE</div>
+    <div class="stat-grid">
+      <div class="stat-item">
+        <div class="stat-label">收益率</div>
+        <div class="stat-value up">+12.47%</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">胜率</div>
+        <div class="stat-value">68.3%</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">交易次数</div>
+        <div class="stat-value">47</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">最大回撤</div>
+        <div class="stat-value down">-3.21%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="data-card">
+    <div class="card-title">▌ 市场情绪 SENTIMENT</div>
+    <div class="sentiment-bar">
+      <div class="sentiment-fill"></div>
+    </div>
+    <div class="sentiment-stats">
+      <span>涨停 33</span>
+      <span>跌停 0</span>
+      <span>炸板 30%</span>
+    </div>
+  </div>
+
+  <div class="data-card">
+    <div class="card-title">▌ 风控状态 RISK CTRL</div>
+    <div class="stat-grid">
+      <div class="stat-item">
+        <div class="stat-label">持仓</div>
+        <div class="stat-value">3/5</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">今日盈亏</div>
+        <div class="stat-value up">+2.34%</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 底部滚动条 -->
+<div class="ticker-tape">
+  <div class="ticker-content">
+    <div class="ticker-item">
+      <span class="ticker-code">大金重工</span>
+      <span class="ticker-price">43.76</span>
+      <span class="ticker-pct down">-10.0%</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-code">马矿股份</span>
+      <span class="ticker-price">28.45</span>
+      <span class="ticker-pct down">-1.5%</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-code">沈鼓集团</span>
+      <span class="ticker-price">12.88</span>
+      <span class="ticker-pct down">-5.5%</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-code">锡华科技</span>
+      <span class="ticker-price">67.20</span>
+      <span class="ticker-pct down">-7.2%</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-code">▶ 买入信号</span>
+      <span class="ticker-price">XX科技</span>
+      <span class="ticker-pct up">+5.23%</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-code">板块数据</span>
+      <span class="ticker-price">3个</span>
+      <span class="ticker-pct">已采集</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-code">大盘指数</span>
+      <span class="ticker-price">3个</span>
+      <span class="ticker-pct">扫描完成</span>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ===== 矩阵代码雨 =====
+  const canvas = document.getElementById('matrix-canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const chars = '01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン';
+  const charArray = chars.split('');
+  const fontSize = 14;
+  const columns = canvas.width / fontSize;
+  const drops = [];
+  for (let i = 0; i < columns; i++) drops[i] = Math.random() * -100;
+
+  function drawMatrix() {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#00ff41';
+    ctx.font = fontSize + 'px monospace';
+    for (let i = 0; i < drops.length; i++) {
+      const text = charArray[Math.floor(Math.random() * charArray.length)];
+      ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+      if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
+      drops[i]++;
+    }
+  }
+  setInterval(drawMatrix, 50);
+
+  window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  });
+
+  // ===== 终端日志模拟 =====
+  const logs = [
+    { tag: 'scan', tagClass: 'scan', text: '采集到概念题材数据 128 个' },
+    { tag: 'scan', tagClass: 'scan', text: '扫描涨幅榜 TOP50 完成' },
+    { tag: 'signal', tagClass: 'signal', text: '⚡ 检测到买入信号: 新能源板块 强度 87' },
+    { tag: 'scan', tagClass: 'scan', text: '自选股 5 只 | 数据更新完成' },
+    { tag: 'trade', tagClass: 'trade', text: '💰 自动下单: 买入 XX科技 100股 @28.45' },
+    { tag: 'scan', tagClass: 'scan', text: '龙虎榜数据采集完成' },
+    { tag: 'risk', tagClass: 'risk', text: '🛡 风控检查通过: 持仓 3/5' },
+    { tag: 'scan', tagClass: 'scan', text: '大盘指数扫描: 上证/深证/创业板' },
+    { tag: 'signal', tagClass: 'signal', text: '⚡ 卖出信号触发: YY股份 止盈' },
+    { tag: 'trade', tagClass: 'trade', text: '💰 成交确认: 卖出 YY股份 +8.5%' },
+    { tag: 'scan', tagClass: 'scan', text: '板块轮动分析中...' },
+    { tag: 'scan', tagClass: 'scan', text: '涨停雷达统计更新 33 家涨停' },
+  ];
+
+  const body = document.getElementById('terminalBody');
+  let logIndex = 0;
+
+  function addLog() {
+    const log = logs[logIndex % logs.length];
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.innerHTML = `
+      <span class="log-time">${time}</span>
+      <span class="log-tag ${log.tagClass}">${log.tag}</span>
+      <span class="log-text ${log.tagClass === 'signal' ? 'highlight' : ''}">${log.text}</span>
+    `;
+    body.insertBefore(line, body.firstChild);
+    if (body.children.length > 30) body.removeChild(body.lastChild);
+    logIndex++;
+  }
+
+  // 初始填充一些日志
+  for (let i = 0; i < 12; i++) addLog();
+  setInterval(addLog, 1800);
+
+  // 扫描计数递增
+  let count = 1091;
+  const targets = ['概念题材', '涨幅榜', '自选股', '行业板块', '涨停雷达', '大盘指数', '龙虎榜'];
+  let targetIdx = 0;
+  setInterval(() => {
+    count++;
+    document.getElementById('scanCount').textContent = count;
+    if (count % 15 === 0) {
+      targetIdx = (targetIdx + 1) % targets.length;
+      document.getElementById('currentTarget').textContent = targets[targetIdx];
+    }
+  }, 2500);
+</script>
+
+</body>
+</html>

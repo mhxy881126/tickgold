@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>AI爬虫系统 · HUD全息模式</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #050a12;
+    color: #00d4ff;
+    font-family: 'Orbitron', 'Segoe UI', -apple-system, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    position: relative;
+  }
+
+  /* ===== 背景网格 ===== */
+  .bg-grid {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background-image:
+      linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    z-index: 0;
+    perspective: 500px;
+  }
+  .bg-grid::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 0;
+    width: 100%; height: 50%;
+    background: linear-gradient(180deg, transparent, rgba(0, 212, 255, 0.05));
+    transform: rotateX(60deg);
+    transform-origin: top;
+  }
+
+  /* ===== 粒子效果 ===== */
+  .particles {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .particle {
+    position: absolute;
+    width: 2px; height: 2px;
+    background: #00d4ff;
+    border-radius: 50%;
+    box-shadow: 0 0 6px #00d4ff;
+    animation: floatParticle linear infinite;
+  }
+  @keyframes floatParticle {
+    0% { transform: translateY(100vh); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(-100vh); opacity: 0; }
+  }
+
+  /* ===== 顶部状态栏 ===== */
+  .top-bar {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 12px 28px;
+    background: linear-gradient(135deg, rgba(0, 40, 60, 0.9) 0%, rgba(0, 20, 40, 0.95) 100%);
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    clip-path: polygon(
+      20px 0, calc(100% - 20px) 0,
+      100% 20px, 100% calc(100% - 20px),
+      calc(100% - 20px) 100%, 20px 100%,
+      0 calc(100% - 20px), 0 20px
+    );
+    z-index: 50;
+    box-shadow:
+      0 0 40px rgba(0, 212, 255, 0.2),
+      inset 0 0 30px rgba(0, 212, 255, 0.05);
+    backdrop-filter: blur(10px);
+  }
+
+  .top-bar::before,
+  .top-bar::after {
+    content: '';
+    position: absolute;
+    width: 30px; height: 30px;
+    border: 2px solid #00d4ff;
+  }
+  .top-bar::before {
+    top: -2px; left: -2px;
+    border-right: none;
+    border-bottom: none;
+  }
+  .top-bar::after {
+    bottom: -2px; right: -2px;
+    border-left: none;
+    border-top: none;
+  }
+
+  .status-pulse {
+    width: 12px; height: 12px;
+    background: #00ff88;
+    border-radius: 50%;
+    box-shadow: 0 0 15px #00ff88, 0 0 30px rgba(0, 255, 136, 0.5);
+    animation: pulse 1.5s ease-in-out infinite;
+    position: relative;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.3); opacity: 0.7; }
+  }
+  .status-pulse::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 24px; height: 24px;
+    border: 1px solid #00ff88;
+    border-radius: 50%;
+    animation: ringExpand 2s ease-out infinite;
+  }
+  @keyframes ringExpand {
+    0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
+  }
+
+  .title-block {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .main-title {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    background: linear-gradient(90deg, #00d4ff, #00ff88);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+  }
+  .sub-title {
+    font-size: 10px;
+    letter-spacing: 4px;
+    color: rgba(0, 212, 255, 0.5);
+    text-transform: uppercase;
+  }
+
+  .divider-v {
+    width: 1px; height: 36px;
+    background: linear-gradient(180deg, transparent, rgba(0, 212, 255, 0.5), transparent);
+  }
+
+  .info-block {
+    display: flex;
+    gap: 20px;
+  }
+  .info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .info-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: rgba(0, 212, 255, 0.5);
+    text-transform: uppercase;
+  }
+  .info-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #00ff88;
+    font-family: 'Orbitron', 'Courier New', monospace;
+    text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+  }
+  .info-value.accent {
+    color: #00d4ff;
+    text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+  }
+
+  /* ===== 模式按钮 ===== */
+  .mode-group {
+    display: flex;
+    gap: 8px;
+  }
+  .mode-btn {
+    position: relative;
+    padding: 8px 18px;
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    background: rgba(0, 50, 80, 0.3);
+    color: rgba(0, 212, 255, 0.6);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 2px;
+    transition: all 0.3s;
+    clip-path: polygon(
+      8px 0, 100% 0,
+      calc(100% - 8px) 100%, 0 100%
+    );
+  }
+  .mode-btn:hover {
+    border-color: rgba(0, 212, 255, 0.6);
+    color: #00d4ff;
+    background: rgba(0, 100, 150, 0.3);
+  }
+  .mode-btn.active {
+    border-color: #00ff88;
+    background: rgba(0, 255, 136, 0.15);
+    color: #00ff88;
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.3), inset 0 0 20px rgba(0, 255, 136, 0.05);
+  }
+  .mode-btn .state {
+    font-size: 9px;
+    padding: 2px 6px;
+    margin-left: 8px;
+    border: 1px solid currentColor;
+    opacity: 0.8;
+  }
+
+  .stop-btn {
+    padding: 8px 22px;
+    border: 1px solid #ff3366;
+    background: rgba(255, 51, 102, 0.15);
+    color: #ff3366;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 2px;
+    clip-path: polygon(
+      8px 0, 100% 0,
+      calc(100% - 8px) 100%, 0 100%
+    );
+    text-shadow: 0 0 10px rgba(255, 51, 102, 0.5);
+    box-shadow: 0 0 20px rgba(255, 51, 102, 0.2);
+  }
+
+  /* ===== 左侧面板 ===== */
+  .left-panel {
+    position: fixed;
+    top: 120px;
+    left: 24px;
+    width: 340px;
+    z-index: 40;
+  }
+  .panel {
+    background: linear-gradient(135deg, rgba(0, 30, 50, 0.85) 0%, rgba(0, 15, 30, 0.9) 100%);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    position: relative;
+    margin-bottom: 16px;
+  }
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 20px; height: 20px;
+    border-top: 2px solid #00d4ff;
+    border-left: 2px solid #00d4ff;
+  }
+  .panel::after {
+    content: '';
+    position: absolute;
+    bottom: 0; right: 0;
+    width: 20px; height: 20px;
+    border-bottom: 2px solid #00d4ff;
+    border-right: 2px solid #00d4ff;
+  }
+
+  .panel-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: #00d4ff;
+    text-transform: uppercase;
+    background: linear-gradient(90deg, rgba(0, 212, 255, 0.1), transparent);
+  }
+  .panel-header-icon {
+    width: 6px; height: 6px;
+    background: #00ff88;
+    box-shadow: 0 0 8px #00ff88;
+    animation: blink 1.5s infinite;
+  }
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .log-list {
+    padding: 8px 12px;
+    max-height: 320px;
+    overflow-y: auto;
+    font-size: 11px;
+    font-family: 'Consolas', 'Courier New', monospace;
+  }
+  .log-row {
+    display: flex;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.06);
+    align-items: flex-start;
+  }
+  .log-time {
+    color: rgba(0, 212, 255, 0.4);
+    font-size: 10px;
+    flex-shrink: 0;
+    padding-top: 1px;
+  }
+  .log-type {
+    font-size: 9px;
+    padding: 1px 6px;
+    border: 1px solid currentColor;
+    flex-shrink: 0;
+    font-weight: 600;
+    letter-spacing: 1px;
+  }
+  .log-type.SCAN { color: #00d4ff; }
+  .log-type.SIG { color: #ffaa00; }
+  .log-type.TRADE { color: #ff6b9d; }
+  .log-type.RISK { color: #00ff88; }
+  .log-msg {
+    color: rgba(0, 212, 255, 0.8);
+    line-height: 1.5;
+  }
+  .log-msg.highlight {
+    color: #ffaa00;
+    text-shadow: 0 0 8px rgba(255, 170, 0, 0.5);
+  }
+
+  /* ===== 右侧面板 ===== */
+  .right-panel {
+    position: fixed;
+    top: 120px;
+    right: 24px;
+    width: 300px;
+    z-index: 40;
+  }
+  .stat-card {
+    background: linear-gradient(135deg, rgba(0, 30, 50, 0.85) 0%, rgba(0, 15, 30, 0.9) 100%);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 15px; height: 15px;
+    border-top: 2px solid #00d4ff;
+    border-left: 2px solid #00d4ff;
+  }
+  .stat-card::after {
+    content: '';
+    position: absolute;
+    bottom: 0; right: 0;
+    width: 15px; height: 15px;
+    border-bottom: 2px solid #00d4ff;
+    border-right: 2px solid #00d4ff;
+  }
+
+  .stat-title {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(0, 212, 255, 0.6);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .stat-item {
+    text-align: center;
+    padding: 8px;
+    background: rgba(0, 212, 255, 0.05);
+    border: 1px solid rgba(0, 212, 255, 0.1);
+    position: relative;
+  }
+  .stat-item .label {
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    color: rgba(0, 212, 255, 0.5);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+  }
+  .stat-item .value {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: 'Orbitron', 'Courier New', monospace;
+  }
+  .stat-item .value.primary {
+    color: #00ff88;
+    text-shadow: 0 0 12px rgba(0, 255, 136, 0.5);
+  }
+  .stat-item .value.danger {
+    color: #ff6b9d;
+    text-shadow: 0 0 12px rgba(255, 107, 157, 0.5);
+  }
+  .stat-item .value.info {
+    color: #00d4ff;
+    text-shadow: 0 0 12px rgba(0, 212, 255, 0.5);
+  }
+
+  /* ===== 中央全息蜘蛛 ===== */
+  .center-hologram {
+    position: fixed;
+    top: 55%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 500px;
+    height: 500px;
+    z-index: 20;
+  }
+  .holo-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    border: 1px solid rgba(0, 212, 255, 0.3);
+  }
+  .holo-ring.r1 { width: 120px; height: 120px; }
+  .holo-ring.r2 { width: 220px; height: 220px; border-style: dashed; animation: rotateRing 20s linear infinite; }
+  .holo-ring.r3 { width: 320px; height: 320px; opacity: 0.5; }
+  .holo-ring.r4 { width: 420px; height: 420px; border-style: dotted; opacity: 0.3; animation: rotateRingReverse 30s linear infinite; }
+  @keyframes rotateRing {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+  }
+  @keyframes rotateRingReverse {
+    from { transform: translate(-50%, -50%) rotate(360deg); }
+    to { transform: translate(-50%, -50%) rotate(0deg); }
+  }
+
+  .holo-scan {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 200px;
+    height: 200px;
+    transform-origin: top left;
+    background: conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      rgba(0, 255, 136, 0.4) 20deg,
+      transparent 40deg
+    );
+    animation: holoSweep 4s linear infinite;
+    clip-path: polygon(0 0, 100% 0, 100% 100%);
+    border-radius: 0 0 200px 0;
+  }
+  @keyframes holoSweep {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .holo-spider {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80px; height: 80px;
+    background: radial-gradient(circle, rgba(0, 255, 136, 0.8) 0%, rgba(0, 212, 255, 0.4) 50%, transparent 70%);
+    border-radius: 50%;
+    animation: holoPulse 2s ease-in-out infinite;
+  }
+  @keyframes holoPulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    50% { transform: translate(-50%, -50%) scale(1.15); opacity: 0.8; }
+  }
+  .holo-spider::before {
+    content: '◆';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 32px;
+    color: #00ff88;
+    text-shadow: 0 0 20px #00ff88;
+    animation: spin 8s linear infinite;
+  }
+  @keyframes spin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+  }
+  .holo-spider::after {
+    content: 'AI';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 0 10px #00ff88;
+    letter-spacing: 2px;
+  }
+
+  .target-node {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .target-node .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #ff6b9d;
+    box-shadow: 0 0 15px #ff6b9d;
+    animation: nodePulse 1.5s ease-in-out infinite;
+  }
+  .target-node .dot.scan {
+    background: #00ff88;
+    box-shadow: 0 0 15px #00ff88;
+  }
+  @keyframes nodePulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.4); }
+  }
+  .target-node .label {
+    font-size: 10px;
+    color: rgba(0, 212, 255, 0.8);
+    font-family: 'Consolas', monospace;
+    white-space: nowrap;
+    background: rgba(0, 20, 40, 0.8);
+    padding: 2px 6px;
+    border: 1px solid rgba(0, 212, 255, 0.3);
+  }
+  .target-node.n1 { top: 20%; left: 65%; }
+  .target-node.n2 { top: 45%; left: 15%; }
+  .target-node.n3 { top: 70%; left: 70%; }
+  .target-node.n4 { top: 30%; left: 25%; }
+  .target-node.n5 { top: 60%; left: 50%; }
+  .target-node.n6 { top: 15%; left: 40%; }
+
+  /* 连接线 */
+  .holo-lines {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  .holo-lines svg { width: 100%; height: 100%; }
+  .holo-line {
+    stroke: rgba(0, 212, 255, 0.3);
+    stroke-width: 1;
+    fill: none;
+    stroke-dasharray: 4 4;
+    animation: dashMove 2s linear infinite;
+  }
+  @keyframes dashMove {
+    to { stroke-dashoffset: -16; }
+  }
+
+  /* ===== 底部数据条 ===== */
+  .bottom-bar {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 24px;
+    padding: 10px 24px;
+    background: linear-gradient(135deg, rgba(0, 30, 50, 0.9) 0%, rgba(0, 15, 30, 0.95) 100%);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    z-index: 40;
+  }
+  .bottom-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .bottom-item .k {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: rgba(0, 212, 255, 0.5);
+    text-transform: uppercase;
+  }
+  .bottom-item .v {
+    font-size: 14px;
+    font-weight: 700;
+    color: #00d4ff;
+    font-family: 'Orbitron', monospace;
+  }
+  .bottom-item .v.up { color: #ff6b9d; }
+  .bottom-item .v.down { color: #00ff88; }
+
+  /* 滚动条 */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(0, 212, 255, 0.3); }
+</style>
+</head>
+<body>
+
+<div class="bg-grid"></div>
+<div class="particles" id="particles"></div>
+
+<!-- 顶部状态栏 -->
+<div class="top-bar">
+  <div class="status-pulse"></div>
+  <div class="title-block">
+    <div class="main-title">AI SPIDER SYSTEM</div>
+    <div class="sub-title">Neural Trading Engine v3.0</div>
+  </div>
+  <div class="divider-v"></div>
+  <div class="info-block">
+    <div class="info-item">
+      <span class="info-label">Target</span>
+      <span class="info-value accent" id="targetName">概念题材</span>
+    </div>
+    <div class="info-item">
+      <span class="info-label">Scan Count</span>
+      <span class="info-value" id="scanNum">1,091</span>
+    </div>
+  </div>
+  <div class="divider-v"></div>
+  <div class="mode-group">
+    <button class="mode-btn">⚙ CONFIG</button>
+    <button class="mode-btn">SEMI <span class="state">OFF</span></button>
+    <button class="mode-btn active">AUTO <span class="state">ON</span></button>
+    <button class="stop-btn">■ STOP</button>
+  </div>
+</div>
+
+<!-- 左侧面板 -->
+<div class="left-panel">
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-header-icon"></span>
+      LIVE FEED // 实时数据流
+    </div>
+    <div class="log-list" id="logList">
+      <!-- JS 填充 -->
+    </div>
+  </div>
+</div>
+
+<!-- 右侧面板 -->
+<div class="right-panel">
+  <div class="stat-card">
+    <div class="stat-title">▎ PERFORMANCE 绩效</div>
+    <div class="stat-grid">
+      <div class="stat-item">
+        <div class="label">Return</div>
+        <div class="value danger">+12.47%</div>
+      </div>
+      <div class="stat-item">
+        <div class="label">Win Rate</div>
+        <div class="value primary">68.3%</div>
+      </div>
+      <div class="stat-item">
+        <div class="label">Trades</div>
+        <div class="value info">47</div>
+      </div>
+      <div class="stat-item">
+        <div class="label">Drawdown</div>
+        <div class="value primary">-3.21%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-title">▎ RISK CONTROL 风控</div>
+    <div class="stat-grid">
+      <div class="stat-item">
+        <div class="label">Positions</div>
+        <div class="value info">3/5</div>
+      </div>
+      <div class="stat-item">
+        <div class="label">Today P&L</div>
+        <div class="value danger">+2.34%</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 中央全息 -->
+<div class="center-hologram">
+  <div class="holo-ring r4"></div>
+  <div class="holo-ring r3"></div>
+  <div class="holo-ring r2"></div>
+  <div class="holo-ring r1"></div>
+  <div class="holo-scan"></div>
+  <div class="holo-spider"></div>
+
+  <!-- 目标节点 -->
+  <div class="target-node n1">
+    <div class="dot"></div>
+    <div class="label">新能源 +5.2%</div>
+  </div>
+  <div class="target-node n2">
+    <div class="dot scan"></div>
+    <div class="label">自选股 5只</div>
+  </div>
+  <div class="target-node n3">
+    <div class="dot"></div>
+    <div class="label">AI概念 +3.8%</div>
+  </div>
+  <div class="target-node n4">
+    <div class="dot scan"></div>
+    <div class="label">涨幅榜 TOP50</div>
+  </div>
+  <div class="target-node n5">
+    <div class="dot"></div>
+    <div class="label">半导体 -2.1%</div>
+  </div>
+  <div class="target-node n6">
+    <div class="dot scan"></div>
+    <div class="label">大盘指数</div>
+  </div>
+
+  <div class="holo-lines">
+    <svg viewBox="0 0 500 500">
+      <path class="holo-line" d="M250,250 L325,100" />
+      <path class="holo-line" d="M250,250 L75,225" />
+      <path class="holo-line" d="M250,250 L350,350" />
+      <path class="holo-line" d="M250,250 L125,150" />
+      <path class="holo-line" d="M250,250 L250,300" />
+      <path class="holo-line" d="M250,250 L200,75" />
+    </svg>
+  </div>
+</div>
+
+<!-- 底部数据条 -->
+<div class="bottom-bar">
+  <div class="bottom-item">
+    <span class="k">Limit Up</span>
+    <span class="v up">33</span>
+  </div>
+  <div class="bottom-item">
+    <span class="k">Limit Down</span>
+    <span class="v down">0</span>
+  </div>
+  <div class="bottom-item">
+    <span class="k">Bomb Rate</span>
+    <span class="v">30%</span>
+  </div>
+  <div class="bottom-item">
+    <span class="k">Max Board</span>
+    <span class="v up">5</span>
+  </div>
+  <div class="bottom-item">
+    <span class="k">Sentiment</span>
+    <span class="v">NEUTRAL</span>
+  </div>
+</div>
+
+<script>
+  // 生成粒子
+  const particles = document.getElementById('particles');
+  for (let i = 0; i < 30; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.animationDuration = (8 + Math.random() * 12) + 's';
+    p.style.animationDelay = -Math.random() * 10 + 's';
+    p.style.opacity = 0.3 + Math.random() * 0.7;
+    particles.appendChild(p);
+  }
+
+  // 日志模拟
+  const logs = [
+    { type: 'SCAN', cls: 'SCAN', text: '概念题材数据采集完成 128 个板块' },
+    { type: 'SCAN', cls: 'SCAN', text: '涨幅榜 TOP50 扫描完毕' },
+    { type: 'SIG', cls: 'SIG', text: '⚡ 买入信号触发 - 新能源板块 强度87' },
+    { type: 'SCAN', cls: 'SCAN', text: '自选股 5 只数据更新完成' },
+    { type: 'TRADE', cls: 'TRADE', text: '▶ 自动下单: 买入 科华数据 100股' },
+    { type: 'SCAN', cls: 'SCAN', text: '龙虎榜数据同步完成' },
+    { type: 'RISK', cls: 'RISK', text: '✓ 风控检查通过 持仓3/5' },
+    { type: 'SCAN', cls: 'SCAN', text: '大盘指数扫描: 上证 深证 创业板' },
+    { type: 'SIG', cls: 'SIG', text: '⚡ 卖出信号 - 止盈触发 XX股份' },
+    { type: 'TRADE', cls: 'TRADE', text: '✓ 成交确认: 卖出 +8.5%' },
+  ];
+
+  const list = document.getElementById('logList');
+  let idx = 0;
+  function addLog() {
+    const log = logs[idx % logs.length];
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    row.innerHTML = `
+      <span class="log-time">${time}</span>
+      <span class="log-type ${log.cls}">${log.type}</span>
+      <span class="log-msg ${log.type === 'SIG' ? 'highlight' : ''}">${log.text}</span>
+    `;
+    list.insertBefore(row, list.firstChild);
+    if (list.children.length > 20) list.removeChild(list.lastChild);
+    idx++;
+  }
+  for (let i = 0; i < 10; i++) addLog();
+  setInterval(addLog, 2000);
+
+  // 扫描计数
+  let cnt = 1091;
+  const targets = ['概念题材', '涨幅榜', '自选股', '行业板块', '涨停雷达', '大盘指数'];
+  let tIdx = 0;
+  setInterval(() => {
+    cnt++;
+    document.getElementById('scanNum').textContent = cnt.toLocaleString();
+    if (cnt % 12 === 0) {
+      tIdx = (tIdx + 1) % targets.length;
+      document.getElementById('targetName').textContent = targets[tIdx];
+    }
+  }, 2200);
+</script>
+
+</body>
+</html>

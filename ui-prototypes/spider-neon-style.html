@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>AI爬虫系统 · 霓虹模式</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0015;
+    color: #fff;
+    font-family: 'Inter', -apple-system, 'PingFang SC', sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    position: relative;
+  }
+
+  /* ===== 霓虹渐变背景 ===== */
+  .neon-bg {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background:
+      radial-gradient(ellipse at 20% 80%, rgba(255, 0, 128, 0.15) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(0, 200, 255, 0.12) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 50%, rgba(120, 0, 255, 0.08) 0%, transparent 70%),
+      #0a0015;
+    z-index: 0;
+  }
+
+  /* ===== 噪点纹理 ===== */
+  .noise {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    opacity: 0.03;
+    z-index: 1;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ===== 顶部玻璃态状态栏 ===== */
+  .top-bar {
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 10px 22px;
+    background: rgba(20, 5, 35, 0.7);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    z-index: 50;
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+      0 -1px 0 rgba(255, 255, 255, 0.1) inset;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .brand-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, #ff0080, #7a00ff);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    box-shadow: 0 0 20px rgba(255, 0, 128, 0.5);
+    animation: iconGlow 2s ease-in-out infinite;
+  }
+  @keyframes iconGlow {
+    0%, 100% { box-shadow: 0 0 20px rgba(255, 0, 128, 0.5); }
+    50% { box-shadow: 0 0 30px rgba(255, 0, 128, 0.8), 0 0 60px rgba(122, 0, 255, 0.4); }
+  }
+  .brand-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .brand-name {
+    font-size: 15px;
+    font-weight: 700;
+    background: linear-gradient(90deg, #ff6b9d, #c084fc, #22d3ee);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .brand-status {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.4);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .status-dot {
+    width: 6px; height: 6px;
+    background: #10b981;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #10b981;
+    animation: dotBlink 1.5s infinite;
+  }
+  @keyframes dotBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .v-sep {
+    width: 1px; height: 32px;
+    background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+  }
+
+  .info-pills {
+    display: flex;
+    gap: 8px;
+  }
+  .pill {
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .pill .label {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 10px;
+  }
+  .pill .value {
+    font-weight: 600;
+    color: #22d3ee;
+  }
+  .pill.accent .value {
+    color: #ff6b9d;
+  }
+  .pill.gold .value {
+    color: #fbbf24;
+  }
+
+  /* ===== 切换开关组 ===== */
+  .toggle-group {
+    display: flex;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .toggle-btn {
+    position: relative;
+    padding: 6px 14px;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.5);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.25s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .toggle-btn:hover {
+    color: rgba(255, 255, 255, 0.8);
+  }
+  .toggle-btn.active {
+    color: #fff;
+    background: linear-gradient(135deg, rgba(255, 0, 128, 0.3), rgba(122, 0, 255, 0.3));
+    box-shadow: 0 2px 10px rgba(255, 0, 128, 0.2);
+  }
+  .toggle-btn .switch {
+    width: 28px; height: 16px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.15);
+    position: relative;
+    transition: all 0.25s;
+  }
+  .toggle-btn .switch::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 12px; height: 12px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    transition: all 0.25s;
+  }
+  .toggle-btn.active .switch {
+    background: linear-gradient(135deg, #ff0080, #7a00ff);
+  }
+  .toggle-btn.active .switch::after {
+    left: 14px;
+    background: #fff;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+  }
+
+  .icon-btn {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .icon-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+  }
+  .icon-btn.active {
+    border-color: rgba(34, 211, 238, 0.4);
+    background: rgba(34, 211, 238, 0.1);
+    color: #22d3ee;
+  }
+
+  .stop-btn {
+    padding: 8px 20px;
+    border-radius: 10px;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.2));
+    color: #fca5a5;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.5px;
+  }
+  .stop-btn:hover {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(220, 38, 38, 0.3));
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+    color: #fecaca;
+  }
+
+  /* ===== 左侧玻璃卡片 ===== */
+  .glass-card {
+    position: fixed;
+    top: 110px;
+    left: 20px;
+    width: 360px;
+    height: calc(100vh - 200px);
+    background: rgba(20, 5, 35, 0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.3),
+      0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  }
+  .card-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
+  }
+  .card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .card-title-icon {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #ff6b9d;
+    box-shadow: 0 0 8px #ff6b9d;
+    animation: dotBlink 1.2s infinite;
+  }
+  .card-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  .log-container {
+    flex: 1;
+    padding: 10px 14px;
+    overflow-y: auto;
+  }
+  .log-item {
+    display: flex;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    margin-bottom: 4px;
+    transition: background 0.2s;
+  }
+  .log-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .log-time {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.3);
+    font-family: 'JetBrains Mono', monospace;
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+  .log-icon {
+    width: 24px; height: 24px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .log-icon.scan { background: rgba(34, 211, 238, 0.15); color: #22d3ee; }
+  .log-icon.signal { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+  .log-icon.trade { background: rgba(255, 107, 157, 0.15); color: #ff6b9d; }
+  .log-icon.risk { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+  .log-content {
+    flex: 1;
+    min-width: 0;
+  }
+  .log-text {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.5;
+  }
+  .log-text.highlight {
+    color: #fbbf24;
+    font-weight: 500;
+  }
+
+  /* ===== 右侧数据卡片区 ===== */
+  .right-stack {
+    position: fixed;
+    top: 110px;
+    right: 20px;
+    width: 300px;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .metric-card {
+    background: rgba(20, 5, 35, 0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 14px 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  }
+  .metric-header {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+    margin-bottom: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  .metric-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .metric {
+    text-align: center;
+    padding: 10px 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+  }
+  .metric .m-label {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.4);
+    margin-bottom: 4px;
+  }
+  .metric .m-value {
+    font-size: 18px;
+    font-weight: 700;
+    font-family: 'Inter', sans-serif;
+  }
+  .metric .m-value.pink { color: #ff6b9d; text-shadow: 0 0 20px rgba(255, 107, 157, 0.3); }
+  .metric .m-value.cyan { color: #22d3ee; text-shadow: 0 0 20px rgba(34, 211, 238, 0.3); }
+  .metric .m-value.green { color: #34d399; text-shadow: 0 0 20px rgba(52, 211, 153, 0.3); }
+  .metric .m-value.amber { color: #fbbf24; text-shadow: 0 0 20px rgba(251, 191, 36, 0.3); }
+
+  /* 情绪进度 */
+  .sentiment-wrap {
+    margin-top: 10px;
+  }
+  .sentiment-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+  }
+  .sentiment-fill {
+    height: 100%;
+    width: 65%;
+    background: linear-gradient(90deg, #22d3ee, #c084fc, #ff6b9d);
+    border-radius: 4px;
+    box-shadow: 0 0 15px rgba(255, 107, 157, 0.4);
+    position: relative;
+    overflow: hidden;
+  }
+  .sentiment-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    animation: shimmer 2s infinite;
+  }
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  .sentiment-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.4);
+    margin-top: 6px;
+  }
+
+  /* ===== 中央霓虹蜘蛛 ===== */
+  .center-neon {
+    position: fixed;
+    top: 55%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 450px;
+    height: 450px;
+    z-index: 20;
+  }
+  .neon-glow {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, rgba(255, 0, 128, 0.2) 0%, transparent 70%);
+    border-radius: 50%;
+    animation: glowPulse 3s ease-in-out infinite;
+  }
+  @keyframes glowPulse {
+    0%, 100% { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
+    50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+  }
+
+  .neon-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    border: 1px solid;
+  }
+  .neon-ring.r1 {
+    width: 140px; height: 140px;
+    border-color: rgba(255, 0, 128, 0.5);
+    box-shadow: 0 0 30px rgba(255, 0, 128, 0.3), inset 0 0 30px rgba(255, 0, 128, 0.1);
+  }
+  .neon-ring.r2 {
+    width: 240px; height: 240px;
+    border-color: rgba(122, 0, 255, 0.3);
+    box-shadow: 0 0 40px rgba(122, 0, 255, 0.2);
+    animation: ringFloat 4s ease-in-out infinite;
+  }
+  .neon-ring.r3 {
+    width: 340px; height: 340px;
+    border-color: rgba(34, 211, 238, 0.2);
+    animation: ringFloat 6s ease-in-out infinite reverse;
+  }
+  @keyframes ringFloat {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.05); }
+  }
+
+  .neon-spider {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100px; height: 100px;
+  }
+  .spider-body {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60px; height: 60px;
+    background: linear-gradient(135deg, #ff0080, #7a00ff);
+    border-radius: 50% 50% 45% 45%;
+    box-shadow:
+      0 0 30px rgba(255, 0, 128, 0.6),
+      0 0 60px rgba(122, 0, 255, 0.4),
+      inset 0 4px 8px rgba(255, 255, 255, 0.2);
+    animation: spiderFloat 2s ease-in-out infinite;
+  }
+  @keyframes spiderFloat {
+    0%, 100% { transform: translate(-50%, -50%) translateY(0); }
+    50% { transform: translate(-50%, -50%) translateY(-5px); }
+  }
+  .spider-eye {
+    position: absolute;
+    top: 35%;
+    width: 8px; height: 8px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #fff;
+  }
+  .spider-eye.left { left: 30%; }
+  .spider-eye.right { right: 30%; }
+
+  .target-dot {
+    position: absolute;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: #ff6b9d;
+    box-shadow: 0 0 15px #ff6b9d, 0 0 30px rgba(255, 107, 157, 0.5);
+    animation: targetFloat 1.5s ease-in-out infinite;
+  }
+  .target-dot.scan {
+    background: #22d3ee;
+    box-shadow: 0 0 15px #22d3ee, 0 0 30px rgba(34, 211, 238, 0.5);
+  }
+  .target-dot.vip {
+    background: #fbbf24;
+    box-shadow: 0 0 15px #fbbf24, 0 0 30px rgba(251, 191, 36, 0.5);
+  }
+  @keyframes targetFloat {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.3); }
+  }
+  .target-dot.d1 { top: 25%; left: 68%; animation-delay: 0s; }
+  .target-dot.d2 { top: 55%; left: 22%; animation-delay: 0.3s; }
+  .target-dot.d3 { top: 70%; left: 65%; animation-delay: 0.6s; }
+  .target-dot.d4 { top: 30%; left: 28%; animation-delay: 0.9s; }
+  .target-dot.scan.d5 { top: 50%; left: 72%; animation-delay: 0.2s; }
+  .target-dot.vip.d6 { top: 20%; left: 50%; animation-delay: 0.5s; }
+
+  .target-label {
+    position: absolute;
+    font-size: 11px;
+    padding: 4px 10px;
+    background: rgba(20, 5, 35, 0.8);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    white-space: nowrap;
+  }
+  .target-label.tl1 { top: 18%; left: 75%; color: #ff6b9d; }
+  .target-label.tl2 { top: 48%; left: 10%; color: #22d3ee; }
+  .target-label.tl3 { top: 63%; left: 73%; color: #ff6b9d; }
+  .target-label.tl4 { top: 23%; left: 15%; color: #22d3ee; }
+  .target-label.tl5 { top: 43%; left: 80%; color: #22d3ee; }
+  .target-label.tl6 { top: 13%; left: 57%; color: #fbbf24; }
+
+  /* ===== 底部快捷源 ===== */
+  .source-bar {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    padding: 6px;
+    background: rgba(20, 5, 35, 0.7);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    z-index: 40;
+  }
+  .source-item {
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+  .source-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.7);
+  }
+  .source-item.active {
+    background: linear-gradient(135deg, rgba(255, 0, 128, 0.2), rgba(122, 0, 255, 0.2));
+    color: #fff;
+    box-shadow: 0 2px 10px rgba(255, 0, 128, 0.2);
+  }
+
+  /* 滚动条 */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+</style>
+</head>
+<body>
+
+<div class="neon-bg"></div>
+<div class="noise"></div>
+
+<!-- 顶部状态栏 -->
+<div class="top-bar">
+  <div class="brand">
+    <div class="brand-icon">🕷</div>
+    <div class="brand-text">
+      <span class="brand-name">AI 爬虫机器人</span>
+      <span class="brand-status"><span class="status-dot"></span>运行中 · v3.0</span>
+    </div>
+  </div>
+
+  <div class="v-sep"></div>
+
+  <div class="info-pills">
+    <div class="pill accent">
+      <span class="label">当前</span>
+      <span class="value" id="target">概念题材</span>
+    </div>
+    <div class="pill gold">
+      <span class="label">已扫描</span>
+      <span class="value" id="count">1,091 轮</span>
+    </div>
+  </div>
+
+  <div class="v-sep"></div>
+
+  <div class="toggle-group">
+    <button class="icon-btn" title="设置">⚙️</button>
+    <button class="toggle-btn">
+      半自动
+      <span class="switch"></span>
+    </button>
+    <button class="toggle-btn active">
+      全自动
+      <span class="switch"></span>
+    </button>
+    <button class="stop-btn">⏹ 停止</button>
+  </div>
+</div>
+
+<!-- 左侧日志卡片 -->
+<div class="glass-card">
+  <div class="card-header">
+    <div class="card-title">
+      <span class="card-title-icon"></span>
+      实时数据流
+    </div>
+    <span class="card-badge">47 条</span>
+  </div>
+  <div class="log-container" id="logContainer">
+    <!-- JS 填充 -->
+  </div>
+</div>
+
+<!-- 右侧数据 -->
+<div class="right-stack">
+  <div class="metric-card">
+    <div class="metric-header">▌ 交易绩效</div>
+    <div class="metric-grid">
+      <div class="metric">
+        <div class="m-label">收益率</div>
+        <div class="m-value pink">+12.47%</div>
+      </div>
+      <div class="metric">
+        <div class="m-label">胜率</div>
+        <div class="m-value cyan">68.3%</div>
+      </div>
+      <div class="metric">
+        <div class="m-label">交易次数</div>
+        <div class="m-value amber">47</div>
+      </div>
+      <div class="metric">
+        <div class="m-label">最大回撤</div>
+        <div class="m-value green">-3.21%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-header">▌ 市场情绪</div>
+    <div class="sentiment-wrap">
+      <div class="sentiment-bar">
+        <div class="sentiment-fill"></div>
+      </div>
+      <div class="sentiment-stats">
+        <span>涨停 33</span>
+        <span>跌停 0</span>
+        <span>炸板率 30%</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-header">▌ 风控状态</div>
+    <div class="metric-grid">
+      <div class="metric">
+        <div class="m-label">持仓</div>
+        <div class="m-value cyan">3/5</div>
+      </div>
+      <div class="metric">
+        <div class="m-label">今日盈亏</div>
+        <div class="m-value pink">+2.34%</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 中央霓虹蜘蛛 -->
+<div class="center-neon">
+  <div class="neon-glow"></div>
+  <div class="neon-ring r3"></div>
+  <div class="neon-ring r2"></div>
+  <div class="neon-ring r1"></div>
+
+  <div class="neon-spider">
+    <div class="spider-body">
+      <div class="spider-eye left"></div>
+      <div class="spider-eye right"></div>
+    </div>
+  </div>
+
+  <!-- 目标点 -->
+  <div class="target-dot d1"></div>
+  <div class="target-dot scan d2"></div>
+  <div class="target-dot d3"></div>
+  <div class="target-dot scan d4"></div>
+  <div class="target-dot scan d5"></div>
+  <div class="target-dot vip d6"></div>
+
+  <!-- 标签 -->
+  <div class="target-label tl1">▶ 新能源 +5.2%</div>
+  <div class="target-label tl2">📋 自选股 5只</div>
+  <div class="target-label tl3">▶ AI概念 +3.8%</div>
+  <div class="target-label tl4">📈 涨幅榜 TOP50</div>
+  <div class="target-label tl5">📊 大盘指数</div>
+  <div class="target-label tl6">⭐ 涨停 连板5</div>
+</div>
+
+<!-- 底部源标签 -->
+<div class="source-bar">
+  <div class="source-item">📋 自选</div>
+  <div class="source-item">📈 涨幅</div>
+  <div class="source-item">🏭 板块</div>
+  <div class="source-item active">💡 概念</div>
+  <div class="source-item">🚀 雷达</div>
+  <div class="source-item">📊 大盘</div>
+  <div class="source-item">🐉 龙虎</div>
+  <div class="source-item">🔍 选股</div>
+</div>
+
+<script>
+  // 日志
+  const logData = [
+    { icon: 'scan', text: '概念题材数据采集完成，128个板块', type: 'scan' },
+    { icon: 'scan', text: '涨幅榜 TOP50 扫描完毕', type: 'scan' },
+    { icon: 'signal', text: '⚡ 买入信号触发：新能源板块 强度 87', type: 'signal' },
+    { icon: 'scan', text: '自选股 5 只数据实时更新', type: 'scan' },
+    { icon: 'trade', text: '💰 自动下单：买入 科华数据 100股 @28.45', type: 'trade' },
+    { icon: 'scan', text: '龙虎榜数据同步完成', type: 'scan' },
+    { icon: 'risk', text: '✓ 风控检查通过，持仓 3/5', type: 'risk' },
+    { icon: 'scan', text: '大盘指数扫描：上证 / 深证 / 创业板', type: 'scan' },
+    { icon: 'signal', text: '⚡ 卖出信号：止盈触发 XX股份', type: 'signal' },
+    { icon: 'trade', text: '✓ 成交确认：卖出 +8.5% 收益', type: 'trade' },
+  ];
+
+  const container = document.getElementById('logContainer');
+  let idx = 0;
+
+  function addLogItem() {
+    const log = logData[idx % logData.length];
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const item = document.createElement('div');
+    item.className = 'log-item';
+    item.innerHTML = `
+      <span class="log-time">${time}</span>
+      <span class="log-icon ${log.icon}">${
+        log.icon === 'scan' ? '🔍' : log.icon === 'signal' ? '⚡' : log.icon === 'trade' ? '💰' : '🛡'
+      }</span>
+      <div class="log-content">
+        <div class="log-text ${log.type === 'signal' ? 'highlight' : ''}">${log.text}</div>
+      </div>
+    `;
+    container.insertBefore(item, container.firstChild);
+    if (container.children.length > 25) container.removeChild(container.lastChild);
+    idx++;
+  }
+
+  for (let i = 0; i < 10; i++) addLogItem();
+  setInterval(addLogItem, 2200);
+
+  // 动态计数
+  let count = 1091;
+  const targets = ['概念题材', '涨幅榜', '自选股', '行业板块', '涨停雷达', '大盘指数'];
+  let tIdx = 0;
+  setInterval(() => {
+    count++;
+    document.getElementById('count').textContent = count.toLocaleString() + ' 轮';
+    if (count % 10 === 0) {
+      tIdx = (tIdx + 1) % targets.length;
+      document.getElementById('target').textContent = targets[tIdx];
+    }
+  }, 2000);
+</script>
+
+</body>
+</html>

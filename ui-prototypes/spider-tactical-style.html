@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>AI爬虫系统 · 战术指挥模式</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0f0a;
+    color: #b8d4b0;
+    font-family: 'Consolas', 'Courier New', monospace;
+    overflow: hidden;
+    height: 100vh;
+    position: relative;
+    letter-spacing: 0.5px;
+  }
+
+  /* ===== CRT 扫描线效果 ===== */
+  .crt-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background:
+      repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.15),
+        rgba(0, 0, 0, 0.15) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+    pointer-events: none;
+    z-index: 100;
+  }
+  .crt-flicker {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0, 30, 0, 0.02);
+    pointer-events: none;
+    z-index: 99;
+    animation: flicker 0.15s infinite;
+  }
+  @keyframes flicker {
+    0% { opacity: 0.27861; }
+    5% { opacity: 0.34769; }
+    10% { opacity: 0.23604; }
+    15% { opacity: 0.90626; }
+    20% { opacity: 0.18128; }
+    25% { opacity: 0.83891; }
+    30% { opacity: 0.65583; }
+    35% { opacity: 0.67807; }
+    40% { opacity: 0.26559; }
+    45% { opacity: 0.84693; }
+    50% { opacity: 0.96019; }
+    55% { opacity: 0.08594; }
+    60% { opacity: 0.20313; }
+    65% { opacity: 0.71988; }
+    70% { opacity: 0.53455; }
+    75% { opacity: 0.37288; }
+    80% { opacity: 0.71428; }
+    85% { opacity: 0.70419; }
+    90% { opacity: 0.7003; }
+    95% { opacity: 0.36108; }
+    100% { opacity: 0.24387; }
+  }
+
+  /* ===== 背景网格 ===== */
+  .tactical-bg {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background-image:
+      linear-gradient(rgba(184, 212, 176, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(184, 212, 176, 0.04) 1px, transparent 1px);
+    background-size: 50px 50px;
+    z-index: 0;
+  }
+
+  /* ===== 顶部战术状态栏 ===== */
+  .top-bar {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    z-index: 50;
+    min-width: 700px;
+  }
+
+  .bar-segment {
+    background: rgba(10, 25, 15, 0.9);
+    border: 1px solid rgba(184, 212, 176, 0.3);
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+  }
+  .bar-segment:first-child {
+    border-right: none;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+    padding-right: 24px;
+  }
+  .bar-segment:last-child {
+    border-left: none;
+    clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%);
+    padding-left: 24px;
+  }
+  .bar-segment.middle {
+    border-left: 1px dashed rgba(184, 212, 176, 0.2);
+    border-right: 1px dashed rgba(184, 212, 176, 0.2);
+  }
+
+  .status-led {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #4ade80;
+    box-shadow: 0 0 10px #4ade80;
+    animation: ledBlink 1.2s infinite;
+  }
+  @keyframes ledBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  .status-led.red {
+    background: #f87171;
+    box-shadow: 0 0 10px #f87171;
+  }
+  .status-led.amber {
+    background: #fbbf24;
+    box-shadow: 0 0 10px #fbbf24;
+  }
+
+  .unit-label {
+    font-size: 11px;
+    color: rgba(184, 212, 176, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 600;
+  }
+  .unit-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: #4ade80;
+    text-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
+  }
+  .unit-value.amber {
+    color: #fbbf24;
+    text-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
+  }
+  .unit-value.cyan {
+    color: #22d3ee;
+    text-shadow: 0 0 8px rgba(34, 211, 238, 0.4);
+  }
+
+  .title-unit {
+    font-size: 14px;
+    font-weight: 700;
+    color: #b8d4b0;
+    letter-spacing: 3px;
+    text-shadow: 0 0 10px rgba(184, 212, 176, 0.3);
+  }
+  .title-unit .sub {
+    display: block;
+    font-size: 9px;
+    letter-spacing: 4px;
+    color: rgba(184, 212, 176, 0.4);
+    font-weight: 500;
+    margin-top: 2px;
+  }
+
+  /* ===== 战术按钮 ===== */
+  .tactical-btn {
+    padding: 6px 14px;
+    border: 1px solid rgba(184, 212, 176, 0.4);
+    background: rgba(30, 50, 35, 0.6);
+    color: rgba(184, 212, 176, 0.7);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .tactical-btn::before {
+    content: '▶';
+    margin-right: 6px;
+    font-size: 8px;
+    opacity: 0.7;
+  }
+  .tactical-btn:hover {
+    border-color: #4ade80;
+    color: #4ade80;
+    background: rgba(74, 222, 128, 0.1);
+    box-shadow: 0 0 12px rgba(74, 222, 128, 0.2);
+  }
+  .tactical-btn.active {
+    border-color: #fbbf24;
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.15);
+    box-shadow: 0 0 15px rgba(251, 191, 36, 0.3);
+  }
+  .tactical-btn.active::before {
+    content: '●';
+    color: #fbbf24;
+  }
+  .tactical-btn.danger {
+    border-color: rgba(248, 113, 113, 0.5);
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.1);
+  }
+  .tactical-btn.danger:hover {
+    border-color: #f87171;
+    box-shadow: 0 0 15px rgba(248, 113, 113, 0.3);
+  }
+  .tactical-btn.danger::before {
+    content: '■';
+  }
+
+  .icon-tactical {
+    width: 30px; height: 30px;
+    border: 1px solid rgba(184, 212, 176, 0.3);
+    background: rgba(30, 50, 35, 0.4);
+    color: rgba(184, 212, 176, 0.6);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: all 0.15s;
+  }
+  .icon-tactical:hover {
+    border-color: #4ade80;
+    color: #4ade80;
+  }
+  .icon-tactical.active {
+    border-color: #22d3ee;
+    color: #22d3ee;
+    background: rgba(34, 211, 238, 0.1);
+  }
+
+  /* ===== 左侧战术控制台 ===== */
+  .tactical-panel {
+    position: fixed;
+    top: 90px;
+    left: 16px;
+    width: 380px;
+    z-index: 40;
+  }
+  .panel-frame {
+    background: rgba(8, 18, 12, 0.92);
+    border: 1px solid rgba(184, 212, 176, 0.25);
+    position: relative;
+  }
+  .panel-frame::before,
+  .panel-frame::after {
+    content: '';
+    position: absolute;
+    width: 12px; height: 12px;
+    border: 2px solid #4ade80;
+  }
+  .panel-frame::before {
+    top: -2px; left: -2px;
+    border-right: none;
+    border-bottom: none;
+  }
+  .panel-frame::after {
+    bottom: -2px; right: -2px;
+    border-left: none;
+    border-top: none;
+  }
+
+  .panel-title-bar {
+    padding: 8px 14px;
+    border-bottom: 1px solid rgba(184, 212, 176, 0.15);
+    background: rgba(74, 222, 128, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: #4ade80;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .panel-title-bar .right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 10px;
+    color: rgba(184, 212, 176, 0.5);
+    letter-spacing: 1px;
+  }
+
+  .console-log {
+    padding: 8px 12px;
+    height: 360px;
+    overflow-y: auto;
+    font-size: 11px;
+    line-height: 1.7;
+  }
+  .console-line {
+    display: flex;
+    gap: 8px;
+    padding: 2px 0;
+  }
+  .console-ts {
+    color: rgba(74, 222, 128, 0.4);
+    flex-shrink: 0;
+    font-size: 10px;
+  }
+  .console-lvl {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border: 1px solid currentColor;
+    flex-shrink: 0;
+    letter-spacing: 1px;
+  }
+  .console-lvl.INFO { color: #4ade80; }
+  .console-lvl.SIG { color: #fbbf24; }
+  .console-lvl.TRD { color: #f87171; }
+  .console-lvl.RSK { color: #22d3ee; }
+  .console-msg {
+    color: rgba(184, 212, 176, 0.8);
+  }
+  .console-msg.highlight {
+    color: #fbbf24;
+    text-shadow: 0 0 6px rgba(251, 191, 36, 0.5);
+  }
+
+  /* ===== 右侧数据面板 ===== */
+  .right-tactical {
+    position: fixed;
+    top: 90px;
+    right: 16px;
+    width: 280px;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .data-frame {
+    background: rgba(8, 18, 12, 0.92);
+    border: 1px solid rgba(184, 212, 176, 0.25);
+    padding: 10px 14px;
+    position: relative;
+  }
+  .data-frame::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 10px; height: 10px;
+    border-top: 2px solid #4ade80;
+    border-right: 2px solid #4ade80;
+  }
+  .data-frame::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 10px; height: 10px;
+    border-bottom: 2px solid #4ade80;
+    border-left: 2px solid #4ade80;
+  }
+
+  .df-header {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(74, 222, 128, 0.6);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    font-weight: 600;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed rgba(184, 212, 176, 0.15);
+  }
+
+  .readout-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .readout {
+    text-align: center;
+    padding: 6px 4px;
+    border: 1px solid rgba(184, 212, 176, 0.1);
+    background: rgba(0, 20, 10, 0.5);
+    position: relative;
+  }
+  .readout .ro-label {
+    font-size: 9px;
+    color: rgba(184, 212, 176, 0.4);
+    letter-spacing: 1.5px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+  }
+  .readout .ro-value {
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .readout .ro-value.g { color: #4ade80; text-shadow: 0 0 8px rgba(74, 222, 128, 0.5); }
+  .readout .ro-value.a { color: #fbbf24; text-shadow: 0 0 8px rgba(251, 191, 36, 0.5); }
+  .readout .ro-value.r { color: #f87171; text-shadow: 0 0 8px rgba(248, 113, 113, 0.5); }
+  .readout .ro-value.c { color: #22d3ee; text-shadow: 0 0 8px rgba(34, 211, 238, 0.5); }
+
+  /* 情绪条 */
+  .meter-wrap {
+    margin: 8px 0;
+  }
+  .meter-scale {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    color: rgba(184, 212, 176, 0.4);
+    margin-bottom: 4px;
+    letter-spacing: 1px;
+  }
+  .meter-bar {
+    height: 10px;
+    background: rgba(0, 20, 10, 0.6);
+    border: 1px solid rgba(184, 212, 176, 0.2);
+    position: relative;
+    overflow: hidden;
+  }
+  .meter-fill {
+    height: 100%;
+    width: 70%;
+    background: repeating-linear-gradient(
+      90deg,
+      #4ade80 0px, #4ade80 8px,
+      #fbbf24 8px, #fbbf24 16px,
+      #f87171 16px, #f87171 24px
+    );
+    background-size: 24px 100%;
+    animation: meterScan 2s linear infinite;
+    box-shadow: 0 0 10px rgba(74, 222, 128, 0.3);
+  }
+  @keyframes meterScan {
+    from { background-position: 0 0; }
+    to { background-position: 24px 0; }
+  }
+
+  /* ===== 中央雷达 ===== */
+  .radar-center {
+    position: fixed;
+    top: 55%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 460px;
+    height: 460px;
+    z-index: 20;
+  }
+
+  .radar-dish {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 420px; height: 420px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle, transparent 60%, rgba(74, 222, 128, 0.05) 100%),
+      rgba(0, 20, 10, 0.5);
+    border: 2px solid rgba(74, 222, 128, 0.3);
+    box-shadow:
+      0 0 40px rgba(74, 222, 128, 0.15),
+      inset 0 0 60px rgba(74, 222, 128, 0.05);
+  }
+
+  .radar-grid {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  .radar-grid::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 70%; height: 70%;
+    border: 1px solid rgba(74, 222, 128, 0.15);
+    border-radius: 50%;
+  }
+  .radar-grid::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40%; height: 40%;
+    border: 1px solid rgba(74, 222, 128, 0.2);
+    border-radius: 50%;
+  }
+  .radar-cross {
+    position: absolute;
+    top: 0; left: 50%;
+    width: 1px; height: 100%;
+    background: linear-gradient(180deg, transparent, rgba(74, 222, 128, 0.15), transparent);
+  }
+  .radar-cross.h {
+    top: 50%; left: 0;
+    width: 100%; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(74, 222, 128, 0.15), transparent);
+  }
+
+  .radar-sweep {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 50%;
+    height: 50%;
+    transform-origin: top left;
+    background: conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      rgba(74, 222, 128, 0.4) 25deg,
+      transparent 50deg
+    );
+    animation: radarSweep 4s linear infinite;
+    clip-path: polygon(0 0, 100% 0, 100% 100%);
+    border-radius: 0 0 100% 0;
+  }
+  @keyframes radarSweep {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .radar-core {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px; height: 16px;
+    background: #4ade80;
+    border-radius: 50%;
+    box-shadow: 0 0 20px #4ade80, 0 0 40px rgba(74, 222, 128, 0.5);
+    z-index: 10;
+  }
+  .radar-core::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px; height: 40px;
+    border: 1px solid #4ade80;
+    border-radius: 50%;
+    animation: coreRing 2s ease-out infinite;
+  }
+  @keyframes coreRing {
+    0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
+  }
+
+  .radar-blip {
+    position: absolute;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: blipPulse 2s ease-in-out infinite;
+  }
+  .radar-blip.hostile {
+    background: #f87171;
+    box-shadow: 0 0 12px #f87171, 0 0 24px rgba(248, 113, 113, 0.5);
+  }
+  .radar-blip.friendly {
+    background: #4ade80;
+    box-shadow: 0 0 12px #4ade80, 0 0 24px rgba(74, 222, 128, 0.5);
+  }
+  .radar-blip.neutral {
+    background: #22d3ee;
+    box-shadow: 0 0 12px #22d3ee, 0 0 24px rgba(34, 211, 238, 0.5);
+  }
+  .radar-blip.vip {
+    background: #fbbf24;
+    box-shadow: 0 0 12px #fbbf24, 0 0 24px rgba(251, 191, 36, 0.5);
+    width: 12px; height: 12px;
+  }
+  @keyframes blipPulse {
+    0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    50% { opacity: 0.6; transform: translate(-50%, -50%) scale(1.3); }
+  }
+  .radar-blip.b1 { top: 25%; left: 65%; }
+  .radar-blip.b2 { top: 60%; left: 25%; }
+  .radar-blip.b3 { top: 72%; left: 60%; }
+  .radar-blip.b4 { top: 30%; left: 30%; }
+  .radar-blip.friendly.b5 { top: 50%; left: 72%; }
+  .radar-blip.friendly.b6 { top: 65%; left: 45%; }
+  .radar-blip.vip.b7 { top: 18%; left: 50%; }
+
+  .blip-label {
+    position: absolute;
+    font-size: 10px;
+    color: rgba(184, 212, 176, 0.7);
+    white-space: nowrap;
+    transform: translate(-50%, -150%);
+    text-shadow: 0 0 4px #000;
+    letter-spacing: 0.5px;
+  }
+  .blip-label.l1 { top: 25%; left: 65%; color: #f87171; }
+  .blip-label.l2 { top: 60%; left: 25%; color: #22d3ee; }
+  .blip-label.l3 { top: 72%; left: 60%; color: #f87171; }
+  .blip-label.l4 { top: 30%; left: 30%; color: #22d3ee; }
+  .blip-label.l5 { top: 50%; left: 72%; color: #4ade80; }
+  .blip-label.l6 { top: 65%; left: 45%; color: #4ade80; }
+  .blip-label.l7 { top: 18%; left: 50%; color: #fbbf24; }
+
+  /* ===== 底部状态栏 ===== */
+  .bottom-status {
+    position: fixed;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0;
+    background: rgba(8, 18, 12, 0.92);
+    border: 1px solid rgba(184, 212, 176, 0.25);
+    z-index: 40;
+  }
+  .bs-item {
+    padding: 6px 16px;
+    border-right: 1px dashed rgba(184, 212, 176, 0.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .bs-item:last-child { border-right: none; }
+  .bs-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: rgba(184, 212, 176, 0.4);
+    text-transform: uppercase;
+  }
+  .bs-value {
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .bs-value.g { color: #4ade80; }
+  .bs-value.a { color: #fbbf24; }
+  .bs-value.r { color: #f87171; }
+  .bs-value.c { color: #22d3ee; }
+
+  /* 滚动条 */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: rgba(0, 20, 10, 0.5); }
+  ::-webkit-scrollbar-thumb { background: rgba(74, 222, 128, 0.3); }
+</style>
+</head>
+<body>
+
+<div class="tactical-bg"></div>
+<div class="crt-overlay"></div>
+<div class="crt-flicker"></div>
+
+<!-- 顶部战术条 -->
+<div class="top-bar">
+  <div class="bar-segment">
+    <div class="status-led"></div>
+    <div class="title-unit">
+      SPIDER OPS
+      <span class="sub">Tactical Trading System v2.4</span>
+    </div>
+  </div>
+
+  <div class="bar-segment middle">
+    <div class="unit-label">TARGET</div>
+    <div class="unit-value amber" id="target">概念题材</div>
+    <div style="width:1px;height:24px;background:rgba(184,212,176,0.2)"></div>
+    <div class="unit-label">SCAN</div>
+    <div class="unit-value" id="scanCount">1,091</div>
+  </div>
+
+  <div class="bar-segment middle">
+    <div class="status-led amber" title="半自动"></div>
+    <button class="tactical-btn">SEMI</button>
+    <div class="status-led" title="全自动"></div>
+    <button class="tactical-btn active">AUTO</button>
+    <button class="icon-tactical active">⚙</button>
+    <button class="tactical-btn danger">ABORT</button>
+  </div>
+</div>
+
+<!-- 左侧控制台 -->
+<div class="tactical-panel">
+  <div class="panel-frame">
+    <div class="panel-title-bar">
+      <span>▌ COMSAT // 数据链</span>
+      <span class="right">
+        <span class="status-led"></span>
+        LIVE
+      </span>
+    </div>
+    <div class="console-log" id="consoleLog">
+      <!-- JS 填充 -->
+    </div>
+  </div>
+</div>
+
+<!-- 右侧数据 -->
+<div class="right-tactical">
+  <div class="data-frame">
+    <div class="df-header">▌ SITREP // 战况</div>
+    <div class="readout-grid">
+      <div class="readout">
+        <div class="ro-label">Return</div>
+        <div class="ro-value r">+12.47%</div>
+      </div>
+      <div class="readout">
+        <div class="ro-label">Win Rate</div>
+        <div class="ro-value g">68.3%</div>
+      </div>
+      <div class="readout">
+        <div class="ro-label">Missions</div>
+        <div class="ro-value a">47</div>
+      </div>
+      <div class="readout">
+        <div class="ro-label">Drawdown</div>
+        <div class="ro-value c">-3.21%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="data-frame">
+    <div class="df-header">▌ THREAT // 市场情绪</div>
+    <div class="meter-wrap">
+      <div class="meter-scale">
+        <span>COLD</span>
+        <span>NEUTRAL</span>
+        <span>HOT</span>
+      </div>
+      <div class="meter-bar">
+        <div class="meter-fill"></div>
+      </div>
+    </div>
+    <div class="readout-grid" style="margin-top:8px">
+      <div class="readout">
+        <div class="ro-label">Limit Up</div>
+        <div class="ro-value r">33</div>
+      </div>
+      <div class="readout">
+        <div class="ro-label">Bomb Rate</div>
+        <div class="ro-value a">30%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="data-frame">
+    <div class="df-header">▌ DEFCON // 风控</div>
+    <div class="readout-grid">
+      <div class="readout">
+        <div class="ro-label">Positions</div>
+        <div class="ro-value g">3/5</div>
+      </div>
+      <div class="readout">
+        <div class="ro-label">Daily PnL</div>
+        <div class="ro-value r">+2.34%</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 中央雷达 -->
+<div class="radar-center">
+  <div class="radar-dish">
+    <div class="radar-grid">
+      <div class="radar-cross"></div>
+      <div class="radar-cross h"></div>
+    </div>
+    <div class="radar-sweep"></div>
+    <div class="radar-core"></div>
+
+    <!-- 目标点 -->
+    <div class="radar-blip hostile b1"></div>
+    <div class="radar-blip neutral b2"></div>
+    <div class="radar-blip hostile b3"></div>
+    <div class="radar-blip neutral b4"></div>
+    <div class="radar-blip friendly b5"></div>
+    <div class="radar-blip friendly b6"></div>
+    <div class="radar-blip vip b7"></div>
+
+    <!-- 标签 -->
+    <div class="blip-label l1">▶ 新能源 +5.2%</div>
+    <div class="blip-label l2">自选股 5只</div>
+    <div class="blip-label l3">▶ AI概念 +3.8%</div>
+    <div class="blip-label l4">涨幅榜 TOP50</div>
+    <div class="blip-label l5">大盘指数</div>
+    <div class="blip-label l6">板块扫描</div>
+    <div class="blip-label l7">⭐ 连板5</div>
+  </div>
+</div>
+
+<!-- 底部状态 -->
+<div class="bottom-status">
+  <div class="bs-item">
+    <span class="bs-label">UP</span>
+    <span class="bs-value r">33</span>
+  </div>
+  <div class="bs-item">
+    <span class="bs-label">DOWN</span>
+    <span class="bs-value g">0</span>
+  </div>
+  <div class="bs-item">
+    <span class="bs-label">BOMB</span>
+    <span class="bs-value a">30%</span>
+  </div>
+  <div class="bs-item">
+    <span class="bs-label">MAX BOARD</span>
+    <span class="bs-value a">5</span>
+  </div>
+  <div class="bs-item">
+    <span class="bs-label">DEFCON</span>
+    <span class="bs-value g">5</span>
+  </div>
+  <div class="bs-item">
+    <span class="bs-label">SENTIMENT</span>
+    <span class="bs-value c">NEUTRAL</span>
+  </div>
+</div>
+
+<script>
+  // 日志
+  const logLines = [
+    { lvl: 'INFO', cls: 'INFO', msg: '概念题材数据采集完成 [128 targets]' },
+    { lvl: 'INFO', cls: 'INFO', msg: '涨幅榜扫描完成 TOP-50' },
+    { lvl: 'SIG', cls: 'SIG', msg: '>> BUY SIGNAL: 新能源板块 STRENGTH=87' },
+    { lvl: 'INFO', cls: 'INFO', msg: '自选股数据刷新 5 units' },
+    { lvl: 'TRD', cls: 'TRD', msg: '>> ORDER: BUY 科华数据 QTY=100' },
+    { lvl: 'INFO', cls: 'INFO', msg: '龙虎榜数据同步完成' },
+    { lvl: 'RSK', cls: 'RSK', msg: 'RISK CHECK PASS: positions 3/5' },
+    { lvl: 'INFO', cls: 'INFO', msg: '大盘指数扫描: SZ/SSE/ChiNext' },
+    { lvl: 'SIG', cls: 'SIG', msg: '>> SELL SIGNAL: TP trigger XX股份' },
+    { lvl: 'TRD', cls: 'TRD', msg: '>> FILLED: SELL +8.5% PnL' },
+  ];
+
+  const logEl = document.getElementById('consoleLog');
+  let idx = 0;
+
+  function addLine() {
+    const log = logLines[idx % logLines.length];
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const line = document.createElement('div');
+    line.className = 'console-line';
+    line.innerHTML = `
+      <span class="console-ts">[${time}]</span>
+      <span class="console-lvl ${log.cls}">${log.lvl}</span>
+      <span class="console-msg ${log.lvl === 'SIG' ? 'highlight' : ''}">${log.msg}</span>
+    `;
+    logEl.insertBefore(line, logEl.firstChild);
+    if (logEl.children.length > 30) logEl.removeChild(logEl.lastChild);
+    idx++;
+  }
+
+  for (let i = 0; i < 12; i++) addLine();
+  setInterval(addLine, 1800);
+
+  // 计数
+  let cnt = 1091;
+  const targets = ['概念题材', '涨幅榜', '自选股', '行业板块', '涨停雷达', '大盘指数'];
+  let tIdx = 0;
+  setInterval(() => {
+    cnt++;
+    document.getElementById('scanCount').textContent = cnt.toLocaleString();
+    if (cnt % 12 === 0) {
+      tIdx = (tIdx + 1) % targets.length;
+      document.getElementById('target').textContent = targets[tIdx];
+    }
+  }, 2000);
+</script>
+
+</body>
+</html>
