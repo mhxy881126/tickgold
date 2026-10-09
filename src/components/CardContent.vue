@@ -45,10 +45,12 @@ defineEmits<{ select: [code: string]; sector: [name: string, kind: string]; swit
 // 单卡崩溃边界：捕获子卡片渲染错误，显示兜底而非整屏白屏（不影响其他卡片）
 const crashed = ref(false);
 const errMsg = ref("");
+const errStack = ref("");
 onErrorCaptured((err, _instance, info) => {
   const e = err instanceof Error ? err : new Error(String(err));
   logger.error(e.message, `card:${props.id}`, { info, stack: e.stack });
   errMsg.value = e.message;
+  errStack.value = `${info}\n${e.stack ?? ""}`.slice(0, 2000);
   crashed.value = true;
   return false; // 阻止错误继续向上冒泡，避免整树卸载
 });
@@ -63,6 +65,7 @@ function retry() {
     <div class="crash-badge">!</div>
     <div class="crash-title">该卡片出现问题</div>
     <div class="crash-msg">{{ errMsg }}</div>
+    <pre class="crash-stack">{{ errStack }}</pre>
     <button class="crash-btn" @click="retry">重试</button>
   </div>
   <template v-else>
@@ -128,6 +131,11 @@ function retry() {
 .crash-msg {
   max-width: 80%; font-size: 11px; color: var(--text-dim); text-align: center;
   word-break: break-word;
+}
+.crash-stack {
+  max-width: 90%; max-height: 180px; overflow: auto; font-size: 9px;
+  color: #8a93a6; text-align: left; white-space: pre-wrap; word-break: break-all;
+  font-family: Consolas, monospace;
 }
 .crash-btn {
   margin-top: 4px; padding: 6px 22px; border: 1px solid var(--border, #2a3344);

@@ -22,7 +22,34 @@
     <!-- 日志列表 -->
     <div class="dl-list">
       <div v-if="loading && !logs.length" class="dl-empty">加载中…</div>
-      <div v-else-if="!logs.length" class="dl-empty">暂无决策记录（盘中开启快脑自动执行后生成）</div>
+      <div v-else-if="!logs.length" class="dl-empty">
+        <div class="empty-icon">🧠</div>
+        <div class="empty-title">暂无决策记录</div>
+        <div class="empty-desc">快脑在交易时段自动扫描自选股和持仓，生成买卖决策。</div>
+        <div class="empty-steps">
+          <div class="step">
+            <span class="step-num">1</span>
+            <div class="step-body">
+              <div class="step-title">开启快脑自动执行</div>
+              <div class="step-sub">在「机器人」页面启动快脑引擎</div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-num">2</span>
+            <div class="step-body">
+              <div class="step-title">加入自选股</div>
+              <div class="step-sub">快脑会盯你的自选股和持仓股</div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-num">3</span>
+            <div class="step-body">
+              <div class="step-title">等待交易时段</div>
+              <div class="step-sub">9:30-15:00 盘中才会产生决策</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div v-for="row in logs" :key="row.id" class="dl-row" :class="{ on: expanded === row.id }">
         <div class="dl-row-head" @click="toggle(row.id)">
@@ -285,8 +312,49 @@ onUnmounted(() => {
   text-align: center;
   color: var(--text-dim, #8a93a6);
   font-size: 11px;
-  padding: 26px 0;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
 }
+.empty-icon { font-size: 28px; }
+.empty-title { font-size: 13px; font-weight: 600; color: var(--text, #e8dcc8); }
+.empty-desc { font-size: 10.5px; color: var(--text-dim, #8a93a6); line-height: 1.5; max-width: 260px; }
+.empty-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 280px;
+  margin-top: 4px;
+}
+.empty-steps .step {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 6px 8px;
+  background: var(--bg-card2, #1a1712);
+  border: 1px solid var(--border, #2c2619);
+  border-radius: 6px;
+  text-align: left;
+}
+.empty-steps .step-num {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(212, 175, 55, 0.15);
+  color: #d4af37;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.empty-steps .step-body { flex: 1; min-width: 0; }
+.empty-steps .step-title { font-size: 10.5px; font-weight: 600; color: var(--text, #e8dcc8); }
+.empty-steps .step-sub { font-size: 9.5px; color: var(--text-dim, #8a93a6); margin-top: 1px; line-height: 1.4; }
 .dl-row {
   border: 1px solid var(--border, #263043);
   border-radius: 9px;

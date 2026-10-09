@@ -11,6 +11,8 @@ export type CardId =
   | "chart"
   | "sectorheat"
   | "sector"
+  | "concept"
+  | "market"
   | "screener"
   | "spider"
   | "sectorevent"
@@ -58,6 +60,8 @@ export const CARD_META: Record<CardId, CardMeta> = {
   chart: { title: "K线图", accent: "#2f6fed", kind: "chart" },
   sectorheat: { title: "板块热力图", accent: "#d4af37", kind: "chart" },
   sector: { title: "板块行情", accent: "#35c4a8", kind: "chart" },
+  concept: { title: "概念题材", accent: "#b07cff", kind: "chart" },
+  market: { title: "大盘指数", accent: "#4ea1ff", kind: "chart" },
   screener: { title: "条件选股", accent: "#d4af37", kind: "chart" },
   spider: { title: "短线精灵", accent: "#e0556b", kind: "narrow" },
   sectorevent: { title: "板块异动", accent: "#e0556b", kind: "narrow" },

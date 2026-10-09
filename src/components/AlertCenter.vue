@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
+import { alertDialog } from "../composables/useDialog";
 import { useAlertV2Store } from "../stores/alertV2";
 import { useWatchlistStore } from "../stores/watchlist";
 import type { AlertRuleV2 } from "../alert/types";
@@ -57,9 +58,9 @@ function groupName(id: number): string {
 function toScreener() {
   navOpenScreener();
 }
-function toOrder() {
+async function toOrder() {
   // 本地条件单在 v1.4.0 提供，本版占位
-  window.alert("本地条件单将在 v1.4.0 提供，当前可先转「条件选股」。");
+  await alertDialog("本地条件单将在 v1.4.0 提供，当前可先转「条件选股」。");
 }
 
 const enabledCount = computed(() =>

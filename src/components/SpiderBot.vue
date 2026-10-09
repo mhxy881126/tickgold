@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, onUnmounted } from "vue";
 import { useWatchlistStore } from "../stores/watchlist";
 import { useQuotesStore } from "../stores/quotes";
 import { useSpiderBotEngine } from "../composables/useSpiderBotEngine";
@@ -82,6 +82,9 @@ async function start() {
       return true;
     });
     
+    // 启动可视化动画定时器（驱动蜘蛛爬行扫描效果）
+    timer = window.setInterval(tick, filter.value.scanInterval);
+    
     // 启动决策日志定时器（每3秒拉一次）
     decisionTimer = window.setInterval(fetchDecisionLogs, 3000);
   } finally {
@@ -99,6 +102,9 @@ async function stop() {
     // 同时停止蜘蛛爬虫引擎
     engine.stop();
     
+    // 停止可视化动画定时器
+    if (timer) { clearInterval(timer); timer = null; }
+    
     // 停止决策日志定时器
     if (decisionTimer) { clearInterval(decisionTimer); decisionTimer = null; }
   } finally {
@@ -108,7 +114,43 @@ async function stop() {
 
 function emergencyStop() {
   stop();
+  // 急停同时关掉全屏蜘蛛
+  window.dispatchEvent(new CustomEvent("spider-overlay-stop"));
+  fullscreenRunning.value = false;
 }
+
+// ===== 全屏爬行模式 =====
+const fullscreenRunning = ref(false);
+
+function toggleFullscreen() {
+  if (fullscreenRunning.value) {
+    window.dispatchEvent(new CustomEvent("spider-overlay-stop"));
+    fullscreenRunning.value = false;
+  } else {
+    window.dispatchEvent(new CustomEvent("spider-overlay-start"));
+    fullscreenRunning.value = true;
+  }
+}
+
+// 监听全屏蜘蛛的停止事件（比如用户在顶栏点了停止）
+function onFullscreenStopped() {
+  fullscreenRunning.value = false;
+}
+function onFullscreenStarted() {
+  fullscreenRunning.value = true;
+}
+
+onMounted(() => {
+  loadAiCfg();
+  window.addEventListener("spider-overlay-stopped", onFullscreenStopped);
+  window.addEventListener("spider-overlay-started", onFullscreenStarted);
+});
+
+onBeforeUnmount(() => {
+  if (timer) clearInterval(timer);
+  window.removeEventListener("spider-overlay-stopped", onFullscreenStopped);
+  window.removeEventListener("spider-overlay-started", onFullscreenStarted);
+});
 
 // ===== 要扫描的卡片列表（按顺序） =====
 const scanCards = [
@@ -376,6 +418,9 @@ function makeLegPath(x1: number, y1: number, x2: number, y2: number, seed: numbe
       <button class="sb-btn" :class="{ on: running }" @click="running ? stop() : start()">
         {{ running ? "⏸ 停止爬取" : "▶ 启动爬虫" }}
       </button>
+      <button class="sb-btn fullscreen" @click="toggleFullscreen">
+        🕷 {{ fullscreenRunning ? "退出全屏" : "全屏爬行" }}
+      </button>
       <button class="sb-btn" :class="{ trade: autoTrade }" @click="autoTrade = !autoTrade">
         🤖 自动交易: {{ autoTrade ? "ON" : "OFF" }}
       </button>
@@ -407,58 +452,109 @@ function makeLegPath(x1: number, y1: number, x2: number, y2: number, seed: numbe
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
+          <!-- 蛛丝流动渐变 -->
+          <linearGradient id="threadGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#0a8ab0" stop-opacity="0.3" />
+            <stop offset="50%" stop-color="#00dcff" stop-opacity="1" />
+            <stop offset="100%" stop-color="#0a8ab0" stop-opacity="0.3" />
+          </linearGradient>
+          <!-- 扫描光束渐变 -->
+          <radialGradient id="scanBeam" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#00dcff" stop-opacity="0.4" />
+            <stop offset="100%" stop-color="#00dcff" stop-opacity="0" />
+          </radialGradient>
         </defs>
 
-        <!-- 蜘蛛腿 -->
+        <!-- 背景网格（科技感） -->
+        <g opacity="0.08">
+          <line v-for="i in 12" :key="'h'+i"
+            :x1="0" :y1="400 / 12 * i" :x2="600" :y2="400 / 12 * i"
+            stroke="#00dcff" stroke-width="0.5" />
+          <line v-for="i in 18" :key="'v'+i"
+            :x1="600 / 18 * i" :y1="0" :x2="600 / 18 * i" :y2="400"
+            stroke="#00dcff" stroke-width="0.5" />
+        </g>
+
+        <!-- 蜘蛛腿（蛛丝） -->
         <g v-for="(node, i) in stockNodes" :key="i" class="spider-leg">
+          <!-- 蛛丝底色 -->
           <path
             :d="node.legPath"
-            :stroke="node.isCurrent ? '#00dcff' : '#0a8ab0'"
-            :stroke-width="node.isCurrent ? 2.5 : 1.5"
+            :stroke="node.isCurrent ? '#00dcff' : '#0a4a60'"
+            :stroke-width="node.isCurrent ? 2 : 1"
             fill="none"
-            :opacity="node.isCurrent ? 1 : 0.5"
+            :opacity="node.isCurrent ? 0.8 : 0.35"
+          />
+          <!-- 流动光点（数据粒子） -->
+          <circle
+            v-for="j in 3"
+            :key="'p'+j"
+            r="2"
+            :fill="node.isCurrent ? '#00ffff' : '#0a8ab0'"
+            :opacity="node.isCurrent ? 0.9 : 0.4"
             filter="url(#glow)"
+          >
+            <animateMotion
+              :dur="(2 + j * 0.7) + 's'"
+              repeatCount="indefinite"
+              :path="node.legPath"
+              :begin="(j * 0.6) + 's'"
+            />
+          </circle>
+          <!-- 当前扫描的节点：扫描光束 -->
+          <circle v-if="node.isCurrent" :cx="node.x" :cy="node.y" r="30"
+            fill="url(#scanBeam)" class="scan-beam" />
+          <!-- 节点外光环（脉冲） -->
+          <circle :cx="node.x" :cy="node.y" r="node.isCurrent ? 12 : 6"
+            :fill="node.isCurrent ? '#ff5096' : '#ff88aa'"
+            :opacity="node.isCurrent ? 0.2 : 0.1"
+            :class="{ 'pulse-ring': node.isCurrent }"
           />
-          <circle v-for="j in 3" :key="j"
-            :cx="300 + (node.x - 300) * (j / 4)"
-            :cy="200 + (node.y - 200) * (j / 4)"
-            r="1.5"
-            :fill="node.isCurrent ? '#00dcff' : '#0a8ab0'"
-            :opacity="node.isCurrent ? 0.9 : 0.5"
-          />
+          <!-- 节点核心 -->
           <circle :cx="node.x" :cy="node.y" r="node.isCurrent ? 6 : 4"
             :fill="node.isCurrent ? '#ff5096' : '#ff88aa'"
             :opacity="node.isCurrent ? 1 : 0.7"
             filter="url(#glow)"
+            :class="{ 'node-pulse': node.isCurrent }"
           />
-          <circle :cx="node.x" :cy="node.y" r="node.isCurrent ? 10 : 7"
-            :fill="node.isCurrent ? '#ff5096' : '#ff88aa'"
-            :opacity="node.isCurrent ? 0.3 : 0.15"
-          />
-          <text :x="node.x" :y="node.y - 12"
+          <!-- 节点名称 -->
+          <text :x="node.x" :y="node.y - 14"
             text-anchor="middle"
-            :fill="node.isCurrent ? '#00dcff' : '#7aa'"
+            :fill="node.isCurrent ? '#00ffff' : '#7aa'"
             font-size="11"
+            font-weight="node.isCurrent ? 600 : 400"
             font-family="Consolas, monospace"
           >{{ node.name }}</text>
-          <text :x="node.x" :y="node.y + 18"
+          <!-- 价格 + 涨跌幅 -->
+          <text :x="node.x" :y="node.y + 20"
             text-anchor="middle"
-            :fill="node.pct >= 0 ? '#f23645' : '#0ecb81'"
+            :fill="node.pct >= 0 ? '#ff6464' : '#00e0a0'"
             font-size="10"
             font-family="Consolas, monospace"
+            font-weight="500"
           >{{ node.price.toFixed(2) }} {{ node.pct >= 0 ? '+' : '' }}{{ node.pct.toFixed(2) }}%</text>
         </g>
 
-        <!-- 蜘蛛身体 -->
-        <g class="spider-body">
-          <circle cx="300" cy="200" r="30" fill="#0096ff" opacity="0.1" />
-          <circle cx="300" cy="200" r="22" fill="#0096ff" opacity="0.15" />
-          <circle cx="300" cy="200" r="15" fill="#0096ff" opacity="0.3" />
-          <rect x="286" y="186" width="28" height="28"
-            fill="#0064ff" opacity="0.9" rx="2" />
-          <rect x="289" y="189" width="22" height="22"
-            fill="#32b4ff" rx="1" />
-          <circle cx="300" cy="200" r="4" fill="#fff" />
+        <!-- 蜘蛛身体（带呼吸脉动效果） -->
+        <g class="spider-body" :class="{ crawling: running }">
+          <!-- 外层光晕 -->
+          <circle cx="300" cy="200" r="34" fill="#00d4ff" opacity="0.06" class="body-halo-outer" />
+          <circle cx="300" cy="200" r="26" fill="#00d4ff" opacity="0.1" class="body-halo" />
+          <circle cx="300" cy="200" r="18" fill="#00d4ff" opacity="0.18" class="body-halo-inner" />
+          <!-- 身体外壳 -->
+          <ellipse cx="300" cy="200" rx="16" ry="14"
+            fill="#0a1628" stroke="#00d4ff" stroke-width="1.5"
+            filter="url(#glow)" class="body-shell" />
+          <!-- 内部芯片纹理 -->
+          <rect x="291" y="192" width="18" height="16" fill="#004466" rx="2" />
+          <line x1="295" y1="196" x2="305" y2="196" stroke="#00d4ff" stroke-width="1" opacity="0.8" />
+          <line x1="295" y1="200" x2="305" y2="200" stroke="#00d4ff" stroke-width="1" opacity="0.6" />
+          <line x1="295" y1="204" x2="305" y2="204" stroke="#00d4ff" stroke-width="1" opacity="0.4" />
+          <!-- 中央核心（眼睛） -->
+          <circle cx="300" cy="200" r="4" fill="#fff" class="core-eye">
+            <animate attributeName="opacity" values="1;0.6;1" dur="2s" repeatCount="indefinite" />
+          </circle>
+          <circle cx="300" cy="200" r="2" fill="#ff5096" />
         </g>
 
         <text v-if="!stockNodes.length" x="300" y="200" text-anchor="middle"
@@ -538,6 +634,61 @@ function makeLegPath(x1: number, y1: number, x2: number, y2: number, seed: numbe
   padding: 10px;
 }
 .spider-svg { width: 100%; height: 100%; max-height: 280px; }
+
+/* 蜘蛛身体呼吸动画 */
+.spider-body.crawling .body-shell {
+  animation: bodyBreath 2s ease-in-out infinite;
+}
+.spider-body.crawling .body-halo {
+  animation: haloPulse 2s ease-in-out infinite;
+}
+.spider-body.crawling .body-halo-outer {
+  animation: haloPulse 2.5s ease-in-out infinite;
+}
+.spider-body.crawling .body-halo-inner {
+  animation: haloPulse 1.5s ease-in-out infinite reverse;
+}
+@keyframes bodyBreath {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+@keyframes haloPulse {
+  0%, 100% { opacity: 0.1; transform: scale(1); }
+  50% { opacity: 0.25; transform: scale(1.15); }
+}
+
+/* 核心眼睛闪烁 */
+.core-eye {
+  filter: drop-shadow(0 0 4px #fff);
+}
+
+/* 节点脉冲动画 */
+.node-pulse {
+  animation: nodePulse 1.2s ease-in-out infinite;
+}
+@keyframes nodePulse {
+  0%, 100% { r: 6; }
+  50% { r: 8; }
+}
+
+/* 光环扩散 */
+.pulse-ring {
+  animation: pulseRing 1.5s ease-out infinite;
+  transform-origin: center;
+}
+@keyframes pulseRing {
+  0% { r: 12; opacity: 0.3; }
+  100% { r: 28; opacity: 0; }
+}
+
+/* 扫描光束呼吸 */
+.scan-beam {
+  animation: scanBeam 1.5s ease-in-out infinite;
+}
+@keyframes scanBeam {
+  0%, 100 { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
 
 /* 日志 */
 .sb-logs { display: flex; gap: 8px; height: 160px; }

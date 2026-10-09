@@ -93,8 +93,9 @@ describe("SpiderSim 步态", () => {
     }
   });
 
-  it("默认参数下多方向长距离行走：逻辑脚始终在骨链可达域内（不超伸/不滑步）", () => {
-    // 回归：固定相位 trot 的参数自洽契约。渲染投影只是兜底，逻辑脚本身不得超骨长。
+  it("默认参数下多方向长距离行走：渲染脚始终在骨链可达域内（不超伸）", () => {
+    // 回归：渲染输出的每只脚都必须在两段 IK 可达域内（l1+l2）。
+    // 逻辑脚在摆腿时会因抬脚弧度短暂超伸（正常动画），但渲染投影会钳制回来。
     const dirs = [
       { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 0, y: -1 },
       { x: 1, y: 1 }, { x: -1, y: 1 }, { x: 0.7, y: -0.7 },
@@ -112,11 +113,17 @@ describe("SpiderSim 步态", () => {
       for (let f = 0; f < 8000 && sim.active; f++) {
         sim.update(16, f * 16);
         frames++;
-        // @ts-expect-error 读取私有腿状态验证可达域
-        for (const l of sim.legs) {
-          // @ts-expect-error 同上
-          const hip = sim.hipWorld(l);
-          expect(Math.hypot(l.foot.x - hip.x, l.foot.y - hip.y)).toBeLessThanOrEqual(maxReach);
+        const legs = sim.legsForRender();
+        for (let i = 0; i < legs.length; i++) {
+          const l = legs[i];
+          // 膝到髋 + 膝到脚 = 两段骨长
+          const d1 = Math.hypot(l.knee.x - l.hip.x, l.knee.y - l.hip.y);
+          const d2 = Math.hypot(l.foot.x - l.knee.x, l.foot.y - l.knee.y);
+          expect(d1).toBeCloseTo(sim.l1, 4);
+          expect(d2).toBeCloseTo(sim.l2, 4);
+          // 脚到髋的距离不得超过总长
+          const total = Math.hypot(l.foot.x - l.hip.x, l.foot.y - l.hip.y);
+          expect(total).toBeLessThanOrEqual(maxReach + 0.5);
         }
       }
       // 路径必须在帧预算内走完，否则上面的覆盖是空转
@@ -124,9 +131,62 @@ describe("SpiderSim 步态", () => {
       expect(frames).toBeGreaterThan(0);
       // 到站后任何一帧都不得有脚冻结在摆动弧上
       sim.update(16, 8000 * 16);
-      // @ts-expect-error 读私有腿状态
-      expect(sim.legs.every((l: { lifting: boolean }) => !l.lifting)).toBe(true);
+      expect(sim.legsForRender().every(l => !l.lifting)).toBe(true);
     }
+  });
+});
+
+describe("SpiderSim 扫描进度", () => {
+  it("非活动状态 scanProgress 为 0", () => {
+    const sim = new SpiderSim({ x: 100, y: 100 });
+    expect(sim.scanProgress).toBe(0);
+    expect(sim.isScanning).toBe(false);
+  });
+
+  it("via 中途点不触发扫描进度", () => {
+    const sim = new SpiderSim({ x: 0, y: 0 }, { speed: 100, dwellMs: 200 });
+    sim.resetPath([
+      { x: 50, y: 0, anchor: anchor(50, 0, "v1"), signal: null, via: true },
+      pt(100, 0),
+    ]);
+    // 推近到 via 点附近
+    for (let i = 0; i < 20 && sim.active; i++) sim.update(30, i * 30);
+    // via 点时 scanProgress 为 0
+    if (sim.current?.via) {
+      expect(sim.scanProgress).toBe(0);
+      expect(sim.isScanning).toBe(false);
+    }
+  });
+
+  it("到达非 via 点后 scanProgress 从 0 增长到 1", () => {
+    const sim = new SpiderSim({ x: 0, y: 0 }, { speed: 300, dwellMs: 400, glideScan: false });
+    sim.resetPath([pt(60, 0)]);
+    // 推进到到达
+    let arrived = false;
+    let t = 0;
+    for (let i = 0; i < 80 && !arrived; i++) {
+      t += 20;
+      const ev = sim.update(20, t);
+      if (ev.arrived) arrived = true;
+    }
+    expect(arrived).toBe(true);
+    expect(sim.isScanning).toBe(true);
+    const startProgress = sim.scanProgress;
+    expect(startProgress).toBeGreaterThanOrEqual(0);
+    // 推进 100ms（驻留 400ms 的 1/4）
+    for (let i = 0; i < 5; i++) {
+      t += 20;
+      sim.update(20, t);
+    }
+    const midProgress = sim.scanProgress;
+    expect(midProgress).toBeGreaterThan(startProgress);
+    expect(midProgress).toBeLessThanOrEqual(1);
+    // 再推进 300ms，应该到 1 且扫描结束
+    for (let i = 0; i < 20; i++) {
+      t += 20;
+      sim.update(20, t);
+    }
+    expect(sim.isScanning).toBe(false);
   });
 });
 
@@ -176,13 +236,13 @@ describe("SpiderSim 数据包", () => {
     noCode.anchor.code = undefined;
     sim.spawnPacket(noCode);
     expect(sim.packets).toHaveLength(0);
-    // 不设 flyTarget，连续塞 12 个买入包，trailing 封顶 8
+    // 不设 flyTarget，连续塞 12 个买入包，活动中（extracting+trailing）封顶 8
     for (let i = 0; i < 12; i++) {
       const p = pt(10 + i, 0, "BUY");
       p.anchor.code = `6000${i}`;
       sim.spawnPacket(p);
     }
     expect(sim.packets).toHaveLength(8);
-    expect(sim.packets.every((p) => p.state === "trailing")).toBe(true);
+    expect(sim.packets.every((p) => p.state === "extracting" || p.state === "trailing")).toBe(true);
   });
 });

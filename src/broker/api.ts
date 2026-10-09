@@ -31,6 +31,8 @@ export interface BrokerAsset {
   cash?: number;
   marketValue?: number;
   totalAsset?: number;
+  floatPnl?: number; // 浮动盈亏
+  dayPnl?: number; // 当日参考盈亏
   note?: string;
 }
 

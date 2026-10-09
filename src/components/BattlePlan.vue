@@ -246,11 +246,36 @@ onMounted(() => {
     </template>
 
     <div v-else class="bp-empty-state">
-      <div class="bp-empty-text">
-        暂无作战计划。先完成当日复盘，再由慢脑生成次日计划。
+      <div class="empty-icon">📋</div>
+      <div class="empty-title">暂无作战计划</div>
+      <div class="empty-desc">作战计划由慢脑基于当日复盘生成，帮你规划次日交易策略。</div>
+
+      <div class="empty-steps">
+        <div class="step">
+          <span class="step-num">1</span>
+          <div class="step-body">
+            <div class="step-title">确保 AI 模型已配置</div>
+            <div class="step-sub">在设置中配置 DeepSeek / 其他大模型 API</div>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-num">2</span>
+          <div class="step-body">
+            <div class="step-title">有持仓或自选股</div>
+            <div class="step-sub">计划会基于你的持仓和观察股生成</div>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-num">3</span>
+          <div class="step-body">
+            <div class="step-title">点击下方按钮生成</div>
+            <div class="step-sub">生成约需 1-2 分钟，生成后可编辑批准</div>
+          </div>
+        </div>
       </div>
-      <button class="bp-btn" :disabled="loading" @click="generate">
-        {{ loading ? "生成中（约 1-2 分钟）…" : "生成次日作战计划" }}
+
+      <button class="bp-btn primary" :disabled="loading" @click="generate">
+        {{ loading ? "生成中（约 1-2 分钟）…" : "✨ 生成次日作战计划" }}
       </button>
     </div>
 
@@ -315,12 +340,61 @@ onMounted(() => {
 .bp-card-foot { display: flex; gap: 10px; margin-top: 2px; flex-wrap: wrap; }
 .bp-col-empty { color: var(--text-dim, #6a7488); font-size: 10px; text-align: center; padding: 8px; }
 .bp-edit-label { font-size: 10px; color: var(--text-dim, #8a93a6); }
-.bp-empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
-.bp-empty-text { color: var(--text-dim, #8a93a6); font-size: 11px; }
+.bp-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+}
+.empty-icon { font-size: 32px; }
+.empty-title { font-size: 14px; font-weight: 600; color: var(--text, #e8dcc8); }
+.empty-desc { font-size: 11px; color: var(--text-dim, #8a93a6); text-align: center; max-width: 280px; line-height: 1.6; }
+
+.empty-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 300px;
+  margin: 4px 0;
+}
+.step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  background: var(--bg-card2, #1a1712);
+  border: 1px solid var(--border, #2c2619);
+  border-radius: 8px;
+}
+.step-num {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(212, 175, 55, 0.15);
+  color: #d4af37;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.step-body { flex: 1; min-width: 0; }
+.step-title { font-size: 11.5px; font-weight: 600; color: var(--text, #e8dcc8); }
+.step-sub { font-size: 10px; color: var(--text-dim, #8a93a6); margin-top: 2px; line-height: 1.4; }
+
 .bp-btn {
   padding: 6px 18px; border: 1px solid var(--accent, #d4af37); border-radius: 9px;
   background: var(--bg-card, #15181f); color: var(--accent, #d4af37);
   font-size: 12px; cursor: pointer;
+}
+.bp-btn.primary {
+  background: linear-gradient(135deg, rgba(212,175,55,.15), rgba(212,175,55,.05));
+  border-color: var(--accent, #d4af37);
 }
 .bp-btn:disabled { opacity: .6; cursor: default; }
 .bp-err { color: #ff6b78; font-size: 11px; }

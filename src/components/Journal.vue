@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
+import { confirmDialog } from "../composables/useDialog";
 import { useJournalStore, type JournalEntry } from "../stores/journal";
 
 const props = defineProps<{ code: string | null }>();
@@ -88,7 +89,7 @@ async function newEntry() {
 }
 async function delEntry() {
   if (currentId.value == null) return;
-  if (window.confirm("确定删除这篇日记？")) {
+  if (await confirmDialog({ title: "删除日记", message: "确定删除这篇日记？", danger: true, confirmText: "删除" })) {
     const id = currentId.value;
     await j.remove(id);
     const list = j.byDate(selectedDate.value);

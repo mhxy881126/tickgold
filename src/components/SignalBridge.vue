@@ -2,6 +2,7 @@
 // 信号人工确认桥：双脑 BUY/SELL 信号落「待确认单」，人工改价改量、选券商，
 // 生成下单指令（复制/导出/唤起券商软件）。不自动成交，全程状态留痕。
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
+import { confirmDialog } from "../composables/useDialog";
 import {
   autoexecGetConfig,
   signalCreateManual,
@@ -245,7 +246,12 @@ async function onBrokerSend(t: SignalTicketInfo) {
       bConnected.value = true;
     }
     if (bLive.value) {
-      const ok = window.confirm(`实盘已开启，确认向券商提交真实委托 ${t.code} ${t.vol} 股？`);
+      const ok = await confirmDialog({
+        title: "提交实盘委托",
+        message: `实盘已开启，确认向券商提交真实委托 ${t.code} ${t.vol} 股？`,
+        confirmText: "提交",
+        danger: true,
+      });
       if (!ok) return;
     }
     await brokerSubmit(t.sigId);
@@ -453,7 +459,37 @@ onUnmounted(() => {
     <!-- 列表 -->
     <div class="sb-list">
       <div v-if="!filtered.length && !loading" class="sb-empty">
-        {{ tab === "pending" ? "暂无待确认信号，开启快脑/自动执行后信号将自动汇聚于此" : "暂无记录" }}
+        <template v-if="tab === 'pending'">
+          <div class="empty-icon">🔔</div>
+          <div class="empty-title">暂无待确认信号</div>
+          <div class="empty-desc">信号确认桥：快脑发出的买卖信号会先落到这里，你确认后再下单，不自动成交。</div>
+          <div class="empty-steps">
+            <div class="step">
+              <span class="step-num">1</span>
+              <div class="step-body">
+                <div class="step-title">开启快脑自动执行</div>
+                <div class="step-sub">在「机器人」页面启动快脑</div>
+              </div>
+            </div>
+            <div class="step">
+              <span class="step-num">2</span>
+              <div class="step-body">
+                <div class="step-title">设置为「人工确认」模式</div>
+                <div class="step-sub">半自动/人工确认模式才会走信号桥</div>
+              </div>
+            </div>
+            <div class="step">
+              <span class="step-num">3</span>
+              <div class="step-body">
+                <div class="step-title">等待交易时段</div>
+                <div class="step-sub">盘中有信号会自动出现在这里</div>
+              </div>
+            </div>
+          </div>
+        </template>
+        <template v-else>
+          暂无记录
+        </template>
       </div>
 
       <div
@@ -751,12 +787,51 @@ onUnmounted(() => {
 .sb-empty {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   color: var(--text-dim, #97a0b2);
   text-align: center;
   padding: 20px;
 }
+.empty-icon { font-size: 28px; }
+.empty-title { font-size: 13px; font-weight: 600; color: var(--text, #e0e6f0); }
+.empty-desc { font-size: 10.5px; color: var(--text-dim, #8892a8); line-height: 1.5; max-width: 280px; }
+.empty-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 280px;
+  margin-top: 4px;
+}
+.empty-steps .step {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 6px 8px;
+  background: var(--bg-card2, #1a1712);
+  border: 1px solid var(--border, #2c2619);
+  border-radius: 6px;
+  text-align: left;
+}
+.empty-steps .step-num {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(212, 175, 55, 0.15);
+  color: #d4af37;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.empty-steps .step-body { flex: 1; min-width: 0; }
+.empty-steps .step-title { font-size: 10.5px; font-weight: 600; color: var(--text, #e0e6f0); }
+.empty-steps .step-sub { font-size: 9.5px; color: var(--text-dim, #8892a8); margin-top: 1px; line-height: 1.4; }
 .sig {
   border: 1px solid var(--border, #2a3344);
   border-left-width: 3px;

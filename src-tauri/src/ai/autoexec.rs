@@ -322,6 +322,10 @@ fn can_fire(history: &mut HashMap<String, Vec<Instant>>, code: &str) -> bool {
 
 /// 14:55 前才允许开仓。
 fn can_open_now(cfg: &AutoExecConfig) -> bool {
+    // 模拟盘全自动：休市/夜间也允许按最近收盘价继续模拟开仓
+    if cfg.trade_mode == "full" {
+        return true;
+    }
     let (_, h, m) = spider::beijing();
     let cur = h * 60 + m;
     let parts: Vec<u32> = cfg
@@ -421,6 +425,18 @@ fn paper_buy(
     total_pos_pct: f64,
 ) -> Result<String, String> {
     let fill = (q.price * (1.0 + cfg.slippage_pct / 100.0)).max(0.001);
+    // 语句级去重：前端轨可能已先买入同票（双轨共用一个 sqlite），
+    // 此处重查持仓把竞态收窄到语句级，避免重复开仓/现金透支。
+    let held: f64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(vol),0) FROM paper_position WHERE code=?1",
+            [&item.code],
+            |r| r.get(0),
+        )
+        .unwrap_or(0.0);
+    if held > 0.0 {
+        return Err(format!("已持仓 {}，跳过重复开仓", item.code));
+    }
     let target_pct = item
         .position_hint_pct
         .min(cfg.max_single_pct)
@@ -646,7 +662,9 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
         //     last_review_date = today;
         // }
 
-        if !spider::is_trading_time() {
+        // 模拟盘全自动（full）允许休市/夜间按最近收盘价继续模拟；
+        // semi/manual 保持旧行为：休市不循环、不产信号。
+        if cfg.trade_mode != "full" && !spider::is_trading_time() {
             continue;
         }
 

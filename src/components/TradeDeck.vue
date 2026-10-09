@@ -263,6 +263,9 @@ function fmtMoney(v: number | undefined): string {
     ? "--"
     : "¥" + v.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
 }
+function pnlCls(v: number | undefined): string {
+  return v === undefined ? "" : v > 1e-6 ? "pnl-up" : v < -1e-6 ? "pnl-down" : "";
+}
 
 async function refresh() {
   try {
@@ -285,6 +288,8 @@ async function refresh() {
       cash: paper.account.cash,
       marketValue: paper.marketValue,
       totalAsset: paper.totalAssets,
+      floatPnl: paper.floatPnl,
+      dayPnl: paper.dayPnl,
       note: "模拟盘账户",
     };
   }
@@ -354,16 +359,24 @@ onBeforeUnmount(() => {
         <div class="da-k">可用资金</div>
         <div class="da-v">{{ fmtMoney(asset?.cash) }}</div>
       </div>
+      <div class="da-cell">
+        <div class="da-k">持仓市值</div>
+        <div class="da-v">{{ fmtMoney(asset?.marketValue) }}</div>
+      </div>
+      <div class="da-cell">
+        <div class="da-k">浮动盈亏</div>
+        <div class="da-v pnl" :class="pnlCls(asset?.floatPnl)">{{ fmtMoney(asset?.floatPnl) }}</div>
+      </div>
+      <div class="da-cell">
+        <div class="da-k">当日参考盈亏</div>
+        <div class="da-v pnl" :class="pnlCls(asset?.dayPnl)">{{ fmtMoney(asset?.dayPnl) }}</div>
+      </div>
       <!-- 方案 C：次要资产 + 账户状态收进「更多」浮层 -->
       <div ref="deckPopWrap" class="dk-pop-wrap">
         <button class="dk-act" type="button" :class="{ on: deckMoreOpen }" @click="toggleMore">
           更多 ▾
         </button>
         <div v-if="deckMoreOpen" class="dk-more-pop">
-          <div class="dm-cell">
-            <div class="da-k">持仓市值</div>
-            <div class="dm-v">{{ fmtMoney(asset?.marketValue) }}</div>
-          </div>
           <div class="dm-cell">
             <div class="da-k">仓位占比</div>
             <div class="dm-v">{{ positionPct === null ? "--" : positionPct + "%" }}</div>
@@ -568,6 +581,8 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
   color: var(--text, #e6ecf5);
 }
+.da-v.pnl-up { color: #f23645; }
+.da-v.pnl-down { color: #0ecb81; }
 .da-dot {
   width: 8px;
   height: 8px;

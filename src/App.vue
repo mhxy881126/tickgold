@@ -11,6 +11,7 @@ import OnboardingDialog from "./components/OnboardingDialog.vue";
 import LayoutMenu from "./components/LayoutMenu.vue";
 import SideDock from "./components/SideDock.vue";
 import CardTabStrip from "./components/CardTabStrip.vue";
+import AppDialog from "./components/AppDialog.vue";
 import ShortTermSpider from "./components/ShortTermSpider.vue";
 import LimitRadar from "./components/LimitRadar.vue";
 import WatchList from "./components/WatchList.vue";
@@ -59,6 +60,7 @@ import { startTimeSeries } from "./composables/useTimeSeries";
 import { startCollector } from "./composables/useCollector";
 import { playAlert } from "./utils/sound";
 import { initPluginSystem } from "./plugin/register";
+import { promptDialog } from "./composables/useDialog";
 
 const wl = useWatchlistStore();
 const quotes = useQuotesStore();
@@ -151,7 +153,7 @@ function onCardMenu(id: CardId, p: { x: number; y: number }) {
     y: Math.min(p.y, window.innerHeight - H - 8),
   };
 }
-function onCtxAction(a: string) {
+async function onCtxAction(a: string) {
   const id = ctxMenu.value?.id;
   if (!id) return;
   if (a === "focus") { bench.focusId.value === id ? exitFocus() : enterFocus(id); }
@@ -162,7 +164,11 @@ function onCtxAction(a: string) {
   else if (a === "paste") bench.pasteLook(id);
   else if (a === "color") bench.openCfgId.value = id;
   else if (a === "tag") {
-    const t = prompt("标签（最多4字）", bench.cardLook(id).tag);
+    const t = await promptDialog({
+      title: "卡片标签",
+      defaultValue: bench.cardLook(id).tag,
+      placeholder: "标签（最多4字）",
+    });
     if (t !== null) bench.setCardTag(id, t);
   } else if (a === "close") bench.close(id);
   ctxMenu.value = null;
@@ -913,6 +919,7 @@ onBeforeUnmount(() => {
     <SettingsDialog v-model:open="showSettings" @replay-onboarding="showOnboarding = true" @check-update="showUpdate = true" />
     <ShortcutDialog v-model:open="showShortcuts" />
     <OnboardingDialog v-model:open="showOnboarding" />
+    <AppDialog />
 
     <!-- 命令面板（Ctrl / ⌘ + K） -->
     <Transition name="palette">

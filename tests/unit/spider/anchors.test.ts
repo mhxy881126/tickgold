@@ -33,7 +33,7 @@ describe("rectsToAnchors", () => {
       { w: 1280, h: 800 },
       quotes,
     );
-    expect(a.x).toBe(106);
+    expect(a.x).toBe(108); // 100 + EDGE_PAD(8)
     expect(a.y).toBe(216);
     expect(a.width).toBe(300);
     expect(a.height).toBe(32);

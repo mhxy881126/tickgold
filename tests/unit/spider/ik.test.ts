@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   add, sub, scale, len, dist, lerp, angleOf, rotate, clamp,
   twoBoneKnee, quad, buildHips, shouldStep, restTarget, buildWaypoints,
+  edgeLane, edgeRoute, roamPath,
   type Vec2,
 } from "../../../src/components/spider/ik";
 
@@ -92,6 +93,41 @@ describe("buildHips 8 腿配置", () => {
     expect(hips.filter((h) => h.side === 1)).toHaveLength(4);
     expect(hips.filter((h) => h.group === 0)).toHaveLength(4);
     expect(hips.filter((h) => h.group === 1)).toHaveLength(4);
+  });
+
+  it("髋点为放大后坐标（最宽 ±22、最前/最后 ±20）", () => {
+    const hips = buildHips();
+    expect(Math.max(...hips.map((h) => Math.abs(h.ox)))).toBe(22);
+    expect(Math.max(...hips.map((h) => Math.abs(h.oy)))).toBe(20);
+  });
+});
+
+describe("边缘车道漫游", () => {
+  const size = { w: 1000, h: 600 };
+  const onLane = (p: Vec2, pad = 52) =>
+    p.x === pad || p.x === 1000 - pad || p.y === pad || p.y === 600 - pad;
+
+  it("edgeLane 内缩矩形周长正确", () => {
+    const lane = edgeLane(size, 52);
+    expect(lane.w).toBe(1000 - 104);
+    expect(lane.h).toBe(600 - 104);
+    expect(lane.per).toBe(2 * (lane.w + lane.h));
+  });
+
+  it("edgeRoute 近距返回空、远距路径点全在车道上", () => {
+    expect(edgeRoute({ x: 100, y: 300 }, { x: 200, y: 300 }, size)).toHaveLength(0);
+    const route = edgeRoute({ x: 100, y: 100 }, { x: 900, y: 500 }, size);
+    expect(route.length).toBeGreaterThan(1);
+    // 除端点投影外都在车道上；首点为 from 的车道投影
+    expect(route.every((p) => onLane(p))).toBe(true);
+    // 路径不穿过屏幕中央
+    expect(route.some((p) => Math.abs(p.x - 500) < 60 && Math.abs(p.y - 300) < 60)).toBe(false);
+  });
+
+  it("roamPath 有界、采样点落在车道且至少含若干点", () => {
+    const roam = roamPath({ x: 500, y: 300 }, size, { distance: 700, spacing: 200 });
+    expect(roam.length).toBeGreaterThanOrEqual(3);
+    expect(roam.every((p) => onLane(p))).toBe(true);
   });
 });
 

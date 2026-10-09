@@ -104,7 +104,7 @@ fn current_profiles(
     c: &rusqlite::Connection,
     profile_key: Option<&str>,
 ) -> Result<Vec<Value>, String> {
-    let sql = "SELECT key,name,version,spec FROM strategy_profile WHERE is_current=1\
+    let sql = "SELECT key,name,version,spec FROM strategy_profile WHERE is_current=1 \
         AND (?1 IS NULL OR key=?1)";
     let mut stmt = c.prepare(sanitize_profile_sql(sql)).map_err(|e| e.to_string())?;
     let rows = stmt

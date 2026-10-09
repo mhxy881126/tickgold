@@ -23,6 +23,8 @@ pub struct BrokerManager {
     pub sidecar: Mutex<Option<SidecarHandle>>,
     pub kill_switch: AtomicBool,
     pub connected: AtomicBool,
+    // QMT sidecar 最近一次 asset 回报缓存（含 floatPnl/dayPnl 等扩展字段）
+    pub asset_cache: Mutex<serde_json::Value>,
 }
 
 impl BrokerManager {
@@ -35,6 +37,7 @@ impl BrokerManager {
             sidecar: Mutex::new(None),
             kill_switch: AtomicBool::new(false),
             connected: AtomicBool::new(false),
+            asset_cache: Mutex::new(serde_json::json!({})),
         }
     }
 
@@ -134,6 +137,12 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
         "disconnected" => {
             if let Some(m) = try_manager(app) {
                 m.connected.store(false, Ordering::SeqCst);
+            }
+        }
+        "asset" => {
+            // 缓存最近一次资产回报，broker_query_asset（QMT）直接读缓存
+            if let Some(m) = try_manager(app) {
+                *m.asset_cache.lock().unwrap() = v.clone();
             }
         }
         "order" | "error" => {
@@ -485,18 +494,36 @@ pub async fn broker_cancel(
 }
 
 #[tauri::command]
-pub fn broker_query_asset(mgr: State<'_, BrokerManager>) -> serde_json::Value {
+pub async fn broker_query_asset(mgr: State<'_, BrokerManager>) -> Result<serde_json::Value, String> {
     let cfg = mgr.config.lock().unwrap().clone();
     match cfg.kind.as_str() {
         "mock" => {
             let s = mgr.mock.lock().unwrap().snapshot();
-            serde_json::json!({
+            Ok(serde_json::json!({
                 "cash": round2(s.cash),
                 "marketValue": round2(s.market_value),
                 "totalAsset": round2(s.total_asset()),
-            })
+            }))
         }
-        _ => serde_json::json!({ "note": "QMT 资产由 sidecar 回报（第 2 步）" }),
+        "qmt" => {
+            // 优先返回 sidecar 最近一次 asset 回报缓存
+            let cached = mgr.asset_cache.lock().unwrap().clone();
+            if !cached.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+                return Ok(cached);
+            }
+            // 缓存为空：向 sidecar 发一次 query_asset，前端下次轮询即可拿到回报
+            let stdin = mgr.sidecar.lock().unwrap().as_ref().map(|h| h.stdin.clone());
+            if let Some(s) = stdin {
+                let req = sidecar::request("query-asset", "query_asset", serde_json::json!({}));
+                if let Err(e) = sidecar::send_to(&s, req).await {
+                    return Ok(serde_json::json!({ "note": format!("资产查询失败：{e}") }));
+                }
+                Ok(serde_json::json!({ "note": "正在向 QMT 查询资产…" }))
+            } else {
+                Ok(serde_json::json!({ "note": "QMT 未连接，暂无资产数据" }))
+            }
+        }
+        _ => Ok(serde_json::json!({ "note": "暂不支持该券商的资产查询" })),
     }
 }
 

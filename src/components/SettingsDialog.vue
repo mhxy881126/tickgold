@@ -58,6 +58,7 @@ import type { AiConfig, ConnTest, KbStats, IndexProgress } from "../ai/types";
 import type { AutoExecConfigInfo } from "../ai/api";
 import { ISLAND_SKINS, getIslandSkin, setIslandSkin, applyIslandSkin, ISLAND_SKIN_EVENT, type IslandSkinId } from "../lib/islandSkins";
 import { usePaperStore } from "../stores/paper";
+import { confirmDialog } from "../composables/useDialog";
 
 defineProps<{ open: boolean }>();
 const emit = defineEmits<{ "update:open": [boolean]; "replay-onboarding": []; "check-update": [] }>();
@@ -574,9 +575,12 @@ async function bDisconnect() {
 }
 async function toggleLive(v: boolean) {
   if (v) {
-    const ok = window.confirm(
-      "开启实盘后，已确认信号可能被提交为真实委托并产生真实资金变动。确认开启实盘？",
-    );
+    const ok = await confirmDialog({
+      title: "开启实盘",
+      message: "开启实盘后，已确认信号可能被提交为真实委托并产生真实资金变动。确认开启实盘？",
+      confirmText: "开启",
+      danger: true,
+    });
     if (!ok) {
       if (bForm.value) bForm.value.liveEnabled = false;
       return;
@@ -622,6 +626,32 @@ async function bMockReset() {
   try {
     await paper.reset();
     bFlash("模拟账户已重置");
+  } catch (e) {
+    bFlash(String(e));
+  }
+}
+
+// 保存自定义总资金到券商配置，并立即按该本金重置模拟账户
+async function bSaveMockCash() {
+  if (!bForm.value) return;
+  const cash = Number(bForm.value.mockInitCash);
+  if (!(cash > 0)) { bFlash("总资金须大于 0"); return; }
+  const ok = await confirmDialog({
+    title: "保存并重置",
+    message: `将保存配置并清空模拟账户，总资金设为 ${cash.toLocaleString("zh-CN")} 元，确定？`,
+    confirmText: "保存并重置",
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    const f = bForm.value;
+    await brokerSetConfig({
+      kind: f.kind, pythonPath: f.pythonPath, qmtPath: f.qmtPath, accountId: f.accountId,
+      maxSinglePct: f.maxSinglePct, maxTotalPct: f.maxTotalPct, noOpenAfter: f.noOpenAfter,
+      feePct: f.feePct, mockAllowAnytime: f.mockAllowAnytime, mockInitCash: cash,
+    });
+    await paper.resetWith(cash);
+    bFlash(`已保存，模拟账户总资金 ${cash.toLocaleString("zh-CN")} 元`);
   } catch (e) {
     bFlash(String(e));
   }
@@ -1237,6 +1267,23 @@ async function toggleDev() {
                 </div>
               </template>
 
+              <!-- 模拟账户总资金（自定义，不写死100万） -->
+              <template v-if="bForm && bForm.kind === 'mock'">
+                <div class="section-title" style="margin-top:20px">模拟账户总资金</div>
+                <div class="section-sub">自定义模拟盘初始总资金。保存后立即清空持仓 / 委托并按该本金重置。</div>
+                <div class="mock-cash-row">
+                  <label class="mock-cash-lb">总资金（元）</label>
+                  <input v-model.number="bForm.mockInitCash" type="number" min="1000" step="10000" class="mock-cash-in" />
+                  <button type="button" class="mock-cash-preset" @click="bForm.mockInitCash = 100000">10万</button>
+                  <button type="button" class="mock-cash-preset" @click="bForm.mockInitCash = 500000">50万</button>
+                  <button type="button" class="mock-cash-preset" @click="bForm.mockInitCash = 1000000">100万</button>
+                  <button type="button" class="mock-cash-preset" @click="bForm.mockInitCash = 5000000">500万</button>
+                </div>
+                <div class="bk-actions" style="margin-top:10px">
+                  <button type="button" class="logs-btn primary" @click="bSaveMockCash">保存并重置模拟账户</button>
+                </div>
+              </template>
+
               <!-- 第三步：实盘开关（醒目警示） -->
               <div class="section-title" style="margin-top:20px">实盘委托</div>
               <div v-if="bForm && bForm.kind === 'mock'" class="bk-live-card disabled">
@@ -1270,10 +1317,8 @@ async function toggleDev() {
                 </div>
 
                 <!-- 模拟工具 -->
-                <div class="section-title" style="margin-top:18px">模拟账户</div>
-                <div class="section-sub">买卖操作在左侧「模拟交易」卡片里直接进行。这里只有重置功能。</div>
-                <div v-if="bForm" class="bk-actions" style="margin-top:10px">
-                  <button type="button" class="logs-btn danger" @click="bMockReset">清空模拟账户（回到100万）</button>
+                <div v-if="bForm" class="bk-actions" style="margin-top:14px">
+                  <button type="button" class="logs-btn" @click="bMockReset">清空模拟账户（恢复当前配置本金）</button>
                   <label class="ai-field">
                     <input v-model="bForm.mockAllowAnytime" type="checkbox" />
                     休市/周末也能买卖（联调用）
@@ -1707,6 +1752,14 @@ async function toggleDev() {
 .bk-chip.on { color: #26d07c; border-color: #26d07c; }
 .bk-chip.kill { color: #ff5a6a; border-color: #ff5a6a; font-weight: 700; }
 .bk-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.mock-cash-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.mock-cash-lb { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.mock-cash-in { width: 150px; height: 30px; padding: 0 8px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--bg-deep); color: var(--text); font-size: 13px; }
+.mock-cash-in:focus { border-color: var(--accent); outline: none; }
+.mock-cash-preset { height: 30px; padding: 0 10px; font-size: 12px; border-radius: 6px;
+  background: transparent; color: var(--text-dim); border: 1px solid var(--border); cursor: pointer; }
+.mock-cash-preset:hover { color: var(--text); border-color: var(--text-dim); }
 .bk-radio { font-size: 11.5px; color: var(--text-dim); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 
 /* 重排后的券商交易 */

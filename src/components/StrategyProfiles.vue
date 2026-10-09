@@ -23,7 +23,8 @@ const cloneName = ref("");
 
 const grouped = computed(() => {
   const map = new Map<string, { current?: ProfileRow; count: number }>();
-  for (const r of rows.value) {
+  const safeRows = Array.isArray(rows.value) ? rows.value : [];
+  for (const r of safeRows) {
     const g = map.get(r.key) ?? { count: 0 };
     g.count += 1;
     if (r.is_current === 1) g.current = r;
@@ -39,14 +40,40 @@ const grouped = computed(() => {
 const current = computed(
   () => grouped.value.find((g) => g.key === selectedKey.value)?.current ?? null
 );
-const versions = computed(() =>
-  rows.value
+const versions = computed(() => {
+  const safeRows = Array.isArray(rows.value) ? rows.value : [];
+  return safeRows
     .filter((r) => r.key === selectedKey.value)
-    .sort((a, b) => b.version - a.version)
-);
-const spec = computed<StrategySpec | null>(() =>
-  current.value ? (JSON.parse(current.value.spec) as StrategySpec) : null
-);
+    .sort((a, b) => b.version - a.version);
+});
+const spec = computed<StrategySpec | null>(() => {
+  if (!current.value?.spec) return null;
+  try {
+    const raw = JSON.parse(current.value.spec) as Partial<StrategySpec>;
+    // 安全兜底：所有字段都给默认值，防止 undefined 导致模板崩溃
+    return {
+      marketRegime: raw.marketRegime ?? "",
+      entry: raw.entry ?? {},
+      position: {
+        initial: raw.position?.initial ?? 0,
+        add: raw.position?.add ?? 0,
+        max: raw.position?.max ?? 0,
+      },
+      takeProfit: {
+        rule: raw.takeProfit?.rule ?? "",
+        pct: raw.takeProfit?.pct,
+      },
+      stopLoss: {
+        rule: raw.stopLoss?.rule ?? "",
+        pct: raw.stopLoss?.pct,
+      },
+      holdingPeriod: raw.holdingPeriod ?? "",
+      exclude: Array.isArray(raw.exclude) ? raw.exclude : [],
+    };
+  } catch {
+    return null;
+  }
+});
 
 async function reload() {
   await seedStrategyProfiles();

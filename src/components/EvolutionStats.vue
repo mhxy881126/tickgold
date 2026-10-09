@@ -90,13 +90,31 @@
     <!-- 机器人战绩 -->
     <div v-if="tab === 'stats'" class="ev-scroll">
       <div v-if="!stats || !stats.groups.length" class="ev-empty">
-        <div class="ev-empty-icon">📭</div>
-        <div class="ev-empty-title">还没有战绩数据</div>
-        <div class="ev-empty-desc">
-          1. 先让机器人跑几天，攒一些决策<br/>
-          2. 过几天（等"评判周期"到了）<br/>
-          3. 点上面的"分析历史决策"按钮<br/>
-          4. 就能看到机器人的胜率、盈亏比了
+        <div class="empty-icon">📈</div>
+        <div class="empty-title">还没有战绩数据</div>
+        <div class="empty-desc">进化回灌会回测历史决策的涨跌结果，帮你验证机器人的真实胜率。</div>
+        <div class="empty-steps">
+          <div class="step">
+            <span class="step-num">1</span>
+            <div class="step-body">
+              <div class="step-title">先有决策记录</div>
+              <div class="step-sub">开启快脑自动执行，产生买卖决策</div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-num">2</span>
+            <div class="step-body">
+              <div class="step-title">等待评判周期</div>
+              <div class="step-sub">默认 5 天后，才能看到涨跌结果</div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-num">3</span>
+            <div class="step-body">
+              <div class="step-title">点击「分析历史决策」</div>
+              <div class="step-sub">回测计算胜率、盈亏比等指标</div>
+            </div>
+          </div>
         </div>
       </div>
       
@@ -184,6 +202,7 @@ import {
   type EvolutionDataCheckInfo,
   type LabelRunResult,
 } from "../ai/api";
+import { confirmDialog, promptDialog } from "../composables/useDialog";
 
 const cfg = reactive<EvolutionConfigInfo>({
   stopPct: -7,
@@ -292,22 +311,36 @@ async function run(force: boolean) {
   }
 }
 
-function confirmForce() {
-  if (window.confirm("将清空全部标签并按当前参数全量重算，是否继续？")) run(true);
+async function confirmForce() {
+  const ok = await confirmDialog({
+    title: "全量重算",
+    message: "将清空全部标签并按当前参数全量重算，是否继续？",
+    confirmText: "重算",
+    danger: true,
+  });
+  if (ok) run(true);
 }
 
 async function doCheck(cleanup: boolean, keepDays?: number) {
   check.value = await evolutionDataCheck(cleanup, keepDays);
 }
 
-function confirmCleanup() {
-  const keep = window.prompt("清理多少天前的决策与标签？", "180");
+async function confirmCleanup() {
+  const keep = await promptDialog({
+    title: "清理历史",
+    message: "清理多少天前的决策与标签？",
+    defaultValue: "180",
+  });
   if (keep === null) return;
   const days = parseInt(keep, 10);
   if (!Number.isFinite(days) || days < 1) return;
-  if (window.confirm(`将删除 ${days} 天前的决策与标签，且不可恢复，是否继续？`)) {
-    doCheck(true, days);
-  }
+  const ok = await confirmDialog({
+    title: "确认清理",
+    message: `将删除 ${days} 天前的决策与标签，且不可恢复，是否继续？`,
+    confirmText: "删除",
+    danger: true,
+  });
+  if (ok) doCheck(true, days);
 }
 
 onMounted(async () => {
@@ -460,24 +493,55 @@ onMounted(async () => {
 
 /* 空状态 */
 .ev-empty {
-  padding: 40px 20px;
+  padding: 24px 20px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
 }
-.ev-empty-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
-}
-.ev-empty-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text, #e0e6f0);
-  margin-bottom: 12px;
-}
-.ev-empty-desc {
-  font-size: 13px;
+.empty-icon { font-size: 32px; }
+.empty-title { font-size: 14px; font-weight: 600; color: var(--text, #e0e6f0); }
+.empty-desc {
+  font-size: 11px;
   color: var(--text-dim, #8892a8);
-  line-height: 2;
+  line-height: 1.6;
+  max-width: 280px;
 }
+.empty-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 300px;
+  margin-top: 6px;
+}
+.empty-steps .step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  background: var(--bg-card2, #1a1712);
+  border: 1px solid var(--border, #2c2619);
+  border-radius: 8px;
+  text-align: left;
+}
+.empty-steps .step-num {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(212, 175, 55, 0.15);
+  color: #d4af37;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.empty-steps .step-body { flex: 1; min-width: 0; }
+.empty-steps .step-title { font-size: 11.5px; font-weight: 600; color: var(--text, #e0e6f0); }
+.empty-steps .step-sub { font-size: 10px; color: var(--text-dim, #8892a8); margin-top: 2px; line-height: 1.4; }
 
 /* 统计卡片 */
 .ev-cards {

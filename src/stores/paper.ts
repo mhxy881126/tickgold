@@ -3,6 +3,7 @@ import { ref, computed } from "vue";
 import { db, ensureDb } from "../db/database";
 import { fetchQuotes } from "../api/market";
 import type { Quote } from "../api/types";
+import { brokerGetConfig } from "../broker/api";
 
 export interface PaperAccount { initCash: number; cash: number }
 export interface PaperPosition {
@@ -44,12 +45,19 @@ export const usePaperStore = defineStore("paper", () => {
   const loaded = ref(false);
   let timer: number | null = null;
 
-  // 首次初始化账户
+  // 首次初始化账户：初始资金取券商配置 mockInitCash（用户可自定义），非写死 100 万
   async function ensureAccount() {
+    let initCash = INIT_CASH;
+    try {
+      const cfg = await brokerGetConfig();
+      if (cfg.mockInitCash > 0) initCash = cfg.mockInitCash;
+    } catch {
+      // 配置读取失败：用兜底默认值
+    }
     const d = db();
     await d.execute(
       "INSERT INTO paper_account(id, init_cash, cash, created_at) VALUES(1, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
-      [INIT_CASH, INIT_CASH, Date.now()]
+      [initCash, initCash, Date.now()]
     );
   }
 
@@ -156,12 +164,23 @@ export const usePaperStore = defineStore("paper", () => {
     await reloadAll();
   }
 
-  // 重置账户
+  // 重置账户（恢复原初始资金）
   async function reset() {
     const d = db();
     await d.execute("DELETE FROM paper_position");
     await d.execute("DELETE FROM paper_order");
     await d.execute("UPDATE paper_account SET cash=init_cash WHERE id=1");
+    priceMap.value = {};
+    await reloadAll();
+  }
+
+  // 按自定义初始总资金重置：清空持仓/委托，init_cash 与 cash 均设为 initCash
+  async function resetWith(initCash: number) {
+    if (!(initCash > 0)) throw new Error("初始资金须大于 0");
+    const d = db();
+    await d.execute("DELETE FROM paper_position");
+    await d.execute("DELETE FROM paper_order");
+    await d.execute("UPDATE paper_account SET init_cash=?, cash=? WHERE id=1", [initCash, initCash]);
     priceMap.value = {};
     await reloadAll();
   }
@@ -190,10 +209,17 @@ export const usePaperStore = defineStore("paper", () => {
   const floatPnl = computed(() =>
     positions.value.reduce((s, p) => s + (p.vol * (priceMap.value[p.code]?.price ?? 0) - costOf(p)), 0)
   );
+  // 当日参考盈亏：持仓股数 ×（现价 − 昨收），无昨收数据的持仓不计
+  const dayPnl = computed(() =>
+    positions.value.reduce((s, p) => {
+      const q = priceMap.value[p.code];
+      return q ? s + p.vol * (q.price - q.prevClose) : s;
+    }, 0)
+  );
 
   return {
     account, positions, orders, priceMap, loaded,
-    load, stop, buy, sell, reset,
-    marketValue, totalAssets, totalPnl, pnlPct, floatPnl,
+    load, stop, buy, sell, reset, resetWith,
+    marketValue, totalAssets, totalPnl, pnlPct, floatPnl, dayPnl,
   };
 });

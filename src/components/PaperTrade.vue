@@ -9,6 +9,7 @@ import {
   autoexecStop,
   type AutoExecConfigInfo,
 } from "../ai/api";
+import { confirmDialog } from "../composables/useDialog";
 
 const props = defineProps<{ code: string | null }>();
 const paper = usePaperStore();
@@ -135,7 +136,13 @@ function pickPosition(code: string, s: "buy" | "sell") {
 }
 
 async function resetAccount() {
-  if (window.confirm("确定重置模拟账户？将清空所有持仓与委托记录，资金恢复初始。")) {
+  const ok = await confirmDialog({
+    title: "重置模拟账户",
+    message: "将清空所有持仓与委托记录，资金恢复为当前配置的初始总资金。是否继续？",
+    confirmText: "重置",
+    danger: true,
+  });
+  if (ok) {
     await paper.reset();
     msg.value = "账户已重置";
   }
@@ -176,6 +183,8 @@ onBeforeUnmount(() => {
       <div class="a"><div class="ak">持仓市值</div><div class="av">{{ money(paper.marketValue) }}</div></div>
       <div class="a"><div class="ak">浮动盈亏</div>
         <div class="av" :class="cls(paper.floatPnl)">{{ money(paper.floatPnl) }}</div></div>
+      <div class="a"><div class="ak">当日参考盈亏</div>
+        <div class="av" :class="cls(paper.dayPnl)">{{ money(paper.dayPnl) }}</div></div>
       <div class="a"><div class="ak">累计盈亏</div>
         <div class="av" :class="cls(paper.totalPnl)">
           {{ money(paper.totalPnl) }} <span class="pct">{{ paper.pnlPct.toFixed(2) }}%</span>

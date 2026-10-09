@@ -125,13 +125,50 @@ class Sidecar:
                 return
         self.trader.cancel_order_stock(self.account, order_id)
 
+    def _pnl_from_positions(self, ps):
+        """根据持仓计算浮动盈亏与当日参考盈亏。
+        浮动盈亏 = Σ(市值 − 持仓量×开仓均价)；
+        当日参考盈亏 = Σ 持仓量×(最新价−昨收)，昨收经 xtdata 全推行情获取，失败则返回 None。"""
+        float_pnl = 0.0
+        codes = [p.stock_code for p in ps if p.volume > 0]
+        ticks = {}
+        if codes:
+            try:
+                from xtquant import xtdata
+                ticks = xtdata.get_full_tick(codes) or {}
+            except Exception as e:  # noqa: BLE001
+                log(f"get_full_tick 获取昨收失败：{e}")
+        day_pnl = 0.0
+        have_prev = False
+        for p in ps:
+            if p.volume <= 0:
+                continue
+            cost = p.volume * (p.open_price or 0.0)
+            float_pnl += (p.market_value or 0.0) - cost
+            t = ticks.get(p.stock_code) or {}
+            last_close = t.get("lastClose") or 0.0
+            last_price = t.get("lastPrice") or 0.0
+            if last_close > 0 and last_price > 0:
+                have_prev = True
+                day_pnl += p.volume * (last_price - last_close)
+        return round(float_pnl, 2), (round(day_pnl, 2) if have_prev else None)
+
+    def _emit_asset(self, a):
+        ps = self.trader.query_stock_positions(self.account) or []
+        float_pnl, day_pnl = self._pnl_from_positions(ps)
+        out = {"event": "asset", "cash": a.cash, "frozenCash": a.frozen_cash,
+               "marketValue": a.market_value, "totalAsset": a.total_asset,
+               "floatPnl": float_pnl}
+        if day_pnl is not None:
+            out["dayPnl"] = day_pnl
+        emit(out)
+
     def query_asset(self):
         a = self.trader.query_stock_asset(self.account)
         if a is None:
             emit({"event": "asset", "note": "暂无资产数据"})
             return
-        emit({"event": "asset", "cash": a.cash, "frozenCash": a.frozen_cash,
-              "marketValue": a.market_value, "totalAsset": a.total_asset})
+        self._emit_asset(a)
 
     def query_position(self):
         ps = self.trader.query_stock_positions(self.account) or []
@@ -183,8 +220,7 @@ try:
             self.sc.on_trade(trade)
 
         def on_stock_asset(self, asset):
-            emit({"event": "asset", "cash": asset.cash,
-                  "marketValue": asset.market_value, "totalAsset": asset.total_asset})
+            self.sc._emit_asset(asset)
 
         def on_stock_position(self, position):
             emit({"event": "position", "positions": [{
