@@ -4,7 +4,10 @@ use super::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
 #[derive(Deserialize)]
 struct ListResp {
@@ -545,12 +548,13 @@ fn vs2(v: &Value, k: &str) -> String {
     v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()
 }
 
-/// 拉取专题池原始数据（涨停 getTopicZTPool / 炸板 getTopicZBPool）
-async fn topic_pool(endpoint: &str, date: &str) -> Result<Vec<Value>, String> {
+/// 拉取专题池原始数据（涨停 getTopicZTPool / 炸板 getTopicZBPool / 跌停 getTopicDTPool）
+/// 注意：跌停池必须用 sort=fund:desc，用 fbt:asc 会返回空列表
+async fn topic_pool(endpoint: &str, date: &str, sort: &str) -> Result<Vec<Value>, String> {
     let ut = "7eea3edcaed734bea9cbfc24409ed989";
     let url = format!(
-        "https://push2ex.eastmoney.com/{}?ut={}&dpt=wz.ztzt&Pageindex=0&pagesize=2000&sort=fbt%3Aasc&date={}&_={}",
-        endpoint, ut, date, now_millis()
+        "https://push2ex.eastmoney.com/{}?ut={}&dpt=wz.ztzt&Pageindex=0&pagesize=2000&sort={}&date={}&_={}",
+        endpoint, ut, sort, date, now_millis()
     );
     let resp = http()
         .get(&url)
@@ -564,7 +568,7 @@ async fn topic_pool(endpoint: &str, date: &str) -> Result<Vec<Value>, String> {
 
 /// 涨停池（按连板数降序、首封时间升序）
 pub async fn zt_pool(date: &str) -> Result<ZtPool, String> {
-    let pool = topic_pool("getTopicZTPool", date).await?;
+    let pool = topic_pool("getTopicZTPool", date, "fbt:asc").await?;
     let mut list: Vec<ZtStock> = pool
         .iter()
         .map(|v| {
@@ -603,7 +607,7 @@ pub async fn zt_pool(date: &str) -> Result<ZtPool, String> {
 
 /// 炸板池（ztp=涨停价，按当前涨跌幅降序）
 pub async fn zb_pool(date: &str) -> Result<ZtPool, String> {
-    let pool = topic_pool("getTopicZBPool", date).await?;
+    let pool = topic_pool("getTopicZBPool", date, "fbt:asc").await?;
     let mut list: Vec<ZtStock> = pool
         .iter()
         .map(|v| {
@@ -628,6 +632,40 @@ pub async fn zb_pool(date: &str) -> Result<ZtPool, String> {
         })
         .collect();
     list.sort_by(|a, b| b.pct.partial_cmp(&a.pct).unwrap_or(std::cmp::Ordering::Equal));
+    let total = list.len();
+    Ok(ZtPool {
+        date: date.to_string(),
+        total,
+        list,
+    })
+}
+
+/// 跌停池（getTopicDTPool，按封单金额降序）
+pub async fn dt_pool(date: &str) -> Result<ZtPool, String> {
+    let pool = topic_pool("getTopicDTPool", date, "fund:desc").await?;
+    let mut list: Vec<ZtStock> = pool
+        .iter()
+        .map(|v| {
+            ZtStock {
+                code: vs2(v, "c"),
+                name: vs2(v, "n"),
+                price: vf(v, "p") / 1000.0,
+                pct: vf(v, "zdp"),
+                amount: vf(v, "amount"),
+                fund: vf(v, "fund"),
+                boards: 0,
+                first_seal: vi(v, "fbt"),
+                last_seal: vi(v, "lbt"),
+                broken: vi(v, "zbc") as u32,
+                turnover: vf(v, "hs"),
+                industry: vs2(v, "hybk"),
+                stat_days: 0,
+                stat_count: 0,
+                limit_price: vf(v, "djtp") / 1000.0,
+            }
+        })
+        .collect();
+    list.sort_by(|a, b| b.fund.partial_cmp(&a.fund).unwrap_or(std::cmp::Ordering::Equal));
     let total = list.len();
     Ok(ZtPool {
         date: date.to_string(),
@@ -732,6 +770,104 @@ async fn clist_page_sorted(fs: &str, fid: &str, po: i32, pn: i32) -> Result<(i64
         }
     }
     Err(last)
+}
+
+/// 全市场 A 股快照（并发分页 clist，100只/页），用于涨跌家数/分布/跌停筛选。
+/// 交易时段约 5000 只，并发 12 拉取约 1.5~3 秒。
+pub async fn market_breadth() -> Result<Vec<Quote>, String> {
+    let fs = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23";
+    let (total, first) = clist_page_sorted(fs, "f3", 1, 1).await?;
+    let pages = ((total.max(1) as f64) / 100.0).ceil() as i32;
+
+    let mut all: Vec<EmQuote> = first;
+    if pages > 1 {
+        let sem = Arc::new(Semaphore::new(20));
+        let mut set = JoinSet::new();
+        for pn in 2..=pages {
+            let permit = sem.clone().acquire_owned().await.unwrap();
+            let fs = fs.to_string();
+            set.spawn(async move {
+                let _p = permit;
+                clist_page_sorted(&fs, "f3", 1, pn).await
+            });
+        }
+        while let Some(r) = set.join_next().await {
+            if let Ok(Ok((_, rows))) = r {
+                all.extend(rows);
+            }
+        }
+    }
+
+    let now = now_millis();
+    let out = all
+        .into_iter()
+        .map(|q| Quote {
+            code: q.code,
+            name: q.name,
+            price: nf(&q.price),
+            change: nf(&q.change),
+            pct: nf(&q.pct),
+            open: nf(&q.open),
+            high: nf(&q.high),
+            low: nf(&q.low),
+            prev_close: nf(&q.prev_close),
+            volume: nf(&q.volume),
+            amount: nf(&q.amount),
+            time: now,
+            source: "eastmoney".to_string(),
+            turnover: 0.0,
+            pe: 0.0,
+            pb: 0.0,
+            amplitude: 0.0,
+            volume_ratio: 0.0,
+            circ_mv: 0.0,
+            total_mv: 0.0,
+        })
+        .collect();
+    Ok(out)
+}
+
+/// 跌停股列表（clist 按跌幅升序拉前 3 页，筛选 pct<=-9.5）。
+/// 比 dt_pool 接口稳定（dt_pool 只返回总数不返回列表），且非交易日自动返回最近交易日数据。
+pub async fn limit_down_stocks() -> Result<Vec<Quote>, String> {
+    let fs = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23";
+    let mut all: Vec<EmQuote> = Vec::new();
+    for pn in 1..=3 {
+        if let Ok((_, rows)) = clist_page_sorted(fs, "f3", 0, pn).await {
+            all.extend(rows);
+        }
+    }
+    let now = now_millis();
+    let out: Vec<Quote> = all
+        .into_iter()
+        .filter(|q| {
+            let p = nf(&q.pct);
+            p <= -9.5
+        })
+        .map(|q| Quote {
+            code: q.code,
+            name: q.name,
+            price: nf(&q.price),
+            change: nf(&q.change),
+            pct: nf(&q.pct),
+            open: nf(&q.open),
+            high: nf(&q.high),
+            low: nf(&q.low),
+            prev_close: nf(&q.prev_close),
+            volume: nf(&q.volume),
+            amount: nf(&q.amount),
+            time: now,
+            source: "eastmoney".to_string(),
+            turnover: 0.0,
+            pe: 0.0,
+            pb: 0.0,
+            amplitude: 0.0,
+            volume_ratio: 0.0,
+            circ_mv: 0.0,
+            total_mv: 0.0,
+        })
+        .collect();
+    Ok(out)
 }
 
 pub async fn auction() -> Result<AuctionData, String> {

@@ -143,7 +143,6 @@ const scanCards = [
   { id: "sector", name: "板块", icon: "🏭" },
   { id: "concept", name: "概念题材", icon: "💡" },
   { id: "radar", name: "涨停雷达", icon: "🚀" },
-  { id: "market", name: "大盘指数", icon: "📊" },
 ];
 function startMockScanLoop() { mockStep = 0; tickMock(); mockTimer = window.setInterval(tickMock, 2500); }
 function stopMockScanLoop() { if (mockTimer) { clearInterval(mockTimer); mockTimer = null; } }
@@ -213,7 +212,6 @@ const dataSources = computed(() => {
     { key: "sector", name: "板块", icon: "🏭", enabled: src.sector },
     { key: "concept", name: "概念", icon: "💡", enabled: src.concept },
     { key: "radar", name: "雷达", icon: "🚀", enabled: src.radar },
-    { key: "market", name: "大盘", icon: "📊", enabled: src.market },
     { key: "dragon", name: "龙虎", icon: "🐉", enabled: src.dragon },
     { key: "screener", name: "选股", icon: "🔍", enabled: src.screener },
     { key: "auction", name: "竞价", icon: "🔔", enabled: src.auction },

@@ -139,7 +139,8 @@ function onMktScroll(e: Event) {
 }
 watch(mktRange, () => { if (tab.value === "market") loadMarket(true); });
 
-function typeClass(t: string): string {
+function typeClass(t: string | undefined | null): string {
+  if (!t) return "t-other";
   if (t.includes("首发")) return "t-first";
   if (t.includes("股权")) return "t-equity";
   if (t.includes("增发")) return "t-add";

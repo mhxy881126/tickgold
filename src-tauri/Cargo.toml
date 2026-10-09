@@ -1,7 +1,7 @@
-[package]
+﻿[package]
 name = "tickgold"
-version = "2.20.0"
-description = "TickGold - 专业交易者跨平台 A 股盯盘终端"
+version = "2.21.0"
+description = "TickGold - 涓撲笟浜ゆ槗鑰呰法骞冲彴 A 鑲＄洴鐩樼粓绔?
 authors = ["tickgold"]
 edition = "2021"
 
@@ -34,16 +34,16 @@ rfd = "0.17.2"
 log = "0.4.22"
 tauri-plugin-autostart = "2.5.1"
 
-# ===== v1.9 AI 鎱㈣剳锛氳竟杞﹀簱 / 绯荤粺鍑嵁绠?/ SSE 娴?=====
+# ===== v1.9 AI 閹便垼鍓抽敍姘崇珶鏉烇箑绨?/ 缁崵绮洪崙顓熷祦缁?/ SSE 濞?=====
 rusqlite = { version = "0.32", features = ["bundled"] }
 keyring = "2.3"
 tokio-stream = "0.1"
 
-# ===== v2.6 鎻掍欢鐢熸€侊細QuickJS 杩愯鏃讹紱鍒稿晢/鎻掍欢璧勬簮 URL 瑙ｆ瀽 =====
+# ===== v2.6 閹绘帊娆㈤悽鐔糕偓渚婄窗QuickJS 鏉╂劘顢戦弮璁圭幢閸掔鏅?閹绘帊娆㈢挧鍕爱 URL 鐟欙絾鐎?=====
 rquickjs = { version = "0.14.0", features = ["macro", "loader", "futures", "parallel"] }
 url = "2.5.8"
 
-# macOS 閫忔槑绐楀彛锛堢伒鍔ㄥ矝姣涚幓鐠冿級闇€瑕佺鏈?API
+# macOS 闁繑妲戠粣妤€褰涢敍鍫紥閸斻劌鐭濆В娑氬箵閻犲喛绱氶棁鈧憰浣侯潌閺?API
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri = { version = "2", features = ["macos-private-api"] }
 
@@ -53,3 +53,4 @@ codegen-units = 1
 lto = true
 opt-level = "s"
 strip = true
+

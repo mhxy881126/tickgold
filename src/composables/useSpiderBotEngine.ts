@@ -120,7 +120,7 @@ const crawlSources = ref<CrawlSourceConfig>({
   sector: true,
   concept: true,
   radar: true,
-  market: true,
+  market: false,
   dragon: false,
   screener: false,
   auction: true,

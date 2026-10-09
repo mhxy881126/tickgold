@@ -172,7 +172,8 @@ fn check_status(resp: reqwest::Response) -> Result<reqwest::Response, String> {
     } else {
         let code = status.as_u16();
         let hint = match code {
-            401 => "鉴权失败（401）：请检查云端 API Key",
+            401 => "鉴权失败（401）：请检查云端 API Key 是否正确",
+            402 => "API 账户余额不足或配额已用尽（402）：请充值、更换 API Key 或联系服务商",
             404 => "接口不存在（404）：请检查 base_url 与模型名",
             429 => "请求过多（429）：触发限流，请稍后再试",
             s if s >= 500 => "模型服务端错误（5xx）",

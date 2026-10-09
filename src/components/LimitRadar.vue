@@ -11,6 +11,8 @@ const emit = defineEmits<{ select: [code: string] }>();
 const data = ref<RadarData | null>(null);
 const scanning = ref(false);
 const trading = ref(true);
+const dataStale = ref(false);
+let dataTimer: ReturnType<typeof setTimeout> | null = null;
 type LimitTab = "ladder" | "bridge" | "up" | "broken" | "down";
 const tab = ref<LimitTab>("ladder");
 let un: UnlistenFn[] = [];
@@ -79,11 +81,17 @@ const dash = computed(() => {
 });
 
 onMounted(async () => {
-  un.push(await listen<RadarData>("radar:data", (e) => { data.value = e.payload; }));
+  un.push(await listen<RadarData>("radar:data", (e) => {
+    data.value = e.payload;
+    dataStale.value = false;
+    if (dataTimer) { clearTimeout(dataTimer); dataTimer = null; }
+  }));
   un.push(await listen<RadarStatus>("radar:status", (e) => {
     scanning.value = e.payload.scanning;
     trading.value = e.payload.trading;
   }));
+  // 超时兜底：10 秒内未收到数据则提示非交易时段延迟
+  dataTimer = setTimeout(() => { if (!data.value) dataStale.value = true; }, 10000);
   try { await startRadar(); } catch (e) { console.error("startRadar", e); }
   // 拉今日涨停池明细，join 封单/首封/换手/题材（失败不影响梯队主功能）
   try {
@@ -96,6 +104,7 @@ onMounted(async () => {
 
 onUnmounted(async () => {
   un.forEach((f) => f());
+  if (dataTimer) { clearTimeout(dataTimer); dataTimer = null; }
   try { await stopRadar(); } catch { /* ignore */ }
 });
 
@@ -270,7 +279,10 @@ function toggleBoard(k: BoardKey) {
 
       <!-- 连板梯队（含首板） -->
       <div v-if="tab === 'ladder'" class="ladder">
-        <div v-if="!data" class="empty">正在全市场扫描…</div>
+        <div v-if="!data" class="empty">
+          <template v-if="dataStale">非交易时段，数据每 5 分钟刷新一次；交易时段将实时更新</template>
+          <template v-else>正在全市场扫描…</template>
+        </div>
         <div v-else-if="data.ladder.length === 0" class="empty">当前无涨停股</div>
         <template v-else>
         <div

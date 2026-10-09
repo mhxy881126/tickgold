@@ -1,5 +1,6 @@
 // 统一动作注册中心：动作可带默认快捷键、全局派发；命令面板复用同一动作表；
 // 快捷键绑定可自定义并持久化到 localStorage。模块级单例，跨组件共享。
+import { reactive } from "vue";
 import { detectOS, eventMatches, type OS } from "../lib/keymap";
 
 export interface Action {
@@ -17,7 +18,7 @@ export interface Action {
 }
 
 const STORE_KEY = "tickgold.keymap.v1";
-const actions = new Map<string, Action>();
+const actions = reactive(new Map<string, Action>());
 const custom = new Map<string, string | null>();
 let os: OS = "other";
 let started = false;

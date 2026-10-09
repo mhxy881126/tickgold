@@ -318,10 +318,6 @@ defineExpose({ start, stop, running: engine.running });
             <span>涨幅榜</span>
           </label>
           <label class="sb-setting-item">
-            <input type="checkbox" v-model="engine.crawlSources.value.market" />
-            <span>大盘指数</span>
-          </label>
-          <label class="sb-setting-item">
             <input type="checkbox" v-model="engine.crawlSources.value.sector" />
             <span>行业板块</span>
           </label>
