@@ -150,9 +150,7 @@ function cardToSource(cardId: CardId): keyof CrawlSourceConfig | null {
     watch: "watch",
     rank: "rank",
     sector: "sector",
-    concept: "concept",
     radar: "radar",
-    market: "market",
     dragon: "dragon",
     screener: "screener",
     auction: "auction",
@@ -840,7 +838,7 @@ function processMarketData(list: Quote[]) {
   items.forEach((q, i) => {
     const signal: SpiderSignalKind = q.pct > 2 ? "BUY" : q.pct < -2 ? "SELL" : null;
     setTimeout(() => {
-      emitScan({ type: "target", cardId: "market", code: q.code, signal });
+      emitScan({ type: "target", cardId: "radar", code: q.code, signal });
     }, 140 * i);
   });
 
@@ -1000,7 +998,7 @@ function normalizeThemeStock(x: any): { code: string; name: string; price: numbe
   };
 }
 
-async function scanThemeStocks(category: "sector" | "concept" | "themelib") {
+async function scanThemeStocks(category: "sector" | "themelib") {
   const kind: "industry" | "concept" = category === "sector" ? "industry" : "concept";
   addLog(`🏭 扫描【${cardTitle(category)}】，定位最强题材并下钻成分股...`, "info");
   let boards: Array<{ name: string; changePct?: number; pct?: number }> = [];
@@ -1332,8 +1330,6 @@ function scanRound(
     case "sector":
       safeAsync(scanThemeStocks("sector"), "板块成分股");
       break;
-    case "concept":
-      safeAsync(scanThemeStocks("concept"), "概念成分股");
       break;
     case "themelib":
       safeAsync(scanThemeStocks("themelib"), "题材库成分股");
@@ -1344,8 +1340,6 @@ function scanRound(
     case "spider":
       safeAsync(scanSpider(wl), "短线精灵");
       break;
-    case "market":
-      safeAsync(scanMarket(), "大盘扫描");
       break;
     case "radar":
       safeAsync(scanRadar(quotes), "雷达扫描");

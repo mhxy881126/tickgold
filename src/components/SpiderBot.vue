@@ -141,7 +141,6 @@ const scanCards = [
   { id: "watch", name: "自选股", icon: "📋" },
   { id: "rank", name: "涨幅榜", icon: "📈" },
   { id: "sector", name: "板块", icon: "🏭" },
-  { id: "concept", name: "概念题材", icon: "💡" },
   { id: "radar", name: "涨停雷达", icon: "🚀" },
 ];
 function startMockScanLoop() { mockStep = 0; tickMock(); mockTimer = window.setInterval(tickMock, 2500); }

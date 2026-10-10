@@ -40,7 +40,7 @@ export function getTradingPhase(d: Date = new Date()): TradingPhase {
 }
 
 // 各时段重点巡回卡片（操盘手节奏）
-const PRE_MARKET_CARDS: CardId[] = ["news", "calendar", "watch", "sector", "concept", "themelib", "radar"];
+const PRE_MARKET_CARDS: CardId[] = ["news", "calendar", "watch", "sector", "themelib", "radar"];
 const AUCTION_CARDS: CardId[] = ["auction", "watch", "limitpool"];
 const OPEN_CARDS: CardId[] = ["radar", "rank", "watch"];
 const MIDDAY_CARDS: CardId[] = ["watch", "sector", "rank", "trade"];
@@ -48,7 +48,7 @@ const CLOSE_CARDS: CardId[] = ["watch", "trade", "radar", "rank"];
 
 // 盘后 / 休市的研究巡回：交易相关卡片（不含交易执行卡 trade），用于非交易时段做研究扫描与模拟验证
 const RESEARCH_CARDS: CardId[] = [
-  "rank", "radar", "sector", "concept", "themelib",
+  "rank", "radar", "sector", "themelib",
   "auction", "spider", "limitpool", "dragon", "screener", "watch",
 ];
 

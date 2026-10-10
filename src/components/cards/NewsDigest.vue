@@ -5,6 +5,8 @@ import { aiNewsDigest, type NewsDigest as Digest, type NewsDigestItem } from "..
 import { logger } from "../../utils/logger";
 
 const loading = ref(false);
+const loadingSlow = ref(false);
+let slowTimer: number | null = null;
 const error = ref("");
 const data = ref<Digest | null>(null);
 const activeTab = ref<"all" | "macro" | "industry" | "stock">("all");
@@ -53,6 +55,7 @@ async function refresh() {
     logger.error("资讯聚合失败", msg);
   } finally {
     loading.value = false;
+    if (slowTimer != null) { clearTimeout(slowTimer); slowTimer = null; }
   }
 }
 
@@ -185,6 +188,7 @@ onMounted(refresh);
   color: var(--text, #e6ecf5); cursor: pointer;
 }
 .retry-btn:hover { border-color: var(--accent, #e8c66a); }
+.slow-hint { font-size: 10px; color: #e8c66a; margin-top: 4px; }
 .error-actions { display: flex; gap: 8px; }
 .config-btn {
   padding: 5px 16px; font-size: 11px; border-radius: 6px;

@@ -32,7 +32,6 @@ const RAW: Record<CardId, RawCap> = {
   radar: { group: "env", rowKind: "stock", producesSignal: true, dwellMs: 5000, onTour: true },
   heatmatrix: { group: "env", rowKind: "none", producesSignal: false, dwellMs: 4000, onTour: true },
   sieve: { group: "env", rowKind: "stock", producesSignal: false, dwellMs: 4000, onTour: true },
-  market: { group: "env", rowKind: "index", producesSignal: true, dwellMs: 5000, onTour: true },
 
   // ─── 主线（找资金 / 题材 / 龙头）───
   rank: { group: "mainline", rowKind: "stock", producesSignal: true, dwellMs: 5000, onTour: true },
@@ -42,7 +41,6 @@ const RAW: Record<CardId, RawCap> = {
   sectorevent: { group: "mainline", rowKind: "sector", producesSignal: false, dwellMs: 4000, onTour: true },
   sector: { group: "mainline", rowKind: "sector", producesSignal: false, dwellMs: 4500, onTour: true },
   sectorheat: { group: "mainline", rowKind: "sector", producesSignal: false, dwellMs: 4000, onTour: true },
-  concept: { group: "mainline", rowKind: "sector", producesSignal: false, dwellMs: 4500, onTour: true },
   themelib: { group: "mainline", rowKind: "sector", producesSignal: false, dwellMs: 4500, onTour: true },
   dragon: { group: "mainline", rowKind: "stock", producesSignal: true, dwellMs: 5000, onTour: true },
 

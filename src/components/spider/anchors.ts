@@ -132,21 +132,6 @@ export const CARD_ANCHOR_CONFIGS: Record<string, CardAnchorConfig> = {
     },
   },
 
-  // ===== 概念题材：同板块（同组件不同 tab）=====
-  concept: {
-    rowSel: '[data-card-id="concept"] .trow',
-    headerSel: '[data-card-id="concept"] .thead',
-    maxRows: 8,
-    extract: (el) => {
-      const name = el.querySelector(".c-name")?.textContent?.trim() || undefined;
-      const pctText = el.querySelector(".c-pct")?.textContent?.trim();
-      return {
-        code: name ? `concept:${name}` : undefined,
-        name,
-        pct: pctText ? parseFloat(pctText.replace("%", "")) : undefined,
-      };
-    },
-  },
 
   // ===== 涨停雷达：list .row（涨停/炸板/跌停列表）=====
   radar: {
@@ -299,23 +284,6 @@ export const CARD_ANCHOR_CONFIGS: Record<string, CardAnchorConfig> = {
     },
   },
 
-  // ===== 大盘指数：横向顶栏 .indices（无独立标题，容器即兜底落点）=====
-  market: {
-    rowSel: '[data-card-id="market"] .idx',
-    headerSel: '[data-card-id="market"] .indices',
-    maxRows: 5,
-    extract: (el) => {
-      const name = el.querySelector(".name")?.textContent?.trim() || undefined;
-      const priceText = el.querySelector(".price")?.textContent?.trim();
-      const pctText = el.querySelector(".pct")?.textContent?.trim();
-      return {
-        code: `index:${name || ""}`,
-        name,
-        price: priceText ? parseFloat(priceText) : undefined,
-        pct: pctText ? parseFloat(pctText.replace("%", "")) : undefined,
-      };
-    },
-  },
 
   // ===== 连板选股器：.body .row（SieveCard.vue 真实行，无 code/pct，价格在 .pc）=====
   sieve: {

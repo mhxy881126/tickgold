@@ -25,7 +25,6 @@ export const DOCK_GROUPS: DockGroup[] = [
       { id: "watch", label: "自选", icon: "M12 17.27 18.18 21l-1.64-7.03L22 9.24l7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z", desc: "我的股票分组实时行情", star: true },
       { id: "rank", label: "榜单", icon: "M3 5h18v2H3zm0 4h18v2H3zm0 4h12v2H3zm0 4h12v2H3z", desc: "全市场涨幅/跌幅/成交额排名", star: true },
       { id: "intradayai", label: "盘中解读", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 5h2v6h-2zm0 8h2v2h-2z", desc: "AI 实时解读大盘/板块/涨停池/快讯", star: true },
-      { id: "market", label: "大盘指数", icon: "M3 3v18h18M7 14l4-4 4 4 5-5", desc: "上证指数/深证成指/创业板指实时行情" },
     ],
   },
   {
@@ -59,7 +58,6 @@ export const DOCK_GROUPS: DockGroup[] = [
       { id: "sectorheat", label: "板块热力图", icon: "M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z", desc: "板块 treemap 缩放平移" },
       { id: "sectorevent", label: "板块异动", icon: "M3 12h4l3-8 4 16 3-8h4", desc: "板块拉升/跳水捕捉" },
       { id: "themelib", label: "题材库", icon: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20", desc: "题材生命周期/成分角色/催化剂时间线", star: true },
-      { id: "concept", label: "概念题材", icon: "M12 2l9 5-9 5-9-5zm-9 10l9 5 9-5", desc: "概念板块排名与成分股" },
     ],
   },
   {

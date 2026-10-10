@@ -5,6 +5,8 @@ import { aiTomorrowMainline, type TomorrowMainline as Mainline, type MainlineThe
 import { logger } from "../../utils/logger";
 
 const loading = ref(false);
+const loadingSlow = ref(false);
+let slowTimer: number | null = null;
 const error = ref("");
 const data = ref<Mainline | null>(null);
 const lastUpdate = ref("");
@@ -29,7 +31,10 @@ function strengthLabel(s: string): string {
 
 async function refresh() {
   loading.value = true;
+  loadingSlow.value = false;
   error.value = "";
+  if (slowTimer != null) clearTimeout(slowTimer);
+  slowTimer = window.setTimeout(() => { loadingSlow.value = true; }, 8000);
   try {
     data.value = await aiTomorrowMainline();
     lastUpdate.value = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -39,6 +44,7 @@ async function refresh() {
     logger.error("明日主线失败", msg);
   } finally {
     loading.value = false;
+    if (slowTimer != null) { clearTimeout(slowTimer); slowTimer = null; }
   }
 }
 
@@ -62,6 +68,10 @@ onMounted(refresh);
     <div v-if="loading && !data" class="loading-state">
       <div class="spinner"></div>
       <span>AI 正在分析涨停梯队/板块/快讯…</span>
+      <template v-if="loadingSlow">
+        <div class="slow-hint">响应超过 8 秒，可能是 AI 配置问题或网络较慢</div>
+        <button class="config-btn" @click="openAiSettings">检查 AI 配置</button>
+      </template>
     </div>
 
     <div v-else-if="error" class="error-state">
@@ -161,7 +171,7 @@ onMounted(refresh);
   color: var(--text, #e6ecf5); cursor: pointer;
 }
 .retry-btn:hover { border-color: var(--accent, #e8c66a); }
-.error-actions { display: flex; gap: 8px; }
+.slow-hint { font-size: 10px; color: #e8c66a; margin-top: 4px; }`n.error-actions { display: flex; gap: 8px; }
 .config-btn {
   padding: 5px 16px; font-size: 11px; border-radius: 6px;
   border: 1px solid var(--accent, #e8c66a); background: rgba(232, 198, 106, 0.12);
