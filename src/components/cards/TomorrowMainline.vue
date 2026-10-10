@@ -239,7 +239,7 @@ onBeforeUnmount(() => {
       <div class="error-title">预测失败</div>
       <div class="error-text">{{ error }}</div>
       <div class="error-actions">
-        <button class="retry-btn" @click="refresh">重试</button>
+        <button class="retry-btn" @click="() => refresh()">重试</button>
         <button class="config-btn" @click="openAiSettings">配置 AI</button>
       </div>
       <div class="error-hint">AI 功能需配置大模型（本地 Ollama 或云端 API Key）</div>
