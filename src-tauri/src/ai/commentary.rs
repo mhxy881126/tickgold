@@ -62,11 +62,40 @@ async fn call_llm_json(cfg: &AiConfig, key: &Option<String>, system: &str, user:
     serde_json::from_str(text).map_err(|e| format!("AI 返回 JSON 解析失败: {e}; raw={}", &text[..text.len().min(500)]))
 }
 
+// ==================== 行情数据缓存（10秒TTL，避免AI调用时重复拉取） ====================
+use std::sync::Mutex;
+use std::time::{Instant, Duration};
+
+struct CacheEntry<T> {
+    data: T,
+    expiry: Instant,
+}
+lazy_static::lazy_static! {
+    static ref INDEX_CACHE: Mutex<Option<CacheEntry<String>>> = Mutex::new(None);
+    static ref SECTOR_CACHE: Mutex<Option<CacheEntry<String>>> = Mutex::new(None);
+    static ref ZT_CACHE: Mutex<Option<CacheEntry<String>>> = Mutex::new(None);
+    static ref NEWS_CACHE: Mutex<Option<CacheEntry<Vec<String>>>> = Mutex::new(None);
+}
+const CACHE_TTL: Duration = Duration::from_secs(10);
+
+fn get_cached<T: Clone>(cache: &Mutex<Option<CacheEntry<T>>>) -> Option<T> {
+    let guard = cache.lock().ok()?;
+    guard.as_ref().and_then(|e| {
+        if Instant::now() < e.expiry { Some(e.data.clone()) } else { None }
+    })
+}
+fn set_cached<T: Clone>(cache: &Mutex<Option<CacheEntry<T>>>, data: T) {
+    if let Ok(mut guard) = cache.lock() {
+        *guard = Some(CacheEntry { data, expiry: Instant::now() + CACHE_TTL });
+    }
+}
+
 // ==================== 数据聚合 ====================
 
 /// 大盘指数摘要
 async fn index_summary() -> String {
-    match market::get_index_quotes().await {
+    if let Some(cached) = get_cached(&INDEX_CACHE) { return cached; }
+    let result = match market::get_index_quotes().await {
         Ok(list) => {
             let parts: Vec<String> = list
                 .iter()
@@ -75,12 +104,15 @@ async fn index_summary() -> String {
             parts.join("；")
         }
         Err(_) => "指数数据暂不可用".to_string(),
-    }
+    };
+    set_cached(&INDEX_CACHE, result.clone());
+    result
 }
 
 /// 板块涨跌前5
 async fn sector_summary() -> String {
-    match market::get_sectors("industry".to_string()).await {
+    if let Some(cached) = get_cached(&SECTOR_CACHE) { return cached; }
+    let result = match market::get_sectors("industry".to_string()).await {
         Ok(mut list) => {
             list.sort_by(|a, b| b.change_pct.partial_cmp(&a.change_pct).unwrap_or(std::cmp::Ordering::Equal));
             let top: Vec<String> = list.iter().take(5).map(|s| format!("{} {:+.2}%", s.name, s.change_pct)).collect();
@@ -88,20 +120,25 @@ async fn sector_summary() -> String {
             format!("领涨：{}；领跌：{}", top.join("、"), bottom.join("、"))
         }
         Err(_) => "板块数据暂不可用".to_string(),
-    }
+    };
+    set_cached(&SECTOR_CACHE, result.clone());
+    result
 }
 
 /// 涨停池摘要
 async fn zt_summary() -> String {
+    if let Some(cached) = get_cached(&ZT_CACHE) { return cached; }
     let today = market::today_yyyymmdd();
-    match market::get_zt_pool(today).await {
+    let result = match market::get_zt_pool(today).await {
         Ok(pool) => {
             let total = pool.list.len();
             let multi: Vec<&str> = pool.list.iter().filter(|s| s.boards >= 2).map(|s| s.name.as_str()).collect();
             format!("涨停 {} 家，连板 {} 家（{}）", total, multi.len(), multi.join("、"))
         }
         Err(_) => "涨停池数据暂不可用".to_string(),
-    }
+    };
+    set_cached(&ZT_CACHE, result.clone());
+    result
 }
 
 /// 最近 N 条快讯摘要
@@ -131,10 +168,12 @@ const SYSTEM_INTRADAY: &str = "你是 A 股盘中实时解读助手。基于给�
 #[tauri::command]
 pub async fn ai_intraday_commentary(state: tauri::State<'_, super::AiState>) -> Result<IntradayCommentary, String> {
     let (cfg, key) = load_cfg(&state.dir())?;
-    let idx = index_summary().await;
-    let sec = sector_summary().await;
-    let zt = zt_summary().await;
-    let news = news_summary(8).await;
+    let (idx, sec, zt, news) = tokio::join!(
+        index_summary(),
+        sector_summary(),
+        zt_summary(),
+        news_summary(8)
+    );
 
     let user = format!(
         "【大盘指数】{}\n【板块】{}\n【涨停池】{}\n【最新快讯】\n{}\n\n请基于以上数据，生成当前盘中市场解读。",
@@ -359,11 +398,17 @@ const SYSTEM_MAINLINE: &str = "你是 A 股明日主线预测分析师。基于�
 #[tauri::command]
 pub async fn ai_tomorrow_mainline(state: tauri::State<'_, super::AiState>) -> Result<TomorrowMainline, String> {
     let (cfg, key) = load_cfg(&state.dir())?;
-
     let today = market::today_yyyymmdd();
 
-    // 涨停池（含连板梯队）
-    let zt_text = match market::get_zt_pool(today.clone()).await {
+    // 并行获取涨停池/炸板池/板块/快讯
+    let (zt_res, zb_res, sec, news) = tokio::join!(
+        market::get_zt_pool(today.clone()),
+        market::get_zb_pool(today.clone()),
+        sector_summary(),
+        news_summary(15)
+    );
+
+    let zt_text = match zt_res {
         Ok(pool) => {
             let items: Vec<String> = pool
                 .list
@@ -375,18 +420,13 @@ pub async fn ai_tomorrow_mainline(state: tauri::State<'_, super::AiState>) -> Re
         }
         Err(_) => "涨停池数据暂不可用".to_string(),
     };
-
-    // 炸板池
-    let zb_text = match market::get_zb_pool(today.clone()).await {
+    let zb_text = match zb_res {
         Ok(pool) => {
             let names: Vec<&str> = pool.list.iter().take(10).map(|s| s.name.as_str()).collect();
             format!("炸板 {} 家：{}", pool.total, names.join("、"))
         }
         Err(_) => "炸板池数据暂不可用".to_string(),
     };
-
-    let sec = sector_summary().await;
-    let news = news_summary(15).await;
 
     let user = format!(
         "【涨停池】\n{}\n【炸板池】{}\n【板块】{}\n【最新快讯】\n{}\n\n请基于以上数据，预测明日市场主线。",
