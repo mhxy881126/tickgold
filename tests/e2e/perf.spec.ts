@@ -1,4 +1,4 @@
-// 性能基线：全量 35 张卡片同屏，采样帧率与 JS 堆，作为性能回归门禁。
+// 性能基线：全量 42 张卡片同屏，采样帧率与 JS 堆，作为性能回归门禁。
 // 说明：headless chromium（含软件合成）下测得，真机 GPU 通常更优；4h 长时间内存用
 // PERF_SOAK_SECONDS 环境变量启用「浸泡」测试，真机验收步骤见 docs/开发路线.md。
 import { test, expect, type Page } from "@playwright/test";
@@ -42,8 +42,8 @@ test("全量卡片同屏：帧率 ≥50fps、内存无明显增长", async ({ pa
   await mountAll(page);
   await page.waitForTimeout(800);
 
-  // 出厂左侧导航共 36 个功能项（玻璃浮岛：开卡在导航中标记，主区一次渲染一张）
-  expect(await cardCount(page)).toBe(36);
+  // 出厂左侧导航共 42 个功能项（玻璃浮岛：开卡在导航中标记，主区一次渲染一张）
+  expect(await cardCount(page)).toBe(42);
   const stats = await page.evaluate(() => ({
     nodes: document.querySelectorAll("*").length,
     canvases: document.querySelectorAll("canvas").length,
@@ -64,7 +64,7 @@ test("全量卡片同屏：帧率 ≥50fps、内存无明显增长", async ({ pa
   writeFileSync(
     "screenshots/perf.txt",
     [
-      "cards 36",
+      "cards 42",
       `dom nodes ${stats.nodes}, canvases ${stats.canvases}`,
       `fps ${fps.fps.toFixed(1)} (worst frame ${fps.worst.toFixed(0)} ms)`,
       `heap ${(heap0 / 1048576).toFixed(1)}MB -> ${(heap1 / 1048576).toFixed(1)}MB, growth ${(growth * 100).toFixed(1)}% over 8s`,
