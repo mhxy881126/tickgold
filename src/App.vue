@@ -232,6 +232,7 @@ const cardGridStyle = computed<Record<string, string>>(() => {
 // ===== 对话框状态 =====
 const showUpdate = ref(false);
 const showSettings = ref(false);
+const settingsInitialTab = ref<string | undefined>(undefined);
 const showShortcuts = ref(false);
 const showOnboarding = ref(false);
 
@@ -552,7 +553,8 @@ onMounted(async () => {
       })
     );
     // 托盘菜单事件
-    unlistenFns.push(await listen("open-settings", () => { showSettings.value = true; }));
+    unlistenFns.push(await listen("open-settings", () => { settingsInitialTab.value = undefined; showSettings.value = true; }));
+    unlistenFns.push(await listen("open-ai-settings", () => { settingsInitialTab.value = "ai"; showSettings.value = true; }));
     unlistenFns.push(await listen("check-update", () => { showUpdate.value = true; }));
     unlistenFns.push(await listen("show-about", () => { showSettings.value = true; }));
     // 预警触发：写历史 + 系统通知 + 声音 + 记录触发时间
@@ -924,7 +926,7 @@ onBeforeUnmount(() => {
     <UpdateDialog v-model:open="showUpdate" />
     <!-- 设置对话框 -->
     <AlertToast />
-    <SettingsDialog v-model:open="showSettings" @replay-onboarding="showOnboarding = true" @check-update="showUpdate = true" />
+    <SettingsDialog v-model:open="showSettings" :initial-tab="settingsInitialTab as any" @replay-onboarding="showOnboarding = true" @check-update="showUpdate = true" />
     <ShortcutDialog v-model:open="showShortcuts" />
     <OnboardingDialog v-model:open="showOnboarding" />
     <ToastContainer />

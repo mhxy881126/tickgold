@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
+import { emit as tauriEmit } from "@tauri-apps/api/event";
 import { aiNewsDigest, type NewsDigest as Digest, type NewsDigestItem } from "../../ai/commentary";
 import { logger } from "../../utils/logger";
 
@@ -55,8 +56,11 @@ async function refresh() {
   }
 }
 
+function openAiSettings() { tauriEmit("open-ai-settings"); }
+
 onMounted(refresh);
 </script>
+
 
 <template>
   <div class="news-digest-card">
@@ -92,7 +96,11 @@ onMounted(refresh);
     <div v-else-if="error" class="error-state">
       <div class="error-icon">!</div>
       <div class="error-text">{{ error }}</div>
-      <button class="retry-btn" @click="refresh">重试</button>
+      <div class="error-actions">
+        <button class="retry-btn" @click="refresh">重试</button>
+        <button class="config-btn" @click="openAiSettings">配置 AI</button>
+      </div>
+      <div class="error-hint">AI 功能需配置大模型（本地 Ollama 或云端 API Key）</div>
     </div>
 
     <div v-else class="news-list">
@@ -177,6 +185,14 @@ onMounted(refresh);
   color: var(--text, #e6ecf5); cursor: pointer;
 }
 .retry-btn:hover { border-color: var(--accent, #e8c66a); }
+.error-actions { display: flex; gap: 8px; }
+.config-btn {
+  padding: 5px 16px; font-size: 11px; border-radius: 6px;
+  border: 1px solid var(--accent, #e8c66a); background: rgba(232, 198, 106, 0.12);
+  color: var(--accent, #e8c66a); cursor: pointer; font-weight: 600;
+}
+.config-btn:hover { background: rgba(232, 198, 106, 0.22); }
+.error-hint { font-size: 10px; color: var(--text-dim, #8a93a6); margin-top: 4px; }
 
 .news-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
 .news-item {

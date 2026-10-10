@@ -1,5 +1,5 @@
-﻿<script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+<script setup lang="ts">
+import { computed, reactive, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit as tauriEmit } from "@tauri-apps/api/event";
 import { useTheme, type ThemeId } from "../composables/useTheme";
@@ -61,7 +61,7 @@ import { ISLAND_SKINS, getIslandSkin, setIslandSkin, applyIslandSkin, ISLAND_SKI
 import { usePaperStore } from "../stores/paper";
 import { confirmDialog } from "../composables/useDialog";
 
-defineProps<{ open: boolean }>();
+const props = defineProps<{ open: boolean; initialTab?: Tab }>();
 const emit = defineEmits<{ "update:open": [boolean]; "replay-onboarding": []; "check-update": [] }>();
 function close() {
   emit("update:open", false);
@@ -137,6 +137,9 @@ void loadAutoStart();
 
 type Tab = "appearance" | "data" | "ai" | "autotrade" | "knowledge" | "broker" | "plugins" | "logs" | "about";
 const tab = ref<Tab>("appearance");
+watch(() => props.open, (v) => {
+  if (v && props.initialTab) tab.value = props.initialTab;
+});
 function pick(id: ThemeId) {
   setTheme(id);
 }

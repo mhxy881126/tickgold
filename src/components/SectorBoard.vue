@@ -7,7 +7,8 @@ import { useSmartPolling } from "../composables/useSmartPolling";
 const emit = defineEmits<{ (e: "select", code: string): void }>();
 
 type Kind = "industry" | "concept";
-const kind = ref<Kind>("industry");
+const props = defineProps<{ defaultKind?: Kind }>();
+const kind = ref<Kind>(props.defaultKind ?? "industry");
 const loading = ref(true);
 const error = ref("");
 const cache = ref<Record<Kind, Sector[]>>({ industry: [], concept: [] });
