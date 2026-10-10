@@ -5,6 +5,7 @@ import App from "./App.vue";
 import Island from "./components/Island.vue";
 import PipWindow from "./components/pip/PipWindow.vue";
 import { logger } from "./utils/logger";
+import { installExternalLinkGuard } from "./utils/openInApp";
 import { vFlash } from "./directives/flash";
 import "./styles/global.css";
 import "./styles/motion.css";
@@ -41,6 +42,9 @@ try {
   /* ignore */
 }
 
+// 所有窗口统一拦截外链：http(s) 链接只在内置浏览器窗口打开，不拉起外部浏览器
+installExternalLinkGuard();
+
 const pinia = createPinia();
 if (label === "island") {
   const app = createApp(Island);
@@ -57,8 +61,5 @@ if (label === "island") {
   app.config.errorHandler = vueErrorHandler;
   app.directive("flash", vFlash);
   app.use(pinia).mount("#app");
-  // 请求通知权限
-  if ("Notification" in window && Notification.permission === "default") {
-    Notification.requestPermission().catch(() => {});
-  }
+  // 预警/提醒只允许应用内 Toast，不再申请系统通知权限、不弹电脑通知
 }

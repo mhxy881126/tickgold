@@ -57,6 +57,7 @@ import type { AlertEvent } from "./api/market";
 import { bootstrapAlerts } from "./composables/useAlertBootstrap";
 import { ensureDb, db } from "./db/database";
 import AlertToast from "./components/alert/AlertToast.vue";
+import { pushToast as pushAlertToast } from "./alert/bus";
 import { startTimeSeries } from "./composables/useTimeSeries";
 import { startCollector } from "./composables/useCollector";
 import { playAlert } from "./utils/sound";
@@ -557,16 +558,22 @@ onMounted(async () => {
     unlistenFns.push(await listen("open-ai-settings", () => { settingsInitialTab.value = "ai"; showSettings.value = true; }));
     unlistenFns.push(await listen("check-update", () => { showUpdate.value = true; }));
     unlistenFns.push(await listen("show-about", () => { showSettings.value = true; }));
-    // 预警触发：写历史 + 系统通知 + 声音 + 记录触发时间
+    // 预警触发：写历史 + 应用内弹窗（自动消失）+ 声音 + 记录触发时间
+    // 仅允许应用内提醒，不再发送任何电脑系统弹窗通知
     unlistenFns.push(
       await listen<AlertEvent>("alert:triggered", (e) => {
         const ev = e.payload;
         alerts.markFired(ev.id, ev.time);
         void alerts.addEvent(ev);
         try {
-          if ("Notification" in window && Notification.permission === "granted") {
-            new Notification(`预警 · ${ev.label}`, { body: ev.message });
-          }
+          pushAlertToast({
+            key: `legacy_${ev.id}_${ev.time}`,
+            title: `预警 · ${ev.label}`,
+            body: ev.message,
+            code: ev.code,
+            tone: ev.tone,
+            at: ev.time,
+          });
         } catch {
           /* ignore */
         }

@@ -121,23 +121,9 @@ type Fire = {
 };
 
 function dispatch(rule: FireRule, f: Fire): void {
-  if (rule.actions.notify) {
-    try {
-      if ("Notification" in window && Notification.permission === "granted") {
-        new Notification(`预警 · ${f.ruleName}`, { body: f.message });
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  if (rule.actions.sound) {
-    try {
-      if (localStorage.getItem("tickgold_alert_sound") !== "0") playAlert(f.tone);
-    } catch {
-      /* ignore */
-    }
-  }
-  if (rule.actions.popup) {
+  // notify / popup 统一为应用内弹窗提醒（自动消失），不再发系统（电脑）通知；
+  // 两个动作任一开启即弹一次，避免同一条预警重复弹两条。
+  if (rule.actions.notify || rule.actions.popup) {
     pushToast({
       key: `${f.ruleId}_${f.now}`,
       title: `预警 · ${f.ruleName}`,
@@ -146,6 +132,13 @@ function dispatch(rule: FireRule, f: Fire): void {
       tone: f.tone,
       at: f.now,
     });
+  }
+  if (rule.actions.sound) {
+    try {
+      if (localStorage.getItem("tickgold_alert_sound") !== "0") playAlert(f.tone);
+    } catch {
+      /* ignore */
+    }
   }
   if (rule.actions.island) {
     pushIsland({

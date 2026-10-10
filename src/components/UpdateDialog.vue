@@ -4,7 +4,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openInAppBrowser } from "../utils/openInApp";
 import { fetchLatest } from "../api/market";
 
 const props = defineProps<{ open: boolean }>();
@@ -179,7 +179,7 @@ async function doUpdate() {
 
 async function manualDownload() {
   try {
-    await openUrl("https://github.com/mhxy881126/tickgold/releases/latest");
+    await openInAppBrowser("https://github.com/mhxy881126/tickgold/releases/latest");
   } catch { /* ignore */ }
 }
 

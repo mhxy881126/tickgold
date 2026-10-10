@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { openInAppBrowser } from "../utils/openInApp";
 import { fetchNewsFlash, type NewsItem } from "../api/market";
 import { useSmartPolling } from "../composables/useSmartPolling";
 
@@ -42,31 +42,11 @@ function onScroll(e: Event) {
   }
 }
 
-const NEWS_LABEL = "news-web";
-async function open(n: NewsItem) {
+// 统一在应用内置浏览器窗口打开快讯原文（复用单例窗口，不拉起外部浏览器）
+function open(n: NewsItem) {
   if (!n.url) return;
-  // 复用同一个内置网页弹窗：先关旧窗再开新窗，避免堆叠；窗口本身可拖动/缩放/关闭
-  try {
-    const old = await WebviewWindow.getByLabel(NEWS_LABEL);
-    if (old) await old.close();
-  } catch {
-    /* ignore */
-  }
-  try {
-    const w = new WebviewWindow(NEWS_LABEL, {
-      url: n.url,
-      title: n.text ? n.text.replace(/\s+/g, " ").slice(0, 26) : "盘中快讯",
-      width: 1080,
-      height: 760,
-      resizable: true,
-    });
-    await new Promise((res, rej) => {
-      w.once("tauri://created", res);
-      w.once("tauri://error", rej);
-    });
-  } catch (e) {
-    console.error("open news webview", e);
-  }
+  const title = n.text ? n.text.replace(/\s+/g, " ").slice(0, 26) : "盘中快讯";
+  void openInAppBrowser(n.url, title);
 }
 
 // 智能轮询：仅在卡片可见 / 在线 / 非聚焦后台时刷新，断网、最小化自动暂停，恢复即刷新

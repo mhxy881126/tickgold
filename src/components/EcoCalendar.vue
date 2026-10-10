@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import { useCalendarStore, type CalEvent } from "../stores/calendar";
+import { toast } from "../composables/useToast";
 
 const props = defineProps<{ code: string | null }>();
 const cal = useCalendarStore();
@@ -114,7 +115,7 @@ async function toggleRemind(e: CalEvent) {
   await cal.update(e.id, { remind: e.remind === 1 ? 0 : 1 });
 }
 
-// ===== 到点提醒（Web Notification） =====
+// ===== 到点提醒（仅应用内 Toast，自动消失；不发送电脑系统弹窗） =====
 const firedSet = new Set<number>();
 let timer: number | null = null;
 function checkRemind() {
@@ -126,9 +127,7 @@ function checkRemind() {
     if (now >= fireAt) {
       firedSet.add(e.id);
       try {
-        if ("Notification" in window && Notification.permission === "granted") {
-          new Notification(`日历提醒 · ${typeMeta(e.type).lb}`, { body: e.title });
-        }
+        toast.warn(`日历提醒 · ${typeMeta(e.type).lb}：${e.title}`, 6000);
       } catch { /* ignore */ }
     }
   }
@@ -136,11 +135,6 @@ function checkRemind() {
 
 onMounted(async () => {
   await cal.load();
-  try {
-    if ("Notification" in window && Notification.permission === "default") {
-      await Notification.requestPermission();
-    }
-  } catch { /* ignore */ }
   checkRemind();
   timer = window.setInterval(checkRemind, 30000);
 });
