@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "tickgold"
 version = "2.24.0"
 description = "TickGold - 专业交易者跨平台 A 股盯盘终端"
