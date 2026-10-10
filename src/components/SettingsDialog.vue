@@ -6,6 +6,7 @@ import { useTheme, type ThemeId } from "../composables/useTheme";
 import { useAccessibility } from "../composables/useAccessibility";
 import { useMotion } from "../composables/useMotion";
 import { useSkins } from "../composables/useSkins";
+import { useNovice } from "../composables/useNovice";
 import { useWindowControls } from "../composables/useWindowControls";
 import { tsStatus } from "../composables/useTimeSeries";
 import { collectorStatus } from "../composables/useCollector";
@@ -71,6 +72,7 @@ const { zoom, highContrast, setZoom, setHighContrast, ZOOM_LEVELS } = useAccessi
 const { tier: motionTier, setTier: setMotionTier, MOTION_TIERS } = useMotion();
 const { curVersion } = useWindowControls();
 const skinsApi = useSkins();
+const noviceApi = useNovice();
 
 // 灵动岛皮肤
 const islandSkin = ref<IslandSkinId>(getIslandSkin());
@@ -847,6 +849,20 @@ async function toggleDev() {
                     <span class="tc-desc">{{ t.desc }}</span>
                   </span>
                 </button>
+              </div>
+
+              <div class="section-title" style="margin-top:22px">体验模式</div>
+              <div class="startup-row">
+                <div class="startup-info">
+                  <div class="startup-name">新手模式</div>
+                  <div class="section-sub" style="margin:3px 0 0">开启后界面显示操作提示，关键按钮带文字说明，帮助快速上手</div>
+                </div>
+                <button
+                  type="button"
+                  class="switch"
+                  :class="{ on: noviceApi.novice.value }"
+                  @click="noviceApi.toggle()"
+                ><span class="knob"></span></button>
               </div>
 
               <div class="section-title" style="margin-top:22px">卡片皮肤</div>

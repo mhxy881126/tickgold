@@ -52,6 +52,7 @@
                 <i v-for="(c, ci) in t.sw" :key="ci" :style="{ background: c }"></i>
               </span>
               <span class="ob-tn">{{ t.name }}</span>
+              <span v-if="t.id === 'light'" class="ob-rec">推荐</span>
             </button>
           </div>
           <div class="ob-sec-title">启动</div>
@@ -70,6 +71,15 @@
         <div v-else class="ob-pane">
           <div class="ob-done">✓</div>
           <h2>一切就绪</h2>
+          <div class="ob-row" style="margin-bottom:14px">
+            <div>
+              <div class="ob-rl">开启新手模式</div>
+              <div class="ob-rd">界面显示操作提示与按钮说明，帮助快速上手（可随时在设置中关闭）</div>
+            </div>
+            <button class="ob-switch" :class="{ on: novice }" @click="setNovice(!novice)" role="switch" :aria-checked="novice">
+              <span class="ob-knob"></span>
+            </button>
+          </div>
           <p class="ob-lead">
             按 <b>Ctrl/⌘ + K</b> 打开命令面板快速跳转；<br />
             按 <b>Ctrl/⌘ + /</b> 随时查看全部快捷键。
@@ -94,6 +104,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useTheme, type ThemeId } from "../composables/useTheme";
+import { useNovice } from "../composables/useNovice";
 import { isEnabled as asLoad, enable as asEnable, disable as asDisable } from "@tauri-apps/plugin-autostart";
 import { db } from "../db/database";
 
@@ -103,6 +114,7 @@ const emit = defineEmits<{ (e: "update:open", v: boolean): void }>();
 const steps = 4;
 const step = ref(0);
 const { THEMES, theme, setTheme } = useTheme();
+const { novice, setNovice } = useNovice();
 
 // 开机自启
 const autoStart = ref(false);
@@ -208,6 +220,11 @@ void (null as unknown as ThemeId);
 .ob-sw { display: inline-flex; overflow: hidden; border-radius: 4px; flex-shrink: 0; }
 .ob-sw i { width: 9px; height: 22px; display: block; }
 .ob-tn { font-size: 12px; text-align: left; line-height: 1.3; }
+.ob-rec {
+  margin-left: auto; font-size: 10px; font-weight: 700;
+  color: #fff; background: var(--accent);
+  padding: 1px 6px; border-radius: 4px; flex-shrink: 0;
+}
 .ob-row {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; background: var(--bg-card);

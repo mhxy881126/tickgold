@@ -1,8 +1,9 @@
 // 主题（配色）管理：应用到 <html data-theme>，选择持久化到 SQLite meta 表
 import { ref } from "vue";
 import { ensureDb, db } from "../db/database";
+import { toast } from "./useToast";
 
-export type ThemeId = "gold" | "arctic" | "magma" | "obsidian" | "graphite" | "carbon" | "titanium" | "ths-black" | "ths-white";
+export type ThemeId = "gold" | "arctic" | "magma" | "obsidian" | "graphite" | "carbon" | "titanium" | "ths-black" | "ths-white" | "light";
 
 export interface ThemeMeta {
   id: ThemeId;
@@ -68,6 +69,12 @@ export const THEMES: ThemeMeta[] = [
     desc: "仿同花顺白天模式，明亮清晰",
     sw: ["#ffffff", "#c8102e", "#e60e1e", "#00a35c"],
   },
+  {
+    id: "light",
+    name: "晨光白",
+    desc: "现代精致亮色，柔和护眼，蓝色强调",
+    sw: ["#f4f6f9", "#3b82f6", "#e5484d", "#12a876"],
+  },
 ];
 
 const theme = ref<ThemeId>("obsidian");
@@ -96,8 +103,11 @@ async function load() {
 
 /** 切换主题并持久化 */
 function setTheme(t: ThemeId) {
+  if (theme.value === t) return;
   theme.value = t;
   apply(t);
+  const meta = THEMES.find((x) => x.id === t);
+  if (meta) toast.success(`已切换到「${meta.name}」`);
   try {
     db()
       .execute("INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)", [KEY, t])

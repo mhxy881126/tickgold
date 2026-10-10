@@ -187,6 +187,47 @@ html[data-theme="ths-white"] {
   --blue: #2f72d6;
 }
 
+/* 晨光白（现代精致亮色，v2.24） */
+html[data-theme="light"] {
+  --bg: #f4f6f9;
+  --bg-panel: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card2: #eef1f5;
+  --bg-hover: #e6ebf1;
+  --border: #e1e5eb;
+  --border-light: #cdd3dc;
+  --text: #1c2128;
+  --text-dim: #6b7684;
+  --up: #e5484d;
+  --down: #12a876;
+  --flat: #8b95a1;
+  --accent: #3b82f6;
+  --accent-2: #60a5fa;
+  --blue: #3b82f6;
+}
+
+/* ===== 统一设计 token（v2.24 视觉统一） ===== */
+:root {
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow: 0 2px 10px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.12);
+  --transition: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-lg: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 亮色主题滚动条 */
+html[data-theme="light"] ::-webkit-scrollbar-thumb,
+html[data-theme="ths-white"] ::-webkit-scrollbar-thumb {
+  background: #c1c7d0;
+}
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover,
+html[data-theme="ths-white"] ::-webkit-scrollbar-thumb:hover {
+  background: #a0a8b4;
+}
+
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 html, body, #app { height: 100%; background: var(--bg); }
@@ -208,13 +249,38 @@ html[data-theme="carbon"] body::before { opacity: 1; }
 ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-button { font-family: inherit; }
+button { font-family: inherit; cursor: pointer; transition: var(--transition); }
 input {
   background: var(--bg); color: var(--text);
-  border: 1px solid var(--border); border-radius: 6px;
-  padding: 6px 8px; outline: none;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 6px 10px; outline: none; transition: var(--transition);
 }
-input:focus { border-color: var(--accent); }
+input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+
+/* ===== v2.24 通用工具类 ===== */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--text); font-size: 12.5px; cursor: pointer;
+  transition: var(--transition); user-select: none;
+}
+.btn:hover { background: var(--bg-hover); border-color: var(--border-light); }
+.btn:active { transform: scale(0.97); }
+.btn-primary {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+.btn-primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+.btn-ghost { background: transparent; border-color: transparent; }
+.btn-ghost:hover { background: var(--bg-hover); }
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+}
+.tag {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; background: var(--bg-card2); color: var(--text-dim);
+}
 
 /* ===== 键盘可达：明显的焦点指示（仅键盘 Tab 导航时出现，鼠标点击不显示） ===== */
 :focus-visible {
@@ -253,4 +319,36 @@ html[data-hc="true"] :focus-visible {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+/* ===== v2.24 新手模式：操作提示 + 引导高亮 ===== */
+html[data-novice="true"] .icon-btn[title]::after {
+  content: attr(title);
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: var(--transition);
+  z-index: 100;
+  box-shadow: var(--shadow);
+}
+html[data-novice="true"] .icon-btn[title]:hover::after { opacity: 1; }
+html[data-novice="true"] .icon-btn { position: relative; }
+html[data-novice="true"] .scene-pill {
+  animation: novice-pulse 2.4s ease-in-out 3;
+}
+@keyframes novice-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+}
+html[data-novice="true"] input::placeholder {
+  color: var(--accent);
+  opacity: 0.7;
 }

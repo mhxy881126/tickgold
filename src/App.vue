@@ -8,6 +8,7 @@ import UpdateDialog from "./components/UpdateDialog.vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
 import ShortcutDialog from "./components/ShortcutDialog.vue";
 import OnboardingDialog from "./components/OnboardingDialog.vue";
+import ToastContainer from "./components/ToastContainer.vue";
 import LayoutMenu from "./components/LayoutMenu.vue";
 import SideDock from "./components/SideDock.vue";
 import CardTabStrip from "./components/CardTabStrip.vue";
@@ -61,6 +62,8 @@ import { startCollector } from "./composables/useCollector";
 import { playAlert } from "./utils/sound";
 import { initPluginSystem } from "./plugin/register";
 import { promptDialog } from "./composables/useDialog";
+import { toast } from "./composables/useToast";
+import { useNovice } from "./composables/useNovice";
 
 const wl = useWatchlistStore();
 const quotes = useQuotesStore();
@@ -70,6 +73,7 @@ const theme = useTheme();
 const a11y = useAccessibility();
 const motion = useMotion();
 const skins = useSkins();
+const novice = useNovice();
 // 卡片按需挂载：未进入可视区的卡片延迟初始化内部内容（图表/轮询）
 const cardMount = useCardMount();
 provide("workbench", bench);
@@ -387,7 +391,10 @@ function onPaletteKey(e: KeyboardEvent) {
 // ===== 联动：选中股票 → K线进入主卡大区域 =====
 function pickStock(code: string, name?: string) {
   selected.value = code;
-  if (name && !wl.codes.includes(code)) wl.add(code, name);
+  if (name && !wl.codes.includes(code)) {
+    wl.add(code, name);
+    toast.success(`已添加「${name}」到自选`);
+  }
   // 主卡+导航模式：直接把主卡切到 K线图
   if (!bench.freeMode.value) {
     if (!bench.isOpen("chart")) bench.open("chart");
@@ -477,6 +484,7 @@ onMounted(async () => {
   // —— 题材采集调度器（盘中 20 分钟催化增量 + 盘后归因；内部防重入/同日幂等）——
   try { startCollector(); } catch (e) { console.error("[app] collector", e); }
   try { await theme.load(); } catch (e) { console.error("[app] theme", e); }
+  try { await novice.load(); } catch (e) { console.error("[app] novice", e); }
   try { await a11y.load(); } catch (e) { console.error("[app] a11y", e); }
   try { await motion.load(); } catch (e) { console.error("[app] motion", e); }
   try {
@@ -919,6 +927,7 @@ onBeforeUnmount(() => {
     <SettingsDialog v-model:open="showSettings" @replay-onboarding="showOnboarding = true" @check-update="showUpdate = true" />
     <ShortcutDialog v-model:open="showShortcuts" />
     <OnboardingDialog v-model:open="showOnboarding" />
+    <ToastContainer />
     <AppDialog />
 
     <!-- 命令面板（Ctrl / ⌘ + K） -->
