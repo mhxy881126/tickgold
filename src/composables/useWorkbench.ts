@@ -34,6 +34,7 @@ import {
 import { hasSingleton, widgetDefOf } from "../components/widgets/registry";
 import { presetOf } from "../lib/widget-presets";
 import { migrateSnapshot } from "../lib/widget-migrate";
+import { ensurePresetAlerts } from "../lib/applyPresets";
 
 // 对外保持原有导出路径兼容
 export type { CardId, Zone, CardMeta, CardCustom, SnapshotCard };
@@ -655,6 +656,10 @@ function createWorkbench() {
     if (!freeMode.value) {
       glassActive.value = openCards.value[0] ?? null;
     }
+    // v2.23 打法联动：按模板创建默认预警（同名去重、不覆盖已启用）
+    if (scene.presetAlertKeys?.length) {
+      void ensurePresetAlerts(scene.presetAlertKeys);
+    }
   }
   function saveCurrentAsScene() {
     void saveNamedLayout("我的场景 " + new Date().toLocaleString());
@@ -818,6 +823,15 @@ function createWorkbench() {
       [trimmed, serialize(), now, now]
     );
   }
+  // 从导入的 JSON 落库（cards 为外部快照，不做当前序列化）
+  async function importNamedLayout(name: string, cards: string) {
+    const now = Date.now();
+    const trimmed = name.trim() || "导入布局";
+    await db().execute(
+      "INSERT INTO layout(name,cards,created_at,updated_at) VALUES(?,?,?,?)",
+      [trimmed, cards, now, now]
+    );
+  }
   async function listNamedLayouts(): Promise<NamedLayout[]> {
     return await db().select<NamedLayout[]>(
       "SELECT id,name,cards,updated_at FROM layout ORDER BY updated_at DESC"
@@ -973,6 +987,7 @@ function createWorkbench() {
     // 持久化 / 布局
     restoreCurrent,
     saveNamedLayout,
+    importNamedLayout,
     listNamedLayouts,
     loadNamedLayout,
     applyNamedLayout,

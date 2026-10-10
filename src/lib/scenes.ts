@@ -77,6 +77,15 @@ export interface Scene {
   icon: string;
   cards: CardId[];
   size?: Partial<Record<CardId, { w: number; h: number }>>;
+  // v2.23 打法模板新增（可选，向后兼容）
+  /** 一键应用时联动创建的预警模板 key（ALERT_TEMPLATES），同名去重、不覆盖已启用 */
+  presetAlertKeys?: string[];
+  /** 关联的条件单快捷方案 id（在条件单卡片「打法方案」对具体标的落地） */
+  presetCoPlans?: string[];
+  /** 建议自选分组（提示，不强制切换） */
+  watchGroup?: string;
+  /** 是否出厂打法（区分自定义模板） */
+  builtin?: boolean;
 }
 export const SCENES: Scene[] = [
   { id: "pan", label: "盘中盯盘", icon: "M12 8a4 4 0 100 8 4 4 0 000-8zm0-4C7 4 3 12 3 12s4 8 9 8 9-8 9-8-4-8-9-8z",
@@ -103,6 +112,35 @@ export const SCENES: Scene[] = [
     // 此处 size 保证 12×6=72 铺满校验，同时为「恢复自动布局」等 Bento 回落提供尺寸。
     cards: ["chart", "signalbridge", "trades", "trade", "watch"],
     size: { chart: { w: 6, h: 4 }, signalbridge: { w: 6, h: 4 }, trades: { w: 3, h: 2 }, trade: { w: 3, h: 2 }, watch: { w: 6, h: 2 } } },
+
+  // ───── v2.23 打法模板：卡片 + 布局 + 默认预警 / 条件单方案，一键应用 ─────
+  { id: "daban", label: "打板接力", icon: "M12 4l8 8h-5v8h-6v-8H4z", builtin: true,
+    cards: ["limitpool", "radar", "auction", "spider", "sectorevent", "co"],
+    // 12×6=72：涨停池 8×4 + 雷达 4×4；竞价/精灵各 4×2，板块异动/条件单各 2×2 垫底
+    size: { limitpool: { w: 8, h: 4 }, radar: { w: 4, h: 4 }, auction: { w: 4, h: 2 },
+      spider: { w: 4, h: 2 }, sectorevent: { w: 2, h: 2 }, co: { w: 2, h: 2 } },
+    presetAlertKeys: ["seal-up", "broken"], presetCoPlans: ["daban-seal-buy", "daban-broken-exit"],
+    watchGroup: "打板接力" },
+  { id: "dixi", label: "低吸埋伏", icon: "M12 20l-8-8h5V4h6v8h5z", builtin: true,
+    cards: ["chart", "sectorheat", "screener", "watch", "co"],
+    // 12×6=72：主图 8×4 + 板块热力 4×4；选股/自选/条件单各 4×2 垫底
+    size: { chart: { w: 8, h: 4 }, sectorheat: { w: 4, h: 4 }, screener: { w: 4, h: 2 },
+      watch: { w: 4, h: 2 }, co: { w: 4, h: 2 } },
+    presetAlertKeys: ["pullback-ma", "volume-surge"], presetCoPlans: ["dixi-buy-pullback", "dixi-stoploss"],
+    watchGroup: "低吸池" },
+  { id: "jingjia", label: "竞价抢筹", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm1 10.5V6h-2v8h8v-2h-6z", builtin: true,
+    cards: ["auction", "radar", "watch", "spider"],
+    // 12×6=72：竞价榜 8×4 + 雷达 4×4；自选 4×2 + 精灵 8×2 垫底
+    size: { auction: { w: 8, h: 4 }, radar: { w: 4, h: 4 }, watch: { w: 4, h: 2 }, spider: { w: 8, h: 2 } },
+    presetAlertKeys: ["auction-grab", "volume-surge"], presetCoPlans: [],
+    watchGroup: "竞价关注" },
+  { id: "qushi", label: "趋势跟踪", icon: "M12 8a4 4 0 100 8 4 4 0 000-8zm0-4C7 4 3 12 3 12s4 8 9 8 9-8 9-8-4-8-9-8z", builtin: true,
+    cards: ["chart", "sector", "trades", "watch", "co"],
+    // 12×6=72：主图 8×4 + 板块 4×4；逐笔/自选/条件单各 4×2 垫底
+    size: { chart: { w: 8, h: 4 }, sector: { w: 4, h: 4 }, trades: { w: 4, h: 2 },
+      watch: { w: 4, h: 2 }, co: { w: 4, h: 2 } },
+    presetAlertKeys: ["breakout", "pullback-ma"], presetCoPlans: ["qushi-break-exit"],
+    watchGroup: "趋势持仓" },
 ];
 
 export interface NamedLayout {

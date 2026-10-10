@@ -15,7 +15,11 @@ interface OrderBook {
   asks: OrderLevel[]; bids: OrderLevel[];
 }
 
-const props = defineProps<{ code: string; view: "m" | "k" | "o" }>();
+const props = defineProps<{
+  code: string;
+  view: "m" | "k" | "o";
+  link?: boolean;
+}>();
 const emit = defineEmits<{ select: [code: string] }>();
 
 const quotes = useQuotesStore();
@@ -28,11 +32,29 @@ const kline = ref<KBar[]>([]);
 const ob = ref<OrderBook | null>(null);
 const got = new Set<string>();
 
+// ===== 分时数据同 code 共享：10s 内复用同一 promise，避免多格/刷新并发风暴 =====
+const minuteCache = new Map<string, { at: number; p: Promise<KBar[]> }>();
+function fetchMinuteShared(code: string): Promise<KBar[]> {
+  const hit = minuteCache.get(code);
+  if (hit && Date.now() - hit.at < 10000) return hit.p;
+  const p = fetchMinute(code)
+    .then((d) => {
+      minuteCache.set(code, { at: Date.now(), p: Promise.resolve(d) });
+      return d;
+    })
+    .catch((e) => {
+      minuteCache.delete(code);
+      throw e;
+    });
+  minuteCache.set(code, { at: Date.now(), p });
+  return p;
+}
+
 async function ensure(kind: string) {
   if (got.has(kind)) return;
   got.add(kind);
   try {
-    if (kind === "m") minute.value = await fetchMinute(props.code);
+    if (kind === "m") minute.value = await fetchMinuteShared(props.code);
     else if (kind === "k") kline.value = await fetchKLine(props.code, 101, 180);
     else ob.value = await invoke<OrderBook>("get_orderbook", { code: props.code });
   } catch {
@@ -41,6 +63,7 @@ async function ensure(kind: string) {
 }
 
 const focus = ref(false);
+const rootEl = ref<HTMLElement | null>(null);
 const miniEl = ref<HTMLElement | null>(null);
 const bigEl = ref<HTMLElement | null>(null);
 let mini: echarts.ECharts | null = null;
@@ -56,11 +79,25 @@ function ma(data: KBar[], n: number) {
     : +(data.slice(i - n + 1, i + 1).reduce((a, b) => a + b.close, 0) / n).toFixed(2));
 }
 
+// ===== 迷你图（link 开启时叠加静默 axisPointer，供多格时间轴联动）=====
+function linkAxis() {
+  return props.link
+    ? {
+        tooltip: {
+          trigger: "axis", showContent: false,
+          axisPointer: { type: "line", lineStyle: { color: "rgba(255,255,255,.4)", width: 1 } },
+        },
+        xAxisPointer: { label: { show: false } },
+      }
+    : { tooltip: undefined, xAxisPointer: undefined };
+}
 function miniMinute() {
-  const d = minute.value, c = minuteColor(d);
+  const d = minute.value, c = minuteColor(d), L = linkAxis();
   return {
     animation: false, grid: { left: 2, right: 2, top: 3, bottom: 2 },
-    xAxis: { type: "category", show: false, boundaryGap: false, data: d.map((_, i) => i) },
+    tooltip: L.tooltip,
+    xAxis: { type: "category", show: false, boundaryGap: false, data: d.map((_, i) => i),
+      axisPointer: L.xAxisPointer },
     yAxis: { type: "value", show: false, scale: true },
     series: [{ type: "line", data: d.map((b) => b.close), showSymbol: false,
       lineStyle: { width: 1.2, color: c },
@@ -69,10 +106,12 @@ function miniMinute() {
   };
 }
 function miniK() {
-  const d = kline.value;
+  const d = kline.value, L = linkAxis();
   return {
     animation: false, grid: { left: 2, right: 2, top: 3, bottom: 2 },
-    xAxis: { type: "category", show: false, data: d.map((_, i) => i) },
+    tooltip: L.tooltip,
+    xAxis: { type: "category", show: false, data: d.map((_, i) => i),
+      axisPointer: L.xAxisPointer },
     yAxis: { type: "value", show: false, scale: true },
     series: [{ type: "candlestick", data: d.map((b) => [b.open, b.close, b.low, b.high]),
       itemStyle: { color: "#f23645", color0: "#08db94", borderColor: "#f23645", borderColor0: "#08db94" } }],
@@ -152,6 +191,7 @@ async function closeFocus() {
 }
 
 watch(() => props.view, () => nextTick(apply));
+watch(() => props.link, () => nextTick(apply));
 watch(focus, async (f) => {
   if (f) {
     await nextTick();
@@ -161,21 +201,52 @@ watch(focus, async (f) => {
   }
 });
 
+// ===== 迷你分时实时增量刷新：15s 节流，仅分时/普通态/页面可见/格子在屏 =====
+const onScreen = ref(true);
+let io: IntersectionObserver | null = null;
+let liveTimer: number | null = null;
+async function liveRefresh() {
+  if (props.view !== "m" || focus.value) return;
+  if (document.visibilityState !== "visible" || !onScreen.value) return;
+  try {
+    const d = await fetchMinuteShared(props.code);
+    minute.value = d;
+    if (mini && miniEl.value && props.view === "m" && !focus.value)
+      mini.setOption(miniMinute(), true);
+  } catch {
+    /* ignore */
+  }
+}
+
 onMounted(async () => {
   await nextTick();
-  if (miniEl.value) mini = echarts.init(miniEl.value);
+  if (miniEl.value) {
+    mini = echarts.init(miniEl.value);
+    mini.group = "mg"; // 加入联动组
+  }
   apply();
+  echarts.connect("mg");
+
+  // 格子是否真正在屏（卡片未展示 / 布局外不请求）
+  io = new IntersectionObserver(
+    (entries) => { onScreen.value = entries[0]?.isIntersecting ?? true; },
+    { threshold: 0.05 },
+  );
+  if (rootEl.value) io.observe(rootEl.value);
+  liveTimer = window.setInterval(liveRefresh, 15000);
 });
 
 onBeforeUnmount(() => {
   mini?.dispose();
   big?.dispose();
   mini = big = null;
+  io?.disconnect();
+  if (liveTimer) clearInterval(liveTimer);
 });
 </script>
 
 <template>
-  <div class="mcell" :class="{ focus }">
+  <div ref="rootEl" class="mcell" :class="{ focus }">
     <!-- 普通态 -->
     <template v-if="!focus">
       <div class="mc-h" @click="emit('select', code)">
@@ -185,14 +256,16 @@ onBeforeUnmount(() => {
         <AnimatedNumber tag="span" class="q" :class="(quote?.pct ?? 0) >= 0 ? 'up' : 'down'" :value="quote?.pct ?? 0" kind="pct" />
       </div>
       <div class="mc-body" title="点击放大">
+        <!-- 指标角标：量比（真实）；涨速 / 封单待 v2.25 数据接入后在此扩展 -->
+        <div v-if="quote?.volumeRatio" class="mc-ind">量比 {{ quote.volumeRatio.toFixed(2) }}</div>
         <div v-show="view !== 'o'" ref="miniEl" class="mini"></div>
         <div v-if="view === 'o'" class="mini-ob">
           <template v-if="ob">
-            <div v-for="(a, i) in ob.asks.slice(0,3).reverse()" :key="'a'+i" class="ob2 s">
-              <span class="lb">卖{{ ob.asks.slice(0,3).length - i }}</span>
+            <div v-for="(a, i) in ob.asks.slice(0,5).reverse()" :key="'a'+i" class="ob2 s">
+              <span class="lb">卖{{ ob.asks.slice(0,5).length - i }}</span>
               <span class="pr">{{ a.price.toFixed(2) }}</span><span class="vl">{{ a.vol }}</span>
             </div>
-            <div v-for="(b, i) in ob.bids.slice(0,3)" :key="'b'+i" class="ob2 b">
+            <div v-for="(b, i) in ob.bids.slice(0,5)" :key="'b'+i" class="ob2 b">
               <span class="lb">买{{ i+1 }}</span>
               <span class="pr">{{ b.price.toFixed(2) }}</span><span class="vl">{{ b.vol }}</span>
             </div>
@@ -245,11 +318,13 @@ onBeforeUnmount(() => {
 .q { margin-left:auto;font-variant-numeric:tabular-nums;font-size:10.5px;font-weight:700; }
 .mc-body { flex:1;min-height:0;position:relative;cursor:zoom-in; }
 .mini { position:absolute;inset:0; }
-.mini-ob { position:absolute;inset:0;padding:5px 8px;display:flex;flex-direction:column;justify-content:center;gap:1px; }
-.ob2 { display:flex;align-items:center;gap:6px;height:15px;font-size:9.5px; }
-.ob2 .lb { color:var(--text-dim);width:26px;font-size:9px; }
+.mc-ind { position:absolute;top:3px;left:5px;z-index:3;font-size:8.5px;color:var(--text-dim);
+  background:rgba(0,0,0,.32);padding:1px 4px;border-radius:5px;font-variant-numeric:tabular-nums; }
+.mini-ob { position:absolute;inset:0;padding:3px 6px;display:flex;flex-direction:column;justify-content:center;gap:0; }
+.ob2 { display:flex;align-items:center;gap:6px;height:13px;font-size:9px; }
+.ob2 .lb { color:var(--text-dim);width:26px;font-size:8.5px; }
 .ob2 .pr { font-variant-numeric:tabular-nums;font-weight:600; }
-.ob2 .vl { margin-left:auto;font-variant-numeric:tabular-nums;font-size:9px; }
+.ob2 .vl { margin-left:auto;font-variant-numeric:tabular-nums;font-size:8.5px; }
 .ob2.s .pr { color:#ff6b78; } .ob2.b .pr { color:#2fe6ac; }
 .loading { color:var(--text-dim);font-size:10px;text-align:center; }
 

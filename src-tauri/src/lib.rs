@@ -1764,6 +1764,34 @@ pub fn run() {
                                 created_at INTEGER);",
                             kind: MigrationKind::Up,
                         },
+                        Migration {
+                            version: 47,
+                            description: "create conditional_order (local conditional trading orders)",
+                            sql: "CREATE TABLE IF NOT EXISTS conditional_order (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                co_id TEXT NOT NULL UNIQUE,
+                                trade_date TEXT DEFAULT '',
+                                code TEXT NOT NULL,
+                                name TEXT DEFAULT '',
+                                side TEXT NOT NULL,
+                                trigger_json TEXT NOT NULL,
+                                price_mode TEXT DEFAULT 'trigger',
+                                limit_price REAL DEFAULT 0,
+                                vol INTEGER NOT NULL,
+                                ttl TEXT DEFAULT 'day',
+                                expire_at INTEGER DEFAULT 0,
+                                auto_confirm INTEGER DEFAULT 0,
+                                status TEXT DEFAULT 'active',
+                                ticket_id TEXT DEFAULT '',
+                                note TEXT DEFAULT '',
+                                created_at INTEGER NOT NULL,
+                                updated_at INTEGER DEFAULT 0,
+                                triggered_at INTEGER DEFAULT 0
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_co_status ON conditional_order(status);
+                            CREATE INDEX IF NOT EXISTS idx_co_code ON conditional_order(code);",
+                            kind: MigrationKind::Up,
+                        },
                     ],
                 )
                 .build(),
@@ -1813,6 +1841,9 @@ pub fn run() {
                 // ===== v2.6 券商 / 插件：按数据目录加载配置、建插件目录 =====
                 app.state::<broker::BrokerManager>().inner().init_with_dir(&dir);
                 app.state::<plugin::PluginManager>().inner().init_with_dir(&dir);
+
+                // v2.23 高阶盯盘：注册条件单触发监听（落信号票；模拟盘可自动确认提交）
+                broker::register_co_listener(app.handle());
             }
             // ===== 主窗口：标题栏融入工作台 =====
             if let Some(main) = app.get_webview_window("main") {
@@ -2073,6 +2104,12 @@ pub fn run() {
             broker::broker_release_kill,
             broker::mock_seed_position,
             broker::mock_reset,
+            // ===== v2.23 本地条件单 =====
+            broker::conditional::co_list,
+            broker::conditional::co_create,
+            broker::conditional::co_update,
+            broker::conditional::co_cancel,
+            broker::conditional::co_cancel_all,
             // ===== v2.6 插件生态 =====
             plugin::plugin_list,
             plugin::plugin_scan,

@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 // ===== 数据结构 =====
 #[derive(Serialize, Deserialize, Clone)]
@@ -62,6 +62,23 @@ pub struct AlertEvent {
     pub tone: String, // up / down
 }
 
+/// 条件单触发事件（emit "co:triggered"），broker 侧据此落信号票 / 推进执行。
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CoTriggerEvent {
+    pub time: i64,
+    pub co_id: String,
+    pub code: String,
+    pub name: String,
+    pub side: String,
+    pub trigger_price: f64,
+    pub vol: i64,
+    pub price_mode: String,
+    pub limit_price: f64,
+    pub auto_confirm: bool,
+    pub matched: Vec<String>,
+}
+
 /// 引擎控制器
 pub struct AlertEngine {
     pub running: AtomicBool,
@@ -88,19 +105,115 @@ impl AlertEngine {
     }
 }
 
+/// 条件单叶子求值：价格边沿 / 涨速 / 封板复用引擎状态，不另起轮询。
+fn eval_leaf(
+    leaf: &crate::broker::conditional::CoTrigger,
+    q: &Quote,
+    code: &str,
+    engine: &AlertEngine,
+    now: i64,
+    limit_edges: &HashMap<String, Vec<&'static str>>,
+) -> bool {
+    let v = leaf.value;
+    match leaf.field.as_str() {
+        "price" => {
+            let prev = engine.prev_price.lock().unwrap().get(code).copied();
+            match leaf.op.as_str() {
+                "crossAbove" => prev.map(|p| p < v && q.price >= v).unwrap_or(false),
+                "crossBelow" => prev.map(|p| p > v && q.price <= v).unwrap_or(false),
+                "gte" => q.price >= v,
+                "lte" => q.price <= v,
+                _ => false,
+            }
+        }
+        "pct" => match leaf.op.as_str() {
+            "gte" => q.pct >= v,
+            "lte" => q.pct <= v,
+            _ => false,
+        },
+        "volumeRatio" => q.volume_ratio >= v && q.volume_ratio > 0.0,
+        "turnover" => q.turnover >= v && q.turnover > 0.0,
+        "amount" => {
+            let yi = q.amount / 100_000_000.0; // value 单位：亿元
+            match leaf.op.as_str() {
+                "lte" => yi <= v,
+                _ => yi >= v,
+            }
+        }
+        "riseSpeed" | "downSpeed" => {
+            let win = leaf
+                .params
+                .as_ref()
+                .and_then(|p| p.get("windowSec"))
+                .and_then(|s| s.as_i64())
+                .unwrap_or(300);
+            let base = engine
+                .price_hist
+                .lock()
+                .unwrap()
+                .get(code)
+                .and_then(|h| {
+                    h.iter()
+                        .filter(|(ts, _)| *ts <= now - win * 1000)
+                        .map(|(_, p)| *p)
+                        .last()
+                });
+            if let Some(old) = base {
+                if old > 0.0 {
+                    let spd = (q.price - old) / old * 100.0;
+                    return if leaf.field == "riseSpeed" {
+                        spd >= v
+                    } else {
+                        spd <= -v
+                    };
+                }
+            }
+            false
+        }
+        "sealUp" => limit_edges
+            .get(code)
+            .map(|e| e.contains(&"seal_up"))
+            .unwrap_or(false),
+        "sealDown" => limit_edges
+            .get(code)
+            .map(|e| e.contains(&"seal_dn"))
+            .unwrap_or(false),
+        "broken" => limit_edges
+            .get(code)
+            .map(|e| e.contains(&"broken"))
+            .unwrap_or(false),
+        _ => false,
+    }
+}
+
 /// 单次检测
 async fn check_once(app: &AppHandle, engine: &AlertEngine) {
     let rules = engine.rules.lock().unwrap().clone();
     let active: Vec<AlertRule> = rules.into_iter().filter(|r| r.enabled).collect();
-    if active.is_empty() {
+
+    // 本地条件单：读主库 active，先做过期，再把其标的并入本轮批量行情拉取。
+    let mut co_orders: Vec<crate::broker::conditional::ConditionalOrder> = Vec::new();
+    if let Ok(dir) = app.path().app_data_dir() {
+        if let Ok(conn) = crate::ai::maindb::open_readwrite(&dir) {
+            let today = crate::broker::conditional::today_dashed();
+            let _ = crate::broker::conditional::expire_due(&conn, &today, now_millis());
+            co_orders = crate::broker::conditional::list(
+                &conn,
+                Some(crate::broker::conditional::ACTIVE.to_string()),
+                200,
+            );
+        }
+    }
+
+    if active.is_empty() && co_orders.is_empty() {
         return;
     }
-    let uniq: Vec<String> = active
-        .iter()
-        .map(|r| r.code.clone())
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
+
+    let mut code_set: HashSet<String> = active.iter().map(|r| r.code.clone()).collect();
+    for co in &co_orders {
+        code_set.insert(co.code.clone());
+    }
+    let uniq: Vec<String> = code_set.into_iter().collect();
     let qs = match super::tencent::quotes(&uniq).await {
         Ok(q) => q,
         Err(_) => return,
@@ -108,6 +221,7 @@ async fn check_once(app: &AppHandle, engine: &AlertEngine) {
     let qmap: HashMap<String, Quote> = qs.into_iter().map(|q| (q.code.clone(), q)).collect();
     let now = now_millis();
     let mut events: Vec<AlertEvent> = Vec::new();
+    let mut co_events: Vec<CoTriggerEvent> = Vec::new();
 
     // 记录价格历史（本地涨速 / 跳水用），按规则中最大窗口清理
     let max_window = active
@@ -352,6 +466,42 @@ async fn check_once(app: &AppHandle, engine: &AlertEngine) {
         }
     }
 
+    // 本地条件单触发：trigger 内 leaves 全部满足（AND）才触发
+    for co in &co_orders {
+        let Some(q) = qmap.get(&co.code) else { continue };
+        let mut matched: Vec<String> = Vec::new();
+        let all = co.trigger.iter().all(|leaf| {
+            if eval_leaf(leaf, q, &co.code, engine, now, &limit_edges) {
+                matched.push(format!("{} {} {}", leaf.field, leaf.op, leaf.value));
+                true
+            } else {
+                false
+            }
+        });
+        if all && !co.trigger.is_empty() {
+            // 先落库 triggered（WHERE 限定 active，防下一轮重复触发）
+            if let Ok(dir) = app.path().app_data_dir() {
+                if let Ok(conn) = crate::ai::maindb::open_readwrite(&dir) {
+                    if crate::broker::conditional::mark_triggered(&conn, &co.co_id, now).is_ok() {
+                        co_events.push(CoTriggerEvent {
+                            time: now,
+                            co_id: co.co_id.clone(),
+                            code: co.code.clone(),
+                            name: co.name.clone(),
+                            side: co.side.clone(),
+                            trigger_price: q.price,
+                            vol: co.vol,
+                            price_mode: co.price_mode.clone(),
+                            limit_price: co.limit_price,
+                            auto_confirm: co.auto_confirm,
+                            matched,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     // 记录本轮回看价（下一轮价格穿越边沿用）
     {
         let mut pp = engine.prev_price.lock().unwrap();
@@ -362,6 +512,9 @@ async fn check_once(app: &AppHandle, engine: &AlertEngine) {
 
     for e in events {
         let _ = app.emit("alert:triggered", e);
+    }
+    for e in co_events {
+        let _ = app.emit("co:triggered", e);
     }
 }
 

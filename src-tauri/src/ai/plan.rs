@@ -448,11 +448,11 @@ mod tests {
         let p1 = json!({"title":"T","marketView":"V","instructions":[
             {"tier":"watch","code":"300001","name":"甲"},
             {"tier":"trigger","code":"300002","name":"乙","alertRule":{"upPrice":10.5}}]});
-        save_plan(&c, "2026-10-05", "2026-10-02", None, &cfg, &p1).unwrap();
+        save_plan(&c, "2026-10-05", "2026-10-02", None, &cfg.chat_model, &p1).unwrap();
         // 再次保存同一 plan_date（指令数量变化），plan 仍唯一、指令被重建
         let p2 = json!({"title":"T2","marketView":"V2","instructions":[
             {"tier":"candidate","code":"300003","name":"丙"}]});
-        save_plan(&c, "2026-10-05", "2026-10-02", None, &cfg, &p2).unwrap();
+        save_plan(&c, "2026-10-05", "2026-10-02", None, &cfg.chat_model, &p2).unwrap();
         let plan_count: i64 =
             c.query_row("SELECT count(*) FROM plan", [], |r| r.get(0)).unwrap();
         let instr_count: i64 =

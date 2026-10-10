@@ -1,5 +1,6 @@
 // 券商对接编排：BrokerManager（配置 / 模拟账户 / sidecar / 紧急停止），Tauri 命令，
 // 委托状态机推进、signal_audit 审计、事件广播。合规：只处理 confirmed 单、实盘默认关、风控前置。
+pub mod conditional;
 pub mod config;
 pub mod mock;
 pub mod protocol;
@@ -14,7 +15,7 @@ use sidecar::SidecarHandle;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Listener, Manager, State};
 
 /// 券商对接共享句柄（manage）。
 pub struct BrokerManager {
@@ -322,10 +323,17 @@ pub fn broker_list_orders(
 #[tauri::command]
 pub async fn broker_submit(
     app: AppHandle,
-    ai: State<'_, crate::ai::AiState>,
-    mgr: State<'_, BrokerManager>,
     sig_id: String,
 ) -> Result<protocol::BrokerOrderInfo, String> {
+    submit_with_sig(&app, &sig_id).await
+}
+
+/// 委托提交核心：人工命令与条件单自动执行共用同一套风控 / 写单 / 成交推进，不重复实现。
+pub(crate) async fn submit_with_sig(
+    app: &AppHandle,
+    sig_id: &str,
+) -> Result<protocol::BrokerOrderInfo, String> {
+    let mgr = app.state::<BrokerManager>();
     if mgr.kill_switch.load(Ordering::SeqCst) {
         return Err("紧急停止已触发，已禁止新委托".to_string());
     }
@@ -333,7 +341,7 @@ pub async fn broker_submit(
         return Err("券商通道未连接，请先连接".to_string());
     }
     let cfg = mgr.config.lock().unwrap().clone();
-    let dir = ai.dir();
+    let dir = app.state::<crate::ai::AiState>().dir();
 
     // 读取 confirmed 信号单
     let conn = maindb::open_readwrite(&dir)?;
@@ -362,9 +370,9 @@ pub async fn broker_submit(
     let order = risk::RiskOrder { code: code.clone(), side: side.clone(), price, vol };
     let (account, market) = match cfg.kind.as_str() {
         "mock" => (mgr.mock.lock().unwrap().snapshot(), None),
-        // 第 2 步：qmt 账户快照由 sidecar 回报缓存；未同步则拒绝。
+        // qmt 账户快照由 sidecar 回报缓存；未同步则拒绝。
         _ => {
-            return Err("QMT 账户数据尚未同步，请稍后重试（真实联调在第 2 步）".to_string());
+            return Err("QMT 账户数据尚未同步，请稍后重试（真实联调在后续步骤）".to_string());
         }
     };
     let params = risk::RiskParams::from_config(&cfg);
@@ -376,16 +384,16 @@ pub async fn broker_submit(
     // 写委托
     let account_id = cfg.account_id.clone();
     let kind = cfg.kind.clone();
-    protocol::insert(&conn, &sig_id, &kind, &account_id, &code, &side, price, vol)?;
+    protocol::insert(&conn, sig_id, &kind, &account_id, &code, &side, price, vol)?;
     audit(
         &conn,
-        &sig_id,
+        sig_id,
         "broker_submitting",
         &format!("{kind} {side} {code} {vol}@{price}"),
         "broker",
     );
     checkpoint(&conn);
-    let _ = app.emit("broker:event", serde_json::json!({ "sigId": sig_id.clone(), "status": "submitting" }));
+    let _ = app.emit("broker:event", serde_json::json!({ "sigId": sig_id, "status": "submitting" }));
 
     match kind.as_str() {
         "mock" => {
@@ -394,7 +402,7 @@ pub async fn broker_submit(
             let dir2 = dir.clone();
             let code2 = code.clone();
             let side2 = side.clone();
-            let sig_id2 = sig_id.clone();
+            let sig_id2 = sig_id.to_string();
             tauri::async_runtime::spawn(async move {
                 mock_run(&app2, &dir2, &sig_id2, &code2, &side2, price, vol).await;
             });
@@ -404,7 +412,7 @@ pub async fn broker_submit(
                 &format!("submit-{sig_id}"),
                 "submit",
                 serde_json::json!({
-                    "client_order_id": sig_id.clone(),
+                    "client_order_id": sig_id,
                     "code": with_suffix(&code),
                     "side": side,
                     "price": price,
@@ -420,7 +428,118 @@ pub async fn broker_submit(
         _ => {}
     }
 
-    protocol::get_by_sig(&conn, &sig_id).ok_or_else(|| "委托创建后读取失败".to_string())
+    protocol::get_by_sig(&conn, sig_id).ok_or_else(|| "委托创建后读取失败".to_string())
+}
+
+// ===== 条件单触发：落信号票；模拟盘可自动确认并提交，实盘仅落待确认 =====
+
+/// 注册 co:triggered 监听（setup 阶段调用）。
+pub fn register_co_listener(app: &AppHandle) {
+    let h = app.clone();
+    app.listen("co:triggered", move |event| {
+        let app = h.clone();
+        let ev: crate::market::alert::CoTriggerEvent =
+            match serde_json::from_str(event.payload()) {
+                Ok(e) => e,
+                Err(e) => {
+                    log::error!("co:triggered 载荷解析失败: {e}");
+                    return;
+                }
+            };
+        tauri::async_runtime::spawn(async move {
+            let co_id = ev.co_id.clone();
+            match handle_co_triggered(&app, ev).await {
+                Ok(()) => {}
+                Err(e) => {
+                    log::warn!("条件单 {co_id} 落单处理失败: {e}");
+                    let _ = app.emit(
+                        "co:error",
+                        serde_json::json!({ "coId": co_id, "error": e }),
+                    );
+                }
+            }
+        });
+    });
+}
+
+/// 处理一次条件单触发。
+async fn handle_co_triggered(
+    app: &AppHandle,
+    ev: crate::market::alert::CoTriggerEvent,
+) -> Result<(), String> {
+    let dir = app.state::<crate::ai::AiState>().dir();
+    let conn = maindb::open_readwrite(&dir)?;
+
+    // 1) 落信号票（create_ticket 内含同方向 pending 去重）
+    let reason = format!("条件单 {} 触发：{}", ev.co_id, ev.matched.join("；"));
+    let Some(sig_id) = crate::ai::bridge::create_ticket(
+        &conn,
+        crate::ai::bridge::SignalInput {
+            code: ev.code.clone(),
+            name: ev.name.clone(),
+            side: ev.side.clone(),
+            source: "conditional".to_string(),
+            model_version: "conditional-engine".to_string(),
+            strategy: format!("co:{}", ev.price_mode),
+            confidence: 1.0,
+            ref_price: ev.trigger_price,
+            vol: ev.vol,
+            reason,
+            trade_date: crate::broker::conditional::today_dashed(),
+        },
+    ) else {
+        return Err("已存在同方向待确认信号或触发价无效，未重复建票".to_string());
+    };
+
+    // 回填条件单 ticket_id
+    crate::broker::conditional::set_ticket_id(&conn, &ev.co_id, &sig_id)?;
+    let _ = app.emit(
+        "signal:updated",
+        serde_json::json!({ "sigId": sig_id, "status": "pending" }),
+    );
+
+    // 2) 仅模拟盘 + 自动确认 + 已连接 + 未急停才自动推进；其余只留 pending 由人工确认
+    let mgr = app.state::<BrokerManager>();
+    let cfg = mgr.config.lock().unwrap().clone();
+    let auto = ev.auto_confirm
+        && cfg.kind == "mock"
+        && mgr.connected.load(Ordering::SeqCst)
+        && !mgr.kill_switch.load(Ordering::SeqCst);
+    if !auto {
+        log::info!("条件单 {} 已落待确认票 {sig_id}，等待人工确认", ev.co_id);
+        return Ok(());
+    }
+
+    // 委托价：limit 用限价（>0），trigger / market 用触发价
+    let exec_price = match ev.price_mode.as_str() {
+        "limit" if ev.limit_price > 0.0 => ev.limit_price,
+        _ => ev.trigger_price,
+    };
+    let ticket_pk: i64 = conn
+        .query_row(
+            "SELECT id FROM signal_ticket WHERE sig_id=?1",
+            rusqlite::params![sig_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| format!("读取信号票主键失败: {e}"))?;
+    crate::ai::bridge::confirm(
+        &conn,
+        ticket_pk,
+        crate::ai::bridge::ConfirmOpts {
+            price: Some(exec_price),
+            vol: Some(ev.vol),
+            action_kind: Some("mock".to_string()),
+            broker: Some("模拟盘".to_string()),
+            actor: Some("conditional-auto".to_string()),
+            order_template: None,
+        },
+    )?;
+    drop(conn); // 释放当前连接，submit_with_sig 自行打开，避免写锁相互等待
+
+    // 3) 提交（内部再做状态检查 / 风控 / 写单 / mock 成交推进）
+    submit_with_sig(app, &sig_id).await?;
+    log::info!("条件单 {} 已自动确认并提交模拟盘，票号 {sig_id}", ev.co_id);
+    Ok(())
 }
 
 /// mock 成交推进脚本：submitted → part_filled(half) → filled。

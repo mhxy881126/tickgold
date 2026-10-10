@@ -43,3 +43,14 @@ src-tauri/.cargo/
 
 *_check.mjs
 app_dev_log*.txt
+
+# v2.23 本地构建缓存与原型（不入库）
+/.build-tmp/
+/ui-prototypes/
+/_backup/
+co_*.ps1
+*.o
+*.obj
+vite.1430.config.ts
+scripts/tauri.dev1430.conf.json
+src-tauri/tauri.override.json

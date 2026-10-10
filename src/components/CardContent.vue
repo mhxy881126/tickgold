@@ -36,6 +36,7 @@ import BattlePlan from "./BattlePlan.vue";
 import DecisionLog from "./DecisionLog.vue";
 import EvolutionStats from "./EvolutionStats.vue";
 import SignalBridge from "./SignalBridge.vue";
+import ConditionalOrders from "./ConditionalOrders.vue";
 import Performance from "./Performance.vue";
 import type { CardId } from "../composables/useWorkbench";
 
@@ -105,6 +106,7 @@ function retry() {
     <DecisionLog v-else-if="id === 'decisionlog'" />
     <EvolutionStats v-else-if="id === 'evolution'" />
     <SignalBridge v-else-if="id === 'signalbridge'" />
+    <ConditionalOrders v-else-if="id === 'co'" />
     <StrategyProfiles v-else-if="id === 'strategy'" />
     <SpiderBot v-else-if="id === 'spiderbot'" @switch-card="$emit('switchCard', $event)" />
     <Performance v-else-if="id === 'performance'" />

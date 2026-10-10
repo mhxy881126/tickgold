@@ -66,6 +66,10 @@ const RAW: Record<CardId, RawCap> = {
     group: "trade", rowKind: "none", producesSignal: false, dwellMs: 3000, onTour: true,
     interactions: ["confirm", "cancel"],
   },
+  co: {
+    group: "trade", rowKind: "stock", producesSignal: true, dwellMs: 4000, onTour: true,
+    interactions: ["confirm", "cancel"],
+  },
 
   // ─── 复盘 / 进化（盘后）───
   review: { group: "review", rowKind: "none", producesSignal: false, dwellMs: 3500, onTour: true },

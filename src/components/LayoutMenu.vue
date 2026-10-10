@@ -2,6 +2,7 @@
 import { inject, ref, onMounted } from "vue";
 import type { useWorkbench } from "../composables/useWorkbench";
 import type { NamedLayout } from "../composables/useWorkbench";
+import { buildLayoutFile, downloadLayoutFile, pickLayoutFile } from "../lib/layoutIO";
 
 type Bench = ReturnType<typeof useWorkbench>;
 const bench = inject<Bench>("workbench")!;
@@ -9,6 +10,7 @@ const bench = inject<Bench>("workbench")!;
 const open = ref(false);
 const name = ref("");
 const layouts = ref<NamedLayout[]>([]);
+const ioErr = ref(false);
 
 async function refresh() {
   layouts.value = await bench.listNamedLayouts();
@@ -27,6 +29,19 @@ async function load(id: number) {
 }
 async function del(id: number) {
   await bench.deleteNamedLayout(id);
+  await refresh();
+}
+function exportOne(l: NamedLayout) {
+  downloadLayoutFile(buildLayoutFile(l.name, l.cards));
+}
+async function importOne() {
+  const f = await pickLayoutFile();
+  if (!f) {
+    ioErr.value = true;
+    setTimeout(() => (ioErr.value = false), 2500);
+    return;
+  }
+  await bench.importNamedLayout(f.name, f.cards);
   await refresh();
 }
 function reset() {
@@ -70,6 +85,11 @@ function fmt(ts: number) {
               <div class="lm-name">{{ l.name }}</div>
               <div class="lm-date">{{ fmt(l.updated_at) }}</div>
             </div>
+            <button class="lm-io" title="导出 JSON" @click="exportOne(l)">
+              <svg viewBox="0 0 24 24" width="12" height="12">
+                <path fill="currentColor" d="M5 20h14v-2H5v2zM12 3l-5 5h3v6h4V8h3l-5-5z" />
+              </svg>
+            </button>
             <button class="lm-del" title="删除" @click="del(l.id)">
               <svg viewBox="0 0 24 24" width="12" height="12">
                 <path
@@ -81,6 +101,8 @@ function fmt(ts: number) {
           </div>
         </div>
 
+        <button class="lm-mode io" @click="importOne">导入布局 JSON</button>
+        <div v-if="ioErr" class="lm-io-err">文件格式不符，请选择 TickGold 导出的布局 JSON</div>
         <button class="lm-mode free" @click="enterFree">自由拖拽布局（随意摆放）</button>
         <button class="lm-mode auto" @click="exitFree">恢复自动布局</button>
         <button class="lm-reset" @click="reset">恢复默认分区与顺序</button>
@@ -214,6 +236,22 @@ function fmt(ts: number) {
   color: #f23645;
   background: rgba(242, 54, 69, 0.12);
 }
+.lm-io {
+  border: none;
+  background: transparent;
+  color: #6b7684;
+  cursor: pointer;
+  display: flex;
+  border-radius: 5px;
+  padding: 3px;
+}
+.lm-io:hover {
+  color: #4cc2ff;
+  background: rgba(76, 194, 255, 0.12);
+}
+.lm-mode.io { color: #7cc8ff; border-color: #274a66; }
+.lm-mode.io:hover { background: rgba(76, 194, 255, 0.1); }
+.lm-io-err { font-size: 10.5px; color: #ff8b94; margin-bottom: 6px; line-height: 1.4; }
 .lm-mode {
   width: 100%; height: 28px; border-radius: 6px; margin-bottom: 6px;
   border: 1px solid #2a333f; background: transparent; color: #aab4c0;

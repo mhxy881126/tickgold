@@ -12,9 +12,12 @@ import type { Quote } from "../api/types";
 import { applyIslandSkin, ISLAND_SKIN_EVENT } from "../lib/islandSkins";
 import { usePaperStore, type PaperOrder } from "../stores/paper";
 import { listRules } from "../alert/repo";
+import { useAlertV2Store, type AlertHistoryRow } from "../stores/alertV2";
+import type { CoTriggerEvent } from "../broker/co";
 
 const wl = useWatchlistStore();
 const win = getCurrentWindow();
+const alertStore = useAlertV2Store();
 
 const quotes = ref<Quote[]>([]);
 const idx = ref(0);
@@ -81,6 +84,12 @@ const activeTab = ref<TabId>("alert");
 const current = computed(() => quotes.value[idx.value] ?? null);
 const latestAlert = computed(() => alertEvents.value[0] ?? null);
 const latestSignal = computed(() => signalEvents.value[0] ?? null);
+// 委托角标：仅统计在途委托（模拟即时成交无在途；实盘按未完成状态）
+const liveActiveCount = computed(() =>
+  activeOrders.value.filter((o) =>
+    ["submitting", "submitted", "part_filled"].includes(o.status)
+  ).length
+);
 
 function cls(pct: number) {
   if (pct > 0) return "up";
@@ -215,6 +224,35 @@ async function syncSignals() {
   }
 }
 
+// ===== 预警回补：以 DB(alert_event) 为基线，事件只负责即时置顶 =====
+function rowToAlert(h: AlertHistoryRow): AlertEvent {
+  return {
+    time: h.triggeredAt ?? 0,
+    id: String(h.id),
+    code: h.code ?? "",
+    name: h.name ?? "",
+    kind: h.kind ?? "",
+    label: h.label ?? "",
+    message: h.message ?? "",
+    price: h.price ?? 0,
+    pct: h.pct ?? 0,
+    target: h.target ?? 0,
+    tone: h.tone ?? "flat",
+  };
+}
+async function syncAlerts() {
+  try {
+    await alertStore.loadHistory(20);
+    const rows = alertStore.history;
+    // 事件刚到、DB 尚未可见时，保留比 DB 基线更新的即时事件，避免被回补抹掉
+    const dbMax = rows.length ? rows[0].triggeredAt ?? 0 : 0;
+    const extras = alertEvents.value.filter((e) => e.time > dbMax);
+    alertEvents.value = [...extras, ...rows.map(rowToAlert)].slice(0, 20);
+  } catch (e) {
+    console.error("sync alerts failed", e);
+  }
+}
+
 function fmtHM(t: number): string {
   return new Date(t).toLocaleTimeString("zh-CN", {
     hour: "2-digit",
@@ -255,6 +293,21 @@ onMounted(async () => {
     alertMode.value = true;
     activeTab.value = "alert";
     if (!expanded.value) toggleExpand();
+    void syncAlerts();
+  });
+
+  // 条件单触发：自动展开；模拟自动成交→委托 tab，否则→信号 tab 待人工确认
+  await listen<CoTriggerEvent>("co:triggered", (ev) => {
+    const c = ev.payload;
+    if (!expanded.value) toggleExpand();
+    if (c.autoConfirm && c.matched) {
+      activeTab.value = "order";
+      void syncOrders();
+    } else {
+      activeTab.value = "signal";
+      signalMode.value = true;
+      void syncSignals();
+    }
   });
 
   // 自选股增删：立即重新加载并刷新（灵动岛实时同步）
@@ -277,9 +330,12 @@ onMounted(async () => {
     void syncSignals();
   });
 
-  // 初始 + 定时兜底：重启后恢复待确认、事件丢失时也能收敛
+  // 初始 + 定时兜底：重启后恢复待确认/预警、事件丢失时也能收敛
   await syncSignals();
-  signalSyncTimer = window.setInterval(() => { void syncSignals(); void syncOrders(); }, 15000);
+  void syncAlerts();
+  signalSyncTimer = window.setInterval(() => {
+    void syncSignals(); void syncOrders(); void syncAlerts();
+  }, 15000);
 
   // v2.6 活跃券商委托：定时 + 事件驱动同步
   void syncOrders();
@@ -383,7 +439,7 @@ onBeforeUnmount(() => {
           class="tab"
           :class="{ active: activeTab === 'order' }"
           @click="activeTab = 'order'"
-        >委托<span class="count">{{ recentOrders.length }}</span></div>
+        >委托<span v-if="liveActiveCount > 0" class="count">{{ liveActiveCount }}</span></div>
       </div>
 
       <!-- 预警列表 -->
