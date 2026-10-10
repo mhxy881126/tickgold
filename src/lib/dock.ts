@@ -24,6 +24,8 @@ export const DOCK_GROUPS: DockGroup[] = [
     items: [
       { id: "watch", label: "自选", icon: "M12 17.27 18.18 21l-1.64-7.03L22 9.24l7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z", desc: "我的股票分组实时行情", star: true },
       { id: "rank", label: "榜单", icon: "M3 5h18v2H3zm0 4h18v2H3zm0 4h12v2H3zm0 4h12v2H3z", desc: "全市场涨幅/跌幅/成交额排名", star: true },
+      { id: "intradayai", label: "盘中解读", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 5h2v6h-2zm0 8h2v2h-2z", desc: "AI 实时解读大盘/板块/涨停池/快讯", star: true },
+      { id: "market", label: "大盘指数", icon: "M3 3v18h18M7 14l4-4 4 4 5-5", desc: "上证指数/深证成指/创业板指实时行情" },
     ],
   },
   {
@@ -46,6 +48,7 @@ export const DOCK_GROUPS: DockGroup[] = [
       { id: "spider", label: "短线精灵", icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8z", desc: "活跃股盘中实时异动" },
       { id: "alert", label: "预警", icon: "M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C8.63 5.36 7 7.92 7 11v5l-2 2v1h14v-1l-2-2z", desc: "价格/涨跌幅触发推送" },
       { id: "news", label: "快讯", icon: "M5 3h14a2 2 0 012 2v11a2 2 0 01-2 2H8l-4 3V5a2 2 0 011-2z", desc: "7x24 全球财经直播" },
+      { id: "newsdigest", label: "资讯聚合", icon: "M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zM7 7h10v2H7V7zm0 4h10v2H7v-2zm0 4h7v2H7v-2z", desc: "AI 去重分类快讯，关联个股", star: true },
     ],
   },
   {
@@ -56,6 +59,7 @@ export const DOCK_GROUPS: DockGroup[] = [
       { id: "sectorheat", label: "板块热力图", icon: "M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z", desc: "板块 treemap 缩放平移" },
       { id: "sectorevent", label: "板块异动", icon: "M3 12h4l3-8 4 16 3-8h4", desc: "板块拉升/跳水捕捉" },
       { id: "themelib", label: "题材库", icon: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20", desc: "题材生命周期/成分角色/催化剂时间线", star: true },
+      { id: "concept", label: "概念题材", icon: "M12 2l9 5-9 5-9-5zm-9 10l9 5 9-5", desc: "概念板块排名与成分股" },
     ],
   },
   {
@@ -76,9 +80,11 @@ export const DOCK_GROUPS: DockGroup[] = [
       { id: "performance", label: "绩效分析", icon: "M3 3v18h18M7 14l4-4 4 4 5-5", desc: "胜率/盈亏比/最大回撤/每月收益", star: true },
       { id: "review", label: "AI 复盘", icon: "M6 2h9l5 5v15H6zm8 1.5V8h4.5z", desc: "盘后市场/题材/个股三层复盘", star: true },
       { id: "battleplan", label: "作战计划", icon: "M6 3v18M6 4h12l-2.5 4L18 12H6", desc: "次日触发/候选/观察指令，一键转预警", star: true },
+      { id: "mainline", label: "明日主线", icon: "M12 2l9 5-9 5-9-5zm-9 10l9 5 9-5", desc: "AI 基于涨停梯队预测明日 3-5 条主线", star: true },
       { id: "decisionlog", label: "决策日志", icon: "M4 6h16M4 12h16M4 18h10", desc: "快脑 BUY/SELL 决策审计与回放", star: true },
       { id: "evolution", label: "进化回灌", icon: "M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z", desc: "决策自动打标 + 版本胜率/盈亏比回灌", star: true },
       { id: "signalbridge", label: "信号确认桥", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 5h2v6h-2zm0 8h2v2h-2z", desc: "BUY/SELL 信号人工确认 + 生成券商指令", star: true },
+      { id: "co", label: "本地条件单", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 5h2v6h-2zm0 8h2v2h-2z", desc: "价格/涨跌幅/量比触发本地条件单" },
       { id: "strategy", label: "策略库", icon: "M12 2l9 5-9 5-9-5zm-9 10l9 5 9-5", desc: "龙头/1进2/抄底策略版本化管理" },
       { id: "sieve", label: "连板选股器", icon: "M12 2l9 5-9 5-9-5zm-9 10l9 5 9-5", desc: "N进N+1打板龙头打分", star: true },
       { id: "screener", label: "条件选股", icon: "M4 5h3v14H4zm6.5 5h3v9h-3zM17 9h3v10h-3z", desc: "技术/基本面智能选股" },
