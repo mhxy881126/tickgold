@@ -114,7 +114,7 @@ function retry() {
     <SpiderBot v-else-if="id === 'spiderbot'" @switch-card="$emit('switchCard', $event)" />
     <Performance v-else-if="id === 'performance'" />
     <IntradayCommentary v-else-if="id === 'intradayai'" />
-    <NewsDigest v-else-if="id === 'newsdigest'" />
+    <NewsDigest v-else-if="id === 'newsdigest'" @select="$emit('select', $event)" />
     <TomorrowMainline v-else-if="id === 'mainline'" />
   </template>
 </template>

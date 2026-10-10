@@ -154,8 +154,105 @@ impl SseState {
     }
 }
 
+/// 判断 URL 是否指向回环地址（localhost / 127.* / ::1）。
+fn is_loopback_url(u: &url::Url) -> bool {
+    matches!(u.host_str(), Some(h) if {
+        let h = h.trim_start_matches('[').trim_end_matches(']');
+        h.eq_ignore_ascii_case("localhost") || h == "::1" || h.starts_with("127.")
+    })
+}
+
+/// 规范化 base_url：回环主机的 localhost 统一改写为 127.0.0.1，
+/// 规避 Windows 上 localhost 先解析到 ::1、而本地服务只监听 IPv4 导致的连接失败。
+fn normalize_base(raw: &str) -> String {
+    let raw = raw.trim().trim_end_matches('/');
+    if let Ok(mut u) = url::Url::parse(raw) {
+        if is_loopback_url(&u) && u.host_str() != Some("127.0.0.1") {
+            // set_host 只改主机，端口与路径保持不变
+            let _ = u.set_host(Some("127.0.0.1"));
+        }
+        return u.as_str().trim_end_matches('/').to_string();
+    }
+    raw.to_string()
+}
+
 fn endpoint(cfg: &AiConfig, path: &str) -> String {
-    format!("{}{}", cfg.base_url.trim_end_matches('/'), path)
+    format!("{}{}", normalize_base(&cfg.base_url), path)
+}
+
+/// 构建 reqwest 客户端。
+/// - no_proxy=true：回环地址直连，绕过系统代理（代理软件残留配置是本地连接失败的常见原因）。
+/// - no_proxy=false：沿用系统代理（公司网络 / 科学上网访问云端 API 时需要）。
+fn build_client(no_proxy: bool) -> Result<reqwest::Client, String> {
+    let mut builder = reqwest::Client::builder().user_agent("TickGold-AI/2.0");
+    if no_proxy {
+        builder = builder.no_proxy();
+    }
+    builder
+        .build()
+        .map_err(|e| format!("HTTP 客户端初始化失败: {e}"))
+}
+
+/// 字符串 URL 是否回环地址（解析失败按非回环处理）。
+fn is_loopback_str(url: &str) -> bool {
+    url::Url::parse(url).map(|u| is_loopback_url(&u)).unwrap_or(false)
+}
+
+/// 该目标 URL 应使用的代理策略：回环仅直连；远程先系统代理、再直连兜底。
+fn proxy_modes_for(url: &str) -> Vec<bool> {
+    if is_loopback_str(url) {
+        vec![true]
+    } else {
+        vec![false, true]
+    }
+}
+
+/// 请求层失败 → 中文可操作提示（reqwest 默认 error sending request 没有任何排查线索）。
+fn friendly_request_err(e: reqwest::Error, url: &str) -> String {
+    if e.is_connect() {
+        format!(
+            "无法连接到 {url}：请确认服务已启动、地址与端口正确（本地服务如 Ollama 是否运行；或代理/防火墙拦截了连接）"
+        )
+    } else if e.is_timeout() {
+        format!("连接 {url} 超时：网络不可达或服务响应过慢")
+    } else if e.is_request() {
+        format!(
+            "无法向 {url} 发出请求：{e}（若开启了代理软件，请关闭代理或将该地址加入直连后重试）"
+        )
+    } else {
+        format!("请求失败: {e}")
+    }
+}
+
+/// 解析模型列表，兼容两种主流形状：
+/// - OpenAI 兼容 /models：`{"data":[{"id":"gpt-4o"}, ...]}`
+/// - Ollama 原生 /api/tags：`{"models":[{"name":"qwen2.5:7b"}, ...]}`
+fn parse_models(v: &serde_json::Value) -> Vec<String> {
+    let mut models: Vec<String> = vec![];
+    if let Some(arr) = v.get("data").and_then(|x| x.as_array()) {
+        for m in arr {
+            if let Some(id) = m.get("id").and_then(|x| x.as_str()) {
+                if !id.is_empty() {
+                    models.push(id.to_string());
+                }
+            }
+        }
+    } else if let Some(arr) = v.get("models").and_then(|x| x.as_array()) {
+        for m in arr {
+            if let Some(name) = m
+                .get("name")
+                .or_else(|| m.get("model"))
+                .and_then(|x| x.as_str())
+            {
+                if !name.is_empty() {
+                    models.push(name.to_string());
+                }
+            }
+        }
+    }
+    models.sort();
+    models.dedup();
+    models
 }
 
 fn auth_header(api_key: &Option<String>) -> Option<(&'static str, String)> {
@@ -254,20 +351,17 @@ pub async fn chat_stream(
         body["tools"] = serde_json::to_value(&tool_schemas).map_err(|e| e.to_string())?;
     }
 
-    let client = reqwest::Client::builder()
-        .user_agent("TickGold-AI/1.9")
-        .build()
-        .map_err(|e| e.to_string())?;
-    let mut req = client
-        .post(endpoint(cfg, "/chat/completions"))
-        .json(&body);
+    let chat_url = endpoint(cfg, "/chat/completions");
+    // 回环地址（本地 Ollama/网关）直连并绕过系统代理；远程沿用系统代理
+    let client = build_client(is_loopback_str(&chat_url))?;
+    let mut req = client.post(&chat_url).json(&body);
     if let Some((k, v)) = auth_header(api_key) {
         req = req.header(k, v);
     }
     let resp = tokio::time::timeout(std::time::Duration::from_secs(60), req.send())
         .await
         .map_err(|_| "连接模型超时（60s）：请确认 Ollama 已启动或网络可达".to_string())?
-        .map_err(|e| format!("请求模型失败: {e}"))?;
+        .map_err(|e| friendly_request_err(e, &chat_url))?;
     let mut resp = check_status(resp)?;
 
     let mut state = SseState::new();
@@ -326,39 +420,89 @@ pub async fn list_models(
     cfg: &AiConfig,
     api_key: &Option<String>,
 ) -> Result<ModelInfo, String> {
-    let client = reqwest::Client::new();
-    let mut req = client.get(endpoint(cfg, "/models"));
-    if let Some((k, v)) = auth_header(api_key) {
-        req = req.header(k, v);
-    }
-    let started = Instant::now();
-    let resp = tokio::time::timeout(std::time::Duration::from_secs(10), req.send())
-        .await
-        .map_err(|_| {
-            "连接超时（10s）：请确认 Ollama 已启动（默认 http://127.0.0.1:11434）".to_string()
-        })?
-        .map_err(|e| format!("请求失败: {e}"))?;
-    let resp = check_status(resp)?;
-    let v: serde_json::Value = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        resp.json::<serde_json::Value>(),
-    )
-    .await
-    .map_err(|_| "读取响应超时".to_string())?
-    .map_err(|e| format!("响应解析失败: {e}"))?;
-    let mut models = vec![];
-    if let Some(arr) = v.get("data").and_then(|x| x.as_array()) {
-        for m in arr {
-            if let Some(id) = m.get("id").and_then(|x| x.as_str()) {
-                models.push(id.to_string());
-            }
+    // 多候选端点：
+    // - 标准 OpenAI 兼容：{base}/models（base 通常以 /v1 结尾）
+    // - 用户漏填 /v1：补试 {base}/v1/models
+    // - Ollama 原生服务（无 /v1）：{base}/api/tags，返回 models[].name
+    let base = normalize_base(&cfg.base_url);
+    let mut candidates: Vec<String> = vec![];
+    if cfg.provider == "ollama" {
+        if base.ends_with("/v1") {
+            candidates.push(format!("{base}/models"));
+        } else {
+            candidates.push(format!("{base}/v1/models"));
+            candidates.push(format!("{base}/api/tags"));
+        }
+    } else {
+        candidates.push(format!("{base}/models"));
+        if !base.ends_with("/v1") {
+            candidates.push(format!("{base}/v1/models"));
+            // 本地 OpenAI 兼容网关 / Ollama 形状服务的最后兜底
+            candidates.push(format!("{base}/api/tags"));
         }
     }
-    models.sort();
-    Ok(ModelInfo {
-        latency_ms: started.elapsed().as_millis() as i64,
-        models,
-    })
+
+    let started = Instant::now();
+    let mut last_err = "未知错误".to_string();
+
+    'next_candidate: for url in &candidates {
+        // 回环仅直连（绕过代理）；远程先系统代理再直连兜底，覆盖代理软件残留导致的失败
+        for no_proxy in proxy_modes_for(url) {
+            let client = build_client(no_proxy)?;
+            let mut req = client.get(url);
+            if let Some((k, v)) = auth_header(api_key) {
+                req = req.header(k, v);
+            }
+            let resp =
+                match tokio::time::timeout(std::time::Duration::from_secs(8), req.send()).await {
+                    Err(_) => {
+                        last_err = format!("连接超时（8s）：{url}");
+                        continue;
+                    }
+                    Ok(Err(e)) => {
+                        last_err = friendly_request_err(e, url);
+                        continue; // 连接层失败：换代理策略后重试
+                    }
+                    Ok(Ok(resp)) => resp,
+                };
+            // 404 = 路径不对（如 Ollama 无 /models），换下一个候选端点
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                last_err = format!("接口不存在（404）：{url}");
+                continue 'next_candidate;
+            }
+            // 401/402/429/5xx 等属于确定性错误，直接把中文提示返回（不再试其他路径）
+            let resp = check_status(resp)?;
+            let v: serde_json::Value =
+                match tokio::time::timeout(std::time::Duration::from_secs(8), async {
+                    resp.json::<serde_json::Value>().await
+                })
+                .await
+                {
+                    Ok(Ok(v)) => v,
+                    Ok(Err(e)) => {
+                        last_err = format!("响应解析失败: {e}");
+                        continue;
+                    }
+                    Err(_) => {
+                        last_err = "读取响应超时（8s）".to_string();
+                        continue;
+                    }
+                };
+            let models = parse_models(&v);
+            if models.is_empty() {
+                last_err = format!("模型列表为空或响应格式无法识别：{url}");
+                continue;
+            }
+            return Ok(ModelInfo {
+                latency_ms: started.elapsed().as_millis() as i64,
+                models,
+            });
+        }
+    }
+
+    Err(format!(
+        "拉取模型列表失败：{last_err}；请检查 Base URL（OpenAI 兼容路径通常以 /v1 结尾，Ollama 默认 http://127.0.0.1:11434/v1）与 API Key"
+    ))
 }
 
 /// 批量嵌入，返回与入参同序的向量。
@@ -370,16 +514,18 @@ pub async fn embed(
     if texts.is_empty() {
         return Ok(vec![]);
     }
-    let client = reqwest::Client::new();
+    let embed_url = endpoint(cfg, "/embeddings");
+    // 回环地址直连并绕过系统代理；远程沿用系统代理
+    let client = build_client(is_loopback_str(&embed_url))?;
     let body = serde_json::json!({ "model": cfg.embed_model, "input": texts });
-    let mut req = client.post(endpoint(cfg, "/embeddings")).json(&body);
+    let mut req = client.post(&embed_url).json(&body);
     if let Some((k, v)) = auth_header(api_key) {
         req = req.header(k, v);
     }
     let resp = tokio::time::timeout(std::time::Duration::from_secs(30), req.send())
         .await
         .map_err(|_| "嵌入服务超时（30s）".to_string())?
-        .map_err(|e| format!("嵌入请求失败: {e}"))?;
+        .map_err(|e| friendly_request_err(e, &embed_url))?;
     let resp = check_status(resp)?;
     let v: serde_json::Value = tokio::time::timeout(std::time::Duration::from_secs(30), async {
         resp.json::<serde_json::Value>().await
@@ -753,5 +899,119 @@ mod tests {
             err.contains("嵌入返回条数 1 与请求 2 不符"),
             "条数不符错误信息不匹配: {err}"
         );
+    }
+
+    #[test]
+    fn normalize_base_rewrites_localhost_to_ipv4_and_keeps_remote() {
+        // localhost → 127.0.0.1，端口与路径保留
+        assert_eq!(
+            normalize_base("http://localhost:11434/"),
+            "http://127.0.0.1:11434"
+        );
+        assert_eq!(
+            normalize_base("http://localhost:11434/v1/"),
+            "http://127.0.0.1:11434/v1"
+        );
+        // 已经是 IPv4 / 远程地址 / 非法地址保持原样（仅去空白与尾斜杠）
+        assert_eq!(
+            normalize_base("http://127.0.0.1:11434/v1"),
+            "http://127.0.0.1:11434/v1"
+        );
+        assert_eq!(
+            normalize_base("https://api.deepseek.com/v1/"),
+            "https://api.deepseek.com/v1"
+        );
+        assert_eq!(normalize_base("not-a-url/"), "not-a-url");
+    }
+
+    #[test]
+    fn parse_models_supports_openai_and_ollama_shapes() {
+        let openai = serde_json::json!({
+            "object": "list",
+            "data": [{"id": "gpt-4o"}, {"id": "gpt-4o-mini"}, {"id": "gpt-4o"}]
+        });
+        let mut got = parse_models(&openai);
+        got.sort();
+        assert_eq!(got, vec!["gpt-4o", "gpt-4o-mini"]); // 去重 + 排序
+
+        let ollama = serde_json::json!({
+            "models": [
+                {"name": "qwen2.5:7b", "model": "qwen2.5:7b"},
+                {"name": "llama3.1:8b"}
+            ]
+        });
+        assert_eq!(parse_models(&ollama), vec!["llama3.1:8b", "qwen2.5:7b"]);
+
+        assert!(parse_models(&serde_json::json!({"unexpected": []})).is_empty());
+    }
+
+    /// 路由型 mock：/models 与 /v1/models 返回 404，仅 hit_path 命中时返回 200 + body。
+    async fn spawn_routing_mock(hit_path: &str, body: String) -> u16 {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let hit_path = hit_path.to_string();
+        tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            // list_models 会顺序尝试多个候选端点，需要接受多次连接
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else { break };
+                let mut req = vec![0u8; 4096];
+                let n = sock.read(&mut req).await.unwrap_or(0);
+                if n == 0 { continue; }
+                let head = String::from_utf8_lossy(&req[..n]);
+                let req_line = head.lines().next().unwrap_or("");
+                let path = req_line.split_whitespace().nth(1).unwrap_or("/");
+                let resp = if path == hit_path {
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    )
+                } else {
+                    "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                };
+                let _ = sock.write_all(resp.as_bytes()).await;
+                let _ = sock.flush().await;
+            }
+        });
+        port
+    }
+
+    /// 用户漏填 /v1：/models 返回 404 时必须自动回退到 /v1/models 拉到列表。
+    #[tokio::test]
+    async fn list_models_falls_back_to_v1_suffix() {
+        let body = serde_json::json!({"data":[{"id":"deepseek-chat"},{"id":"deepseek-reasoner"}]}).to_string();
+        let port = spawn_routing_mock("/v1/models", body).await;
+        let cfg = AiConfig {
+            provider: "cloud".into(),
+            // 故意用 localhost 且不带 /v1
+            base_url: format!("http://localhost:{port}"),
+            chat_model: "deepseek-chat".into(),
+            embed_model: String::new(),
+            temperature: 0.3,
+            enable_auto_index: false,
+        };
+        let info = list_models(&cfg, &Some("sk-test".into())).await.unwrap();
+        assert_eq!(info.models, vec!["deepseek-chat", "deepseek-reasoner"]);
+    }
+
+    /// Ollama 原生服务（无 /v1）：/v1/models 404 后回退 /api/tags，解析 models[].name。
+    #[tokio::test]
+    async fn list_models_falls_back_to_ollama_native_tags() {
+        let body = serde_json::json!({
+            "models": [{"name":"qwen2.5:7b"},{"name":"llama3.1:8b"}]
+        })
+        .to_string();
+        let port = spawn_routing_mock("/api/tags", body).await;
+        let cfg = AiConfig {
+            provider: "ollama".into(),
+            base_url: format!("http://127.0.0.1:{port}"),
+            chat_model: "qwen2.5:7b".into(),
+            embed_model: String::new(),
+            temperature: 0.3,
+            enable_auto_index: false,
+        };
+        let info = list_models(&cfg, &None).await.unwrap();
+        assert_eq!(info.models, vec!["llama3.1:8b", "qwen2.5:7b"]);
     }
 }

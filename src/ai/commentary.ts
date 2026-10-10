@@ -33,6 +33,9 @@ export interface AlertSuggestion {
   priority: "high" | "medium" | "low";
 }
 
+export type Sentiment = "bull" | "bear" | "neutral";
+export type ImpactScope = "market" | "sector" | "stock";
+
 export interface NewsDigestItem {
   title: string;
   summary: string;
@@ -40,10 +43,15 @@ export interface NewsDigestItem {
   related_codes: string[];
   time: string;
   url: string;
+  sentiment: Sentiment;
+  importance: number; // 1-3
+  impact_scope: ImpactScope;
+  source: string;
 }
 
 export interface NewsDigest {
   generated_at: number;
+  ai_brief: string;
   macro_count: number;
   industry_count: number;
   stock_count: number;
@@ -108,6 +116,7 @@ export interface StreamHandle {
   onDelta: (cb: (text: string) => void) => void;
   onDone: (cb: (fullText: string) => void) => void;
   onError: (cb: (msg: string) => void) => void;
+  onCached: (cb: (fullText: string) => void) => void;
   unlisten: () => void;
 }
 
@@ -120,6 +129,7 @@ async function startStream(command: string): Promise<StreamHandle> {
   let deltaCb: ((t: string) => void) | null = null;
   let doneCb: ((t: string) => void) | null = null;
   let errorCb: ((m: string) => void) | null = null;
+  let cachedCb: ((t: string) => void) | null = null;
   let unlistenFn: UnlistenFn | null = null;
 
   const eventName = `ai:stream:${streamId}`;
@@ -127,6 +137,7 @@ async function startStream(command: string): Promise<StreamHandle> {
     const payload = event.payload as { type: string; content?: string; full_text?: string; message?: string };
     if (payload.type === "delta" && payload.content && deltaCb) deltaCb(payload.content);
     else if (payload.type === "done" && payload.full_text !== undefined && doneCb) doneCb(payload.full_text);
+    else if (payload.type === "cached" && payload.full_text !== undefined && cachedCb) cachedCb(payload.full_text);
     else if (payload.type === "error" && payload.message && errorCb) errorCb(payload.message);
   });
 
@@ -139,6 +150,7 @@ async function startStream(command: string): Promise<StreamHandle> {
     onDelta: (cb) => { deltaCb = cb; },
     onDone: (cb) => { doneCb = cb; },
     onError: (cb) => { errorCb = cb; },
+    onCached: (cb) => { cachedCb = cb; },
     unlisten: () => { if (unlistenFn) unlistenFn(); },
   };
 }
