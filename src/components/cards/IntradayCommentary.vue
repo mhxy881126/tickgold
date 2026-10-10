@@ -1,29 +1,59 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { aiIntradayCommentary, type IntradayCommentary as Commentary } from "../../ai/commentary";
+import { ref, onMounted, onBeforeUnmount } from "vue";
+import { aiIntradayCommentaryStream, type IntradayCommentary as Commentary, type StreamHandle } from "../../ai/commentary";
 import { logger } from "../../utils/logger";
 
 const loading = ref(false);
 const error = ref("");
 const data = ref<Commentary | null>(null);
+const streamText = ref("");
 const lastUpdate = ref("");
+let streamHandle: StreamHandle | null = null;
+
+function parseJson(text: string): Commentary | null {
+  try {
+    const cleaned = text.trim().replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/```$/, "").trim();
+    const v = JSON.parse(cleaned);
+    return {
+      timestamp: Date.now(),
+      market_view: v.market_view || "",
+      key_drivers: Array.isArray(v.key_drivers) ? v.key_drivers : [],
+      risk_notes: Array.isArray(v.risk_notes) ? v.risk_notes : [],
+      raw: cleaned,
+    };
+  } catch { return null; }
+}
 
 async function refresh() {
+  if (streamHandle) { streamHandle.unlisten(); streamHandle = null; }
   loading.value = true;
   error.value = "";
+  streamText.value = "";
+  data.value = null;
   try {
-    data.value = await aiIntradayCommentary();
-    lastUpdate.value = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    streamHandle = await aiIntradayCommentaryStream();
+    streamHandle.onDelta((t) => { streamText.value += t; });
+    streamHandle.onDone((full) => {
+      const parsed = parseJson(full);
+      if (parsed) data.value = parsed;
+      else error.value = "AI 返回数据解析失败";
+      loading.value = false;
+      lastUpdate.value = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    });
+    streamHandle.onError((msg) => {
+      error.value = msg;
+      loading.value = false;
+      logger.error("盘中解读失败", msg);
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     error.value = msg;
-    logger.error("盘中解读失败", msg);
-  } finally {
     loading.value = false;
   }
 }
 
 onMounted(refresh);
+onBeforeUnmount(() => { if (streamHandle) streamHandle.unlisten(); });
 </script>
 
 <template>
@@ -40,7 +70,8 @@ onMounted(refresh);
 
     <div v-if="loading && !data" class="loading-state">
       <div class="spinner"></div>
-      <span>AI 正在聚合大盘/板块/涨停池/快讯…</span>
+      <span v-if="!streamText">AI 正在聚合大盘/板块/涨停池/快讯…</span>
+      <div v-else class="stream-text">{{ streamText }}<span class="cursor">▊</span></div>
     </div>
 
     <div v-else-if="error" class="error-state">
@@ -96,6 +127,9 @@ onMounted(refresh);
 .refresh-btn:hover:not(:disabled) { border-color: var(--accent, #e8c66a); }
 .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.stream-text { font-size: 11.5px; line-height: 1.6; color: var(--text, #e6ecf5); max-width: 100%; word-break: break-word; text-align: left; white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
+.cursor { animation: blink 1s step-end infinite; }
+@keyframes blink { 50% { opacity: 0; } }
 .loading-state, .error-state {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 10px; color: var(--text-dim, #8a93a6); font-size: 12px;

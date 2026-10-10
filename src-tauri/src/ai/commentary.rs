@@ -3,6 +3,7 @@
 use super::config::{load_config, AiConfig, SecretStore};
 use super::provider::{chat_stream, ChatMsg, StreamEv};
 use crate::market;
+use tauri::Manager;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -60,6 +61,29 @@ async fn call_llm_json(cfg: &AiConfig, key: &Option<String>, system: &str, user:
         .trim_end_matches("```")
         .trim();
     serde_json::from_str(text).map_err(|e| format!("AI 返回 JSON 解析失败: {e}; raw={}", &text[..text.len().min(500)]))
+}
+
+/// 调用 LLM 流式输出，每收到 delta 调用 on_delta 回调，返回完整文本。
+async fn call_llm_text_stream(
+    cfg: &AiConfig,
+    key: &Option<String>,
+    system: &str,
+    user: &str,
+    mut on_delta: impl FnMut(String),
+) -> Result<String, String> {
+    let msgs = vec![
+        ChatMsg { role: "system".to_string(), content: system.to_string(), tool_calls: None, tool_call_id: None },
+        ChatMsg { role: "user".to_string(), content: user.to_string(), tool_calls: None, tool_call_id: None },
+    ];
+    let mut buf = String::new();
+    let mut on = |ev: StreamEv| {
+        if let StreamEv::Delta(t) = ev {
+            buf.push_str(&t);
+            on_delta(t);
+        }
+    };
+    chat_stream(cfg, key, &msgs, &[], &mut on).await.map_err(|e| format!("AI 调用失败: {e}"))?;
+    Ok(buf)
 }
 
 // ==================== 行情数据缓存（10秒TTL，避免AI调用时重复拉取） ====================
@@ -477,4 +501,103 @@ pub async fn ai_news_for_stock(
     let user = format!("【标的】{} ({})\n【快讯列表】\n{}\n\n请生成该个股的资讯摘要。", name, code, news);
 
     call_llm_text(&cfg, &key, system, &user).await
+}
+
+// ==================== 流式版本 command（v2.25.6） ====================
+// 通过 Tauri event 逐块推送 AI 响应，前端边接收边渲染。
+// 事件名: ai:stream:{stream_id}
+// payload: {type: "delta", content: "..."} | {type: "done", full_text: "..."} | {type: "error", message: "..."}
+
+fn emit_stream(app: &tauri::AppHandle, stream_id: &str, payload: &serde_json::Value) {
+    let _ = app.emit(&format!("ai:stream:{}", stream_id), payload);
+}
+
+#[tauri::command]
+pub async fn ai_intraday_commentary_stream(
+    state: tauri::State<'_, super::AiState>,
+    app_handle: tauri::AppHandle,
+    stream_id: String,
+) -> Result<(), String> {
+    let (cfg, key) = match load_cfg(&state.dir()) {
+        Ok(v) => v,
+        Err(e) => { emit_stream(&app_handle, &stream_id, &json!({"type":"error","message":e})); return Err(e); }
+    };
+    let (idx, sec, zt, news) = tokio::join!(index_summary(), sector_summary(), zt_summary(), news_summary(8));
+    let user = format!("【大盘指数】{}\n【板块】{}\n【涨停池】{}\n【最新快讯】\n{}\n\n请基于以上数据，生成当前盘中市场解读。", idx, sec, zt, news);
+
+    let app = app_handle.clone();
+    let sid = stream_id.clone();
+    let result = call_llm_text_stream(&cfg, &key, SYSTEM_INTRADAY, &user, move |delta| {
+        emit_stream(&app, &sid, &json!({"type":"delta","content":delta}));
+    }).await;
+
+    match result {
+        Ok(full) => { emit_stream(&app_handle, &stream_id, &json!({"type":"done","full_text":full})); Ok(()) }
+        Err(e) => { emit_stream(&app_handle, &stream_id, &json!({"type":"error","message":e})); Err(e) }
+    }
+}
+
+#[tauri::command]
+pub async fn ai_news_digest_stream(
+    state: tauri::State<'_, super::AiState>,
+    app_handle: tauri::AppHandle,
+    stream_id: String,
+) -> Result<(), String> {
+    let (cfg, key) = match load_cfg(&state.dir()) {
+        Ok(v) => v,
+        Err(e) => { emit_stream(&app_handle, &stream_id, &json!({"type":"error","message":e})); return Err(e); }
+    };
+    let news = match market::get_news_flash(1, 30).await { Ok(list) => list, Err(_) => Vec::new() };
+    let news_text: Vec<String> = news.iter().map(|n| format!("[{}] {} | tags:{} | url:{}", n.time, n.text, n.tags.join(","), n.url)).collect();
+    let user = format!("【快讯列表】\n{}\n\n请对以上快讯进行去重、分类和摘要，输出 JSON 数组。", news_text.join("\n"));
+
+    let app = app_handle.clone();
+    let sid = stream_id.clone();
+    let result = call_llm_text_stream(&cfg, &key, SYSTEM_NEWS, &user, move |delta| {
+        emit_stream(&app, &sid, &json!({"type":"delta","content":delta}));
+    }).await;
+
+    match result {
+        Ok(full) => { emit_stream(&app_handle, &stream_id, &json!({"type":"done","full_text":full})); Ok(()) }
+        Err(e) => { emit_stream(&app_handle, &stream_id, &json!({"type":"error","message":e})); Err(e) }
+    }
+}
+
+#[tauri::command]
+pub async fn ai_tomorrow_mainline_stream(
+    state: tauri::State<'_, super::AiState>,
+    app_handle: tauri::AppHandle,
+    stream_id: String,
+) -> Result<(), String> {
+    let (cfg, key) = match load_cfg(&state.dir()) {
+        Ok(v) => v,
+        Err(e) => { emit_stream(&app_handle, &stream_id, &json!({"type":"error","message":e})); return Err(e); }
+    };
+    let today = market::today_yyyymmdd();
+    let (zt_res, zb_res, sec, news) = tokio::join!(
+        market::get_zt_pool(today.clone()),
+        market::get_zb_pool(today.clone()),
+        sector_summary(),
+        news_summary(15)
+    );
+    let zt_text = match zt_res {
+        Ok(pool) => { let items: Vec<String> = pool.list.iter().take(30).map(|s| format!("{}({}) {}板 封单{:.0}万 行业:{}", s.name, s.code, s.boards, s.fund/10000.0, s.industry)).collect(); format!("涨停 {} 家：\n{}", pool.total, items.join("\n")) }
+        Err(_) => "涨停池数据暂不可用".to_string(),
+    };
+    let zb_text = match zb_res {
+        Ok(pool) => { let names: Vec<&str> = pool.list.iter().take(10).map(|s| s.name.as_str()).collect(); format!("炸板 {} 家：{}", pool.total, names.join("、")) }
+        Err(_) => "炸板池数据暂不可用".to_string(),
+    };
+    let user = format!("【涨停池】\n{}\n【炸板池】{}\n【板块】{}\n【最新快讯】\n{}\n\n请基于以上数据，推演明日市场主线。", zt_text, zb_text, sec, news);
+
+    let app = app_handle.clone();
+    let sid = stream_id.clone();
+    let result = call_llm_text_stream(&cfg, &key, SYSTEM_MAINLINE, &user, move |delta| {
+        emit_stream(&app, &sid, &json!({"type":"delta","content":delta}));
+    }).await;
+
+    match result {
+        Ok(full) => { emit_stream(&app_handle, &stream_id, &json!({"type":"done","full_text":full})); Ok(()) }
+        Err(e) => { emit_stream(&app_handle, &stream_id, &json!({"type":"error","message":e})); Err(e) }
+    }
 }

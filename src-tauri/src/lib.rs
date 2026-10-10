@@ -2076,6 +2076,10 @@ pub fn run() {
             ai::commentary::ai_news_digest,
             ai::commentary::ai_tomorrow_mainline,
             ai::commentary::ai_news_for_stock,
+            // ===== v2.25.6 流式渲染 =====
+            ai::commentary::ai_intraday_commentary_stream,
+            ai::commentary::ai_news_digest_stream,
+            ai::commentary::ai_tomorrow_mainline_stream,
             autoexec_get_config,
             autoexec_start,
             autoexec_stop,

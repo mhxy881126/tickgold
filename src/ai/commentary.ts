@@ -1,5 +1,6 @@
 // v2.25 智能赋能：AI 自然语言层 API 封装
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 // ==================== 类型定义 ====================
 
@@ -99,4 +100,60 @@ export function aiTomorrowMainline(): Promise<TomorrowMainline> {
 /** 个股资讯摘要：从快讯中筛选相关资讯，生成个股资讯摘要 */
 export function aiNewsForStock(code: string, name: string): Promise<string> {
   return invoke<string>("ai_news_for_stock", { code, name });
+}
+
+// ==================== 流式 API（v2.25.6） ====================
+
+export interface StreamHandle {
+  onDelta: (cb: (text: string) => void) => void;
+  onDone: (cb: (fullText: string) => void) => void;
+  onError: (cb: (msg: string) => void) => void;
+  unlisten: () => void;
+}
+
+function genStreamId(): string {
+  return `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function startStream(command: string): Promise<StreamHandle> {
+  const streamId = genStreamId();
+  let deltaCb: ((t: string) => void) | null = null;
+  let doneCb: ((t: string) => void) | null = null;
+  let errorCb: ((m: string) => void) | null = null;
+  let unlistenFn: UnlistenFn | null = null;
+
+  const eventName = `ai:stream:${streamId}`;
+  unlistenFn = await listen(eventName, (event) => {
+    const payload = event.payload as { type: string; content?: string; full_text?: string; message?: string };
+    if (payload.type === "delta" && payload.content && deltaCb) deltaCb(payload.content);
+    else if (payload.type === "done" && payload.full_text !== undefined && doneCb) doneCb(payload.full_text);
+    else if (payload.type === "error" && payload.message && errorCb) errorCb(payload.message);
+  });
+
+  // fire-and-forget，不等待 command 返回
+  invoke(command, { streamId }).catch((e) => {
+    if (errorCb) errorCb(String(e));
+  });
+
+  return {
+    onDelta: (cb) => { deltaCb = cb; },
+    onDone: (cb) => { doneCb = cb; },
+    onError: (cb) => { errorCb = cb; },
+    unlisten: () => { if (unlistenFn) unlistenFn(); },
+  };
+}
+
+/** 盘中实时解读（流式） */
+export function aiIntradayCommentaryStream(): Promise<StreamHandle> {
+  return startStream("ai_intraday_commentary_stream");
+}
+
+/** 资讯聚合（流式） */
+export function aiNewsDigestStream(): Promise<StreamHandle> {
+  return startStream("ai_news_digest_stream");
+}
+
+/** 明日主线（流式） */
+export function aiTomorrowMainlineStream(): Promise<StreamHandle> {
+  return startStream("ai_tomorrow_mainline_stream");
 }
