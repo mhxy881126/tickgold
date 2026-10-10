@@ -1,7 +1,7 @@
 ﻿[package]
 name = "tickgold"
 version = "2.24.0"
-description = "TickGold - 涓撲笟浜ゆ槗鑰呰法骞冲彴 A 鑲＄洴鐩樼粓绔?
+description = "TickGold - 专业交易者跨平台 A 股盯盘终端"
 authors = ["tickgold"]
 edition = "2021"
 
@@ -34,16 +34,16 @@ rfd = "0.17.2"
 log = "0.4.22"
 tauri-plugin-autostart = "2.5.1"
 
-# ===== v1.9 AI 闁逛究鍨奸崜鎶芥晬濮樺磭鐝堕弶鐑囩畱缁?/ 缂侇垵宕电划娲礄椤撶喎绁︾紒?/ SSE 婵?=====
+# ===== v1.9 AI 问数 / 知识库 / SSE 推送 =====
 rusqlite = { version = "0.32", features = ["bundled"] }
 keyring = "2.3"
 tokio-stream = "0.1"
 
-# ===== v2.6 闁圭粯甯婂▎銏ゆ偨閻旂硶鍋撴笟濠勭獥QuickJS 閺夆晜鍔橀、鎴﹀籍鐠佸湱骞㈤柛鎺旑焾閺?闁圭粯甯婂▎銏㈡導閸曨剛鐖?URL 閻熸瑱绲鹃悗?=====
+# ===== v2.6 插件生态：QuickJS 沙箱、签名校验、HTTP 拦截 =====
 rquickjs = { version = "0.14.0", features = ["macro", "loader", "futures", "parallel"] }
 url = "2.5.8"
 
-# macOS 闂侇偄绻戝Σ鎴犵玻濡も偓瑜版盯鏁嶉崼顫触闁告柣鍔岄惌婵喰掑☉姘闁荤姴鍠涚槐姘舵閳ь剛鎲版担渚綄闁?API
+# macOS 私有 API：灵动岛需要透明背景 + 无标题栏 API
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri = { version = "2", features = ["macos-private-api"] }
 
@@ -53,4 +53,3 @@ codegen-units = 1
 lto = true
 opt-level = "s"
 strip = true
-
