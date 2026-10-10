@@ -86,6 +86,10 @@ const RAW: Record<CardId, RawCap> = {
     interactions: ["export"],
   },
   spiderbot: { group: "review", rowKind: "none", producesSignal: false, dwellMs: 2500, onTour: false },
+  // ─── v2.25 智能赋能 ───
+  intradayai: { group: "env", rowKind: "none", producesSignal: false, dwellMs: 5000, onTour: true },
+  newsdigest: { group: "mainline", rowKind: "info", producesSignal: false, dwellMs: 5000, onTour: true },
+  mainline: { group: "review", rowKind: "none", producesSignal: false, dwellMs: 5000, onTour: true },
 };
 
 function build(id: CardId): CardCapability {

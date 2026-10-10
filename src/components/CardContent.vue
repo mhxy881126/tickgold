@@ -38,6 +38,9 @@ import EvolutionStats from "./EvolutionStats.vue";
 import SignalBridge from "./SignalBridge.vue";
 import ConditionalOrders from "./ConditionalOrders.vue";
 import Performance from "./Performance.vue";
+import IntradayCommentary from "./cards/IntradayCommentary.vue";
+import NewsDigest from "./cards/NewsDigest.vue";
+import TomorrowMainline from "./cards/TomorrowMainline.vue";
 import type { CardId } from "../composables/useWorkbench";
 
 const props = defineProps<{ id: CardId; selected: string | null }>();
@@ -110,6 +113,9 @@ function retry() {
     <StrategyProfiles v-else-if="id === 'strategy'" />
     <SpiderBot v-else-if="id === 'spiderbot'" @switch-card="$emit('switchCard', $event)" />
     <Performance v-else-if="id === 'performance'" />
+    <IntradayCommentary v-else-if="id === 'intradayai'" />
+    <NewsDigest v-else-if="id === 'newsdigest'" />
+    <TomorrowMainline v-else-if="id === 'mainline'" />
   </template>
 </template>
 

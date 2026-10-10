@@ -40,7 +40,10 @@ export type CardId =
   | "co"
   | "sieve"
   | "spiderbot"
-  | "performance";
+  | "performance"
+  | "intradayai"
+  | "newsdigest"
+  | "mainline";
 
 export type Zone = "main" | "side";
 
@@ -91,6 +94,9 @@ export const CARD_META: Record<CardId, CardMeta> = {
   sieve: { title: "连板选股器", accent: "#ffd76a", kind: "chart" },
   spiderbot: { title: "AI 爬虫机器人", accent: "#00ffd5", kind: "chart" },
   performance: { title: "绩效分析", accent: "#00ff64", kind: "chart" },
+  intradayai: { title: "盘中解读", accent: "#e8c66a", kind: "chart" },
+  newsdigest: { title: "资讯聚合", accent: "#b07cff", kind: "chart" },
+  mainline: { title: "明日主线", accent: "#ff6b78", kind: "chart" },
 };
 
 // ===== 卡片个性化（V1 单卡设置 / V3 场景模板）=====

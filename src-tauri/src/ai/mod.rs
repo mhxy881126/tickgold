@@ -2,6 +2,7 @@
 pub mod agent;
 pub mod autoexec;
 pub mod bridge;
+pub mod commentary;
 pub mod config;
 pub mod decision;
 pub mod evolution;

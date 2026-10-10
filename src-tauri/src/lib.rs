@@ -2069,6 +2069,13 @@ pub fn run() {
             ai_update_plan_text,
             ai_update_instruction,
             ai_convert_instruction_alert,
+            // ===== v2.25 智能赋能 =====
+            ai::commentary::ai_intraday_commentary,
+            ai::commentary::ai_explain_signal,
+            ai::commentary::ai_suggest_alerts,
+            ai::commentary::ai_news_digest,
+            ai::commentary::ai_tomorrow_mainline,
+            ai::commentary::ai_news_for_stock,
             autoexec_get_config,
             autoexec_start,
             autoexec_stop,
