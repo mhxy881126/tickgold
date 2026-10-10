@@ -3,6 +3,7 @@ mod broker;
 mod logging;
 mod market;
 mod plugin;
+mod proxy;
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -1003,6 +1004,102 @@ fn rust_set_log_level(level: String) -> Result<bool, String> {
     Ok(logging::set_level(&level))
 }
 
+/// 内置浏览器窗口 label（全局单例；卡片、AI 回复、更新等所有外链统一在此打开）
+const APP_BROWSER_LABEL: &str = "app-browser";
+
+/// 在内置浏览器窗口打开外部 URL；窗口已存在则复用并导航到新地址，绝不拉起外部浏览器。
+/// 实现方式：webview 加载本地 browser.html（已验证可正常渲染），由页面内 iframe 加载外链，
+/// 规避 WebviewUrl::External 在部分 Windows 环境下 WebView2 外链白屏的问题。
+fn open_app_browser(app: &tauri::AppHandle, url: &url::Url) {
+    if url.scheme() != "http" && url.scheme() != "https" {
+        return;
+    }
+    let title = url.host_str().unwrap_or("网页浏览").to_string();
+    let url_str = url.to_string();
+    if let Some(win) = app.get_webview_window(APP_BROWSER_LABEL) {
+        // 单例复用：通过 eval 通知 browser.html 页面内的 iframe 导航到新地址
+        let escaped = url_str.replace('\\', "\\\\").replace('\'', "\\'");
+        let _ = win.eval(&format!("window.__navigateTo('{escaped}')"));
+        if !title.is_empty() {
+            let _ = win.set_title(&title);
+        }
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+        return;
+    }
+    // 新建窗口：加载本地 browser.html，通过 ?url= 参数传递目标外链
+    let encoded: String = url::form_urlencoded::byte_serialize(url_str.as_bytes()).collect();
+    let app_url = format!("browser.html?url={encoded}");
+    let browser_handle = app.clone();
+    let mut builder = WebviewWindowBuilder::new(
+        app,
+        APP_BROWSER_LABEL,
+        WebviewUrl::App(app_url.into()),
+    )
+    .title(title)
+    .inner_size(1100.0, 780.0)
+    .min_inner_size(720.0, 520.0)
+    .resizable(true)
+    .on_new_window(move |u, _features| {
+        // iframe 内 target=_blank / window.open 弹窗：复用同一内置浏览器窗口导航
+        open_app_browser(&browser_handle, &u);
+        tauri::webview::NewWindowResponse::Deny
+    })
+    .on_document_title_changed(|w, t| {
+        if !t.is_empty() {
+            let _ = w.set_title(&t);
+        }
+    });
+    // 通过本地 HTTP 代理访问外网，绕过 WebView2 在部分 Windows 环境下被安全软件拦截的问题
+    if let Some(proxy_port) = app.try_state::<std::sync::Mutex<Option<u16>>>()
+        .and_then(|s| s.lock().ok().and_then(|g| *g))
+    {
+        let args = format!("--proxy-server=127.0.0.1:{proxy_port}");
+        builder = builder.additional_browser_args(&args);
+    }
+    if let Err(e) = builder.build() {
+        log::warn!("内置浏览器窗口创建失败: {e}");
+    }
+}
+
+/// 手动创建主窗口（替代 tauri.conf.json 的静态窗口声明），
+/// 以便挂载 on_new_window：页面 target=_blank / window.open 的外链
+/// 一律改在内置浏览器窗口打开，拒绝系统默认外部浏览器弹窗。
+fn build_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindow> {
+    let handler = app.clone();
+    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+        .title("TickGold")
+        .inner_size(1280.0, 800.0)
+        .min_inner_size(960.0, 600.0)
+        .resizable(true)
+        .fullscreen(false)
+        .on_new_window(move |url, _features| {
+            // http(s) 外链 → 内置浏览器窗口；其余弹窗（about:blank 等）一并拒绝
+            open_app_browser(&handler, &url);
+            tauri::webview::NewWindowResponse::Deny
+        });
+    // macOS：隐藏原生标题栏背景、红绿灯内嵌（与原 tauri.conf.json 配置保持一致）
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .decorations(false)
+        .transparent(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true);
+    builder.build()
+}
+
+/// 前端统一入口：在内置浏览器窗口打开外链（卡片、AI 回复、更新等全部走这里）。
+#[tauri::command]
+fn open_in_app_browser(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let u = url::Url::parse(&url.trim()).map_err(|e| format!("非法 URL: {e}"))?;
+    if u.scheme() != "http" && u.scheme() != "https" {
+        return Err("仅支持 http/https 外链".to_string());
+    }
+    open_app_browser(&app, &u);
+    Ok(())
+}
+
 /// 老板键：切换所有窗口显隐
 fn boss_toggle(app: &tauri::AppHandle) {
     let state = app.state::<BossHidden>();
@@ -1059,7 +1156,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_notification::init())
+        // 预警/提醒仅允许应用内 Toast，不注册系统通知插件，杜绝电脑弹窗
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -1845,7 +1942,25 @@ pub fn run() {
                 // v2.23 高阶盯盘：注册条件单触发监听（落信号票；模拟盘可自动确认提交）
                 broker::register_co_listener(app.handle());
             }
-            // ===== 主窗口：标题栏融入工作台 =====
+            // ===== 内置浏览器本地 HTTP 代理：绕过 WebView2 在部分环境下外网被拦截的问题 =====
+            {
+                match proxy::start_proxy() {
+                    Ok(port) => {
+                        app.manage(std::sync::Mutex::new(Some(port)));
+                        log::info!("内置浏览器代理端口: {port}");
+                    }
+                    Err(e) => {
+                        app.manage(std::sync::Mutex::new(None::<u16>));
+                        log::warn!("内置浏览器代理启动失败（外链可能无法加载）: {e}");
+                    }
+                }
+            }
+            // ===== 主窗口：手动构建（挂载外链拦截 → 内置浏览器），标题栏融入工作台 =====
+            if app.get_webview_window("main").is_none() {
+                if let Err(e) = build_main_window(app.handle()) {
+                    log::error!("主窗口创建失败: {e}");
+                }
+            }
             if let Some(main) = app.get_webview_window("main") {
                 // 启动时强制显示并聚焦（防止上次关闭时被 hide）
                 let _ = main.unminimize();
@@ -2033,6 +2148,7 @@ pub fn run() {
             open_pip_window,
             close_pip_window,
             pip_set_always_on_top,
+            open_in_app_browser,
             save_export_file,
             open_text_file,
             rust_logs,

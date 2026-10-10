@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>内置浏览器</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a2e; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  #toolbar {
+    display: flex; align-items: center; gap: 6px;
+    height: 40px; padding: 0 10px;
+    background: #16213e; border-bottom: 1px solid #0f3460;
+    flex-shrink: 0;
+  }
+  .tb-btn {
+    width: 30px; height: 30px; border: none; border-radius: 6px;
+    background: transparent; color: #a0a0c0; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; transition: background 0.15s;
+    flex-shrink: 0;
+  }
+  .tb-btn:hover { background: #0f3460; color: #fff; }
+  .tb-btn:disabled { opacity: 0.3; cursor: default; }
+  .tb-btn.open-ext {
+    width: auto; padding: 0 10px;
+    font-size: 11px; font-weight: 500;
+    background: rgba(232, 198, 106, 0.15);
+    color: #e8c66a;
+    border: 1px solid rgba(232, 198, 106, 0.3);
+  }
+  .tb-btn.open-ext:hover { background: rgba(232, 198, 106, 0.25); }
+  #url-bar {
+    flex: 1; height: 28px; padding: 0 12px;
+    background: #1a1a2e; border: 1px solid #0f3460; border-radius: 14px;
+    color: #c0c0e0; font-size: 12px; outline: none;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    line-height: 28px; user-select: all;
+  }
+  #frame-wrap { flex: 1; position: relative; background: #fff; }
+  #browser-frame {
+    width: 100%; height: 100%; border: none; display: block;
+  }
+  #overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px;
+    background: #f5f5f5; z-index: 10;
+  }
+  #overlay.hidden { display: none; }
+  .spinner {
+    width: 40px; height: 40px; border: 3px solid #ddd; border-top-color: #0f3460;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #overlay-text { color: #666; font-size: 14px; }
+  #error-box { text-align: center; max-width: 400px; padding: 20px; }
+  #error-box h3 { color: #333; font-size: 18px; margin-bottom: 8px; }
+  #error-box p { color: #888; font-size: 13px; margin-bottom: 16px; line-height: 1.6; }
+  .err-btn {
+    padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer;
+    font-size: 13px; margin: 0 6px; transition: opacity 0.15s;
+  }
+  .err-btn:hover { opacity: 0.85; }
+  .err-retry { background: #0f3460; color: #fff; }
+  .err-copy { background: #e0e0e0; color: #333; }
+</style>
+</head>
+<body>
+  <div id="toolbar">
+    <button class="tb-btn" id="btn-back" title="后退" onclick="goBack()">‹</button>
+    <button class="tb-btn" id="btn-fwd" title="前进" onclick="goForward()">›</button>
+    <button class="tb-btn" id="btn-refresh" title="刷新" onclick="refreshPage()">⟳</button>
+    <div id="url-bar"></div>
+    <button class="tb-btn open-ext" title="用系统默认浏览器打开此页面" onclick="openExternally()">
+      ↗ 外部浏览器
+    </button>
+  </div>
+  <div id="frame-wrap">
+    <div id="overlay">
+      <div class="spinner" id="spinner"></div>
+      <div id="overlay-text">正在加载页面…</div>
+      <div id="error-box" style="display:none;">
+        <h3>页面加载失败</h3>
+        <p id="error-msg">页面加载超时或被服务器拒绝。很多网站（如新浪财经）禁止在 iframe 中打开，可尝试用外部浏览器查看。</p>
+        <button class="err-btn err-retry" onclick="refreshPage()">重新加载</button>
+        <button class="err-btn" onclick="openExternally()" style="background:#e8c66a;color:#000;">外部浏览器打开</button>
+        <button class="err-btn err-copy" onclick="copyUrl()">复制链接</button>
+      </div>
+    </div>
+    <iframe id="browser-frame"
+      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+      referrerpolicy="no-referrer-when-downgrade"></iframe>
+  </div>
+
+<script>
+  const frame = document.getElementById('browser-frame');
+  const overlay = document.getElementById('overlay');
+  const spinner = document.getElementById('spinner');
+  const overlayText = document.getElementById('overlay-text');
+  const errorBox = document.getElementById('error-box');
+  const urlBar = document.getElementById('url-bar');
+  const btnBack = document.getElementById('btn-back');
+  const btnFwd = document.getElementById('btn-fwd');
+
+  let currentUrl = '';
+  let loadTimer = null;
+  let historyStack = [];
+  let historyIndex = -1;
+
+  function getTargetUrl() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('url') || '';
+  }
+
+  function showLoading() {
+    overlay.classList.remove('hidden');
+    spinner.style.display = 'block';
+    overlayText.style.display = 'block';
+    errorBox.style.display = 'none';
+    overlayText.textContent = '正在加载页面…';
+  }
+
+  function showError(msg) {
+    overlay.classList.remove('hidden');
+    spinner.style.display = 'none';
+    overlayText.style.display = 'none';
+    errorBox.style.display = 'block';
+    if (msg) document.getElementById('error-msg').textContent = msg;
+  }
+
+  function hideOverlay() {
+    overlay.classList.add('hidden');
+  }
+
+  function navigateTo(url, pushHistory = true) {
+    if (!url) return;
+    currentUrl = url;
+    urlBar.textContent = url;
+    document.title = new URL(url).host || '内置浏览器';
+    if (pushHistory) {
+      historyStack = historyStack.slice(0, historyIndex + 1);
+      historyStack.push(url);
+      historyIndex = historyStack.length - 1;
+    }
+    updateNavButtons();
+    showLoading();
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(() => {
+      showError('页面加载超时（超过 20 秒）。该网站可能限制了内嵌加载，或网络连接异常。');
+    }, 20000);
+    frame.src = url;
+  }
+
+  function updateNavButtons() {
+    btnBack.disabled = historyIndex <= 0;
+    btnFwd.disabled = historyIndex >= historyStack.length - 1;
+  }
+
+  function goBack() {
+    if (historyIndex > 0) {
+      historyIndex--;
+      navigateTo(historyStack[historyIndex], false);
+    }
+  }
+
+  function goForward() {
+    if (historyIndex < historyStack.length - 1) {
+      historyIndex++;
+      navigateTo(historyStack[historyIndex], false);
+    }
+  }
+
+  function refreshPage() {
+    if (currentUrl) navigateTo(currentUrl, false);
+  }
+
+  function copyUrl() {
+    navigator.clipboard.writeText(currentUrl).then(() => {
+      const btn = document.querySelector('.err-copy');
+      if (btn) {
+        const orig = btn.textContent;
+        btn.textContent = '已复制 ✓';
+        setTimeout(() => btn.textContent = orig, 1500);
+      } else {
+        // 从工具栏点击的情况，给个 toast 提示
+        showToast('链接已复制到剪贴板');
+      }
+    }).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = currentUrl;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('链接已复制到剪贴板');
+    });
+  }
+
+  // 用系统默认浏览器打开
+  function openExternally() {
+    if (!currentUrl) return;
+    // 尝试通过 Tauri opener 插件调用系统默认浏览器
+    if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
+      window.__TAURI__.core.invoke('plugin:opener|open', { path: currentUrl })
+        .then(() => {
+          showToast('已在外部浏览器中打开');
+        })
+        .catch(() => {
+          // 失败则复制链接
+          copyUrl();
+        });
+    } else {
+      // 非 Tauri 环境，复制链接
+      copyUrl();
+    }
+  }
+
+  // 简单的 toast 提示
+  function showToast(msg) {
+    let toast = document.getElementById('toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'toast';
+      toast.style.cssText = `
+        position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+        background: rgba(0,0,0,0.8); color: #fff; padding: 10px 20px;
+        border-radius: 8px; font-size: 13px; z-index: 9999;
+        opacity: 0; transition: opacity 0.3s;
+      `;
+      document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.style.opacity = '1';
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => {
+      toast.style.opacity = '0';
+    }, 2000);
+  }
+
+  frame.addEventListener('load', () => {
+    clearTimeout(loadTimer);
+    hideOverlay();
+    try {
+      const doc = frame.contentDocument;
+      if (doc && doc.title) {
+        document.title = doc.title;
+      }
+    } catch (e) { /* cross-origin, ignore */ }
+  });
+
+  frame.addEventListener('error', () => {
+    clearTimeout(loadTimer);
+    showError('页面加载失败。该网站可能拒绝了内嵌请求。');
+  });
+
+  // 供 Rust 端调用：导航 iframe 到新 URL（单例复用场景）
+  window.__navigateTo = function(url) {
+    navigateTo(url, true);
+  };
+
+  // 供 Rust 端查询当前 URL
+  window.__getCurrentUrl = function() {
+    return currentUrl;
+  };
+
+  // 启动
+  const target = getTargetUrl();
+  if (target) {
+    navigateTo(target, true);
+  } else {
+    showError('未指定要打开的网址。');
+  }
+</script>
+</body>
+</html>
