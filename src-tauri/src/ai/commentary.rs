@@ -3,7 +3,7 @@
 use super::config::{load_config, AiConfig, SecretStore};
 use super::provider::{chat_stream, ChatMsg, StreamEv};
 use crate::market;
-use tauri::Manager;
+use tauri::Emitter;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::PathBuf;
