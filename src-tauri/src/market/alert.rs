@@ -156,7 +156,7 @@ fn eval_leaf(
                     h.iter()
                         .filter(|(ts, _)| *ts <= now - win * 1000)
                         .map(|(_, p)| *p)
-                        .last()
+                        .next_back()
                 });
             if let Some(old) = base {
                 if old > 0.0 {
@@ -328,7 +328,7 @@ async fn check_once(app: &AppHandle, engine: &AlertEngine) {
                     h.iter()
                         .filter(|(ts, _)| *ts <= now - win * 1000)
                         .map(|(_, p)| *p)
-                        .last()
+                        .next_back()
                 });
             if let Some(old) = base {
                 if old > 0.0 {
@@ -351,7 +351,7 @@ async fn check_once(app: &AppHandle, engine: &AlertEngine) {
                     h.iter()
                         .filter(|(ts, _)| *ts <= now - win * 1000)
                         .map(|(_, p)| *p)
-                        .last()
+                        .next_back()
                 });
             if let Some(old) = base {
                 if old > 0.0 {
@@ -400,11 +400,8 @@ async fn check_once(app: &AppHandle, engine: &AlertEngine) {
             let win_min = r.speed_window_sec.unwrap_or(300) as f64 / 60.0;
             let message = match kind {
                 "price_up" | "price_down" => format!(
-                    "{} {}，现价 {}，目标 {}",
-                    r.name,
-                    label,
-                    format!("{:.2}", q.price),
-                    format!("{:.2}", target)
+                    "{} {}，现价 {:.2}，目标 {:.2}",
+                    r.name, label, q.price, target
                 ),
                 "vr_up" => format!("{} 量比放大至 {:.2}，阈值 {:.2}", r.name, actual, target),
                 "speed_up" => format!(
@@ -424,30 +421,24 @@ async fn check_once(app: &AppHandle, engine: &AlertEngine) {
                     r.name, actual, target
                 ),
                 "limit_seal_up" => format!(
-                    "{} 涨停封板，现价 {}（涨停价 {}）",
-                    r.name,
-                    format!("{:.2}", q.price),
-                    format!("{:.2}", target)
+                    "{} 涨停封板，现价 {:.2}（涨停价 {:.2}）",
+                    r.name, q.price, target
                 ),
                 "limit_seal_dn" => format!(
-                    "{} 跌停封板，现价 {}（跌停价 {}）",
-                    r.name,
-                    format!("{:.2}", q.price),
-                    format!("{:.2}", target)
+                    "{} 跌停封板，现价 {:.2}（跌停价 {:.2}）",
+                    r.name, q.price, target
                 ),
                 "limit_broken" => format!(
-                    "{} 涨停炸板，现价 {}，涨停价 {}",
-                    r.name,
-                    format!("{:.2}", q.price),
-                    format!("{:.2}", target)
+                    "{} 涨停炸板，现价 {:.2}，涨停价 {:.2}",
+                    r.name, q.price, target
                 ),
                 _ => format!(
-                    "{} {}，{}{}%，阈值 {}%",
+                    "{} {}，{}{:.2}%，阈值 {:.2}%",
                     r.name,
                     label,
                     if tone == "up" { "涨幅" } else { "跌幅" },
-                    format!("{:.2}", actual),
-                    format!("{:.2}", target)
+                    actual,
+                    target
                 ),
             };
             events.push(AlertEvent {

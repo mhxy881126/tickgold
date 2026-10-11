@@ -1,6 +1,6 @@
 // 涨停雷达：东方财富涨停池/炸板池 + 全市场宽度统计，定时 emit 给前端。
-use super::{now_millis, Quote};
-use super::spider::{is_trading_time, limit_prices};
+use super::now_millis;
+use super::spider::is_trading_time;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -75,10 +75,6 @@ impl LimitRadar {
     pub fn new() -> Self {
         LimitRadar { running: AtomicBool::new(false) }
     }
-}
-
-fn brief(q: &Quote) -> StockBrief {
-    StockBrief { code: q.code.clone(), name: q.name.clone(), price: q.price, pct: q.pct }
 }
 
 /// 涨跌幅分布桶（红 5 + 绿 5，共 10 桶）
@@ -231,7 +227,7 @@ fn sentiment_from(core: &LimitCore, n_ld: usize, total: usize, up: usize, down: 
         0.0
     };
     let s_broken = -core.broken_rate * 0.25;
-    let s_height = ((core.max_boards as f64) - 1.0).max(0.0).min(8.0) * 1.5;
+    let s_height = ((core.max_boards as f64) - 1.0).clamp(0.0, 8.0) * 1.5;
     let sentiment = (50.0 + s_limit + breadth_score + s_broken + s_height).clamp(2.0, 99.0);
     let mood = if sentiment < 20.0 {
         "冰点"

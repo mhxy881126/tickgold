@@ -87,8 +87,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("tickgold-broker-cfg-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let mut c = BrokerConfig::default();
-        c.account_id = "ACC123".to_string();
+        let c = BrokerConfig {
+            account_id: "ACC123".to_string(),
+            ..Default::default()
+        };
         save(&dir, &c).unwrap();
         let loaded = load(&dir);
         assert_eq!(loaded.account_id, "ACC123");

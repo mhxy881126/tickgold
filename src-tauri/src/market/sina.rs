@@ -117,7 +117,7 @@ pub async fn sectors(kind: &str) -> Result<Vec<Sector>, String> {
 }
 
 /// 板块成分股
-pub async fn sector_stocks(category: &str, kind: &str) -> Result<Vec<Value>, String> {
+pub async fn sector_stocks(category: &str, _kind: &str) -> Result<Vec<Value>, String> {
     let url = format!(
         "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page=1&num=50&sort=changepercent&asc=0&node={category}"
     );
@@ -252,38 +252,6 @@ pub async fn rank_page(sort: &str, page: i64, num: i64) -> Result<Vec<Quote>, St
 // 复用东财的返回类型，前端无需感知数据源差异；新浪不支持按「开盘缺口」服务端排序，
 // 故分页拉全 A，本地由 open/settlement 现算 gap 再排序。
 use super::eastmoney::{AuctionData, AuctionStock, RankRow};
-
-async fn sina_hs_a_count() -> Result<i64, String> {
-    let url = "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeStockCount?node=hs_a";
-    let txt = http()
-        .get(url)
-        .header("Referer", "https://finance.sina.com.cn/")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .text()
-        .await
-        .map_err(|e| e.to_string())?;
-    txt.trim()
-        .trim_matches('"')
-        .parse::<i64>()
-        .map_err(|e| format!("竞价总数解析失败: {e}"))
-}
-
-async fn sina_hs_a_page(page: i64) -> Result<Vec<Value>, String> {
-    let url = format!(
-        "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page={page}&num=100&sort=symbol&asc=1&node=hs_a&symbol=&_s_r_a=page"
-    );
-    http()
-        .get(&url)
-        .header("Referer", "https://finance.sina.com.cn/")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| format!("竞价第 {page} 页解析失败: {e}"))
-}
 
 pub async fn auction() -> Result<AuctionData, String> {
     // 只取涨幅前200 + 跌幅前200，2个并发请求

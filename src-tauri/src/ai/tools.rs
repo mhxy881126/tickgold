@@ -362,7 +362,7 @@ fn list_themes(c: &rusqlite::Connection, args: &serde_json::Value) -> Result<Too
     sql.push_str(" ORDER BY members DESC, t.last_active_date DESC LIMIT ?");
     params.push(Box::new(limit));
     let mut stmt = c.prepare(&sql).map_err(|e| e.to_string())?;
-    let mut rows = stmt
+    let rows = stmt
         .query_map(rusqlite::params_from_iter(params.iter()), |r| {
             Ok(json!({
                 "themeId": r.get::<_,i64>(0)?,
@@ -375,7 +375,7 @@ fn list_themes(c: &rusqlite::Connection, args: &serde_json::Value) -> Result<Too
         })
         .map_err(|e| e.to_string())?;
     let mut items = vec![];
-    while let Some(r) = rows.next() {
+    for r in rows {
         items.push(r.map_err(|e| e.to_string())?);
     }
     Ok(ToolOut {
@@ -413,7 +413,7 @@ fn theme_detail(c: &rusqlite::Connection, args: &serde_json::Value) -> Result<To
                  WHERE theme_id=?1 AND left_date IS NULL ORDER BY role_score DESC",
             )
             .map_err(|e| e.to_string())?;
-        let mut rs = stmt
+        let rs = stmt
             .query_map(rusqlite::params![tid], |r| {
                 Ok(json!({
                     "code": r.get::<_,String>(0)?, "name": r.get::<_,String>(1)?,
@@ -421,7 +421,7 @@ fn theme_detail(c: &rusqlite::Connection, args: &serde_json::Value) -> Result<To
                 }))
             })
             .map_err(|e| e.to_string())?;
-        while let Some(r) = rs.next() {
+        for r in rs {
             members.push(r.map_err(|e| e.to_string())?);
         }
     }
@@ -433,7 +433,7 @@ fn theme_detail(c: &rusqlite::Connection, args: &serde_json::Value) -> Result<To
                  WHERE theme_id=?1 ORDER BY COALESCE(published_at,collected_at) DESC LIMIT 10",
             )
             .map_err(|e| e.to_string())?;
-        let mut rs = stmt
+        let rs = stmt
             .query_map(rusqlite::params![tid], |r| {
                 Ok(json!({
                     "kind": r.get::<_,String>(0)?, "title": r.get::<_,String>(1)?,
@@ -441,7 +441,7 @@ fn theme_detail(c: &rusqlite::Connection, args: &serde_json::Value) -> Result<To
                 }))
             })
             .map_err(|e| e.to_string())?;
-        while let Some(r) = rs.next() {
+        for r in rs {
             catalysts.push(r.map_err(|e| e.to_string())?);
         }
     }
@@ -525,7 +525,7 @@ fn query_catalysts(c: &rusqlite::Connection, args: &serde_json::Value) -> Result
     params.push(Box::new(limit));
 
     let mut stmt = c.prepare(&sql).map_err(|e| e.to_string())?;
-    let mut rs = stmt
+    let rs = stmt
         .query_map(rusqlite::params_from_iter(params.iter()), |r| {
             let url: String = r.get(5).unwrap_or_default();
             Ok((
@@ -543,7 +543,7 @@ fn query_catalysts(c: &rusqlite::Connection, args: &serde_json::Value) -> Result
         .map_err(|e| e.to_string())?;
     let mut items = vec![];
     let mut refs = vec![];
-    while let Some(r) = rs.next() {
+    for r in rs {
         let (v, url) = r.map_err(|e| e.to_string())?;
         if !url.is_empty() {
             refs.push(FactRef::url(&url, v["title"].as_str().unwrap_or("原文")));
@@ -590,12 +590,12 @@ fn stock_profile(c: &rusqlite::Connection, args: &serde_json::Value) -> Result<T
                  WHERE ts.code=?1",
             )
             .map_err(|e| e.to_string())?;
-        let mut rs = stmt
+        let rs = stmt
             .query_map([&code], |r| {
                 Ok(json!({"theme": r.get::<_,String>(0)?, "role": r.get::<_,String>(1)?}))
             })
             .map_err(|e| e.to_string())?;
-        while let Some(r) = rs.next() {
+        for r in rs {
             themes.push(r.map_err(|e| e.to_string())?);
         }
     }
@@ -607,7 +607,7 @@ fn stock_profile(c: &rusqlite::Connection, args: &serde_json::Value) -> Result<T
                  FROM catalyst WHERE code=?1 ORDER BY collected_at DESC LIMIT 10",
             )
             .map_err(|e| e.to_string())?;
-        let mut rs = stmt
+        let rs = stmt
             .query_map([&code], |r| {
                 Ok(json!({
                     "kind": r.get::<_,String>(0)?, "title": r.get::<_,String>(1)?,
@@ -615,7 +615,7 @@ fn stock_profile(c: &rusqlite::Connection, args: &serde_json::Value) -> Result<T
                 }))
             })
             .map_err(|e| e.to_string())?;
-        while let Some(r) = rs.next() {
+        for r in rs {
             catalysts.push(r.map_err(|e| e.to_string())?);
         }
     }
@@ -666,7 +666,7 @@ fn list_limit_ups(c: &rusqlite::Connection, args: &serde_json::Value) -> Result<
          WHERE trade_date=:date AND boards>=:mb AND (:code='' OR code=:code)
          ORDER BY boards DESC, first_seal LIMIT :limit";
     let mut stmt = c.prepare(sql).map_err(|e| e.to_string())?;
-    let mut rs = stmt
+    let rs = stmt
         .query_map(
             rusqlite::named_params! {
                 ":date": date,
@@ -685,7 +685,7 @@ fn list_limit_ups(c: &rusqlite::Connection, args: &serde_json::Value) -> Result<
         )
         .map_err(|e| e.to_string())?;
     let mut items = vec![];
-    while let Some(r) = rs.next() {
+    for r in rs {
         items.push(r.map_err(|e| e.to_string())?);
     }
     Ok(ToolOut {
@@ -797,7 +797,7 @@ pub fn dispatch<'a>(
 }
 
 /// 查询实时行情
-async fn get_quote(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
+async fn get_quote(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
     let code = args.get("code").and_then(|v| v.as_str()).ok_or("缺少 code 参数")?;
     
     // 调用行情 API
@@ -828,7 +828,7 @@ async fn get_quote(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOu
 }
 
 /// 查询基本面数据（市盈率、市净率、换手率）
-async fn get_fundamentals(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
+async fn get_fundamentals(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
     let code = args.get("code").and_then(|v| v.as_str()).ok_or("缺少 code 参数")?;
     
     // 直接调用腾讯的行情 API（因为腾讯提供 PE/PB/换手率）
@@ -857,7 +857,7 @@ async fn get_fundamentals(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result
 }
 
 /// 查询日K线历史数据
-async fn get_kline(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
+async fn get_kline(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
     let code = args.get("code").and_then(|v| v.as_str()).ok_or("缺少 code 参数")?;
     let count = args.get("count").and_then(|v| v.as_i64()).unwrap_or(20).clamp(5, 60);
     
@@ -887,7 +887,7 @@ async fn get_kline(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOu
 }
 
 /// 查询技术指标（均线、MACD、RSI）
-async fn get_indicators(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
+async fn get_indicators(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
     let code = args.get("code").and_then(|v| v.as_str()).ok_or("缺少 code 参数")?;
     
     // 先获取 K 线数据（60 天）
@@ -895,7 +895,7 @@ async fn get_indicators(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<T
         .map_err(|e| format!("K线查询失败: {e}"))?;
     
     if bars.len() < 20 {
-        return Err(format!("K线数据不足，无法计算技术指标"));
+        return Err("K线数据不足，无法计算技术指标".to_string());
     }
     
     let closes: Vec<f64> = bars.iter().map(|b| b.close).collect();
@@ -946,7 +946,7 @@ async fn get_indicators(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<T
 }
 
 /// 查询财务报表
-async fn get_finance_tool(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
+async fn get_finance_tool(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
     let code = args.get("code").and_then(|v| v.as_str()).ok_or("缺少 code 参数")?;
     
     // 调用财务报表 API（新浪 F10）

@@ -69,36 +69,6 @@ fn blend(items: &[(f64, f64)]) -> f64 {
     }
 }
 
-/// 买入场景综合分（无持仓 / 买入指令）：越大越倾向 BUY。
-fn buy_score(f: &Value) -> f64 {
-    blend(&[
-        (1.0, lin(fget(f, "pct"), -2.0, 7.0)),                 // 涨跌幅 0~7% 健康
-        (0.8, lin(fget(f, "speed5m"), -1.0, 2.0)),             // 5 分钟涨速
-        (0.9, peak(fget(f, "volumeRatio"), 1.0, 2.5, 5.0)),    // 量比 1.5~3 健康、>5 过热
-        (0.7, peak(fget(f, "turnover"), 3.0, 9.0, 18.0)),      // 换手 适度活跃
-        (1.0, lin_inv(fget(f, "distToLimit"), 0.0, 6.0)),      // 距涨停越近越强
-        (0.8, lin(fget(f, "pullback"), -3.0, 0.0)),            // 分时回撤小为强
-        (1.2, lin_inv(fget(f, "blastCount"), 0.0, 3.0)),       // 炸板 0 为好
-        (1.0, lin(fget(f, "marketEmotion"), 30.0, 80.0)),      // 市场情绪
-        (0.8, lin(fget(f, "indexChg"), -1.0, 1.5)),            // 指数环境
-        (0.9, lin_inv(fget(f, "themeRank"), 1.0, 8.0)),        // 题材盘中排名
-        (0.7, lin(fget(f, "catalystFreshness"), 0.2, 0.9)),    // 催化新鲜度
-        (0.9, lin(fget(f, "mainNetInflowYi"), -1.0, 3.0)),     // 主力净流入（亿）
-    ])
-}
-
-/// 卖出场景综合分（持仓股）：越大越倾向 SELL。硬止损不经过此函数。
-fn sell_score(f: &Value) -> f64 {
-    blend(&[
-        (1.2, lin_inv(fget(f, "pct"), -7.0, 3.0)),             // 大跌该卖
-        (1.0, lin_inv(fget(f, "speed5m"), -2.0, 1.0)),         // 快速下杀
-        (1.1, lin_inv(fget(f, "pullback"), -6.0, 0.0)),        // 自高点大幅回撤
-        (1.3, lin(fget(f, "brokenLimit"), 0.0, 1.0)),          // 断板 / 炸板
-        (0.8, lin_inv(fget(f, "marketEmotion"), 20.0, 70.0)),  // 情绪转弱
-        (0.7, lin_inv(fget(f, "indexChg"), -2.0, 1.0)),        // 指数走弱
-    ])
-}
-
 /// 规则快脑：纯同步、确定性。
 pub struct RuleBrain;
 
@@ -366,7 +336,7 @@ impl CloudLlmClient {
 
         let label = parsed["label"].as_str().unwrap_or("HOLD").to_uppercase();
         let confidence = parsed["confidence"].as_f64().unwrap_or(0.5).clamp(0.0, 1.0);
-        let reason = parsed["reason"].as_str().unwrap_or("").to_string();
+        let _reason = parsed["reason"].as_str().unwrap_or("").to_string();
 
         // 构造 probs
         let probs = match label.as_str() {

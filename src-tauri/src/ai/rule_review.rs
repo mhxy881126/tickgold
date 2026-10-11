@@ -225,7 +225,7 @@ fn stock_review(focus: &Value) -> RuleReview {
 }
 
 /// 按 scope 生成规则复盘。
-pub fn rule_review(scope: &str, subject: &str, focus: &Value) -> RuleReview {
+pub fn rule_review(scope: &str, _subject: &str, focus: &Value) -> RuleReview {
     match scope {
         "theme" => theme_review(focus),
         "trade" => trade_review(focus),

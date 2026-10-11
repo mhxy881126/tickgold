@@ -149,14 +149,13 @@ pub async fn run_review(
     let mut out: Vec<ReviewSummary> = vec![];
     let mut market_failed = false;
     for (scope, subject, focus) in jobs {
-        if let Some((id, title, summary)) = wdb
+        if let Ok((id, title, summary)) = wdb
             .query_row(
                 "SELECT id,title,summary FROM ai_review
                  WHERE trade_date=?1 AND scope=?2 AND subject=?3",
                 rusqlite::params![date, scope, subject],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
-            .ok()
         {
             if !force {
                 out.push(ReviewSummary {

@@ -147,7 +147,7 @@ pub async fn get_restricted_queue(code: String) -> Result<Vec<RestrictedItem>, S
     .map_err(|e| e.to_string())?;
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
     let (html, _, _) = GBK.decode(&bytes);
-    Ok(parse_restricted(&html.into_owned()))
+    Ok(parse_restricted(&html))
 }
 
 fn parse_restricted(html: &str) -> Vec<RestrictedItem> {

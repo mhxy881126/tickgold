@@ -165,6 +165,8 @@ pub fn insert_chunk_ignore(c: &Connection, n: &NewChunk) -> Result<bool, String>
 }
 
 pub struct ChunkHit {
+    /// 分块行 ID，保留用于溯源/去重，当前渲染层不读取。
+    #[allow(dead_code)]
     pub id: i64,
     pub text: String,
     pub source_type: String,
@@ -411,36 +413,6 @@ pub fn list_messages(c: &Connection, session: i64, limit: i64) -> Result<Vec<Msg
     Ok(rows)
 }
 
-// ===== 入库游标 =====
-pub fn get_cursor(
-    c: &Connection,
-    source_type: &str,
-    source_ref: &str,
-) -> Result<Option<String>, String> {
-    Ok(c.query_row(
-        "SELECT cursor_hash FROM ai_index_state WHERE source_type=?1 AND source_ref=?2",
-        rusqlite::params![source_type, source_ref],
-        |r| r.get::<_, Option<String>>(0),
-    )
-    .ok()
-    .flatten())
-}
-
-pub fn set_cursor(
-    c: &Connection,
-    source_type: &str,
-    source_ref: &str,
-    cursor_hash: &str,
-) -> Result<(), String> {
-    c.execute(
-        "INSERT INTO ai_index_state(source_type,source_ref,cursor_hash,updated_at)
-         VALUES(?1,?2,?3,?4)
-         ON CONFLICT(source_type,source_ref) DO UPDATE SET cursor_hash=?3, updated_at=?4",
-        rusqlite::params![source_type, source_ref, cursor_hash, crate::ai::now_millis()],
-    )
-    .map(|_| ())
-    .map_err(|e| e.to_string())
-}
 
 #[cfg(test)]
 mod tests {

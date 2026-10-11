@@ -196,7 +196,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<SpiderCtl>) {
         let trading = is_trading_time();
 
         if trading {
-            if pool.is_empty() || tick % 12 == 0 {
+            if pool.is_empty() || tick.is_multiple_of(12) {
                 let watch = ctl.watch.lock().map(|g| g.clone()).unwrap_or_default();
                 pool = build_pool(&watch).await;
             }

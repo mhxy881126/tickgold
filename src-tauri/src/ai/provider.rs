@@ -564,11 +564,13 @@ pub async fn embed(
     Ok(out.into_iter().map(|(_, v)| v).collect())
 }
 
+/// Embedding 批量结果：每个文本对应一条 f32 向量。
+pub type EmbedResult = Result<Vec<Vec<f32>>, String>;
+/// 与生命周期绑定的异步 Embedding future（用于 Embedder trait 对象）。
+pub type EmbedFut<'a> = Pin<Box<dyn Future<Output = EmbedResult> + Send + 'a>>;
+
 pub trait Embedder: Send + Sync {
-    fn embed<'a>(
-        &'a self,
-        texts: Vec<String>,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Vec<f32>>, String>> + Send + 'a>>;
+    fn embed<'a>(&'a self, texts: Vec<String>) -> EmbedFut<'a>;
 }
 
 pub struct HttpEmbedder {
@@ -576,10 +578,7 @@ pub struct HttpEmbedder {
     pub api_key: Option<String>,
 }
 impl Embedder for HttpEmbedder {
-    fn embed<'a>(
-        &'a self,
-        texts: Vec<String>,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Vec<f32>>, String>> + Send + 'a>> {
+    fn embed<'a>(&'a self, texts: Vec<String>) -> EmbedFut<'a> {
         Box::pin(async move { embed(&self.cfg, &self.api_key, &texts).await })
     }
 }
@@ -664,7 +663,7 @@ mod tests {
                 tool_call_id: None,
             },
         ];
-        let v = serde_json::to_value(&build_api_messages(&msgs)).unwrap();
+        let v = serde_json::to_value(build_api_messages(&msgs)).unwrap();
         let arr = v.as_array().unwrap();
         assert_eq!(arr.len(), 3);
 

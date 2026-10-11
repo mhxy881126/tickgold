@@ -346,24 +346,18 @@ fn check_risk_controls(
     let today = today_dashed();
     
     // 查今天的卖出交易总盈亏
-    let today_pnl: f64 = match conn.query_row(
+    let today_pnl: f64 = conn.query_row(
         "SELECT COALESCE(SUM(pnl), 0) FROM trades WHERE trade_date = ?1 AND side = 'sell'",
         [&today],
         |row| row.get(0),
-    ) {
-        Ok(v) => v,
-        Err(_) => 0.0,
-    };
+    ).unwrap_or(0.0);
 
     // 查初始资金
-    let initial_cash: f64 = match conn.query_row(
+    let initial_cash: f64 = conn.query_row(
         "SELECT COALESCE(initial_cash, 1000000) FROM account LIMIT 1",
         [],
         |row| row.get(0),
-    ) {
-        Ok(v) => v,
-        Err(_) => 1000000.0,
-    };
+    ).unwrap_or(1000000.0);
 
     // 计算单日亏损百分比
     let daily_loss_pct = if initial_cash > 0.0 {
@@ -638,7 +632,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
     let mut fire_hist: HashMap<String, Vec<Instant>> = HashMap::new();
     let mut ctx = MarketCtx::default();
     let mut last_ctx = Instant::now() - Duration::from_secs(60);
-    let mut last_review_date = String::new(); // 上次复盘的日期
+    let _last_review_date = String::new(); // 上次复盘的日期
 
     loop {
         tokio::time::sleep(Duration::from_secs(5)).await;
@@ -789,7 +783,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                 let closes: Vec<f64> = kbars.iter().map(|k| k.close).collect();
                 let highs: Vec<f64> = kbars.iter().map(|k| k.high).collect();
                 let lows: Vec<f64> = kbars.iter().map(|k| k.low).collect();
-                let volumes: Vec<f64> = kbars.iter().map(|k| k.volume as f64).collect();
+                let volumes: Vec<f64> = kbars.iter().map(|k| k.volume).collect();
 
                 // MACD
                 let (dif, dea, macd_hist) = intraday::calc_macd(&closes);
@@ -817,7 +811,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                 let dist_to_support = if recent20_low > 0.0 { (current_price - recent20_low) / recent20_low * 100.0 } else { 0.0 };
 
                 // K线形态判断（最近一根K线）
-                if let (Some(prev), Some(cur)) = (kbars.iter().rev().nth(1), kbars.iter().rev().nth(0)) {
+                if let (Some(prev), Some(cur)) = (kbars.iter().rev().nth(1), kbars.iter().next_back()) {
                     let body = cur.close - cur.open; // 实体大小
                     let upper_shadow = cur.high - cur.close.max(cur.open); // 上影线
                     let lower_shadow = cur.close.min(cur.open) - cur.low; // 下影线

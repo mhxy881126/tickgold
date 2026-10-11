@@ -97,6 +97,7 @@ pub fn create_ticket(conn: &Connection, input: SignalInput) -> Option<String> {
 
 // ===== 下单指令模板 =====
 
+#[cfg(test)]
 pub fn build_order_text(
     side: &str,
     code: &str,
@@ -321,7 +322,7 @@ pub fn mark_done(conn: &Connection, id: i64, actor: &str) -> Result<(), String> 
 // ===== 过期 =====
 
 pub fn expire_stale(conn: &Connection, ttl_minutes: i64) -> Result<i64, String> {
-    let ttl = ttl_minutes.max(1) as i64;
+    let ttl = ttl_minutes.max(1);
     let now = now_millis();
     let cutoff = now - ttl * 60 * 1000;
 
@@ -447,6 +448,7 @@ pub fn signal_list(
     Ok(list_tickets(&conn, status, limit))
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn signal_confirm(
     state: State<'_, crate::ai::AiState>,
@@ -486,7 +488,7 @@ pub fn signal_reject(
     actor: Option<String>,
 ) -> Result<(), String> {
     let conn = maindb::open_readwrite(&state.dir())?;
-    let res = reject(
+    reject(
         &conn,
         id,
         &reason.unwrap_or_default(),
@@ -494,7 +496,7 @@ pub fn signal_reject(
     )?;
     checkpoint(&conn);
     let _ = app.emit("signal:updated", json!({ "id": id, "status": "rejected" }));
-    Ok(res)
+    Ok(())
 }
 
 #[tauri::command]
@@ -505,10 +507,10 @@ pub fn signal_done(
     actor: Option<String>,
 ) -> Result<(), String> {
     let conn = maindb::open_readwrite(&state.dir())?;
-    let res = mark_done(&conn, id, &actor.unwrap_or_else(|| "local".to_string()))?;
+    mark_done(&conn, id, &actor.unwrap_or_else(|| "local".to_string()))?;
     checkpoint(&conn);
     let _ = app.emit("signal:updated", json!({ "id": id, "status": "done" }));
-    Ok(res)
+    Ok(())
 }
 
 #[tauri::command]
@@ -521,6 +523,7 @@ pub fn signal_expire(
     checkpoint(&conn);
     Ok(n)
 }
+#[allow(clippy::too_many_arguments)]
 
 #[tauri::command]
 pub fn signal_create_manual(
@@ -558,8 +561,8 @@ pub fn signal_create_manual(
     );
     Ok(sid)
 }
-
 /// 爬虫机器人前端评分信号：落待确认票（source=spider），复用去重。
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn signal_create_spider(
     state: State<'_, crate::ai::AiState>,

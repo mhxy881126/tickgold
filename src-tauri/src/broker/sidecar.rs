@@ -32,11 +32,6 @@ pub struct SidecarHandle {
     pub stdin: Arc<Mutex<ChildStdin>>,
 }
 
-impl SidecarHandle {
-    pub async fn kill(&self) {
-        let _ = self.child.lock().await.kill().await;
-    }
-}
 
 /// 启动 sidecar，发送 connect，并拉起后台回报读取任务。
 pub async fn spawn(

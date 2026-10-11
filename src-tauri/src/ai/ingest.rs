@@ -149,7 +149,7 @@ pub async fn embed_pending(
             }
         };
         let db = vectordb::open(&dir.join("ai.db"))?;
-        for (p, v) in batch.iter().zip(vecs.into_iter()) {
+        for (p, v) in batch.iter().zip(vecs) {
             vectordb::set_embedding(&db.0, p.id, &model_hash, &v)?;
             done += 1;
         }

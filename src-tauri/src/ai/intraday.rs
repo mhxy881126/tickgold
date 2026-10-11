@@ -6,9 +6,9 @@ use std::collections::{HashMap, HashSet};
 
 /// 板块涨跌停幅度（%）。ST 5% 极少进入盯盘池，此处简化处理。
 pub fn limit_pct(code: &str) -> f64 {
-    if code.starts_with("688") || code.starts_with("689") {
-        20.0
-    } else if code.starts_with("300") || code.starts_with("301") {
+    if (code.starts_with("688") || code.starts_with("689"))
+        || (code.starts_with("300") || code.starts_with("301"))
+    {
         20.0
     } else if code.starts_with('4') || code.starts_with('8') || code.starts_with("920") {
         30.0

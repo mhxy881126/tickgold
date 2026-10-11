@@ -74,7 +74,7 @@ fn handle_client(mut client: TcpStream) -> Result<(), String> {
                 Ok(())
             }
             Err(e) => {
-                let _ = client.write_all(format!("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n").as_bytes());
+                let _ = client.write_all("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n".to_string().as_bytes());
                 Err(format!("连接 {addr} 失败: {e}"))
             }
         }
@@ -146,13 +146,13 @@ fn handle_client(mut client: TcpStream) -> Result<(), String> {
                         Ok(())
                     }
                     Err(e) => {
-                        let _ = client.write_all(format!("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n").as_bytes());
+                        let _ = client.write_all("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n".to_string().as_bytes());
                         Err(format!("上游请求失败: {e}"))
                     }
                 }
             }
             Err(e) => {
-                let _ = client.write_all(format!("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n").as_bytes());
+                let _ = client.write_all("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n".to_string().as_bytes());
                 Err(format!("HTTP 客户端构建失败: {e}"))
             }
         }

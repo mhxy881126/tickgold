@@ -198,54 +198,6 @@ pub async fn search(keyword: &str) -> Result<Vec<StockItem>, String> {
     Ok(out)
 }
 
-/// 榜单：gainers=涨幅榜 losers=跌幅榜 amount=成交额榜（沪深 A 股）
-pub async fn rank(sort: &str, pz: i64) -> Result<Vec<Quote>, String> {
-    let (fid, po) = match sort {
-        "losers" => ("f3", 0),  // 按涨跌幅升序
-        "amount" => ("f6", 1),  // 按成交额降序
-        _ => ("f3", 1),         // gainers 默认按涨跌幅降序
-    };
-    let url = format!(
-        "https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz={pz}&po={po}&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid={fid}&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f12,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18"
-    );
-    let resp = http()
-        .get(&url)
-        .header("Referer", "https://quote.eastmoney.com/")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    let json: ListResp = resp.json().await.map_err(|e| e.to_string())?;
-    let now = now_millis();
-    let out = json
-        .data
-        .and_then(|d| d.diff)
-        .unwrap_or_default()
-        .into_iter()
-        .map(|q| Quote {
-            code: q.code,
-            name: q.name,
-            price: nf(&q.price),
-            change: nf(&q.change),
-            pct: nf(&q.pct),
-            open: nf(&q.open),
-            high: nf(&q.high),
-            low: nf(&q.low),
-            prev_close: nf(&q.prev_close),
-            volume: nf(&q.volume),
-            amount: nf(&q.amount),
-            time: now,
-            source: "eastmoney".to_string(),
-            turnover: 0.0,
-            pe: 0.0,
-            pb: 0.0,
-            amplitude: 0.0,
-            volume_ratio: 0.0,
-            circ_mv: 0.0,
-            total_mv: 0.0,
-        })
-        .collect();
-    Ok(out)
-}
 
 // ===== 增强榜单：专用 RankRow（含换手/量比/5分钟涨速/主力净流入/大单净流入）=====
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -700,12 +652,6 @@ pub struct AuctionData {
 /// clist / rank_board 复用统一的 push2 多节点池
 const CLIST_HOSTS: &[&str] = PUSH2_HOSTS;
 
-/// clist 单页实际请求（pz=100，服务端单页硬上限 100），返回 (全市场总数, 本页行情)。
-/// 依次尝试多个 push2 节点，任一返回可解析 JSON 即成功；全部失败才报错。
-async fn clist_page_once(fs: &str, pn: i32) -> Result<(i64, Vec<EmQuote>), String> {
-    clist_page_sorted_once(fs, "f3", 1, pn).await
-}
-
 /// clist 单页（自定义排序字段/升降序），返回本页行情。
 /// fid: 排序字段（f3=涨跌幅, f6=成交额）；po: 1=降序, 0=升序。
 async fn clist_page_sorted_once(fs: &str, fid: &str, po: i32, pn: i32) -> Result<(i64, Vec<EmQuote>), String> {
@@ -743,11 +689,6 @@ async fn clist_page_sorted_once(fs: &str, fid: &str, po: i32, pn: i32) -> Result
         }
     }
     Err(format!("所有 clist 节点均失败；{}", last))
-}
-
-/// clist 单页（带 3 次退避重试）
-async fn clist_page(fs: &str, pn: i32) -> Result<(i64, Vec<EmQuote>), String> {
-    clist_page_sorted(fs, "f3", 1, pn).await
 }
 
 /// clist 单页（自定义排序 + 3 次退避重试）
@@ -801,49 +742,6 @@ pub async fn market_breadth() -> Result<Vec<Quote>, String> {
     let now = now_millis();
     let out = all
         .into_iter()
-        .map(|q| Quote {
-            code: q.code,
-            name: q.name,
-            price: nf(&q.price),
-            change: nf(&q.change),
-            pct: nf(&q.pct),
-            open: nf(&q.open),
-            high: nf(&q.high),
-            low: nf(&q.low),
-            prev_close: nf(&q.prev_close),
-            volume: nf(&q.volume),
-            amount: nf(&q.amount),
-            time: now,
-            source: "eastmoney".to_string(),
-            turnover: 0.0,
-            pe: 0.0,
-            pb: 0.0,
-            amplitude: 0.0,
-            volume_ratio: 0.0,
-            circ_mv: 0.0,
-            total_mv: 0.0,
-        })
-        .collect();
-    Ok(out)
-}
-
-/// 跌停股列表（clist 按跌幅升序拉前 3 页，筛选 pct<=-9.5）。
-/// 比 dt_pool 接口稳定（dt_pool 只返回总数不返回列表），且非交易日自动返回最近交易日数据。
-pub async fn limit_down_stocks() -> Result<Vec<Quote>, String> {
-    let fs = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23";
-    let mut all: Vec<EmQuote> = Vec::new();
-    for pn in 1..=3 {
-        if let Ok((_, rows)) = clist_page_sorted(fs, "f3", 0, pn).await {
-            all.extend(rows);
-        }
-    }
-    let now = now_millis();
-    let out: Vec<Quote> = all
-        .into_iter()
-        .filter(|q| {
-            let p = nf(&q.pct);
-            p <= -9.5
-        })
         .map(|q| Quote {
             code: q.code,
             name: q.name,
@@ -1569,7 +1467,7 @@ fn tag_str(v: &Value) -> String {
 /// 每个概念内部去除嵌入空白；丢弃空串并按出现顺序去重。
 pub(crate) fn split_concepts(s: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
-    for part in s.split(|c| c == ',' || c == '，' || c == '、') {
+    for part in s.split([',', '，', '、']) {
         // split_whitespace 同时吃掉前导/尾随与内部多余空白，再以单空格拼回
         let name = part.split_whitespace().collect::<Vec<_>>().join(" ");
         if !name.is_empty() && !out.contains(&name) {

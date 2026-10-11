@@ -28,13 +28,10 @@ pub struct IrmItem {
 pub const SSE_SOURCE_DORMANT: bool = true;
 
 async fn fetch_sse() -> Vec<IrmItem> {
-    // endpoints under calibration, dormant since 2026-09.
+    // endpoints under calibration, dormant since 2026-09，恒返回空。
     // SSE_SOURCE_DORMANT=false 时在此恢复抓取（需先重新校准端点与相对时间换算）。
-    if SSE_SOURCE_DORMANT {
-        Vec::new()
-    } else {
-        Vec::new()
-    }
+    let _ = SSE_SOURCE_DORMANT;
+    Vec::new()
 }
 
 // ===== 互动易（深市）：newircs/index/search 表单 POST，2026-10-01 活探校准 =====
@@ -186,6 +183,6 @@ mod tests {
 
     #[test]
     fn sse_source_marked_dormant() {
-        assert!(SSE_SOURCE_DORMANT);
+        const { assert!(SSE_SOURCE_DORMANT); };
     }
 }

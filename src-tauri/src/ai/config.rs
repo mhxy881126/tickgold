@@ -2,7 +2,6 @@
 use crate::ai::now_millis;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -56,12 +55,17 @@ pub trait SecretStore: Send + Sync {
 }
 
 /// 测试用内存凭据。
+#[cfg(test)]
+use std::sync::{Arc, Mutex};
+#[cfg(test)]
 pub struct MemSecret(pub Arc<Mutex<Option<String>>>);
+#[cfg(test)]
 impl MemSecret {
     pub fn new() -> Self {
         MemSecret(Arc::new(Mutex::new(None)))
     }
 }
+#[cfg(test)]
 impl SecretStore for MemSecret {
     fn get(&self) -> Result<Option<String>, String> {
         Ok(self.0.lock().unwrap().clone())
@@ -131,10 +135,12 @@ mod tests {
     #[test]
     fn save_and_reload_roundtrip_camelcase() {
         let db = db();
-        let mut cfg = AiConfig::default();
-        cfg.provider = "cloud".to_string();
-        cfg.base_url = "https://api.deepseek.com/v1".to_string();
-        cfg.temperature = 0.1;
+        let cfg = AiConfig {
+            provider: "cloud".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            temperature: 0.1,
+            ..Default::default()
+        };
         save_config(&db.0, &cfg).unwrap();
         let back = load_config(&db.0).unwrap();
         assert_eq!(back.provider, "cloud");

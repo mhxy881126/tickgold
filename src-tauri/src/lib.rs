@@ -914,7 +914,7 @@ async fn prune_backups(bdir: &std::path::Path) {
             }
         }
     }
-    items.sort_by(|a, b| b.0.cmp(&a.0));
+    items.sort_by_key(|b| std::cmp::Reverse(b.0));
     for (_, p) in items.iter().skip(KEEP_BACKUPS) {
         let _ = tokio::fs::remove_file(p).await;
     }
@@ -1019,7 +1019,7 @@ fn open_app_browser(app: &tauri::AppHandle, url: &url::Url) {
     if let Some(win) = app.get_webview_window(APP_BROWSER_LABEL) {
         // 单例复用：让 webview 自身导航（eval 执行脚本不受跨源限制）
         let escaped = url_str.replace('\\', "\\\\").replace('\'', "\\'");
-        let _ = win.eval(&format!("window.location.replace('{escaped}')"));
+        let _ = win.eval(format!("window.location.replace('{escaped}')"));
         if !title.is_empty() {
             let _ = win.set_title(&title);
         }
@@ -1091,7 +1091,7 @@ fn build_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWind
 /// 前端统一入口：在内置浏览器窗口打开外链（卡片、AI 回复、更新等全部走这里）。
 #[tauri::command]
 fn open_in_app_browser(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    let u = url::Url::parse(&url.trim()).map_err(|e| format!("非法 URL: {e}"))?;
+    let u = url::Url::parse(url.trim()).map_err(|e| format!("非法 URL: {e}"))?;
     if u.scheme() != "http" && u.scheme() != "https" {
         return Err("仅支持 http/https 外链".to_string());
     }
@@ -2040,10 +2040,6 @@ pub fn run() {
                 &sep2,
                 &about_item, &quit,
             ])?;
-
-            let main_c = main_item.clone();
-            let island_c = island_item.clone();
-            let main_c2 = main_item.clone();
 
             let main_c = main_item.clone();
             let island_c = island_item.clone();

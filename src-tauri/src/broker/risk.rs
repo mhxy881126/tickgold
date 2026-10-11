@@ -65,9 +65,9 @@ pub fn phase_of(weekday: u8, minute_of_day: i32) -> Phase {
         return Phase::Closed;
     }
     match minute_of_day {
-        m if m >= 570 && m < 690 => Phase::Morning,    // 9:30–11:30
-        m if m >= 690 && m < 780 => Phase::Midday,     // 11:30–13:00
-        m if m >= 780 && m < 900 => Phase::Afternoon,  // 13:00–15:00
+        m if (570..690).contains(&m) => Phase::Morning,    // 9:30–11:30
+        m if (690..780).contains(&m) => Phase::Midday,     // 11:30–13:00
+        m if (780..900).contains(&m) => Phase::Afternoon,  // 13:00–15:00
         _ => Phase::Closed,
     }
 }
@@ -245,9 +245,14 @@ mod tests {
         let r = check(&o, &a, None, &params(), Phase::Afternoon, 896, false);
         assert!(r.is_err());
         // 14:56 卖出允许（时段内）
-        let mut sell_a = AccountSnapshot::default();
-        sell_a.cash = 0.0;
-        sell_a.positions.insert("600519".into(), Position { vol: 1000, avail: 1000 });
+        let sell_a = AccountSnapshot {
+            cash: 0.0,
+            positions: HashMap::from([(
+                "600519".into(),
+                Position { vol: 1000, avail: 1000 },
+            )]),
+            ..Default::default()
+        };
         let os = RiskOrder { code: "600519".into(), side: "SELL".into(), price: 100.0, vol: 100 };
         assert!(check(&os, &sell_a, None, &params(), Phase::Afternoon, 896, false).is_ok());
     }

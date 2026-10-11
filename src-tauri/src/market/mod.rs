@@ -469,7 +469,7 @@ pub async fn get_orderbook(code: String) -> Result<OrderBook, String> {
 pub async fn get_trades(code: String, n: i64) -> Result<Vec<TradeTick>, String> {
     tokio::time::timeout(
         Duration::from_secs(QUOTE_TIMEOUT),
-        eastmoney::trades(&code, n.max(1).min(200)),
+        eastmoney::trades(&code, n.clamp(1, 200)),
     )
     .await
     .map_err(|_| "逐笔: 超时".to_string())?
@@ -731,8 +731,8 @@ pub async fn get_index_quotes() -> Result<Vec<Quote>, String> {
 
 /// 搜索：东财 → 腾讯
 pub async fn search_stocks(keyword: String) -> Result<Vec<StockItem>, String> {
-    if !keyword.trim().is_empty() {
-        if is_open("eastmoney_search") {
+    if !keyword.trim().is_empty()
+        && is_open("eastmoney_search") {
             if let Ok(Ok(v)) = tokio::time::timeout(
                 Duration::from_secs(QUOTE_TIMEOUT),
                 eastmoney::search(&keyword),
@@ -748,7 +748,6 @@ pub async fn search_stocks(keyword: String) -> Result<Vec<StockItem>, String> {
                 record_fail("eastmoney_search");
             }
         }
-    }
     match tencent::search(&keyword).await {
         Ok(v) if !v.is_empty() => Ok(v),
         Ok(_) => Err("未找到匹配股票".to_string()),

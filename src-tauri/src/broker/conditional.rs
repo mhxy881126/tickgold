@@ -13,8 +13,8 @@ pub const ACTIVE: &str = "active";
 pub const TRIGGERED: &str = "triggered";
 pub const EXPIRED: &str = "expired";
 pub const CANCELLED: &str = "cancelled";
+#[cfg(test)]
 pub const DONE: &str = "done";
-pub const ERROR: &str = "error";
 
 /// 同毫秒建单去重自增序列。
 static SEQ: AtomicU64 = AtomicU64::new(1);
@@ -56,6 +56,7 @@ pub struct ConditionalOrder {
 }
 
 /// 建表 SQL（与 lib.rs 迁移 v47 保持一致，供测试）。
+#[cfg(test)]
 pub const CREATE_SQL: &str = "CREATE TABLE IF NOT EXISTS conditional_order (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   co_id TEXT NOT NULL UNIQUE,
@@ -212,6 +213,7 @@ pub fn list(conn: &Connection, status: Option<String>, limit: i64) -> Vec<Condit
     rows.map(|r| r.flatten().collect()).unwrap_or_default()
 }
 
+#[cfg(test)]
 pub fn get_by_co_id(conn: &Connection, co_id: &str) -> Option<ConditionalOrder> {
     conn.query_row(
         "SELECT * FROM conditional_order WHERE co_id=?1",
@@ -356,6 +358,7 @@ pub fn co_list(
     Ok(list(&conn, status, limit.unwrap_or(200)))
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn co_create(
     ai: State<'_, crate::ai::AiState>,
@@ -392,6 +395,7 @@ pub fn co_create(
     Ok(co_id)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn co_update(
     ai: State<'_, crate::ai::AiState>,

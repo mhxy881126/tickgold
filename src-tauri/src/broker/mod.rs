@@ -220,6 +220,7 @@ pub fn broker_get_config(mgr: State<'_, BrokerManager>) -> BrokerConfig {
     mgr.config.lock().unwrap().clone()
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn broker_set_config(
     ai: State<'_, crate::ai::AiState>,

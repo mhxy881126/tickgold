@@ -6,12 +6,12 @@ use crate::market;
 use tauri::Emitter;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::Path;
 
 // ==================== 辅助函数 ====================
 
 /// 从 AiState 加载 AI 配置与云 Key。
-pub fn load_cfg(dir: &PathBuf) -> Result<(AiConfig, Option<String>), String> {
+pub fn load_cfg(dir: &Path) -> Result<(AiConfig, Option<String>), String> {
     let db = super::vectordb::open(&dir.join("ai.db"))?;
     let cfg = load_config(&db.0)?;
     let key = if cfg.provider == "cloud" {
@@ -377,10 +377,7 @@ pub async fn ai_news_digest(state: tauri::State<'_, super::AiState>) -> Result<N
     let (cfg, key) = load_cfg(&state.dir())?;
 
     // 拉取最近 30 条快讯
-    let news = match market::get_news_flash(1, 30).await {
-        Ok(list) => list,
-        Err(_) => Vec::new(),
-    };
+    let news = market::get_news_flash(1, 30).await.unwrap_or_default();
     let news_text: Vec<String> = news
         .iter()
         .map(|n| format!("[{}] {} | tags:{} | url:{}", n.time, n.text, n.tags.join(","), n.url))
@@ -588,7 +585,7 @@ pub async fn ai_news_digest_stream(
         Ok(v) => v,
         Err(e) => { emit_stream(&app_handle, &stream_id, &json!({"type":"error","message":e})); return Err(e); }
     };
-    let news = match market::get_news_flash(1, 20).await { Ok(list) => list, Err(_) => Vec::new() };
+    let news = market::get_news_flash(1, 20).await.unwrap_or_default();
     let news_text: Vec<String> = news.iter().map(|n| format!("[{}] {} | tags:{} | url:{}", n.time, n.text, n.tags.join(","), n.url)).collect();
     let user = format!("【快讯列表】\n{}\n\n请对以上快讯去重、分类、摘要，研判情绪与重要度，并给出盘面一句话综述，按指定 JSON 对象格式输出。", news_text.join("\n"));
 

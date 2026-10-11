@@ -560,7 +560,7 @@ pub fn data_check(
                  WHERE d.action IN ('executed','watch') \
                    AND NOT EXISTS (SELECT 1 FROM trade_label t WHERE t.decision_id=d.id) \
                    AND d.trade_date<=?1",
-                &[cutoff.clone()],
+                std::slice::from_ref(&cutoff),
             ),
             count("SELECT COUNT(*) FROM trade_label WHERE horizon_days=0", &[]),
             count(

@@ -284,7 +284,7 @@ fn compute_chips(all: &[KBar]) -> Result<ChipDistribution, String> {
         let ih = (((b.high - lo) / step).ceil() as i64).min(bins as i64 - 1) as usize;
         let mut w = vec![0f64; bins];
         let mut wsum = 0f64;
-        for i in il..=ih {
+        for (i, slot) in w.iter_mut().enumerate().take(ih + 1).skip(il) {
             let p = lo + (i as f64 + 0.5) * step;
             let tri = if p <= avg {
                 if avg > b.low {
@@ -297,8 +297,8 @@ fn compute_chips(all: &[KBar]) -> Result<ChipDistribution, String> {
             } else {
                 1.0
             };
-            w[i] = tri.max(0.0);
-            wsum += w[i];
+            *slot = tri.max(0.0);
+            wsum += *slot;
         }
         if wsum > 0.0 {
             for i in il..=ih {
