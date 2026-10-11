@@ -5,9 +5,9 @@
  * 窗口由 Rust 端 `open_in_app_browser` 命令创建（单例 label=app-browser），
  * Rust 侧同时拦截窗口内再次产生的 target=_blank 跳转，保证全程不离开应用。
  */
-import { invoke } from "@tauri-apps/api/core";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
-export const APP_BROWSER_LABEL = "app-browser";
+export const APP_BROWSER_LABEL = "news-web";
 
 export function isExternalHttpUrl(href: string): boolean {
   return /^https?:\/\//i.test(href);
@@ -20,10 +20,10 @@ function isTauriRuntime(): boolean {
 
 /**
  * 在内置浏览器窗口打开外链。
- * @param rawUrl 目标 http(s) 地址
- * @param _title 预留标题参数（实际标题由 Rust 端取主机名并在页面加载后同步文档标题）
+ * 直接用 JS API 创建 WebviewWindow 顶层加载外链（v0.57 时期盘中快讯验证可用），
+ * 单例复用：先关旧窗再开新窗。
  */
-export async function openInAppBrowser(rawUrl: string, _title?: string): Promise<void> {
+export async function openInAppBrowser(rawUrl: string, title?: string): Promise<void> {
   const href = rawUrl.trim();
   if (!isExternalHttpUrl(href)) return;
 
@@ -34,7 +34,24 @@ export async function openInAppBrowser(rawUrl: string, _title?: string): Promise
   }
 
   try {
-    await invoke("open_in_app_browser", { url: href });
+    const old = await WebviewWindow.getByLabel(APP_BROWSER_LABEL);
+    if (old) await old.close();
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const w = new WebviewWindow(APP_BROWSER_LABEL, {
+      url: href,
+      title: title?.trim() || href,
+      width: 1080,
+      height: 760,
+      resizable: true,
+    });
+    await new Promise((res, rej) => {
+      w.once("tauri://created", res);
+      w.once("tauri://error", rej);
+    });
   } catch (e) {
     console.error("[openInApp] 内置浏览器打开失败:", e);
   }

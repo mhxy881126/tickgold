@@ -1008,8 +1008,8 @@ fn rust_set_log_level(level: String) -> Result<bool, String> {
 const APP_BROWSER_LABEL: &str = "app-browser";
 
 /// 在内置浏览器窗口打开外部 URL；窗口已存在则复用并导航到新地址，绝不拉起外部浏览器。
-/// 实现方式：webview 加载本地 browser.html（已验证可正常渲染），由页面内 iframe 加载外链，
-/// 规避 WebviewUrl::External 在部分 Windows 环境下 WebView2 外链白屏的问题。
+/// webview 顶层直接加载外链，而非 iframe：新浪财经等站点通过 X-Frame-Options /
+/// CSP frame-ancestors 禁止被 iframe 嵌入（表现为白屏），顶层导航不受此限制。
 fn open_app_browser(app: &tauri::AppHandle, url: &url::Url) {
     if url.scheme() != "http" && url.scheme() != "https" {
         return;
@@ -1017,9 +1017,9 @@ fn open_app_browser(app: &tauri::AppHandle, url: &url::Url) {
     let title = url.host_str().unwrap_or("网页浏览").to_string();
     let url_str = url.to_string();
     if let Some(win) = app.get_webview_window(APP_BROWSER_LABEL) {
-        // 单例复用：通过 eval 通知 browser.html 页面内的 iframe 导航到新地址
+        // 单例复用：让 webview 自身导航（eval 执行脚本不受跨源限制）
         let escaped = url_str.replace('\\', "\\\\").replace('\'', "\\'");
-        let _ = win.eval(&format!("window.__navigateTo('{escaped}')"));
+        let _ = win.eval(&format!("window.location.replace('{escaped}')"));
         if !title.is_empty() {
             let _ = win.set_title(&title);
         }
@@ -1028,21 +1028,19 @@ fn open_app_browser(app: &tauri::AppHandle, url: &url::Url) {
         let _ = win.set_focus();
         return;
     }
-    // 新建窗口：加载本地 browser.html，通过 ?url= 参数传递目标外链
-    let encoded: String = url::form_urlencoded::byte_serialize(url_str.as_bytes()).collect();
-    let app_url = format!("browser.html?url={encoded}");
+    // 新建窗口：webview 直接加载外链
     let browser_handle = app.clone();
     let mut builder = WebviewWindowBuilder::new(
         app,
         APP_BROWSER_LABEL,
-        WebviewUrl::App(app_url.into()),
+        WebviewUrl::External(url.clone()),
     )
     .title(title)
     .inner_size(1100.0, 780.0)
     .min_inner_size(720.0, 520.0)
     .resizable(true)
     .on_new_window(move |u, _features| {
-        // iframe 内 target=_blank / window.open 弹窗：复用同一内置浏览器窗口导航
+        // 页面内 target=_blank / window.open：复用同一内置浏览器窗口导航
         open_app_browser(&browser_handle, &u);
         tauri::webview::NewWindowResponse::Deny
     })
@@ -1051,11 +1049,12 @@ fn open_app_browser(app: &tauri::AppHandle, url: &url::Url) {
             let _ = w.set_title(&t);
         }
     });
-    // 通过本地 HTTP 代理访问外网，绕过 WebView2 在部分 Windows 环境下被安全软件拦截的问题
+    // WebView2 自身网络在本机被安全软件拦截（白屏），强制其走 Rust 端本地代理出站；
+    // 代理 CONNECT 隧道从 tickgold 进程直接发起 TCP，与 reqwest 同一通道（已验证可用）。
     if let Some(proxy_port) = app.try_state::<std::sync::Mutex<Option<u16>>>()
         .and_then(|s| s.lock().ok().and_then(|g| *g))
     {
-        let args = format!("--proxy-server=127.0.0.1:{proxy_port}");
+        let args = format!("--proxy-server=127.0.0.1:{proxy_port} --disable-quic");
         builder = builder.additional_browser_args(&args);
     }
     if let Err(e) = builder.build() {
