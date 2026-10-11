@@ -38,6 +38,7 @@ pub fn run() {
         .manage(ai::AbortRegistry::default())
         .manage(BossHidden(Mutex::new(false)))
         .manage(Arc::new(market::spider::SpiderCtl::new()))
+        .manage(market::history::HistState::default())
         .manage(Arc::new(market::limitup::LimitRadar::new()))
         .manage(Arc::new(market::alert::AlertEngine::new()))
         .manage(ai::autoexec::AutoExecCtl::new())
@@ -192,7 +193,15 @@ pub fn run() {
             plugin::plugin_read_asset,
             plugin::plugin_get_dev_mode,
             plugin::plugin_set_dev_mode,
-            plugin::plugin_reload
+            plugin::plugin_reload,
+            // ===== v2.27 多年历史 K 线库 =====
+            market::history::hist_backfill,
+            market::history::hist_backfill_stop,
+            market::history::hist_backfill_status,
+            market::history::hist_query,
+            market::history::hist_stats,
+            market::history::hist_sync_calendar,
+            market::history::hist_is_trading_day
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

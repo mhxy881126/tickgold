@@ -5,7 +5,6 @@
 use serde::{Serialize, Serializer};
 use std::fmt;
 
-#[allow(dead_code)] // 随各域接入启用（v2.27 先接 history）
 pub type AppResult<T> = Result<T, AppError>;
 
 #[allow(dead_code)] // 变体按域逐步接入（v2.27 先接 history），全量接入后移除

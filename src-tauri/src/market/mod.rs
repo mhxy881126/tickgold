@@ -11,6 +11,7 @@ pub mod cninfo;
 pub mod announce;
 pub mod irminteract;
 pub mod cache;
+pub mod history;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
