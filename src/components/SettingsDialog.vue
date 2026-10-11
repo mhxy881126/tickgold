@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, onUnmounted, reactive, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit as tauriEmit } from "@tauri-apps/api/event";
 import { useTheme, type ThemeId } from "../composables/useTheme";
@@ -59,6 +59,8 @@ import type { AiConfig, ConnTest, KbStats, IndexProgress } from "../ai/types";
 import type { AutoExecConfigInfo } from "../ai/api";
 import { ISLAND_SKINS, getIslandSkin, setIslandSkin, applyIslandSkin, ISLAND_SKIN_EVENT, type IslandSkinId } from "../lib/islandSkins";
 import { usePaperStore } from "../stores/paper";
+import { useWatchlistStore } from "../stores/watchlist";
+import { fetchRankBoard } from "../api/market";
 import { confirmDialog } from "../composables/useDialog";
 
 const props = defineProps<{ open: boolean; initialTab?: Tab }>();
@@ -509,10 +511,179 @@ function tradeDateStr(d: Date): string {
 function pickTab(id: Tab) {
   tab.value = id;
   if (id === "logs") refreshLogs();
+  if (id === "data" && !histLoaded.value) void loadHistTab();
   if (id === "ai" && !aiLoaded.value) void loadAiTab();
   if (id === "autotrade" && !fbCfg.value) void loadFastBrain(); // 第一次打开AI操盘手时加载配置
   if (id === "broker" && !brokerLoaded.value) void loadBrokerTab();
   if (id === "plugins") void loadPluginsTab();
+}
+
+// ===== 多年历史 K 线库（v2.27）=====
+type HistAdj = "qfq" | "hfq" | "none";
+interface HistProgressInfo {
+  running: boolean; total: number; done: number; ok: number; fail: number; lastCode: string;
+}
+interface HistStatsInfo {
+  rows: number; codes: number; earliest: string | null; latest: string | null;
+  calendarDays: number; dbSizeBytes: number;
+}
+interface BackfillResultInfo {
+  requested: number; ok: number; fail: number; stopped: boolean; failures: string[];
+}
+
+const histLoaded = ref(false);
+const histStats = ref<HistStatsInfo | null>(null);
+const histProgress = ref<HistProgressInfo | null>(null);
+const histMsg = ref("");
+const histBusy = ref(false);
+const histScope = ref<"watchlist" | "all" | "custom">("watchlist");
+const histAdj = ref<HistAdj>("qfq");
+const histYears = ref(5);
+const histCustom = ref("");
+const histLastFailures = ref<string[]>([]);
+let histPoll: ReturnType<typeof setInterval> | undefined;
+onUnmounted(stopHistPoll);
+
+const histPercent = computed(() => {
+  const p = histProgress.value;
+  return p && p.total > 0 ? Math.min(100, (p.done / p.total) * 100) : 0;
+});
+
+function fmtBytes(n: number): string {
+  if (!n) return "0 B";
+  const u = ["B", "KB", "MB", "GB"];
+  const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+  return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
+}
+
+async function loadHistTab() {
+  histLoaded.value = true;
+  await refreshHistStats();
+  try {
+    histProgress.value = await invoke<HistProgressInfo>("hist_backfill_status");
+    if (histProgress.value.running) startHistPoll();
+  } catch {
+    /* ignore */
+  }
+}
+
+async function refreshHistStats() {
+  try {
+    histStats.value = await invoke<HistStatsInfo>("hist_stats");
+  } catch (e) {
+    histMsg.value = `统计读取失败：${e}`;
+  }
+}
+
+function startHistPoll() {
+  if (histPoll !== undefined) return;
+  histPoll = setInterval(async () => {
+    try {
+      histProgress.value = await invoke<HistProgressInfo>("hist_backfill_status");
+      if (!histProgress.value.running) stopHistPoll();
+    } catch {
+      /* ignore */
+    }
+  }, 1000);
+}
+
+function stopHistPoll() {
+  if (histPoll !== undefined) {
+    clearInterval(histPoll);
+    histPoll = undefined;
+  }
+}
+
+async function resolveHistCodes(): Promise<string[]> {
+  if (histScope.value === "watchlist") {
+    return useWatchlistStore().codes;
+  }
+  if (histScope.value === "custom") {
+    return histCustom.value.split(/[\s,，;；]+/).map((s) => s.trim()).filter(Boolean);
+  }
+  // 全市场：成交额榜分页拉全 A（约 5000+ 只）
+  const out: string[] = [];
+  for (let page = 1; page <= 80; page++) {
+    const rows = await fetchRankBoard("amount", page, 100);
+    if (!rows.length) break;
+    out.push(...rows.map((r) => r.code));
+    if (rows.length < 100) break;
+  }
+  return [...new Set(out)];
+}
+
+async function onHistBackfill() {
+  histMsg.value = "";
+  histBusy.value = true;
+  let codes: string[];
+  try {
+    codes = await resolveHistCodes();
+  } catch (e) {
+    histBusy.value = false;
+    histMsg.value = `股票范围获取失败：${e}`;
+    return;
+  }
+  if (!codes.length) {
+    histBusy.value = false;
+    histMsg.value = "没有可回填的股票，请先加入自选或填写代码";
+    return;
+  }
+  startHistPoll();
+  try {
+    const r = await invoke<BackfillResultInfo>("hist_backfill", {
+      codes,
+      years: histYears.value,
+      adj: histAdj.value,
+      period: 101,
+    });
+    histLastFailures.value = r.failures;
+    histMsg.value = r.stopped
+      ? `已停止：成功 ${r.ok} / 失败 ${r.fail}`
+      : `回填完成：成功 ${r.ok} / 失败 ${r.fail}（共 ${r.requested} 只）`;
+  } catch (e) {
+    histMsg.value = `回填失败：${e}`;
+  } finally {
+    histBusy.value = false;
+    stopHistPoll();
+    try {
+      histProgress.value = await invoke<HistProgressInfo>("hist_backfill_status");
+    } catch {
+      /* ignore */
+    }
+    await refreshHistStats();
+  }
+}
+
+async function onHistStop() {
+  try {
+    await invoke("hist_backfill_stop");
+    histMsg.value = "正在停止…未派发的股票将跳过";
+  } catch (e) {
+    histMsg.value = `停止失败：${e}`;
+  }
+}
+
+async function onHistRetry() {
+  const codes = histLastFailures.value
+    .map((f) => f.split(":")[0].trim())
+    .filter((c) => /^\d{6}$/.test(c));
+  if (!codes.length) {
+    histMsg.value = "没有可重试的失败代码";
+    return;
+  }
+  histScope.value = "custom";
+  histCustom.value = codes.join(",");
+  await onHistBackfill();
+}
+
+async function onHistSyncCalendar() {
+  try {
+    const n = await invoke<number>("hist_sync_calendar");
+    histMsg.value = `交易日历已同步：${n} 个交易日`;
+    await refreshHistStats();
+  } catch (e) {
+    histMsg.value = `交易日历同步失败：${e}`;
+  }
 }
 
 // ===== 券商交易（v2.6）=====
@@ -994,6 +1165,80 @@ async function toggleDev() {
 
               <div class="dc-note">分时明细保留最近 60 天；收盘日级长期保留，用于情绪周期与题材轮动分析。</div>
               <div v-if="tsStatus.lastError" class="dc-err">采集异常：{{ tsStatus.lastError }}</div>
+
+              <!-- 多年历史 K 线库（v2.27）-->
+              <div class="section-title" style="margin-top:24px">多年历史 K 线库</div>
+              <div class="section-sub">本地增量回填多年日 K，供深度复盘与回测；数据仅保存在本机</div>
+
+              <div class="dc-stats">
+                <div class="dc-stat"><b>{{ histStats?.rows ?? "-" }}</b><span>K 线条数</span></div>
+                <div class="dc-stat"><b>{{ histStats?.codes ?? "-" }}</b><span>覆盖股票</span></div>
+                <div class="dc-stat"><b>{{ histStats?.earliest ?? "-" }}</b><span>最早日期</span></div>
+                <div class="dc-stat"><b>{{ histStats?.latest ?? "-" }}</b><span>最新日期</span></div>
+              </div>
+              <div class="dc-rows">
+                <div class="dc-row"><span class="dr-k">交易日历</span><span class="dr-v">{{ histStats?.calendarDays ?? 0 }} 个交易日</span></div>
+                <div class="dc-row"><span class="dr-k">数据库占用</span><span class="dr-v">{{ fmtBytes(histStats?.dbSizeBytes ?? 0) }}</span></div>
+              </div>
+
+              <div class="hist-form">
+                <div class="hist-field">
+                  <label>回填范围</label>
+                  <div class="seg">
+                    <button type="button" class="seg-btn" :class="{ on: histScope === 'watchlist' }" @click="histScope = 'watchlist'">自选股</button>
+                    <button type="button" class="seg-btn" :class="{ on: histScope === 'all' }" @click="histScope = 'all'">全市场 A 股</button>
+                    <button type="button" class="seg-btn" :class="{ on: histScope === 'custom' }" @click="histScope = 'custom'">自定义</button>
+                  </div>
+                </div>
+                <div v-if="histScope === 'custom'" class="hist-field">
+                  <label>股票代码（逗号/空格/换行分隔）</label>
+                  <input v-model="histCustom" type="text" spellcheck="false" placeholder="如 600519, 000001, 300750" />
+                </div>
+                <div class="hist-field-row">
+                  <div class="hist-field">
+                    <label>复权口径</label>
+                    <div class="seg">
+                      <button type="button" class="seg-btn" :class="{ on: histAdj === 'qfq' }" @click="histAdj = 'qfq'">前复权</button>
+                      <button type="button" class="seg-btn" :class="{ on: histAdj === 'hfq' }" @click="histAdj = 'hfq'">后复权</button>
+                      <button type="button" class="seg-btn" :class="{ on: histAdj === 'none' }" @click="histAdj = 'none'">不复权</button>
+                    </div>
+                  </div>
+                  <div class="hist-field hist-years">
+                    <label>回填年数</label>
+                    <select v-model.number="histYears">
+                      <option :value="1">1 年</option>
+                      <option :value="3">3 年</option>
+                      <option :value="5">5 年</option>
+                      <option :value="10">10 年</option>
+                      <option :value="20">20 年</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="histProgress && histProgress.running" class="hist-prog">
+                <div class="hist-prog-bar">
+                  <div class="hist-prog-fill" :style="{ width: histPercent + '%' }"></div>
+                </div>
+                <div class="hist-prog-txt">
+                  {{ histProgress.done }} / {{ histProgress.total }} · 成功 {{ histProgress.ok }} · 失败 {{ histProgress.fail }}
+                  <span v-if="histProgress.lastCode"> · 当前 {{ histProgress.lastCode }}</span>
+                </div>
+              </div>
+
+              <div class="ai-actions">
+                <button v-if="histProgress && histProgress.running" type="button" class="logs-btn" @click="onHistStop">停止</button>
+                <button type="button" class="logs-btn primary" :disabled="histBusy || (histProgress?.running ?? false)" @click="onHistBackfill">
+                  {{ histBusy ? "准备中…" : "开始回填" }}
+                </button>
+                <button type="button" class="logs-btn" :disabled="histBusy || (histProgress?.running ?? false)" @click="onHistSyncCalendar">同步交易日历</button>
+                <button v-if="histLastFailures.length" type="button" class="logs-btn" :disabled="histBusy" @click="onHistRetry">重试失败 ({{ histLastFailures.length }})</button>
+              </div>
+              <div v-if="histMsg" class="ai-msg" :class="{ ok: /成功|完成|已同步/.test(histMsg) }">{{ histMsg }}</div>
+              <div v-if="histLastFailures.length" class="hist-fails">
+                <div v-for="(f, i) in histLastFailures.slice(0, 20)" :key="i" class="hist-fail-line">{{ f }}</div>
+                <div v-if="histLastFailures.length > 20" class="dc-note">其余 {{ histLastFailures.length - 20 }} 条失败未展开</div>
+              </div>
             </div>
 
             <!-- AI 模型配置 -->
@@ -1836,4 +2081,18 @@ async function toggleDev() {
 .switch.sm .knob { width: 12px; height: 12px; }
 .bk-radio input { accent-color: var(--accent); }
 .bk-live-on { color: #ff5a6a; font-weight: 700; }
+.hist-form { margin-top: 12px; display: flex; flex-direction: column; gap: 12px; }
+.hist-field { display: flex; flex-direction: column; gap: 6px; }
+.hist-field label { font-size: 12px; color: var(--text-dim); font-weight: 600; }
+.hist-field input, .hist-field select {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); padding: 8px 10px; font-size: 13px; font-family: inherit;
+}
+.hist-field-row { display: grid; grid-template-columns: 1fr 160px; gap: 12px; align-items: end; }
+.hist-prog { margin-top: 14px; }
+.hist-prog-bar { height: 8px; border-radius: 5px; background: var(--bg); overflow: hidden; border: 1px solid var(--border); }
+.hist-prog-fill { height: 100%; background: var(--accent); border-radius: 5px; transition: width .3s ease; }
+.hist-prog-txt { margin-top: 6px; font-size: 12px; color: var(--text-dim); }
+.hist-fails { margin-top: 10px; max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.hist-fail-line { font-size: 11.5px; color: #ff8a96; font-family: ui-monospace, monospace; }
 </style>
