@@ -1,6 +1,9 @@
 name: ci
 
-# 每次推送到 main 或提交 PR 时，做前端质量门禁：类型检查 + 构建 + 单元测试。
+# 每次推送到 main 或提交 PR 时，做质量门禁：
+# - frontend：类型检查 + 构建 + 单元测试
+# - backend：cargo clippy(-D warnings) + cargo test（Windows MSVC，v2.27 起强制）
+# - e2e：Playwright
 # 发布构建（含 Rust / 签名 / 打包）见 release.yml，仅在打 v* 标签时触发。
 
 on:
@@ -34,6 +37,22 @@ jobs:
 
       - name: Unit tests
         run: pnpm test
+
+  backend:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Clippy (-D warnings)
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --manifest-path src-tauri/Cargo.toml
 
   e2e:
     needs: frontend
