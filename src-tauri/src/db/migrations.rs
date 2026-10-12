@@ -1,5 +1,5 @@
 // 主库迁移清单（v2.27 巨石拆分：从 lib.rs 抽出）。
-// 追加式：只许新增版本，禁止改动已发布条目。共 48 条（v1..v48）。
+// 追加式：只许新增版本，禁止改动已发布条目。共 50 条（v1..v50）。
 // 数量护栏见 src-tauri/INVENTORY.md；改动后需与之一致。
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -750,6 +750,60 @@ pub fn migrations() -> Vec<Migration> {
                                 date TEXT PRIMARY KEY,
                                 is_open INTEGER NOT NULL DEFAULT 1
                             );",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 49,
+                            description: "backfill broker_order table + paper_order.sig_id (unified ledger)",
+                            sql: "CREATE TABLE IF NOT EXISTS broker_order (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                sig_id TEXT UNIQUE,
+                                broker_kind TEXT,
+                                broker_account TEXT,
+                                broker_order_id TEXT,
+                                code TEXT,
+                                side TEXT,
+                                price REAL,
+                                vol INTEGER,
+                                status TEXT,
+                                filled_vol INTEGER,
+                                filled_avg_price REAL,
+                                error_msg TEXT,
+                                created_at INTEGER,
+                                updated_at INTEGER
+                            );
+                            ALTER TABLE paper_order ADD COLUMN sig_id TEXT DEFAULT '';
+                            ALTER TABLE paper_order ADD COLUMN realized_pnl REAL DEFAULT 0;",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 50,
+                            description: "rebuild ts_sector_day: PK +kind, add up/down/limitup counts, turnover, amount",
+                            sql: "CREATE TABLE IF NOT EXISTS ts_sector_day_new (
+                                day TEXT NOT NULL,
+                                kind TEXT NOT NULL DEFAULT 'industry',
+                                code TEXT NOT NULL,
+                                name TEXT,
+                                change_pct REAL,
+                                net_amount REAL,
+                                lead_code TEXT,
+                                lead_name TEXT,
+                                lead_pct REAL,
+                                up_count INTEGER NOT NULL DEFAULT 0,
+                                down_count INTEGER NOT NULL DEFAULT 0,
+                                limit_up INTEGER NOT NULL DEFAULT 0,
+                                turnover REAL NOT NULL DEFAULT 0,
+                                amount REAL NOT NULL DEFAULT 0,
+                                PRIMARY KEY (day, kind, code)
+                            );
+                            INSERT INTO ts_sector_day_new
+                                (day, kind, code, name, change_pct, net_amount, lead_code, lead_name, lead_pct)
+                            SELECT day, COALESCE(kind, 'industry'), code, name, change_pct, net_amount,
+                                lead_code, lead_name, lead_pct
+                            FROM ts_sector_day;
+                            DROP TABLE ts_sector_day;
+                            ALTER TABLE ts_sector_day_new RENAME TO ts_sector_day;
+                            CREATE INDEX IF NOT EXISTS idx_sector_day_lookup ON ts_sector_day(day, kind);",
                             kind: MigrationKind::Up,
                         },
     ]

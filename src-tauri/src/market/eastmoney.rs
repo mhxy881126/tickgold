@@ -143,6 +143,8 @@ pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
             volume_ratio: nf(&q.volume_ratio),
             circ_mv: nf(&q.circ_mv) / 1e8,
             total_mv: nf(&q.total_mv) / 1e8,
+            inside_vol: 0.0,
+            outside_vol: 0.0,
         })
         .collect();
     Ok(out)
@@ -345,6 +347,8 @@ pub async fn index_quotes() -> Result<Vec<Quote>, String> {
             volume_ratio: 0.0,
             circ_mv: 0.0,
             total_mv: 0.0,
+            inside_vol: 0.0,
+            outside_vol: 0.0,
         })
         .collect();
     Ok(out)
@@ -763,6 +767,8 @@ pub async fn market_breadth() -> Result<Vec<Quote>, String> {
             volume_ratio: 0.0,
             circ_mv: 0.0,
             total_mv: 0.0,
+            inside_vol: 0.0,
+            outside_vol: 0.0,
         })
         .collect();
     Ok(out)
@@ -1417,6 +1423,7 @@ pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
         amount: fnum("f48"),
         asks,
         bids,
+        ..Default::default() // depth/内外盘由 get_orderbook 统一补全
     })
 }
 

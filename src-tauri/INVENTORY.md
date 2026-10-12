@@ -1,12 +1,17 @@
-# TickGold 后端命令 / 迁移对照清单（v2.27.0 基线）
+# TickGold 后端命令 / 迁移对照清单（v2.29.0 基线）
 
 > 巨石拆分（lib.rs → db/migrations.rs、commands.rs、setup.rs 模块化）的护栏。
-> 每次后端结构调整后，必须重新核对：**命令总数 149、迁移总数 48**，逐一对照无缺失。
-> 基线：v2.26.1（142 命令 / 47 迁移，2026-10-11）；v2.27.0 新增 7 个 hist_* 命令 + 迁移 v48。
+> 每次后端结构调整后，必须重新核对：**命令总数 172、迁移总数 50**，逐一对照无缺失。
+> 基线：v2.27.0（149 命令 / 48 迁移）；v2.28.0 净增 21 个命令
+> （资金流 3、组合层 2、风险仪表盘 1、异动阈值 2、板块日快照 3、备份中心 7、数据治理 3）
+> + 迁移 v49（统一账本回填）+ v50（重建 ts_sector_day 支持自建板块日历史）；
+> v2.29.0 净增 2 个数据治理命令（过期清理预览 / 执行），迁移数不变。
 
-## 一、Tauri Commands：149 个
+## 一、Tauri Commands：172 个
 
-### 原 lib.rs 本地命令：89 个（拆分后 88 个在 commands.rs，open_in_app_browser 在 setup.rs）
+> 编号严格按 `lib.rs` 中 `generate_handler!` 的出现顺序。
+
+### 本地命令（commands.rs + setup.rs）：97 个
 
 | # | 命令 |
 | --- | --- |
@@ -25,164 +30,200 @@
 | 13 | get_index_quotes |
 | 14 | get_rank_page |
 | 15 | get_rank_board |
-| 16 | get_news_flash |
-| 17 | check_latest |
-| 18 | get_f10_profile |
-| 19 | get_f10_finance |
-| 20 | get_f10_chips |
-| 21 | get_ipo_list |
-| 22 | get_restricted_queue |
-| 23 | get_market_restricted |
-| 24 | get_auction |
-| 25 | get_auction_page |
-| 26 | get_zt_pool |
-| 27 | get_zb_pool |
-| 28 | get_announcements |
-| 29 | get_irm_latest |
-| 30 | get_lhb_list |
-| 31 | get_lhb_detail |
-| 32 | get_seat_back |
-| 33 | get_seat_trades |
-| 34 | start_spider |
-| 35 | stop_spider |
-| 36 | start_radar |
-| 37 | stop_radar |
-| 38 | start_alert_engine |
-| 39 | stop_alert_engine |
-| 40 | win_minimize |
-| 41 | win_toggle_maximize |
-| 42 | win_close |
-| 43 | win_is_maximized |
-| 44 | open_pip_window |
-| 45 | close_pip_window |
-| 46 | pip_set_always_on_top |
-| 47 | open_in_app_browser |
-| 48 | save_export_file |
-| 49 | open_text_file |
-| 50 | rust_logs |
-| 51 | rust_clear_logs |
-| 52 | rust_set_log_level |
-| 53 | backup_database |
-| 54 | restore_latest_backup |
-| 55 | ai_get_config |
-| 56 | ai_save_config |
-| 57 | ai_get_cloud_key_set |
-| 58 | ai_set_cloud_key |
-| 59 | ai_clear_cloud_key |
-| 60 | ai_test_connection |
-| 61 | ai_new_session |
-| 62 | ai_list_sessions |
-| 63 | ai_load_session |
-| 64 | ai_delete_session |
-| 65 | ai_chat_send |
-| 66 | ai_chat_abort |
-| 67 | ai_kb_stats |
-| 68 | ai_list_docs |
-| 69 | ai_import_docs |
-| 70 | ai_delete_doc |
-| 71 | ai_reindex |
-| 72 | ai_index_daily |
-| 73 | ai_build_decision_pack |
-| 74 | ai_run_review |
-| 75 | ai_list_reviews |
-| 76 | ai_get_review |
-| 77 | ai_generate_plan |
-| 78 | ai_get_latest_plan |
-| 79 | ai_get_plan |
-| 80 | ai_set_plan_status |
-| 81 | ai_update_plan_text |
-| 82 | ai_update_instruction |
-| 83 | ai_convert_instruction_alert |
-| 84 | autoexec_get_config |
-| 85 | autoexec_start |
-| 86 | autoexec_stop |
-| 87 | autoexec_set_config |
-| 88 | laya_health |
-| 89 | list_decision_logs |
+| 16 | get_fund_flow |
+| 17 | get_market_fund_panorama |
+| 18 | get_fund_rank |
+| 19 | sector_day_snapshot |
+| 20 | sector_day_query |
+| 21 | sector_day_stats |
+| 22 | get_news_flash |
+| 23 | check_latest |
+| 24 | get_f10_profile |
+| 25 | get_f10_finance |
+| 26 | get_f10_chips |
+| 27 | get_ipo_list |
+| 28 | get_restricted_queue |
+| 29 | get_market_restricted |
+| 30 | get_auction |
+| 31 | get_auction_page |
+| 32 | get_zt_pool |
+| 33 | get_zb_pool |
+| 34 | get_announcements |
+| 35 | get_irm_latest |
+| 36 | get_lhb_list |
+| 37 | get_lhb_detail |
+| 38 | get_seat_back |
+| 39 | get_seat_trades |
+| 40 | start_spider |
+| 41 | stop_spider |
+| 42 | spider_get_thresholds |
+| 43 | spider_set_thresholds |
+| 44 | start_radar |
+| 45 | stop_radar |
+| 46 | start_alert_engine |
+| 47 | stop_alert_engine |
+| 48 | win_minimize |
+| 49 | win_toggle_maximize |
+| 50 | win_close |
+| 51 | win_is_maximized |
+| 52 | open_pip_window |
+| 53 | close_pip_window |
+| 54 | pip_set_always_on_top |
+| 55 | open_in_app_browser（setup.rs） |
+| 56 | save_export_file |
+| 57 | open_text_file |
+| 58 | rust_logs |
+| 59 | rust_clear_logs |
+| 60 | rust_set_log_level |
+| 61 | backup_database（旧单库备份，保留） |
+| 62 | restore_latest_backup（旧单库恢复，保留） |
+| 63 | ai_get_config |
+| 64 | ai_save_config |
+| 65 | ai_get_cloud_key_set |
+| 66 | ai_set_cloud_key |
+| 67 | ai_clear_cloud_key |
+| 68 | ai_test_connection |
+| 69 | ai_new_session |
+| 70 | ai_list_sessions |
+| 71 | ai_load_session |
+| 72 | ai_delete_session |
+| 73 | ai_chat_send |
+| 74 | ai_chat_abort |
+| 75 | ai_kb_stats |
+| 76 | ai_list_docs |
+| 77 | ai_import_docs |
+| 78 | ai_delete_doc |
+| 79 | ai_reindex |
+| 80 | ai_index_daily |
+| 81 | ai_build_decision_pack |
+| 82 | ai_run_review |
+| 83 | ai_list_reviews |
+| 84 | ai_get_review |
+| 85 | ai_generate_plan |
+| 86 | ai_get_latest_plan |
+| 87 | ai_get_plan |
+| 88 | ai_set_plan_status |
+| 89 | ai_update_plan_text |
+| 90 | ai_update_instruction |
+| 91 | ai_convert_instruction_alert |
+| 92 | autoexec_get_config |
+| 93 | autoexec_start |
+| 94 | autoexec_stop |
+| 95 | autoexec_set_config |
+| 96 | laya_health |
+| 97 | list_decision_logs |
 
 ### ai 模块：22 个
 
 | # | 命令 |
 | --- | --- |
-| 90 | commentary::ai_intraday_commentary |
-| 91 | commentary::ai_explain_signal |
-| 92 | commentary::ai_suggest_alerts |
-| 93 | commentary::ai_news_digest |
-| 94 | commentary::ai_tomorrow_mainline |
-| 95 | commentary::ai_news_for_stock |
-| 96 | commentary::ai_intraday_commentary_stream |
-| 97 | commentary::ai_news_digest_stream |
-| 98 | commentary::ai_tomorrow_mainline_stream |
-| 99 | evolution::evolution_run_labeling |
-| 100 | evolution::evolution_list_labels |
-| 101 | evolution::evolution_stats |
-| 102 | evolution::evolution_data_check |
-| 103 | bridge::signal_list |
-| 104 | bridge::signal_confirm |
-| 105 | bridge::signal_reject |
-| 106 | bridge::signal_done |
-| 107 | bridge::signal_expire |
-| 108 | bridge::signal_create_manual |
-| 109 | bridge::signal_create_spider |
-| 110 | bridge::signal_launch_broker |
-| 111 | bridge::signal_preview_order |
+| 98 | commentary::ai_intraday_commentary |
+| 99 | commentary::ai_explain_signal |
+| 100 | commentary::ai_suggest_alerts |
+| 101 | commentary::ai_news_digest |
+| 102 | commentary::ai_tomorrow_mainline |
+| 103 | commentary::ai_news_for_stock |
+| 104 | commentary::ai_intraday_commentary_stream |
+| 105 | commentary::ai_news_digest_stream |
+| 106 | commentary::ai_tomorrow_mainline_stream |
+| 107 | evolution::evolution_run_labeling |
+| 108 | evolution::evolution_list_labels |
+| 109 | evolution::evolution_stats |
+| 110 | evolution::evolution_data_check |
+| 111 | bridge::signal_list |
+| 112 | bridge::signal_confirm |
+| 113 | bridge::signal_reject |
+| 114 | bridge::signal_done |
+| 115 | bridge::signal_expire |
+| 116 | bridge::signal_create_manual |
+| 117 | bridge::signal_create_spider |
+| 118 | bridge::signal_launch_broker |
+| 119 | bridge::signal_preview_order |
 
-### broker 模块：20 个
+### broker 模块（含 conditional 条件单）：23 个
 
 | # | 命令 |
 | --- | --- |
-| 112 | broker_get_status |
-| 113 | broker_get_config |
-| 114 | broker_set_config |
-| 115 | broker_enable_live |
-| 116 | broker_connect |
-| 117 | broker_disconnect |
-| 118 | broker_submit |
-| 119 | broker_cancel |
-| 120 | broker_list_orders |
-| 121 | broker_query_asset |
-| 122 | broker_query_position |
-| 123 | broker_kill_switch |
-| 124 | broker_release_kill |
-| 125 | mock_seed_position |
-| 126 | mock_reset |
-| 127 | conditional::co_list |
-| 128 | conditional::co_create |
-| 129 | conditional::co_update |
-| 130 | conditional::co_cancel |
-| 131 | conditional::co_cancel_all |
+| 120 | broker_get_status |
+| 121 | broker_get_config |
+| 122 | broker_set_config |
+| 123 | broker_enable_live |
+| 124 | broker_connect |
+| 125 | broker_disconnect |
+| 126 | broker_submit |
+| 127 | portfolio_buy（统一成交层买入） |
+| 128 | portfolio_sell（统一成交层卖出） |
+| 129 | risk_snapshot（风险仪表盘读数） |
+| 130 | broker_cancel |
+| 131 | broker_list_orders |
+| 132 | broker_query_asset |
+| 133 | broker_query_position |
+| 134 | broker_kill_switch |
+| 135 | broker_release_kill |
+| 136 | mock_seed_position |
+| 137 | mock_reset |
+| 138 | conditional::co_list |
+| 139 | conditional::co_create |
+| 140 | conditional::co_update |
+| 141 | conditional::co_cancel |
+| 142 | conditional::co_cancel_all |
 
 ### plugin 模块：11 个
 
 | # | 命令 |
 | --- | --- |
-| 132 | plugin_list |
-| 133 | plugin_scan |
-| 134 | plugin_install |
-| 135 | plugin_enable |
-| 136 | plugin_disable |
-| 137 | plugin_uninstall |
-| 138 | plugin_rpc |
-| 139 | plugin_read_asset |
-| 140 | plugin_get_dev_mode |
-| 141 | plugin_set_dev_mode |
-| 142 | plugin_reload |
+| 143 | plugin_list |
+| 144 | plugin_scan |
+| 145 | plugin_install |
+| 146 | plugin_enable |
+| 147 | plugin_disable |
+| 148 | plugin_uninstall |
+| 149 | plugin_rpc |
+| 150 | plugin_read_asset |
+| 151 | plugin_get_dev_mode |
+| 152 | plugin_set_dev_mode |
+| 153 | plugin_reload |
 
-### market::history 模块（v2.27 新增）：7 个
+### backup 模块（v2.28 备份 / 恢复中心）：7 个
 
 | # | 命令 |
 | --- | --- |
-| 143 | hist_backfill |
-| 144 | hist_backfill_stop |
-| 145 | hist_backfill_status |
-| 146 | hist_query |
-| 147 | hist_stats |
-| 148 | hist_sync_calendar |
-| 149 | hist_is_trading_day |
+| 154 | backup_full_create |
+| 155 | backup_full_list |
+| 156 | backup_write_config |
+| 157 | backup_read_config |
+| 158 | backup_full_restore |
+| 159 | backup_full_delete |
+| 160 | backup_take_pending_config |
+
+### storage 模块（数据治理）：5 个
+
+| # | 命令 |
+| --- | --- |
+| 161 | storage_stats |
+| 162 | storage_cleanup_orphans |
+| 163 | storage_vacuum |
+| 164 | storage_purge_preview |
+| 165 | storage_purge_run |
+
+### market::history 模块：7 个
+
+| # | 命令 |
+| --- | --- |
+| 166 | hist_backfill |
+| 167 | hist_backfill_stop |
+| 168 | hist_backfill_status |
+| 169 | hist_query |
+| 170 | hist_stats |
+| 171 | hist_sync_calendar |
+| 172 | hist_is_trading_day |
+
+> 以 `generate_handler!` 实际枚举为准：本地 97 + ai 22 + broker 23 + plugin 11
+> + backup 7 + storage 5 + history 7 = **172 个**。
 
 ---
 
-## 二、数据库迁移：48 条（主库 sqlite:stock-dock.db）
+## 二、数据库迁移：50 条（主库 sqlite:stock-dock.db）
 
 | v | description |
 | --- | --- |
@@ -211,9 +252,9 @@
 | 23 | add down_speed to alerts |
 | 24 | add min_turnover to alerts |
 | 25 | add min_amount to alerts |
-| 26 | add seal_limit_up to alerts |
-| 27 | add seal_limit_down to alerts |
-| 28 | add broken_limit to alerts |
+| 26 | seal_limit_up to alerts |
+| 27 | seal_limit_down to alerts |
+| 28 | broken_limit to alerts |
 | 29 | create alert_event (alert trigger history) |
 | 30 | create index idx_alert_event_time |
 | 31 | create skin |
@@ -234,5 +275,7 @@
 | 46 | create plugin registry / kv / audit tables |
 | 47 | create conditional_order (local conditional trading orders) |
 | 48 | create hist_kline + trade_calendar (multi-year history) |
+| 49 | backfill broker_order + paper_order.sig_id (unified ledger) |
+| 50 | rebuild ts_sector_day: PK(day,kind) + 涨跌家数/涨停数/换手/成交额 |
 
 > ai.db 另有独立版本链（当前 v4），不在此表。

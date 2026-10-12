@@ -57,6 +57,9 @@ pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
             volume_ratio: p(49),
             circ_mv: p(44),
             total_mv: p(45),
+            // f[7] 外盘（主动买）/ f[8] 内盘（主动卖），单位手
+            inside_vol: p(8),
+            outside_vol: p(7),
         });
     }
     Ok(out)
@@ -86,7 +89,7 @@ pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
     let bids: Vec<OrderLevel> = (0..5)
         .map(|i| OrderLevel { price: p(19 + i * 2), vol: p(20 + i * 2) })
         .collect();
-    Ok(OrderBook {
+    let mut book = OrderBook {
         name: f[1].to_string(),
         code: f[2].to_string(),
         price: p(3),
@@ -98,7 +101,13 @@ pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
         amount: p(37) * 1e4,
         asks,
         bids,
-    })
+        // f[7] 外盘（主动买）/ f[8] 内盘（主动卖），单位手
+        inside_vol: p(8),
+        outside_vol: p(7),
+        ..Default::default()
+    };
+    book.fill_depth();
+    Ok(book)
 }
 
 // ===== K线 =====

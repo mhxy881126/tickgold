@@ -90,6 +90,7 @@ impl Manifest {
                 p.as_str(),
                 "quotes:read"
                     | "kline:read"
+                    | crate::market::level2::SCOPE_LEVEL2_READ
                     | "watchlist:read"
                     | "signal:create"
                     | "store"

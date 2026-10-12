@@ -1,12 +1,50 @@
 // 短线精灵 / 异动实时流：定时拉取活跃股池快照，与上一快照 diff 检测异动，经 Tauri 事件推送到前端。
 use super::{now_millis, Quote};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use tokio::task::JoinSet;
+
+/// 阈值持久化在 meta 表的键名（JSON）。
+pub const THRESHOLDS_KEY: &str = "spider_thresholds";
+
+/// 异动检测阈值（用户可配，持久化 meta）。
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SpiderThresholds {
+    /// 急涨 / 急跌：相邻快照涨跌幅变化阈值（%）
+    pub surge_pct: f64,
+    /// 大单：相邻快照成交额增量阈值（万元）
+    pub big_amount_wan: f64,
+    /// 放量：量比上穿阈值
+    pub volume_ratio: f64,
+}
+impl Default for SpiderThresholds {
+    fn default() -> Self {
+        Self { surge_pct: 0.5, big_amount_wan: 1000.0, volume_ratio: 3.0 }
+    }
+}
+impl SpiderThresholds {
+    /// 从 meta 读取，缺失 / 解析失败均回落默认值。
+    pub fn load(dir: &Path) -> Self {
+        let conn = match crate::ai::maindb::open_readonly(dir) {
+            Ok(c) => c,
+            Err(_) => return Self::default(),
+        };
+        let s: String = conn
+            .query_row(
+                "SELECT value FROM meta WHERE key=?1",
+                [THRESHOLDS_KEY],
+                |r| r.get(0),
+            )
+            .unwrap_or_default();
+        serde_json::from_str(&s).unwrap_or_default()
+    }
+}
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -122,7 +160,11 @@ async fn snapshot(pool: &[String]) -> HashMap<String, Quote> {
 }
 
 // ===== 异动检测 =====
-fn detect(prev: &HashMap<String, Quote>, curr: &HashMap<String, Quote>) -> Vec<SpiderEvent> {
+fn detect(
+    prev: &HashMap<String, Quote>,
+    curr: &HashMap<String, Quote>,
+    th: &SpiderThresholds,
+) -> Vec<SpiderEvent> {
     let now = now_millis();
     let mut evs = Vec::new();
     let mk = |kind: &str, label: &str, desc: String, tone: &str, q: &Quote| SpiderEvent {
@@ -162,15 +204,15 @@ fn detect(prev: &HashMap<String, Quote>, curr: &HashMap<String, Quote>) -> Vec<S
 
         // 快速拉升 / 下跌（区间涨跌幅变化）
         let dpct = c.pct - p.pct;
-        if dpct >= 0.5 {
+        if dpct >= th.surge_pct {
             evs.push(mk("surge", "急速拉升", format!("{:.2}%", dpct), "up", c));
-        } else if dpct <= -0.5 {
+        } else if dpct <= -th.surge_pct {
             evs.push(mk("plunge", "猛烈打压", format!("{:.2}%", dpct), "down", c));
         }
 
-        // 大单（区间成交额增量 ≥ 1000 万，按价格方向定买卖）
+        // 大单（区间成交额增量达到阈值，按价格方向定买卖）
         let d_amt = c.amount - p.amount;
-        if d_amt >= 1000.0 * 1e4 {
+        if d_amt >= th.big_amount_wan * 1e4 {
             if c.price + eps >= p.price {
                 evs.push(mk("big_buy", "大笔买入", format!("{:.0}万", d_amt / 1e4), "up", c));
             } else {
@@ -178,8 +220,8 @@ fn detect(prev: &HashMap<String, Quote>, curr: &HashMap<String, Quote>) -> Vec<S
             }
         }
 
-        // 量比放大（上穿 3，触发一次）
-        if c.volume_ratio >= 3.0 && p.volume_ratio < 3.0 {
+        // 量比放大（上穿阈值，触发一次）
+        if c.volume_ratio >= th.volume_ratio && p.volume_ratio < th.volume_ratio {
             evs.push(mk("volume", "放量异动", format!("量比{:.1}", c.volume_ratio), "neutral", c));
         }
     }
@@ -187,7 +229,7 @@ fn detect(prev: &HashMap<String, Quote>, curr: &HashMap<String, Quote>) -> Vec<S
 }
 
 // ===== 后台主循环 =====
-pub async fn run_loop(app: AppHandle, ctl: Arc<SpiderCtl>) {
+pub async fn run_loop(app: AppHandle, ctl: Arc<SpiderCtl>, data_dir: PathBuf) {
     let mut pool: Vec<String> = Vec::new();
     let mut prev: HashMap<String, Quote> = HashMap::new();
     let mut tick: u32 = 0;
@@ -196,12 +238,14 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<SpiderCtl>) {
         let trading = is_trading_time();
 
         if trading {
+            // 每轮快照前重载阈值：保存后下一快照即生效，无需重启引擎。
+            let thresholds = SpiderThresholds::load(&data_dir);
             if pool.is_empty() || tick.is_multiple_of(12) {
                 let watch = ctl.watch.lock().map(|g| g.clone()).unwrap_or_default();
                 pool = build_pool(&watch).await;
             }
             let curr = snapshot(&pool).await;
-            let evs = detect(&prev, &curr);
+            let evs = detect(&prev, &curr, &thresholds);
             prev = curr;
             let _ = app.emit("spider:events", evs);
             let _ = app.emit(

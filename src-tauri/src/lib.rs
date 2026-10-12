@@ -1,4 +1,5 @@
 mod ai;
+mod backup;
 mod broker;
 mod commands;
 mod db;
@@ -8,6 +9,7 @@ mod market;
 mod plugin;
 mod proxy;
 mod setup;
+mod storage;
 
 // 命令在 generate_handler! 中按原名引用（数量护栏见 INVENTORY.md）。
 use commands::*;
@@ -62,6 +64,12 @@ pub fn run() {
             commands::get_index_quotes,
             commands::get_rank_page,
             commands::get_rank_board,
+            commands::get_fund_flow,
+            commands::get_market_fund_panorama,
+            commands::get_fund_rank,
+            commands::sector_day_snapshot,
+            commands::sector_day_query,
+            commands::sector_day_stats,
             commands::get_news_flash,
             commands::check_latest,
             commands::get_f10_profile,
@@ -82,6 +90,8 @@ pub fn run() {
             commands::get_seat_trades,
             commands::start_spider,
             commands::stop_spider,
+            commands::spider_get_thresholds,
+            commands::spider_set_thresholds,
             commands::start_radar,
             commands::stop_radar,
             commands::start_alert_engine,
@@ -168,6 +178,9 @@ pub fn run() {
             broker::broker_connect,
             broker::broker_disconnect,
             broker::broker_submit,
+            broker::portfolio_buy,
+            broker::portfolio_sell,
+            broker::risk_snapshot,
             broker::broker_cancel,
             broker::broker_list_orders,
             broker::broker_query_asset,
@@ -194,6 +207,20 @@ pub fn run() {
             plugin::plugin_get_dev_mode,
             plugin::plugin_set_dev_mode,
             plugin::plugin_reload,
+            // ===== v2.29 备份 / 恢复中心 =====
+            backup::backup_full_create,
+            backup::backup_full_list,
+            backup::backup_write_config,
+            backup::backup_read_config,
+            backup::backup_full_restore,
+            backup::backup_full_delete,
+            backup::backup_take_pending_config,
+            // ===== v2.29 数据治理 =====
+            storage::storage_stats,
+            storage::storage_cleanup_orphans,
+            storage::storage_vacuum,
+            storage::storage_purge_preview,
+            storage::storage_purge_run,
             // ===== v2.27 多年历史 K 线库 =====
             market::history::hist_backfill,
             market::history::hist_backfill_stop,

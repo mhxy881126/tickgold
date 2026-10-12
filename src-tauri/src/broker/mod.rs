@@ -2,14 +2,14 @@
 // 委托状态机推进、signal_audit 审计、事件广播。合规：只处理 confirmed 单、实盘默认关、风控前置。
 pub mod conditional;
 pub mod config;
-pub mod mock;
+pub mod portfolio;
 pub mod protocol;
 pub mod risk;
 pub mod sidecar;
 
 use crate::ai::{maindb, now_millis};
+use crate::market;
 use config::BrokerConfig;
-use mock::MockBroker;
 use rusqlite::Connection;
 use sidecar::SidecarHandle;
 use std::path::{Path, PathBuf};
@@ -20,7 +20,6 @@ use tauri::{AppHandle, Emitter, Listener, Manager, State};
 /// 券商对接共享句柄（manage）。
 pub struct BrokerManager {
     pub config: Mutex<BrokerConfig>,
-    pub mock: Mutex<MockBroker>,
     pub sidecar: Mutex<Option<SidecarHandle>>,
     pub kill_switch: AtomicBool,
     pub connected: AtomicBool,
@@ -31,10 +30,8 @@ pub struct BrokerManager {
 impl BrokerManager {
     pub fn new() -> Self {
         let c = BrokerConfig::default();
-        let cash = c.mock_init_cash;
         BrokerManager {
             config: Mutex::new(c),
-            mock: Mutex::new(MockBroker::new(cash)),
             sidecar: Mutex::new(None),
             kill_switch: AtomicBool::new(false),
             connected: AtomicBool::new(false),
@@ -42,12 +39,10 @@ impl BrokerManager {
         }
     }
 
-    /// setup 阶段按数据目录加载持久化配置并重置模拟账户。
+    /// setup 阶段按数据目录加载持久化配置。
     pub fn init_with_dir(&self, dir: &Path) {
         let cfg = config::load(dir);
-        let cash = cfg.mock_init_cash;
         *self.config.lock().unwrap() = cfg;
-        self.mock.lock().unwrap().reset(cash);
     }
 }
 
@@ -329,6 +324,95 @@ pub async fn broker_submit(
     submit_with_sig(&app, &sig_id).await
 }
 
+/// 前端模拟交易买入：ensure account + settle + portfolio 落账（统一账本）。
+#[tauri::command]
+pub async fn portfolio_buy(
+    ai: State<'_, crate::ai::AiState>,
+    code: String,
+    name: String,
+    price: f64,
+    vol: i64,
+) -> Result<portfolio::FillResult, String> {
+    let dir = ai.dir();
+    let init_cash = init_cash_or_default(&dir)?;
+    let mut conn = maindb::open_readwrite(&dir)?;
+    portfolio::ensure_account(&conn, init_cash)?;
+    portfolio::settle(&conn, &conditional::today_dashed())?;
+    let oid = format!("PO{}{}", now_millis(), code);
+    let req = portfolio::FillReq {
+        code: &code, name: &name, side: portfolio::Side::Buy,
+        price, vol, sig_id: &oid, trade_date: &conditional::today_dashed(),
+        limit_prices: None,
+    };
+    portfolio::apply_fill(&mut conn, &req)
+}
+
+/// 前端模拟交易卖出。
+#[tauri::command]
+pub async fn portfolio_sell(
+    ai: State<'_, crate::ai::AiState>,
+    code: String,
+    price: f64,
+    vol: i64,
+) -> Result<portfolio::FillResult, String> {
+    let dir = ai.dir();
+    let mut conn = maindb::open_readwrite(&dir)?;
+    portfolio::settle(&conn, &conditional::today_dashed())?;
+    let oid = format!("PO{}{}", now_millis(), code);
+    let req = portfolio::FillReq {
+        code: &code, name: "", side: portfolio::Side::Sell,
+        price, vol, sig_id: &oid, trade_date: &conditional::today_dashed(),
+        limit_prices: None,
+    };
+    portfolio::apply_fill(&mut conn, &req)
+}
+
+fn init_cash_or_default(dir: &Path) -> Result<f64, String> {
+    // 初始资金以券商配置 mock_init_cash 为准（用户可自定义），兜底 100 万。
+    let cash = config::load(dir).mock_init_cash;
+    Ok(if cash > 0.0 { cash } else { 1_000_000.0 })
+}
+
+/// 风险仪表盘读数：一本账口径，权益 / 仓位 / 集中度 / 当日盈亏 / 回撤，峰值落 meta。
+#[tauri::command]
+pub async fn risk_snapshot(
+    ai: State<'_, crate::ai::AiState>,
+) -> Result<portfolio::RiskSnapshot, String> {
+    let dir = ai.dir();
+    let init_cash = init_cash_or_default(&dir)?;
+    let conn = maindb::open_readwrite(&dir)?;
+    portfolio::ensure_account(&conn, init_cash)?;
+    portfolio::settle(&conn, &conditional::today_dashed())?;
+    let positions = portfolio::load_positions(&conn)?;
+    let codes: Vec<String> = positions.iter().map(|p| p.code.clone()).collect();
+    let qs = market::get_quotes(codes).await.unwrap_or_default();
+    let price_of: Vec<(String, f64, f64)> =
+        qs.iter().map(|q| (q.code.clone(), q.price, q.prev_close)).collect();
+
+    // 历史最高权益持久化在 meta；无记录以 None 传入（峰值=当前权益）。
+    let peak: Option<f64> = conn
+        .query_row(
+            "SELECT value FROM meta WHERE key='risk_peak_equity'",
+            [],
+            |r| {
+                let s: String = r.get(0)?;
+                s.parse::<f64>().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
+            },
+        )
+        .ok();
+    let snap = portfolio::build_risk_snapshot(&conn, &price_of, peak)?;
+    // 创新高则写回。
+    if peak.map(|v| snap.equity > v).unwrap_or(true) {
+        conn.execute(
+            "INSERT INTO meta(key,value) VALUES('risk_peak_equity',?1)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            rusqlite::params![format!("{:.4}", snap.equity)],
+        )
+        .map_err(|e| format!("写入权益峰值失败: {e}"))?;
+    }
+    Ok(snap)
+}
+
 /// 委托提交核心：人工命令与条件单自动执行共用同一套风控 / 写单 / 成交推进，不重复实现。
 pub(crate) async fn submit_with_sig(
     app: &AppHandle,
@@ -367,10 +451,36 @@ pub(crate) async fn submit_with_sig(
         return Err(format!("仅可发送已确认单据，当前状态：{tstatus}"));
     }
 
-    // 风控
+    // 风控：账户快照统一读 portfolio 账本；行情快照取实时报价构造涨跌停价。
     let order = risk::RiskOrder { code: code.clone(), side: side.clone(), price, vol };
     let (account, market) = match cfg.kind.as_str() {
-        "mock" => (mgr.mock.lock().unwrap().snapshot(), None),
+        "mock" => {
+            let positions = portfolio::load_positions(&conn)?;
+            // 一次拉全部持仓的报价，构造市值/持仓映射；无价按成本价估值。
+            let codes: Vec<String> = positions.iter().map(|p| p.code.clone()).collect();
+            let qs = market::get_quotes(codes).await.unwrap_or_default();
+            let qmap: std::collections::HashMap<String, market::Quote> =
+                qs.into_iter().map(|q| (q.code.clone(), q)).collect();
+            let mut mv = 0.0;
+            let mut map = std::collections::HashMap::new();
+            for p in &positions {
+                let px = match qmap.get(&p.code) {
+                    Some(q) if q.price > 0.0 => q.price,
+                    _ => p.cost_amount / p.vol as f64,
+                };
+                mv += px * p.vol as f64;
+                map.insert(p.code.clone(), risk::Position { vol: p.vol, avail: p.avail_vol });
+            }
+            let cash: f64 = conn
+                .query_row("SELECT cash FROM paper_account WHERE id=1", [], |r| r.get(0))
+                .unwrap_or(0.0);
+            // 委托标的的涨跌停行情快照（昨收取实时报价）。
+            let mk = qmap.get(&code).map(|q| {
+                let (up, dn) = market::spider::limit_prices(&code, &_name, q.prev_close);
+                risk::MarketSnapshot { limit_up: Some(up), limit_down: Some(dn) }
+            });
+            (risk::AccountSnapshot { cash, market_value: mv, positions: map }, mk)
+        }
         // qmt 账户快照由 sidecar 回报缓存；未同步则拒绝。
         _ => {
             return Err("QMT 账户数据尚未同步，请稍后重试（真实联调在后续步骤）".to_string());
@@ -553,7 +663,6 @@ async fn mock_run(
     price: f64,
     vol: i64,
 ) {
-    use tauri::Manager;
     tokio::time::sleep(std::time::Duration::from_millis(700)).await;
     {
         let conn = match maindb::open_readwrite(dir) { Ok(c) => c, Err(_) => return };
@@ -564,18 +673,37 @@ async fn mock_run(
     let half = (vol / 200) * 100; // 取整到手的半数
     let half = if half > 0 { half } else { vol };
     {
-        app.state::<BrokerManager>().mock.lock().unwrap().apply_fill(code, side, price, half);
-        let conn = match maindb::open_readwrite(dir) { Ok(c) => c, Err(_) => return };
+        // 部分成交落统一账本（事务写 paper_account/position/order）
+        let mut conn = match maindb::open_readwrite(dir) { Ok(c) => c, Err(_) => return };
+        let fside = portfolio::Side::parse(side).unwrap_or(portfolio::Side::Buy);
+        let req = portfolio::FillReq {
+            code, name: "", side: fside, price, vol: half,
+            sig_id: &format!("{sig_id}-p1"), trade_date: &conditional::today_dashed(),
+            limit_prices: None,
+        };
+        if let Err(e) = portfolio::apply_fill(&mut conn, &req) {
+            log::warn!("模拟部分成交落账失败：{e}");
+            return;
+        }
         let _ = progress(&conn, app, sig_id, protocol::PART_FILLED, Some(half), Some(price), None, None,
             &format!("模拟部分成交 {half}"));
     }
     tokio::time::sleep(std::time::Duration::from_millis(600)).await;
     let rest = vol - half;
     {
+        let mut conn = match maindb::open_readwrite(dir) { Ok(c) => c, Err(_) => return };
         if rest > 0 {
-            app.state::<BrokerManager>().mock.lock().unwrap().apply_fill(code, side, price, rest);
+            let fside = portfolio::Side::parse(side).unwrap_or(portfolio::Side::Buy);
+            let req = portfolio::FillReq {
+                code, name: "", side: fside, price, vol: rest,
+                sig_id: &format!("{sig_id}-p2"), trade_date: &conditional::today_dashed(),
+                limit_prices: None,
+            };
+            if let Err(e) = portfolio::apply_fill(&mut conn, &req) {
+                log::warn!("模拟剩余成交落账失败：{e}");
+                return;
+            }
         }
-        let conn = match maindb::open_readwrite(dir) { Ok(c) => c, Err(_) => return };
         let _ = progress(&conn, app, sig_id, protocol::FILLED, Some(vol), Some(price), None, None,
             &format!("模拟全部成交 {vol}"));
         auto_done_ticket(&conn, app, sig_id);
@@ -614,15 +742,27 @@ pub async fn broker_cancel(
 }
 
 #[tauri::command]
-pub async fn broker_query_asset(mgr: State<'_, BrokerManager>) -> Result<serde_json::Value, String> {
+pub async fn broker_query_asset(
+    ai: State<'_, crate::ai::AiState>,
+    mgr: State<'_, BrokerManager>,
+) -> Result<serde_json::Value, String> {
     let cfg = mgr.config.lock().unwrap().clone();
+    let dir = ai.dir();
     match cfg.kind.as_str() {
         "mock" => {
-            let s = mgr.mock.lock().unwrap().snapshot();
+            let conn = maindb::open_readwrite(&dir)?;
+            let positions = portfolio::load_positions(&conn)?;
+            let codes: Vec<String> = positions.iter().map(|p| p.code.clone()).collect();
+            let qs = market::get_quotes(codes).await.unwrap_or_default();
+            let price_of: Vec<(String, f64, f64)> =
+                qs.iter().map(|q| (q.code.clone(), q.price, q.prev_close)).collect();
+            let s = portfolio::build_snapshot(&conn, &price_of)?;
             Ok(serde_json::json!({
                 "cash": round2(s.cash),
                 "marketValue": round2(s.market_value),
-                "totalAsset": round2(s.total_asset()),
+                "totalAsset": round2(s.total_assets),
+                "floatPnl": round2(s.float_pnl),
+                "dayPnl": round2(s.day_pnl),
             }))
         }
         "qmt" => {
@@ -648,21 +788,25 @@ pub async fn broker_query_asset(mgr: State<'_, BrokerManager>) -> Result<serde_j
 }
 
 #[tauri::command]
-pub fn broker_query_position(mgr: State<'_, BrokerManager>) -> serde_json::Value {
+pub fn broker_query_position(
+    ai: State<'_, crate::ai::AiState>,
+    mgr: State<'_, BrokerManager>,
+) -> Result<serde_json::Value, String> {
     let cfg = mgr.config.lock().unwrap().clone();
     match cfg.kind.as_str() {
         "mock" => {
-            let s = mgr.mock.lock().unwrap().snapshot();
-            let arr: Vec<_> = s
-                .positions
+            let conn = maindb::open_readonly(&ai.dir())?;
+            let positions = portfolio::load_positions(&conn)?;
+            let arr: Vec<_> = positions
                 .iter()
-                .map(|(code, p)| serde_json::json!({
-                    "code": code, "vol": p.vol, "avail": p.avail,
+                .map(|p| serde_json::json!({
+                    "code": p.code, "name": p.name,
+                    "vol": p.vol, "avail": p.avail_vol,
                 }))
                 .collect();
-            serde_json::json!({ "positions": arr })
+            Ok(serde_json::json!({ "positions": arr }))
         }
-        _ => serde_json::json!({ "note": "QMT 持仓由 sidecar 回报（第 2 步）" }),
+        _ => Ok(serde_json::json!({ "note": "QMT 持仓由 sidecar 回报（第 2 步）" })),
     }
 }
 
@@ -706,20 +850,32 @@ pub fn broker_release_kill(mgr: State<'_, BrokerManager>) -> Result<(), String> 
 }
 
 #[tauri::command]
-pub fn mock_seed_position(
+pub async fn mock_seed_position(
+    ai: State<'_, crate::ai::AiState>,
     mgr: State<'_, BrokerManager>,
     code: String,
     vol: i64,
     price: f64,
 ) -> Result<(), String> {
-    mgr.mock.lock().unwrap().seed_position(&code, vol, price);
-    Ok(())
+    let _ = mgr;
+    // 注入"昨日及以前"持仓到统一账本；名称取实时报价，无报价用代码占位。
+    let name = market::get_quotes(vec![code.clone()])
+        .await
+        .ok()
+        .and_then(|qs| qs.into_iter().find(|q| q.code == code).map(|q| q.name))
+        .unwrap_or_default();
+    let mut conn = maindb::open_readwrite(&ai.dir())?;
+    portfolio::seed_position(&mut conn, &code, &name, vol, price)
 }
 
 #[tauri::command]
-pub fn mock_reset(mgr: State<'_, BrokerManager>) -> Result<(), String> {
+pub fn mock_reset(
+    ai: State<'_, crate::ai::AiState>,
+    mgr: State<'_, BrokerManager>,
+) -> Result<(), String> {
     let cash = mgr.config.lock().unwrap().mock_init_cash;
-    mgr.mock.lock().unwrap().reset(cash);
+    let conn = maindb::open_readwrite(&ai.dir())?;
+    portfolio::reset_to(&conn, cash)?;
     mgr.connected.store(false, Ordering::SeqCst);
     Ok(())
 }

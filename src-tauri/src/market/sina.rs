@@ -59,6 +59,8 @@ pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
             volume_ratio: 0.0,
             circ_mv: 0.0,
             total_mv: 0.0,
+            inside_vol: 0.0,
+            outside_vol: 0.0,
         });
     }
     Ok(out)
@@ -242,6 +244,8 @@ pub async fn rank_page(sort: &str, page: i64, num: i64) -> Result<Vec<Quote>, St
                 volume_ratio: 0.0,
                 circ_mv: f(v, "nmc") / 10000.0, // 万元 -> 亿元
                 total_mv: f(v, "mktcap") / 10000.0,
+                inside_vol: 0.0,
+                outside_vol: 0.0,
             }
         })
         .collect();

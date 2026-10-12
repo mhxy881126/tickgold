@@ -6,7 +6,7 @@ use crate::market;
 use crate::logging;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 #[tauri::command]
 pub(crate) async fn get_quotes(codes: Vec<String>) -> Result<Vec<market::Quote>, String> {
@@ -96,6 +96,57 @@ pub(crate) async fn get_rank_board(
     num: i64,
 ) -> Result<Vec<market::RankRow>, String> {
     market::get_rank_board(sort, page, num).await
+}
+
+#[tauri::command]
+pub(crate) async fn get_fund_flow(
+    code: String,
+    days: i64,
+) -> Result<market::fundflow::StockFundFlow, String> {
+    market::fundflow::fund_flow(&code, days).await
+}
+
+#[tauri::command]
+pub(crate) async fn get_market_fund_panorama(
+    days: i64,
+) -> Result<market::fundflow::MarketFundPanorama, String> {
+    market::fundflow::market_panorama(days).await
+}
+
+#[tauri::command]
+pub(crate) async fn get_fund_rank(
+    kind: String,
+) -> Result<Vec<market::fundflow::FundRankRow>, String> {
+    market::fundflow::fund_rank(&kind).await
+}
+
+/// 采集并落盘指定交易日（YYYYMMDD）行业/概念板块快照；用于收盘归档与历史补采
+#[tauri::command]
+pub(crate) async fn sector_day_snapshot(
+    ai: State<'_, crate::ai::AiState>,
+    day: String,
+) -> Result<usize, String> {
+    let dir = ai.dir();
+    market::sector_day::snapshot_day(&dir, &day).await
+}
+
+/// 查询某类板块（industry/concept）最近 N 个交易日的日级快照
+#[tauri::command]
+pub(crate) async fn sector_day_query(
+    ai: State<'_, crate::ai::AiState>,
+    kind: String,
+    days: i64,
+) -> Result<Vec<market::sector_day::SectorDayRow>, String> {
+    let dir = ai.dir();
+    market::sector_day::query(&dir, &kind, days)
+}
+
+/// 已积累的板块快照交易日数量
+#[tauri::command]
+pub(crate) async fn sector_day_stats(
+    ai: State<'_, crate::ai::AiState>,
+) -> Result<i64, String> {
+    market::sector_day::stats(&ai.dir())
 }
 
 #[tauri::command]
@@ -650,6 +701,7 @@ pub(crate) fn list_decision_logs(
 pub(crate) async fn start_spider(
     app: tauri::AppHandle,
     watch: Vec<String>,
+    ai: tauri::State<'_, crate::ai::AiState>,
     ctl: tauri::State<'_, Arc<market::spider::SpiderCtl>>,
 ) -> Result<String, String> {
     *ctl.watch.lock().unwrap() = watch;
@@ -658,11 +710,43 @@ pub(crate) async fn start_spider(
     }
     ctl.running.store(true, Ordering::Release);
     let c: Arc<market::spider::SpiderCtl> = ctl.inner().clone();
+    let data_dir = ai.dir();
     tauri::async_runtime::spawn(async move {
-        market::spider::run_loop(app, c).await;
+        market::spider::run_loop(app, c, data_dir).await;
     });
     log::info!("短线精灵引擎已启动");
     Ok("started".to_string())
+}
+
+/// 读取异动阈值（缺失返回默认值）。
+#[tauri::command]
+pub(crate) fn spider_get_thresholds(
+    ai: tauri::State<'_, crate::ai::AiState>,
+) -> Result<market::spider::SpiderThresholds, String> {
+    Ok(market::spider::SpiderThresholds::load(&ai.dir()))
+}
+
+/// 保存异动阈值：夹紧到合理区间后写 meta，运行中引擎下一快照生效。
+#[tauri::command]
+pub(crate) fn spider_set_thresholds(
+    ai: tauri::State<'_, crate::ai::AiState>,
+    thresholds: market::spider::SpiderThresholds,
+) -> Result<market::spider::SpiderThresholds, String> {
+    let th = market::spider::SpiderThresholds {
+        surge_pct: thresholds.surge_pct.clamp(0.05, 20.0),
+        big_amount_wan: thresholds.big_amount_wan.clamp(50.0, 100_000.0),
+        volume_ratio: thresholds.volume_ratio.clamp(0.5, 50.0),
+    };
+    let conn = ai::maindb::open_readwrite(&ai.dir())?;
+    let json = serde_json::to_string(&th).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO meta(key,value) VALUES(?1,?2)
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        rusqlite::params![market::spider::THRESHOLDS_KEY, json],
+    )
+    .map_err(|e| format!("保存异动阈值失败: {e}"))?;
+    log::info!("短线精灵阈值已更新");
+    Ok(th)
 }
 
 #[tauri::command]

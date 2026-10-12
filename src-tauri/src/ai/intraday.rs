@@ -221,6 +221,8 @@ mod tests {
             volume_ratio: 2.0,
             circ_mv: 0.0,
             total_mv: 0.0,
+            inside_vol: 0.0,
+            outside_vol: 0.0,
         }
     }
 

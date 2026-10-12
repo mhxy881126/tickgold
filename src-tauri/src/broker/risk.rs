@@ -15,6 +15,7 @@ pub struct RiskOrder {
 /// 单只持仓（总量 / 可用量）。
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Position {
+    #[allow(dead_code)]
     pub vol: i64,
     pub avail: i64,
 }

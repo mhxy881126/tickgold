@@ -12,6 +12,9 @@ pub mod announce;
 pub mod irminteract;
 pub mod cache;
 pub mod history;
+pub mod fundflow;
+pub mod level2;
+pub mod sector_day;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -44,6 +47,9 @@ pub struct Quote {
     pub volume_ratio: f64, // 量比
     pub circ_mv: f64,      // 流通市值（亿元）
     pub total_mv: f64,     // 总市值（亿元）
+    // 盘口资金（v2.28，腾讯批量行情提供；东财/新浪缺省 0，由 get_quotes 统一补全）
+    pub inside_vol: f64,   // 内盘（主动卖成交，手）
+    pub outside_vol: f64,  // 外盘（主动买成交，手）
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -79,7 +85,7 @@ pub struct OrderLevel {
     pub price: f64,
     pub vol: f64,
 }
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderBook {
     pub name: String,
@@ -93,6 +99,36 @@ pub struct OrderBook {
     pub amount: f64,
     pub asks: Vec<OrderLevel>,
     pub bids: Vec<OrderLevel>,
+    // 盘口深度汇总（v2.28）：五档挂单合计与委比/委差。
+    // #[serde(default)] 兼容旧缓存/旧构造；通过 fill_depth 统一计算。
+    #[serde(default)]
+    pub bid_total: f64,   // 五档买盘挂单合计（手）
+    #[serde(default)]
+    pub ask_total: f64,   // 五档卖盘挂单合计（手）
+    #[serde(default)]
+    pub wei_bi: f64,      // 委比 % =(bid-ask)/(bid+ask)*100
+    #[serde(default)]
+    pub wei_cha: f64,     // 委差（手）=bid-ask
+    #[serde(default)]
+    pub inside_vol: f64,  // 内盘（主动卖成交，手）
+    #[serde(default)]
+    pub outside_vol: f64, // 外盘（主动买成交，手）
+}
+
+impl OrderBook {
+    /// 根据 asks/bids 填充五档挂单合计与委比/委差（成交量字段保持调用方已设值）
+    pub fn fill_depth(&mut self) {
+        let bid: f64 = self.bids.iter().map(|l| l.vol).sum();
+        let ask: f64 = self.asks.iter().map(|l| l.vol).sum();
+        self.bid_total = bid;
+        self.ask_total = ask;
+        self.wei_cha = bid - ask;
+        self.wei_bi = if bid + ask > 0.0 {
+            (bid - ask) / (bid + ask) * 100.0
+        } else {
+            0.0
+        };
+    }
 }
 
 /// 逐笔成交（分笔明细）
@@ -303,6 +339,33 @@ fn valid_quotes(v: &[Quote]) -> bool {
     !v.is_empty() && v.iter().any(|q| q.price > 0.0)
 }
 
+/// 内外盘补全：主源（东财/新浪）不提供内外盘时，用腾讯批量行情按 code 合并。
+/// 已有非零内外盘（腾讯即主源）则跳过，避免重复请求。
+async fn enrich_inside_outside(mut quotes: Vec<Quote>) -> Vec<Quote> {
+    if quotes.is_empty() || quotes.iter().any(|q| q.inside_vol > 0.0 || q.outside_vol > 0.0) {
+        return quotes;
+    }
+    let codes: Vec<String> = quotes.iter().map(|q| q.code.clone()).collect();
+    if let Ok(Ok(tq)) = tokio::time::timeout(
+        Duration::from_secs(QUOTE_TIMEOUT),
+        tencent::quotes(&codes),
+    )
+    .await
+    {
+        let map: HashMap<String, (f64, f64)> = tq
+            .into_iter()
+            .map(|q| (q.code, (q.inside_vol, q.outside_vol)))
+            .collect();
+        for q in quotes.iter_mut() {
+            if let Some((inside, outside)) = map.get(&q.code) {
+                q.inside_vol = *inside;
+                q.outside_vol = *outside;
+            }
+        }
+    }
+    quotes
+}
+
 /// 批量实时行情：东财 → 新浪 → 腾讯
 pub async fn get_quotes(codes: Vec<String>) -> Result<Vec<Quote>, String> {
     if codes.is_empty() {
@@ -319,7 +382,7 @@ pub async fn get_quotes(codes: Vec<String>) -> Result<Vec<Quote>, String> {
         {
             Ok(Ok(v)) if valid_quotes(&v) => {
                 record_ok("eastmoney");
-                return Ok(v);
+                return Ok(enrich_inside_outside(v).await);
             }
             Ok(Ok(_)) => record_fail("eastmoney"),
             Ok(Err(e)) => {
@@ -337,7 +400,7 @@ pub async fn get_quotes(codes: Vec<String>) -> Result<Vec<Quote>, String> {
         match tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), sina::quotes(&codes)).await {
             Ok(Ok(v)) if valid_quotes(&v) => {
                 record_ok("sina");
-                return Ok(v);
+                return Ok(enrich_inside_outside(v).await);
             }
             Ok(Ok(_)) => record_fail("sina"),
             Ok(Err(e)) => {
@@ -444,26 +507,52 @@ async fn fetch_kline_network(code: &str, period: i64, count: i64) -> Result<Vec<
     Err(format!("K线全部失败 → {last_err}"))
 }
 
-/// 盘口（免费源尽力版）：东财为主（动态档位），盘后清空或失败回退腾讯
+/// 盘口（免费源尽力版）：东财为主（动态档位），盘后清空或失败回退腾讯。
+/// 返回前统一计算委比/委差；东财路径用腾讯补内外盘（免费盘口仅五档，非 Level-2）。
 pub async fn get_orderbook(code: String) -> Result<OrderBook, String> {
-    if is_open("eastmoney_book") {
-        if let Ok(Ok(b)) = tokio::time::timeout(
+    let mut book = if is_open("eastmoney_book") {
+        match tokio::time::timeout(
             Duration::from_secs(QUOTE_TIMEOUT),
             eastmoney::orderbook(&code),
         )
         .await
         {
-            if !b.asks.is_empty() || !b.bids.is_empty() {
+            Ok(Ok(b)) if !b.asks.is_empty() || !b.bids.is_empty() => {
                 record_ok("eastmoney_book");
-                return Ok(b);
+                b
+            }
+            _ => {
+                record_fail("eastmoney_book");
+                // 回退腾讯（盘后仍返回收盘五档）
+                tokio::time::timeout(
+                    Duration::from_secs(QUOTE_TIMEOUT),
+                    tencent::orderbook(&code),
+                )
+                .await
+                .map_err(|_| "盘口: 超时".to_string())??
             }
         }
-        record_fail("eastmoney_book");
-    }
-    // 回退腾讯（盘后仍返回收盘五档）
-    tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), tencent::orderbook(&code))
+    } else {
+        tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), tencent::orderbook(&code))
+            .await
+            .map_err(|_| "盘口: 超时".to_string())??
+    };
+    // 东财路径无内外盘：用腾讯批量行情补一次
+    if book.inside_vol <= 0.0 && book.outside_vol <= 0.0 {
+        if let Ok(Ok(tq)) = tokio::time::timeout(
+            Duration::from_secs(QUOTE_TIMEOUT),
+            tencent::quotes(std::slice::from_ref(&code)),
+        )
         .await
-        .map_err(|_| "盘口: 超时".to_string())?
+        {
+            if let Some(q) = tq.into_iter().find(|q| q.code == code || q.code == book.code) {
+                book.inside_vol = q.inside_vol;
+                book.outside_vol = q.outside_vol;
+            }
+        }
+    }
+    book.fill_depth();
+    Ok(book)
 }
 
 /// 逐笔成交明细（东财 details/get），返回最近 n 条

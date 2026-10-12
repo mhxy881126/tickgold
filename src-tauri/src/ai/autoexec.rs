@@ -168,14 +168,8 @@ fn now_hms() -> String {
     beijing_now().1
 }
 
-// ===== 费用（与 src/stores/paper.ts 严格一致）=====
-
-fn calc_fee(side: &str, amount: f64) -> f64 {
-    let commission = (amount * 0.00025).max(5.0);
-    let stamp = if side == "sell" { amount * 0.0005 } else { 0.0 };
-    let transfer = amount * 0.00001;
-    commission + stamp + transfer
-}
+// 费用统一走 broker::portfolio::calc_fee（全应用唯一口径，禁止再本地复制一份）。
+use crate::broker::portfolio::{self, Side};
 
 fn parse_hint(s: &str) -> f64 {
     let mut num = String::new();
@@ -342,26 +336,16 @@ fn check_risk_controls(
     conn: &rusqlite::Connection,
     cfg: &AutoExecConfig,
 ) -> Result<(), String> {
-    // 检查单日亏损限制
+    // 检查单日亏损限制（统一账本 paper_order.realized_pnl，不再查幽灵表 trades/account）
     let today = today_dashed();
-    
-    // 查今天的卖出交易总盈亏
-    let today_pnl: f64 = conn.query_row(
-        "SELECT COALESCE(SUM(pnl), 0) FROM trades WHERE trade_date = ?1 AND side = 'sell'",
-        [&today],
-        |row| row.get(0),
-    ).unwrap_or(0.0);
-
-    // 查初始资金
-    let initial_cash: f64 = conn.query_row(
-        "SELECT COALESCE(initial_cash, 1000000) FROM account LIMIT 1",
-        [],
-        |row| row.get(0),
-    ).unwrap_or(1000000.0);
+    let today_pnl = portfolio::realized_pnl_of_day(conn, &today).unwrap_or(0.0);
+    let initial_cash: f64 = conn
+        .query_row("SELECT init_cash FROM paper_account WHERE id=1", [], |r| r.get(0))
+        .unwrap_or(1_000_000.0);
 
     // 计算单日亏损百分比
     let daily_loss_pct = if initial_cash > 0.0 {
-        (today_pnl / initial_cash) * 100.0
+        today_pnl / initial_cash * 100.0
     } else {
         0.0
     };
@@ -374,19 +358,8 @@ fn check_risk_controls(
         ));
     }
 
-    // 检查连续亏损暂停
-    // 查最近的卖出交易，看是不是连续亏损
-    let recent_sells: Vec<f64> = match conn.prepare(
-        "SELECT pnl FROM trades WHERE side = 'sell' ORDER BY id DESC LIMIT 10"
-    ) {
-        Ok(mut stmt) => {
-            stmt.query_map([], |row| row.get::<_, f64>(0))
-                .unwrap()
-                .filter_map(|r| r.ok())
-                .collect()
-        }
-        Err(_) => Vec::new(),
-    };
+    // 检查连续亏损暂停：最近的卖出单是否连续亏损
+    let recent_sells = portfolio::recent_realized(conn, 10).unwrap_or_default();
 
     let mut consecutive_losses = 0;
     for pnl in recent_sells {
@@ -410,7 +383,7 @@ fn check_risk_controls(
 // ===== 模拟盘撮合 =====
 
 fn paper_buy(
-    conn: &Connection,
+    conn: &mut Connection,
     item: &WatchItem,
     q: &Quote,
     cfg: &AutoExecConfig,
@@ -419,8 +392,7 @@ fn paper_buy(
     total_pos_pct: f64,
 ) -> Result<String, String> {
     let fill = (q.price * (1.0 + cfg.slippage_pct / 100.0)).max(0.001);
-    // 语句级去重：前端轨可能已先买入同票（双轨共用一个 sqlite），
-    // 此处重查持仓把竞态收窄到语句级，避免重复开仓/现金透支。
+    // 语句级去重：前端轨可能已先买入同票（共用一个 sqlite），重查持仓收窄竞态。
     let held: f64 = conn
         .query_row(
             "SELECT COALESCE(SUM(vol),0) FROM paper_position WHERE code=?1",
@@ -441,7 +413,7 @@ fn paper_buy(
     let target_amount = total_asset * target_pct / 100.0;
     let fee_of = |vol: i64| {
         let a = fill * vol as f64;
-        (a, calc_fee("buy", a))
+        (a, portfolio::calc_fee(Side::Buy, a))
     };
     let mut lots = (target_amount / (fill * 100.0)).floor() as i64;
     let (mut amount, mut fee) = fee_of(lots * 100);
@@ -458,35 +430,25 @@ fn paper_buy(
             target_pct, cash, fill
         ));
     }
-    let total = amount + fee;
-    let now = now_millis();
-    let oid = format!("AI{now}{}", item.code);
-    conn.execute(
-        "UPDATE paper_account SET cash=cash-?1 WHERE id=1",
-        rusqlite::params![total],
-    )
-    .map_err(|e| e.to_string())?;
-    conn.execute(
-        "INSERT INTO paper_position(code,name,vol,avail_vol,cost_amount,updated_at)
-         VALUES(?1,?2,?3,0,?4,?5)
-         ON CONFLICT(code) DO UPDATE SET
-           name=excluded.name, vol=vol+excluded.vol,
-           cost_amount=cost_amount+excluded.cost_amount, updated_at=excluded.updated_at",
-        rusqlite::params![item.code, item.name, vol, total, now],
-    )
-    .map_err(|e| e.to_string())?;
-    conn.execute(
-        "INSERT INTO paper_order(id,code,name,side,price,vol,amount,fee,status,created_at,trade_date)
-         VALUES(?1,?2,?3,'buy',?4,?5,?6,?7,'filled',?8,?9)",
-        rusqlite::params![oid, item.code, item.name, fill, vol, amount, fee, now, today_dashed()],
-    )
-    .map_err(|e| e.to_string())?;
+    // 落账统一走 portfolio（事务内写 账户/持仓/成交，费用/T+1 同口径）
+    let oid = format!("AI{}{}", now_millis(), item.code);
+    let req = portfolio::FillReq {
+        code: &item.code,
+        name: &item.name,
+        side: Side::Buy,
+        price: fill,
+        vol,
+        sig_id: &oid,
+        trade_date: &today_dashed(),
+        limit_prices: None,
+    };
+    portfolio::apply_fill(conn, &req)?;
     Ok(format!("买入 {} {}股 @{:.2}（含费{:.1}）", item.name, vol, fill, fee))
 }
 
 #[allow(clippy::too_many_arguments)]
 fn paper_sell(
-    conn: &Connection,
+    conn: &mut Connection,
     code: &str,
     name: &str,
     q: &Quote,
@@ -500,36 +462,21 @@ fn paper_sell(
         return Err("无可卖（T+1，当日买入不可卖）".to_string());
     }
     let amount = fill * vol as f64;
-    let fee = calc_fee("sell", amount);
-    let proceeds = amount - fee;
-    let new_vol = pos.vol - vol;
-    let new_avail = (pos.avail - vol).max(0);
-    let cost_reduce = pos.cost_amount * (vol as f64 / pos.vol as f64);
-    let now = now_millis();
-
-    if new_vol <= 0 {
-        conn.execute("DELETE FROM paper_position WHERE code=?1", rusqlite::params![code])
-            .map_err(|e| e.to_string())?;
-    } else {
-        conn.execute(
-            "UPDATE paper_position SET vol=?1,avail_vol=?2,cost_amount=cost_amount-?3,updated_at=?4 WHERE code=?5",
-            rusqlite::params![new_vol, new_avail, cost_reduce, now, code],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-    conn.execute(
-        "UPDATE paper_account SET cash=cash+?1 WHERE id=1",
-        rusqlite::params![proceeds],
-    )
-    .map_err(|e| e.to_string())?;
-    let oid = format!("AI{now}{code}");
-    conn.execute(
-        "INSERT INTO paper_order(id,code,name,side,price,vol,amount,fee,status,created_at,trade_date)
-         VALUES(?1,?2,?3,'sell',?4,?5,?6,?7,'filled',?8,?9)",
-        rusqlite::params![oid, code, name, fill, vol, amount, fee, now, today_dashed()],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(format!("卖出 {} {}股 @{:.2}（费{:.1}）", name, vol, fill, fee))
+    let fee = portfolio::calc_fee(Side::Sell, amount);
+    // 落账统一走 portfolio（含已实现盈亏 realized_pnl 记录）
+    let oid = format!("AI{}{}", now_millis(), code);
+    let req = portfolio::FillReq {
+        code,
+        name,
+        side: Side::Sell,
+        price: fill,
+        vol,
+        sig_id: &oid,
+        trade_date: &today_dashed(),
+        limit_prices: None,
+    };
+    portfolio::apply_fill(conn, &req)?;
+    Ok(format!("卖出 {name} {vol}股 @{:.2}（费{:.1}）", fill, fee))
 }
 
 /// 写决策日志。
@@ -706,7 +653,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
         };
 
         // 写：撮合 + 日志
-        let conn = match maindb::open_readwrite(&data_dir) {
+        let mut conn = match maindb::open_readwrite(&data_dir) {
             Ok(c) => c,
             Err(_) => continue,
         };
@@ -741,7 +688,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                         model_version: format!("hardstop{}", cfg.hard_stop_pct),
                         infer_ms: 0.0,
                     };
-                    match paper_sell(&conn, &item.code, &item.name, q, &cfg, p, p.vol) {
+                    match paper_sell(&mut conn, &item.code, &item.name, q, &cfg, p, p.vol) {
                         Ok(msg) => {
                             log_decision(&conn, item, &d, "executed", &features, true);
                             emit_signal(&app, item, &d, "executed", &msg);
@@ -887,7 +834,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                     };
 
                     if should_auto_buy {
-                        match paper_buy(&conn, item, q, &cfg, total_asset, cash, total_pos_pct) {
+                        match paper_buy(&mut conn, item, q, &cfg, total_asset, cash, total_pos_pct) {
                             Ok(msg) => {
                                 log_decision(&conn, item, &d, "executed", &features, false);
                                 emit_signal(&app, item, &d, "executed", &msg);
@@ -923,7 +870,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                         };
 
                         if should_auto_buy {
-                            match paper_buy(&conn, item, q, &cfg, total_asset, cash, total_pos_pct) {
+                            match paper_buy(&mut conn, item, q, &cfg, total_asset, cash, total_pos_pct) {
                                 Ok(msg) => {
                                     log_decision(&conn, item, &d, "executed", &features, false);
                                     emit_signal(&app, item, &d, "executed", &msg);
@@ -956,7 +903,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                 }
                 "SELL" if pos.is_some() => {
                     if let Some(p) = pos {
-                        match paper_sell(&conn, &item.code, &item.name, q, &cfg, p, p.vol) {
+                        match paper_sell(&mut conn, &item.code, &item.name, q, &cfg, p, p.vol) {
                             Ok(msg) => {
                                 log_decision(&conn, item, &d, "executed", &features, false);
                                 emit_signal(&app, item, &d, "executed", &msg);
