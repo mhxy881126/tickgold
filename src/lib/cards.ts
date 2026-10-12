@@ -43,7 +43,8 @@ export type CardId =
   | "newsdigest"
   | "mainline"
   | "risk"
-  | "rotation";
+  | "rotation"
+  | "backtest";
 
 export type Zone = "main" | "side";
 
@@ -97,6 +98,7 @@ export const CARD_META: Record<CardId, CardMeta> = {
   mainline: { title: "明日主线", accent: "#ff6b78", kind: "chart" },
   risk: { title: "风险仪表盘", accent: "#ff5f57", kind: "chart" },
   rotation: { title: "题材轮动矩阵", accent: "#e89c3d", kind: "chart" },
+  backtest: { title: "策略回测", accent: "#1dbe7d", kind: "chart" },
 };
 
 // ===== 卡片个性化（V1 单卡设置 / V3 场景模板）=====

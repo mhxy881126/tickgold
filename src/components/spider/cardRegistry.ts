@@ -92,6 +92,8 @@ const RAW: Record<CardId, RawCap> = {
   risk: { group: "trade", rowKind: "none", producesSignal: false, dwellMs: 3000, onTour: false },
   // ─── v2.29 历史回放 · 板块轮动 ───
   rotation: { group: "mainline", rowKind: "sector", producesSignal: false, dwellMs: 5000, onTour: true },
+  // ─── v2.30 回测引擎（离线，不参与巡回）───
+  backtest: { group: "review", rowKind: "none", producesSignal: false, dwellMs: 3000, onTour: false },
 };
 
 function build(id: CardId): CardCapability {

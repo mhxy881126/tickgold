@@ -83,6 +83,7 @@ export const DOCK_GROUPS: DockGroup[] = [
       { id: "mainline", label: "明日主线", icon: "M12 2l9 5-9 5-9-5zm-9 10l9 5 9-5", desc: "AI 基于涨停梯队预测明日 3-5 条主线", star: true },
       { id: "decisionlog", label: "决策日志", icon: "M4 6h16M4 12h16M4 18h10", desc: "快脑 BUY/SELL 决策审计与回放", star: true },
       { id: "evolution", label: "进化回灌", icon: "M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z", desc: "决策自动打标 + 版本胜率/盈亏比回灌", star: true },
+      { id: "backtest", label: "策略回测", icon: "M9 11.75a1.5 1.5 0 013 0v.5a1.5 1.5 0 003 0v-4a1.5 1.5 0 00-3 0", desc: "历史K线回测 + 绩效/寻优 + 人工审批护栏", star: true },
       { id: "signalbridge", label: "信号确认桥", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 5h2v6h-2zm0 8h2v2h-2z", desc: "BUY/SELL 信号人工确认 + 生成券商指令", star: true },
       { id: "co", label: "本地条件单", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 5h2v6h-2zm0 8h2v2h-2z", desc: "价格/涨跌幅/量比触发本地条件单" },
       { id: "strategy", label: "策略库", icon: "M12 2l9 5-9 5-9-5zm-9 10l9 5 9-5", desc: "龙头/1进2/抄底策略版本化管理" },
