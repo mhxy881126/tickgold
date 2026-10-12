@@ -3,7 +3,7 @@ import { ref, computed } from "vue";
 import { db, ensureDb } from "../db/database";
 import { fetchQuotes } from "../api/market";
 import type { Quote } from "../api/types";
-import { brokerGetConfig } from "../broker/api";
+import { portfolioBuy, portfolioSell } from "../broker/api";
 
 export interface PaperAccount { initCash: number; cash: number }
 export interface PaperPosition {
@@ -15,67 +15,13 @@ export interface PaperOrder {
   status: string; createdAt: number; tradeDate: string;
 }
 
-// 交易费用
-const COMMISSION_RATE = 0.00025; // 佣金 万2.5（双向，最低 5 元）
-const STAMP_RATE = 0.0005;       // 印花税 卖出 千0.5
-const TRANSFER_RATE = 0.00001;   // 过户费 十万分之一（双向）
-const INIT_CASH = 1_000_000;
-
-function calcFee(side: "buy" | "sell", amount: number): number {
-  const commission = Math.max(amount * COMMISSION_RATE, 5);
-  const stamp = side === "sell" ? amount * STAMP_RATE : 0;
-  const transfer = amount * TRANSFER_RATE;
-  return commission + stamp + transfer;
-}
-function today(): string {
-  const d = new Date();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${m}-${day}`;
-}
-function uid(): string {
-  return "PO" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
-
 export const usePaperStore = defineStore("paper", () => {
-  const account = ref<PaperAccount>({ initCash: INIT_CASH, cash: INIT_CASH });
+  const account = ref<PaperAccount>({ initCash: 0, cash: 0 });
   const positions = ref<PaperPosition[]>([]);
   const orders = ref<PaperOrder[]>([]);
   const priceMap = ref<Record<string, Quote>>({});
   const loaded = ref(false);
   let timer: number | null = null;
-
-  // 首次初始化账户：初始资金取券商配置 mockInitCash（用户可自定义），非写死 100 万
-  async function ensureAccount() {
-    let initCash = INIT_CASH;
-    try {
-      const cfg = await brokerGetConfig();
-      if (cfg.mockInitCash > 0) initCash = cfg.mockInitCash;
-    } catch {
-      // 配置读取失败：用兜底默认值
-    }
-    const d = db();
-    await d.execute(
-      "INSERT INTO paper_account(id, init_cash, cash, created_at) VALUES(1, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
-      [initCash, initCash, Date.now()]
-    );
-  }
-
-  // T+1 清算：跨自然日后把持仓股数同步为可卖（当日买入不增加 avail）
-  async function settle() {
-    const d = db();
-    const r = await d.select<{ value: string | null }[]>(
-      "SELECT value FROM meta WHERE key = 'paper_settle_date'"
-    );
-    const t = today();
-    if ((r[0]?.value ?? "") !== t) {
-      await d.execute("UPDATE paper_position SET avail_vol = vol");
-      await d.execute(
-        "INSERT INTO meta(key,value) VALUES('paper_settle_date',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-        [t]
-      );
-    }
-  }
 
   async function reloadAll() {
     const d = db();
@@ -83,21 +29,12 @@ export const usePaperStore = defineStore("paper", () => {
       "SELECT init_cash, cash FROM paper_account WHERE id=1"
     );
     if (acc[0]) account.value = { initCash: acc[0].init_cash, cash: acc[0].cash };
-    positions.value = (
-      await d.select<PaperPositionRow[]>(
-        "SELECT code, name, vol, avail_vol AS availVol, cost_amount AS costAmount FROM paper_position ORDER BY code"
-      )
-    ).map((p) => ({ ...p }));
-    orders.value = (
-      await d.select<PaperOrderRow[]>(
-        "SELECT id, code, name, side, price, vol, amount, fee, status, created_at AS createdAt, trade_date AS tradeDate FROM paper_order ORDER BY created_at DESC LIMIT 200"
-      )
-    ).map((o) => ({ ...o }));
-  }
-  interface PaperPositionRow { code: string; name: string; vol: number; availVol: number; costAmount: number }
-  interface PaperOrderRow {
-    id: string; code: string; name: string; side: "buy" | "sell"; price: number; vol: number;
-    amount: number; fee: number; status: string; createdAt: number; tradeDate: string;
+    positions.value = await d.select<PaperPosition[]>(
+      "SELECT code, name, vol, avail_vol AS availVol, cost_amount AS costAmount FROM paper_position ORDER BY code"
+    );
+    orders.value = await d.select<PaperOrder[]>(
+      "SELECT id, code, name, side, price, vol, amount, fee, status, created_at AS createdAt, trade_date AS tradeDate FROM paper_order ORDER BY created_at DESC LIMIT 200"
+    );
   }
 
   async function refreshQuotes() {
@@ -109,29 +46,11 @@ export const usePaperStore = defineStore("paper", () => {
     priceMap.value = m;
   }
 
-  // 买入：{price} 由组件取实时价
+  // 买入：{price} 由组件取实时价；落账统一走后端 portfolio（费用/T+1/settle 唯一口径）
   async function buy(code: string, name: string, price: number, vol: number): Promise<void> {
     if (!(price > 0)) throw new Error("行情无效，无法买入");
     if (vol <= 0 || vol % 100 !== 0) throw new Error("买入数量须为 100 股整数倍");
-    const amount = price * vol;
-    const fee = calcFee("buy", amount);
-    const total = amount + fee;
-    if (account.value.cash < total - 1e-6) throw new Error("可用资金不足");
-    const d = db();
-    await d.execute("UPDATE paper_account SET cash = cash - ? WHERE id=1", [total]);
-    await d.execute(
-      `INSERT INTO paper_position(code,name,vol,avail_vol,cost_amount,updated_at)
-       VALUES(?,?,?,0,?,?)
-       ON CONFLICT(code) DO UPDATE SET
-         name=excluded.name, vol=vol+excluded.vol,
-         cost_amount=cost_amount+excluded.cost_amount, updated_at=excluded.updated_at`,
-      [code, name, vol, total, Date.now()]
-    );
-    await d.execute(
-      `INSERT INTO paper_order(id,code,name,side,price,vol,amount,fee,status,created_at,trade_date)
-       VALUES(?,?,?, 'buy', ?,?,?,?, 'filled',?,?)`,
-      [uid(), code, name, price, vol, amount, fee, Date.now(), today()]
-    );
+    await portfolioBuy(code, name, price, vol);
     await reloadAll();
   }
 
@@ -141,26 +60,7 @@ export const usePaperStore = defineStore("paper", () => {
     const pos = positions.value.find((p) => p.code === code);
     if (!pos) throw new Error("无该股票持仓");
     if (vol <= 0 || vol > pos.availVol) throw new Error("卖出数量超过可卖（T+1）");
-    const amount = price * vol;
-    const fee = calcFee("sell", amount);
-    const proceeds = amount - fee;
-    const d = db();
-    const newVol = pos.vol - vol;
-    const costReduce = pos.costAmount * (vol / pos.vol);
-    if (newVol <= 0) {
-      await d.execute("DELETE FROM paper_position WHERE code=?", [code]);
-    } else {
-      await d.execute(
-        "UPDATE paper_position SET vol=?, cost_amount=cost_amount-?, updated_at=? WHERE code=?",
-        [newVol, costReduce, Date.now(), code]
-      );
-    }
-    await d.execute("UPDATE paper_account SET cash = cash + ? WHERE id=1", [proceeds]);
-    await d.execute(
-      `INSERT INTO paper_order(id,code,name,side,price,vol,amount,fee,status,created_at,trade_date)
-       VALUES(?,?,?, 'sell', ?,?,?,?, 'filled',?,?)`,
-      [uid(), code, pos.name, price, vol, amount, fee, Date.now(), today()]
-    );
+    await portfolioSell(code, price, vol);
     await reloadAll();
   }
 
@@ -187,8 +87,6 @@ export const usePaperStore = defineStore("paper", () => {
 
   async function load() {
     await ensureDb();
-    await ensureAccount();
-    await settle();
     await reloadAll();
     await refreshQuotes();
     loaded.value = true;
@@ -199,15 +97,19 @@ export const usePaperStore = defineStore("paper", () => {
   }
 
   // —— 汇总指标 ——
-  const costOf = (p: PaperPosition) => p.costAmount;
   const marketValue = computed(() =>
     positions.value.reduce((s, p) => s + p.vol * (priceMap.value[p.code]?.price ?? p.costAmount / p.vol), 0)
   );
   const totalAssets = computed(() => account.value.cash + marketValue.value);
   const totalPnl = computed(() => totalAssets.value - account.value.initCash);
-  const pnlPct = computed(() => (totalPnl.value / account.value.initCash) * 100);
+  const pnlPct = computed(() =>
+    account.value.initCash > 0 ? (totalPnl.value / account.value.initCash) * 100 : 0
+  );
   const floatPnl = computed(() =>
-    positions.value.reduce((s, p) => s + (p.vol * (priceMap.value[p.code]?.price ?? 0) - costOf(p)), 0)
+    positions.value.reduce(
+      (s, p) => s + (p.vol * (priceMap.value[p.code]?.price ?? 0) - p.costAmount),
+      0
+    )
   );
   // 当日参考盈亏：持仓股数 ×（现价 − 昨收），无昨收数据的持仓不计
   const dayPnl = computed(() =>
@@ -219,7 +121,7 @@ export const usePaperStore = defineStore("paper", () => {
 
   return {
     account, positions, orders, priceMap, loaded,
-    load, stop, buy, sell, reset, resetWith, reloadAll, settle, refreshQuotes,
+    load, stop, buy, sell, reset, resetWith, reloadAll, refreshQuotes,
     marketValue, totalAssets, totalPnl, pnlPct, floatPnl, dayPnl,
   };
 });

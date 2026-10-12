@@ -22,6 +22,8 @@ export interface Quote {
   volumeRatio: number; // 量比
   circMv: number;      // 流通市值（亿元）
   totalMv: number;     // 总市值（亿元）
+  insideVol: number;   // 内盘（主动卖成交，手）
+  outsideVol: number;  // 外盘（主动买成交，手）
 }
 
 /** 增强榜单行（东方财富：换手/量比/5分钟涨速/主力净流入/大单净流入） */
@@ -67,6 +69,12 @@ export interface OrderBook {
   amount: number;
   asks: OrderLevel[];  // 卖盘（档数随数据源）
   bids: OrderLevel[];  // 买盘（档数随数据源）
+  bidTotal: number;    // 五档买盘挂单合计（手）
+  askTotal: number;    // 五档卖盘挂单合计（手）
+  weiBi: number;       // 委比 % =(bid-ask)/(bid+ask)
+  weiCha: number;      // 委差（手）=bid-ask
+  insideVol: number;   // 内盘（主动卖成交，手）
+  outsideVol: number;  // 外盘（主动买成交，手）
 }
 
 /** 逐笔成交（时间 / 价 / 量 / 主动方向） */
@@ -75,6 +83,42 @@ export interface TradeTick {
   price: number;
   vol: number; // 手
   side: "buy" | "sell" | "neutral";
+}
+
+/** 单日资金流（元；占比 %） */
+export interface FundFlowDay {
+  date: string;
+  mainNet: number;    // 主力净流入 = 超大+大单
+  superNet: number;   // 超大单净流入
+  largeNet: number;   // 大单净流入
+  mediumNet: number;  // 中单净流入
+  smallNet: number;   // 小单净流入
+  mainPct: number;    // 主力净流入占比 %
+  close: number;
+  pct: number;        // 涨跌幅 %
+}
+
+/** 个股多日四档资金流 */
+export interface StockFundFlow {
+  code: string;
+  name: string;
+  days: FundFlowDay[];
+}
+
+/** 大盘主力资金全景（沪深两市合计） */
+export interface MarketFundPanorama {
+  mainNetToday: number;       // 今日主力净流入合计（元）
+  minuteTimes: string[];      // HH:MM
+  minuteMain: number[];       // 分时主力净流入累计（元）
+  trend: FundFlowDay[];       // 多日主力趋势
+}
+
+/** 板块资金排名行 */
+export interface FundRankRow {
+  code: string;
+  name: string;
+  pct: number;
+  mainNet: number;
 }
 
 /** 股票搜索结果项 */

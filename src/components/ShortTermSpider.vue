@@ -2,7 +2,9 @@
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
-  startSpider, stopSpider, type SpiderEvent, type SpiderStatus,
+  startSpider, stopSpider,
+  getSpiderThresholds, setSpiderThresholds,
+  type SpiderEvent, type SpiderStatus, type SpiderThresholds,
 } from "../api/market";
 import { useWatchlistStore } from "../stores/watchlist";
 
@@ -13,6 +15,32 @@ const events = ref<SpiderEvent[]>([]);
 const status = ref<SpiderStatus | null>(null);
 const paused = ref(false);
 const MAX = 300;
+
+// 阈值设置
+const showCfg = ref(false);
+const thForm = ref<SpiderThresholds | null>(null);
+const thSaving = ref(false);
+
+async function openCfg() {
+  try {
+    thForm.value = await getSpiderThresholds();
+    showCfg.value = true;
+  } catch (e) {
+    console.error("getSpiderThresholds", e);
+  }
+}
+async function saveCfg() {
+  if (!thForm.value) return;
+  thSaving.value = true;
+  try {
+    thForm.value = await setSpiderThresholds(thForm.value);
+    showCfg.value = false;
+  } catch (e) {
+    console.error("setSpiderThresholds", e);
+  } finally {
+    thSaving.value = false;
+  }
+}
 
 type Scope = "all" | "watch" | "board" | "single";
 const scope = ref<Scope>("all");
@@ -103,13 +131,41 @@ function hhmmss(t: number) {
     <div class="foot">
       <button class="fbtn" @click="togglePause">{{ paused ? "继续" : "暂停" }}</button>
       <button class="fbtn" @click="clearAll">清空</button>
+      <button class="fbtn gear" title="异动阈值设置" @click="openCfg">阈值</button>
       <span class="cnt">{{ shown.length }}条</span>
+    </div>
+
+    <!-- 阈值设置浮层 -->
+    <div v-if="showCfg && thForm" class="cfg-mask" @click.self="showCfg = false">
+      <div class="cfg-panel">
+        <div class="cfg-title">异动监控阈值</div>
+        <label class="cfg-row">
+          <span class="cfg-k">急涨 / 急跌</span>
+          <input v-model.number="thForm.surgePct" type="number" step="0.05" min="0.05" class="cfg-inp" />
+          <span class="cfg-u">%</span>
+        </label>
+        <label class="cfg-row">
+          <span class="cfg-k">大单成交额</span>
+          <input v-model.number="thForm.bigAmountWan" type="number" step="50" min="50" class="cfg-inp" />
+          <span class="cfg-u">万元</span>
+        </label>
+        <label class="cfg-row">
+          <span class="cfg-k">放量量比</span>
+          <input v-model.number="thForm.volumeRatio" type="number" step="0.1" min="0.5" class="cfg-inp" />
+          <span class="cfg-u">倍</span>
+        </label>
+        <div class="cfg-tip">相邻 5 秒快照比较；保存后下一快照生效</div>
+        <div class="cfg-btns">
+          <button class="fbtn" @click="showCfg = false">取消</button>
+          <button class="fbtn ok" :disabled="thSaving" @click="saveCfg">{{ thSaving ? "保存中" : "保存" }}</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.spider { display: flex; flex-direction: column; height: 100%; font-size: 12px; }
+.spider { display: flex; flex-direction: column; height: 100%; font-size: 12px; position: relative; }
 
 .tabs { display: flex; align-items: center; gap: 2px; padding: 6px 8px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
 .tab { background: transparent; border: none; color: var(--text-dim); font-size: 11px; cursor: pointer; padding: 4px 10px; border-radius: 6px; }
@@ -147,4 +203,30 @@ function hhmmss(t: number) {
 .ev-leave-active { transition: all .2s ease; }
 .ev-leave-to { opacity: 0; }
 .ev-move { transition: transform .3s ease; }
+
+/* 阈值浮层 */
+.cfg-mask {
+  position: absolute; inset: 0; z-index: 30;
+  background: rgba(5,8,15,.62); backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+}
+.cfg-panel {
+  width: min(280px, 88%); background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 14px 12px; box-shadow: 0 12px 40px rgba(0,0,0,.5);
+}
+.cfg-title { font-size: 13px; font-weight: 700; margin-bottom: 10px; }
+.cfg-row { display: grid; grid-template-columns: 80px 1fr 30px; gap: 8px; align-items: center; margin-bottom: 9px; }
+.cfg-k { font-size: 11px; color: var(--text-dim); }
+.cfg-inp {
+  width: 100%; background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 8px; color: var(--text); font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.cfg-inp:focus { outline: none; border-color: var(--accent); }
+.cfg-u { font-size: 10px; color: var(--text-dim); }
+.cfg-tip { font-size: 10px; color: var(--text-dim); margin: 2px 0 10px; }
+.cfg-btns { display: flex; justify-content: flex-end; gap: 8px; }
+.fbtn.ok { color: var(--accent); border-color: var(--accent); }
+.fbtn.ok:disabled { opacity: .5; cursor: default; }
 </style>

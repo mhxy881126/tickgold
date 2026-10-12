@@ -171,6 +171,13 @@
 }
 .bm-px { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .bm-chg { font-size: 11px; font-variant-numeric: tabular-nums; }
+.book-depth { padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,.06); }
+.book-depth .bd { display: flex; justify-content: space-between; padding: 1px 0; font-size: 11px; }
+.book-depth label { color: #7b8294; }
+.book-depth span { font-variant-numeric: tabular-nums; color: #c7ccd8; }
+.book-depth .up { color: #FF3232 !important; }
+.book-depth .down { color: #1DBE7D !important; }
+.book-note { padding: 4px 10px; font-size: 10px; color: #5c6478; text-align: center; }
 .book-foot { margin-top: auto; padding: 8px 10px; border-top: 1px solid rgba(255,255,255,.06); }
 .book-foot div { display: flex; justify-content: space-between; padding: 2px 0; }
 .book-foot label { color: #7b8294; }

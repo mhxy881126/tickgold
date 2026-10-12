@@ -88,6 +88,10 @@ const RAW: Record<CardId, RawCap> = {
   intradayai: { group: "env", rowKind: "none", producesSignal: false, dwellMs: 5000, onTour: true },
   newsdigest: { group: "mainline", rowKind: "info", producesSignal: false, dwellMs: 5000, onTour: true },
   mainline: { group: "review", rowKind: "none", producesSignal: false, dwellMs: 5000, onTour: true },
+  // ─── v2.28 一本账 ───
+  risk: { group: "trade", rowKind: "none", producesSignal: false, dwellMs: 3000, onTour: false },
+  // ─── v2.29 历史回放 · 板块轮动 ───
+  rotation: { group: "mainline", rowKind: "sector", producesSignal: false, dwellMs: 5000, onTour: true },
 };
 
 function build(id: CardId): CardCapability {

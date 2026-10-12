@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import * as echarts from "echarts";
-import { fetchSectors, fetchSectorStocks } from "../api/market";
+import { fetchSectors, fetchSectorStocks, fetchMarketFundPanorama, fetchFundRank } from "../api/market";
 import { useMarketFeeds } from "../composables/useMarketFeeds";
-import type { Sector } from "../api/types";
+import type { Sector, MarketFundPanorama, FundRankRow } from "../api/types";
 
 const emit = defineEmits<{ (e: "select", code: string): void }>();
 
@@ -133,6 +133,78 @@ function renderTree() {
   });
 }
 
+// ===== 主力资金全景 tab =====
+const view = ref<"heat" | "fund">("heat");
+const panorama = ref<MarketFundPanorama | null>(null);
+const fundInd = ref<FundRankRow[]>([]);
+const fundCon = ref<FundRankRow[]>([]);
+const fundLoading = ref(false);
+const fundTab = ref<"industry" | "concept">("industry");
+const fundChartEl = ref<HTMLElement | null>(null);
+let fundChart: echarts.ECharts | null = null;
+
+function renderFundChart() {
+  if (!fundChart || !panorama.value) return;
+  const p = panorama.value;
+  fundChart.setOption({
+    animation: false,
+    tooltip: { trigger: "axis", axisPointer: { type: "cross" },
+      backgroundColor: "rgba(15,20,29,0.95)", borderColor: "#2a3344",
+      textStyle: { color: "#d8dee9", fontSize: 11 },
+      valueFormatter: (v: any) => (Number(v) / 1e8).toFixed(2) + "亿" },
+    legend: { data: ["分时主力净流入", "近10日主力趋势"],
+      textStyle: { color: "#8a93a5", fontSize: 10 }, top: 4 },
+    grid: [{ left: 52, right: 16, top: 34, height: "52%" },
+      { left: 52, right: 16, top: "76%", height: "16%" }],
+    xAxis: [
+      { type: "category", data: p.minuteTimes,
+        axisLabel: { color: "#8a93a5", fontSize: 10, interval: Math.floor(p.minuteTimes.length / 6) } },
+      { type: "category", gridIndex: 1, data: [...p.trend].reverse().map((d) => d.date.slice(5)),
+        axisLabel: { color: "#8a93a5", fontSize: 10 }, axisLine: { lineStyle: { color: "#2a3344" } } },
+    ],
+    yAxis: [
+      { scale: true, axisLabel: { color: "#8a93a5", fontSize: 10, formatter: (v: number) => (v / 1e8).toFixed(0) + "亿" },
+        splitLine: { lineStyle: { color: "rgba(255,255,255,.05)" } } },
+      { gridIndex: 1, scale: true, axisLabel: { color: "#8a93a5", fontSize: 10, formatter: (v: number) => (v / 1e8).toFixed(0) + "亿" },
+        splitLine: { show: false } },
+    ],
+    series: [
+      { name: "分时主力净流入", type: "line", data: p.minuteMain, showSymbol: false,
+        lineStyle: { width: 1.6, color: "#e8c66a" },
+        areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: "rgba(232,198,106,.28)" }, { offset: 1, color: "rgba(232,198,106,0)" }]) } },
+      { name: "近10日主力趋势", type: "bar", xAxisIndex: 1, yAxisIndex: 1,
+        data: [...p.trend].reverse().map((d) => d.mainNet),
+        itemStyle: { color: (x: any) => (x.data >= 0 ? "#f25266" : "#22b573") } },
+    ],
+  });
+}
+
+async function loadFund() {
+  fundLoading.value = true;
+  try {
+    const [p, fi, fc] = await Promise.all([
+      fetchMarketFundPanorama(10),
+      fetchFundRank("industry"),
+      fetchFundRank("concept"),
+    ]);
+    panorama.value = p; fundInd.value = fi; fundCon.value = fc;
+    await nextTick();
+    if (!fundChart && fundChartEl.value) {
+      fundChart = echarts.init(fundChartEl.value);
+    }
+    renderFundChart();
+  } catch (e) { console.error("fund panorama failed", e); }
+  finally { fundLoading.value = false; }
+}
+
+function switchView(v: "heat" | "fund") {
+  view.value = v;
+  if (v === "fund") {
+    nextTick(loadFund);
+  }
+}
+
 let timer = 0;
 async function load() {
   try {
@@ -158,6 +230,8 @@ onBeforeUnmount(() => {
   chart?.off("click", onChartClick);
   chart?.dispose();
   chart = null;
+  fundChart?.dispose();
+  fundChart = null;
 });
 </script>
 
@@ -176,7 +250,49 @@ onBeforeUnmount(() => {
       <div class="st st-waiting" v-if="!hasRadar"><b class="flat">--</b><span>等待行情</span></div>
     </div>
 
-    <div class="mh-body">
+    <!-- 视图切换 -->
+    <div class="mh-tabs">
+      <button :class="{ on: view === 'heat' }" @click="switchView('heat')">板块热力</button>
+      <button :class="{ on: view === 'fund' }" @click="switchView('fund')">主力资金全景</button>
+    </div>
+
+    <!-- ===== 主力资金全景 ===== -->
+    <div v-if="view === 'fund'" class="fund-body">
+      <div class="fund-hero">
+        <div class="fh-item">
+          <div class="fh-label">今日主力净流入（沪深两市）</div>
+          <div class="fh-num" :class="(panorama?.mainNetToday ?? 0) >= 0 ? 'up' : 'down'">
+            {{ panorama ? ((panorama.mainNetToday / 1e8 >= 0 ? "+" : "") + (panorama.mainNetToday / 1e8).toFixed(2) + " 亿") : "--" }}
+          </div>
+        </div>
+      </div>
+      <div class="fund-chart-card">
+        <div ref="fundChartEl" class="fund-chart"></div>
+        <div v-if="fundLoading || !panorama" class="fund-loading">
+          {{ fundLoading ? "加载主力资金…" : "暂无数据，点击重试" }}
+          <button v-if="!fundLoading && !panorama" class="retry-btn" @click="loadFund">重试</button>
+        </div>
+      </div>
+      <div class="fund-rank-card">
+        <div class="fr-tabs">
+          <button :class="{ on: fundTab === 'industry' }" @click="fundTab = 'industry'">行业资金排名</button>
+          <button :class="{ on: fundTab === 'concept' }" @click="fundTab = 'concept'">概念资金排名</button>
+        </div>
+        <div class="fr-list">
+          <div class="fr-head"><span>#</span><span>板块</span><span class="r">涨跌幅</span><span class="r">主力净流入</span></div>
+          <div class="fr-scroll">
+            <div v-for="(r, i) in (fundTab === 'industry' ? fundInd : fundCon)" :key="r.code" class="fr-row">
+              <span class="idx">{{ i + 1 }}</span>
+              <span class="nm">{{ r.name }}</span>
+              <span class="r pct" :class="r.pct >= 0 ? 'up' : 'down'">{{ (r.pct >= 0 ? "+" : "") + r.pct.toFixed(2) }}%</span>
+              <span class="r val" :class="r.mainNet >= 0 ? 'up' : 'down'">{{ (r.mainNet / 1e8 >= 0 ? "+" : "") + (r.mainNet / 1e8).toFixed(2) }}亿</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-else class="mh-body">
       <!-- 左侧：热力图 -->
       <div class="mh-tree">
         <div class="ch">板块热力矩阵<span>面积=资金活跃度 · 颜色=涨跌幅 · 点击板块查看成分股</span></div>
@@ -303,4 +419,50 @@ onBeforeUnmount(() => {
 .stock-pct { text-align:right;font-weight:600;font-variant-numeric:tabular-nums; }
 
 .up { color:#f25266; } .down { color:#22b573; } .flat { color:#f0a23a; }
+
+/* 视图切换 */
+.mh-tabs { flex-shrink:0;display:flex;gap:6px; }
+.mh-tabs button {
+  padding:5px 16px;border:1px solid var(--border,#1e2738);border-radius:8px;cursor:pointer;
+  background:var(--bg-card,#0f141d);color:var(--text-dim);font-size:11.5px;
+}
+.mh-tabs button.on { color:var(--text);border-color:var(--accent,#d4af37); }
+
+/* 主力全景 */
+.fund-body { flex:1;min-height:0;display:grid;grid-template-rows:auto 1fr 1.2fr;gap:9px; }
+.fund-hero {
+  display:flex;padding:12px 16px;border-radius:11px;
+  background:linear-gradient(135deg,rgba(232,198,106,.1),rgba(232,198,106,.02));
+  border:1px solid rgba(232,198,106,.25);
+}
+.fh-label { color:var(--text-dim);font-size:11px;margin-bottom:3px; }
+.fh-num { font-size:24px;font-weight:800;font-variant-numeric:tabular-nums; }
+.fund-chart-card,.fund-rank-card {
+  display:flex;flex-direction:column;min-height:0;position:relative;
+  background:var(--bg-card,#0f141d);border:1px solid var(--border,#1e2738);border-radius:11px;overflow:hidden;
+}
+.fund-chart { flex:1;min-height:0; }
+.fund-loading {
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:10px;
+  color:var(--text-dim);font-size:12px;background:var(--bg-card,#0f141d);
+}
+.retry-btn { padding:4px 14px;border:1px solid var(--border);border-radius:7px;background:transparent;color:var(--text);cursor:pointer; }
+.fr-tabs { display:flex;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border); }
+.fr-tabs button {
+  padding:4px 14px;border:1px solid var(--border);border-radius:7px;cursor:pointer;
+  background:transparent;color:var(--text-dim);font-size:11px;
+}
+.fr-tabs button.on { color:var(--text);border-color:var(--accent,#d4af37); }
+.fr-list { flex:1;min-height:0;display:flex;flex-direction:column;padding:0 10px; }
+.fr-head,.fr-row {
+  display:grid;grid-template-columns:36px 1fr 80px 100px;align-items:center;
+  font-size:11px;padding:0 6px;
+}
+.fr-head { height:26px;color:var(--text-dim);flex-shrink:0;border-bottom:1px solid var(--border); }
+.fr-scroll { flex:1;overflow-y:auto;scrollbar-width:thin; }
+.fr-scroll::-webkit-scrollbar{width:5px;} .fr-scroll::-webkit-scrollbar-thumb{background:#2a3344;border-radius:3px;}
+.fr-row { height:27px; }
+.fr-row .idx { color:var(--text-dim); }
+.fr-row .nm { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.fr-row .r { text-align:right;font-variant-numeric:tabular-nums;font-weight:600; }
 </style>

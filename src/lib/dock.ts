@@ -58,6 +58,7 @@ export const DOCK_GROUPS: DockGroup[] = [
       { id: "sectorheat", label: "板块热力图", icon: "M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z", desc: "板块 treemap 缩放平移" },
       { id: "sectorevent", label: "板块异动", icon: "M3 12h4l3-8 4 16 3-8h4", desc: "板块拉升/跳水捕捉" },
       { id: "themelib", label: "题材库", icon: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20", desc: "题材生命周期/成分角色/催化剂时间线", star: true },
+      { id: "rotation", label: "题材轮动矩阵", icon: "M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z", desc: "概念板块萌芽→发酵→高潮→退潮轮动热力与主线切换", star: true },
     ],
   },
   {
@@ -75,6 +76,7 @@ export const DOCK_GROUPS: DockGroup[] = [
     items: [
       { id: "ai", label: "AI 问数", icon: "M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2zM9 21h6M10 17v4M14 17v4", desc: "自然语言查询行情/题材/资金/持仓", star: true },
       { id: "spiderbot", label: "爬虫机器人", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z", desc: "AI 自动盯盘/选股/下单机器人", star: true },
+      { id: "risk", label: "风险仪表盘", icon: "M12 2 1 21h22L12 2zm0 6 7.5 11.5h-15L12 8zm-1 4v4h2v-4h-2zm0 5v2h2v-2h-2z", desc: "总权益/仓位集中度/当日盈亏/回撤一本账", star: true },
       { id: "performance", label: "绩效分析", icon: "M3 3v18h18M7 14l4-4 4 4 5-5", desc: "胜率/盈亏比/最大回撤/每月收益", star: true },
       { id: "review", label: "AI 复盘", icon: "M6 2h9l5 5v15H6zm8 1.5V8h4.5z", desc: "盘后市场/题材/个股三层复盘", star: true },
       { id: "battleplan", label: "作战计划", icon: "M6 3v18M6 4h12l-2.5 4L18 12H6", desc: "次日触发/候选/观察指令，一键转预警", star: true },

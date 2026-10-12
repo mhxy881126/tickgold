@@ -7,7 +7,7 @@ export interface BentoPos { col: number; colEnd: number; row: number; rowEnd: nu
 export interface FreeRect { x: number; y: number; w: number; h: number }
 
 // 宽卡片（主干区域）与窄卡片（右侧）的默认排列顺序，也决定卡片的默认分区
-const WIDE_ORDER: CardId[] = ["auction", "limitpool", "radar", "reviewtimeline", "multigrid", "heatmatrix", "chart", "sectorheat", "sector", "screener", "f10", "trade", "journal", "calendar", "ipo", "calc", "export", "dragon", "themelib", "ai", "review", "battleplan", "strategy", "decisionlog", "evolution", "signalbridge", "co", "sieve", "spiderbot", "performance", "intradayai", "mainline"];
+const WIDE_ORDER: CardId[] = ["auction", "limitpool", "radar", "reviewtimeline", "multigrid", "heatmatrix", "chart", "sectorheat", "sector", "screener", "f10", "trade", "journal", "calendar", "ipo", "calc", "export", "dragon", "themelib", "ai", "review", "battleplan", "strategy", "decisionlog", "evolution", "signalbridge", "co", "sieve", "spiderbot", "performance", "intradayai", "mainline", "risk", "rotation"];
 const NARROW_ORDER: CardId[] = ["alert", "spider", "sectorevent", "trades", "news", "watch", "rank", "newsdigest"];
 export const ALL_IDS: CardId[] = [...WIDE_ORDER, ...NARROW_ORDER];
 
@@ -21,6 +21,7 @@ const DEFAULT_SIZE: Partial<Record<CardId, { w: number; h: number }>> = {
   multigrid: { w: 6, h: 3 }, dragon: { w: 6, h: 3 }, reviewtimeline: { w: 6, h: 3 },
   themelib: { w: 6, h: 3 },
   ai: { w: 8, h: 4 },
+  rotation: { w: 8, h: 4 },
   review: { w: 6, h: 3 },
   battleplan: { w: 8, h: 3 },
   strategy: { w: 6, h: 3 },
@@ -138,6 +139,7 @@ const FREE_SIZE: Partial<Record<CardId, { w: number; h: number }>> = {
   review: { w: 8, h: 5 },
   battleplan: { w: 10, h: 5 },
   strategy: { w: 8, h: 5 },
+  rotation: { w: 10, h: 5 },
 };
 export function freeSizeOf(id: CardId): { w: number; h: number } {
   return FREE_SIZE[id] ?? { w: 4, h: 3 };

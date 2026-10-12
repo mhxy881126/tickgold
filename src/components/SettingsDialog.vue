@@ -60,7 +60,13 @@ import type { AutoExecConfigInfo } from "../ai/api";
 import { ISLAND_SKINS, getIslandSkin, setIslandSkin, applyIslandSkin, ISLAND_SKIN_EVENT, type IslandSkinId } from "../lib/islandSkins";
 import { usePaperStore } from "../stores/paper";
 import { useWatchlistStore } from "../stores/watchlist";
-import { fetchRankBoard } from "../api/market";
+import { fetchRankBoard, snapshotSectorDay, sectorDayStats } from "../api/market";
+import {
+  createBackup, listBackups, writeBackupConfig, restoreBackup, deleteBackup,
+  takePendingBackupConfig,
+  type BackupSetInfo,
+} from "../api/backup";
+import { exit as exitApp } from "@tauri-apps/plugin-process";
 import { confirmDialog } from "../composables/useDialog";
 
 const props = defineProps<{ open: boolean; initialTab?: Tab }>();
@@ -518,6 +524,234 @@ function pickTab(id: Tab) {
   if (id === "plugins") void loadPluginsTab();
 }
 
+// ===== 数据治理（v2.29）=====
+interface StorageStatsInfo {
+  totalBytes: number;
+  files: { name: string; size: number; kind: string }[];
+  tableRows: [string, number][];
+}
+const storageStats = ref<StorageStatsInfo | null>(null);
+const govBusy = ref(false);
+const govMsg = ref("");
+
+async function loadStorageStats() {
+  govBusy.value = true;
+  govMsg.value = "";
+  try {
+    storageStats.value = await invoke<StorageStatsInfo>("storage_stats");
+  } catch (e) {
+    govMsg.value = `统计失败：${e}`;
+  } finally {
+    govBusy.value = false;
+  }
+}
+
+async function onCleanupOrphans() {
+  govMsg.value = "";
+  govBusy.value = true;
+  try {
+    const [n, bytes] = await invoke<[number, number]>("storage_cleanup_orphans");
+    govMsg.value = n ? `清理 ${n} 个孤儿文件，释放 ${fmtBytes(bytes)}` : "没有可清理的孤儿文件";
+    await loadStorageStats();
+  } catch (e) {
+    govMsg.value = `清理失败：${e}`;
+  } finally {
+    govBusy.value = false;
+  }
+}
+
+async function onVacuum() {
+  const ok = await confirmDialog({
+    title: "压缩主库",
+    message: "将对主数据库执行 VACUUM 回收空闲页，期间界面可能短暂卡顿。继续？",
+  });
+  if (!ok) return;
+  govBusy.value = true;
+  govMsg.value = "";
+  try {
+    const size = await invoke<number>("storage_vacuum");
+    govMsg.value = `压缩完成，主库当前 ${fmtBytes(size)}`;
+    await loadStorageStats();
+  } catch (e) {
+    govMsg.value = `压缩失败：${e}`;
+  } finally {
+    govBusy.value = false;
+  }
+}
+
+// ===== 过期数据策略（v2.29）=====
+interface PurgeTargetInfo { key: string; label: string; cutoff: string; rows: number }
+interface PurgePlanInfo {
+  intradayCutoff: string;
+  aiCutoffMs: number;
+  targets: PurgeTargetInfo[];
+  totalRows: number;
+}
+const keepIntradayDays = ref(60);
+const keepAiDays = ref(180);
+const purgePlan = ref<PurgePlanInfo | null>(null);
+
+async function onPurgePreview() {
+  govMsg.value = "";
+  govBusy.value = true;
+  try {
+    purgePlan.value = await invoke<PurgePlanInfo>("storage_purge_preview", {
+      keepIntradayDays: Number(keepIntradayDays.value) || 0,
+      keepAiDays: Number(keepAiDays.value) || 0,
+    });
+  } catch (e) {
+    govMsg.value = `预览失败：${e}`;
+  } finally {
+    govBusy.value = false;
+  }
+}
+
+async function onPurgeRun() {
+  if (!purgePlan.value || purgePlan.value.totalRows <= 0) {
+    govMsg.value = "没有可清理的过期数据";
+    return;
+  }
+  const ok = await confirmDialog({
+    title: "清理过期数据",
+    message: `将删除 ${purgePlan.value.totalRows} 行过期数据（分时 / 知识库 / 历史对话）。删除前建议先在备份中心创建备份。继续？`,
+  });
+  if (!ok) return;
+  govBusy.value = true;
+  govMsg.value = "";
+  try {
+    const plan = await invoke<PurgePlanInfo>("storage_purge_run", {
+      keepIntradayDays: Number(keepIntradayDays.value) || 0,
+      keepAiDays: Number(keepAiDays.value) || 0,
+    });
+    govMsg.value = `清理完成，共删除 ${plan.totalRows} 行过期数据`;
+    purgePlan.value = plan;
+    await loadStorageStats();
+  } catch (e) {
+    govMsg.value = `清理失败：${e}`;
+  } finally {
+    govBusy.value = false;
+  }
+}
+
+// ===== 备份 / 恢复中心（v2.29）=====
+const backupSets = ref<BackupSetInfo[]>([]);
+const backupBusy = ref(false);
+const backupMsg = ref("");
+
+function fmtBackupTime(ms: number): string {
+  if (!ms) return "未知时间";
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** 导出 localStorage 配置快照（自选 / 布局 / 皮肤 / 设置等均存于其中） */
+function exportLocalConfig(): string {
+  const dump: Record<string, string> = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k) dump[k] = localStorage.getItem(k) ?? "";
+  }
+  return JSON.stringify({ v: 1, exportedAt: Date.now(), data: dump });
+}
+
+/** 重启后若有暂存配置快照则取回并还原（先不覆盖已存在键？恢复语义=整体覆盖） */
+async function applyPendingConfigRestore() {
+  try {
+    const json = await takePendingBackupConfig();
+    if (!json) return;
+    const parsed = JSON.parse(json) as { data?: Record<string, string> };
+    if (!parsed.data) return;
+    localStorage.clear();
+    for (const [k, v] of Object.entries(parsed.data)) localStorage.setItem(k, v);
+    backupMsg.value = "配置已从备份恢复";
+  } catch { /* ignore */ }
+}
+
+async function loadBackupSets() {
+  try {
+    backupSets.value = await listBackups();
+  } catch (e) {
+    backupMsg.value = `备份列表读取失败：${e}`;
+  }
+}
+
+async function onCreateBackup() {
+  backupMsg.value = "";
+  backupBusy.value = true;
+  try {
+    const set = await createBackup();
+    await writeBackupConfig(set.id, exportLocalConfig());
+    backupMsg.value = "备份完成";
+    await loadBackupSets();
+  } catch (e) {
+    backupMsg.value = `备份失败：${e}`;
+  } finally {
+    backupBusy.value = false;
+  }
+}
+
+async function onRestoreBackup(b: BackupSetInfo) {
+  const ok = await confirmDialog({
+    title: "恢复备份",
+    danger: true,
+    confirmText: "恢复并重启",
+    message: `将恢复到 ${fmtBackupTime(b.createdMs)} 的备份，应用会自动退出并重启，当前未备份的改动会丢失。确认恢复？`,
+  });
+  if (!ok) return;
+  backupBusy.value = true;
+  backupMsg.value = "";
+  try {
+    await restoreBackup(b.id);
+    await exitApp(0);
+  } catch (e) {
+    backupBusy.value = false;
+    backupMsg.value = `恢复失败：${e}`;
+  }
+}
+
+async function onDeleteBackup(b: BackupSetInfo) {
+  const ok = await confirmDialog({ title: "删除备份", danger: true, message: `删除 ${fmtBackupTime(b.createdMs)} 的备份？` });
+  if (!ok) return;
+  try {
+    await deleteBackup(b.id);
+    await loadBackupSets();
+  } catch (e) {
+    backupMsg.value = `删除失败：${e}`;
+  }
+}
+
+// ===== 板块日级快照（v2.29）=====
+const sectorDayCount = ref(0);
+const sectorDayInput = ref("");
+const sectorDayBusy = ref(false);
+const sectorDayMsg = ref("");
+
+async function refreshSectorDayStats() {
+  try {
+    sectorDayCount.value = await sectorDayStats();
+  } catch { /* ignore */ }
+}
+
+async function onSectorDaySnapshot() {
+  const day = sectorDayInput.value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    sectorDayMsg.value = "日期格式应为 YYYY-MM-DD";
+    return;
+  }
+  sectorDayMsg.value = "";
+  sectorDayBusy.value = true;
+  try {
+    const n = await snapshotSectorDay(day);
+    sectorDayMsg.value = `${day} 补采完成，写入 ${n} 个板块`;
+    await refreshSectorDayStats();
+  } catch (e) {
+    sectorDayMsg.value = `补采失败：${e}`;
+  } finally {
+    sectorDayBusy.value = false;
+  }
+}
+
 // ===== 多年历史 K 线库（v2.27）=====
 type HistAdj = "qfq" | "hfq" | "none";
 interface HistProgressInfo {
@@ -558,7 +792,11 @@ function fmtBytes(n: number): string {
 
 async function loadHistTab() {
   histLoaded.value = true;
+  await applyPendingConfigRestore();
+  await loadStorageStats();
+  await loadBackupSets();
   await refreshHistStats();
+  await refreshSectorDayStats();
   try {
     histProgress.value = await invoke<HistProgressInfo>("hist_backfill_status");
     if (histProgress.value.running) startHistPoll();
@@ -1164,7 +1402,108 @@ async function toggleDev() {
               </div>
 
               <div class="dc-note">分时明细保留最近 60 天；收盘日级长期保留，用于情绪周期与题材轮动分析。</div>
+              <div v-if="tsStatus.makeupPending > tsStatus.makeupDone" class="dc-note">
+                正在补采缺失交易日板块快照：{{ tsStatus.makeupDone }} / {{ tsStatus.makeupPending }}
+              </div>
               <div v-if="tsStatus.lastError" class="dc-err">采集异常：{{ tsStatus.lastError }}</div>
+
+              <!-- 数据治理（v2.29）-->
+              <div class="section-title" style="margin-top:24px">数据治理</div>
+              <div class="section-sub">查看占用、清理恢复留证等孤儿文件、压缩主库空闲空间</div>
+              <div v-if="storageStats" class="dc-rows">
+                <div class="dc-row">
+                  <span class="dr-k">数据目录总占用</span>
+                  <span class="dr-v">{{ fmtBytes(storageStats.totalBytes) }}</span>
+                </div>
+                <div
+                  v-for="f in storageStats.files"
+                  :key="f.name"
+                  class="dc-row"
+                >
+                  <span class="dr-k">{{ f.name }}</span>
+                  <span class="dr-v">{{ fmtBytes(f.size) }}</span>
+                </div>
+              </div>
+              <div v-if="storageStats && storageStats.tableRows.length" class="dc-note">
+                <span v-for="(trow) in storageStats.tableRows" :key="trow[0]" class="gov-trow">
+                  {{ trow[0].replace("ts_", "") }} {{ trow[1] }}
+                </span>
+              </div>
+
+              <!-- 过期策略 -->
+              <div class="section-sub" style="margin-top:12px">过期策略：分时明细与知识库 / 历史对话可按保留天数清理（日级快照长期保留）；填 0 表示该项不清理</div>
+              <div class="hist-form">
+                <div class="hist-field">
+                  <label>分时明细保留天数</label>
+                  <input v-model.number="keepIntradayDays" type="number" min="0" step="1" spellcheck="false" />
+                </div>
+                <div class="hist-field">
+                  <label>知识库 / 对话保留天数</label>
+                  <input v-model.number="keepAiDays" type="number" min="0" step="1" spellcheck="false" />
+                </div>
+              </div>
+              <div v-if="purgePlan && purgePlan.targets.length" class="dc-rows" style="margin-top:6px">
+                <div v-for="t in purgePlan.targets" :key="t.key" class="dc-row">
+                  <span class="dr-k">{{ t.label }}</span>
+                  <span class="dr-v">将清理 {{ t.rows }} 行</span>
+                </div>
+                <div v-if="purgePlan.totalRows === 0" class="dc-note">当前保留期内没有可清理数据</div>
+              </div>
+              <div class="ai-actions">
+                <button type="button" class="logs-btn" :disabled="govBusy" @click="onPurgePreview">预览过期数据</button>
+                <button type="button" class="logs-btn" :disabled="govBusy || !purgePlan || purgePlan.totalRows === 0" @click="onPurgeRun">执行清理</button>
+              </div>
+
+              <div class="ai-actions">
+                <button type="button" class="logs-btn" :disabled="govBusy" @click="loadStorageStats">
+                  {{ govBusy ? "统计中…" : "重新统计" }}
+                </button>
+                <button type="button" class="logs-btn" :disabled="govBusy" @click="onCleanupOrphans">清理孤儿文件</button>
+                <button type="button" class="logs-btn" :disabled="govBusy" @click="onVacuum">压缩主库</button>
+              </div>
+              <div v-if="govMsg" class="ai-msg" :class="{ ok: /成功|完成|释放|清理/.test(govMsg) }">{{ govMsg }}</div>
+
+              <!-- 备份 / 恢复中心（v2.29）-->
+              <div class="section-title" style="margin-top:24px">备份 / 恢复中心</div>
+              <div class="section-sub">备份主库、知识库与本地配置（自选 / 布局 / 设置）；恢复时自动重启</div>
+              <div class="ai-actions">
+                <button type="button" class="logs-btn primary" :disabled="backupBusy" @click="onCreateBackup">
+                  {{ backupBusy ? "备份中…" : "立即备份" }}
+                </button>
+                <button type="button" class="logs-btn" @click="loadBackupSets">刷新列表</button>
+              </div>
+              <div v-if="backupMsg" class="ai-msg" :class="{ ok: /成功|完成/.test(backupMsg) }">{{ backupMsg }}</div>
+
+              <div v-for="b in backupSets" :key="b.id" class="backup-row">
+                <div class="backup-info">
+                  <div class="backup-id">{{ fmtBackupTime(b.createdMs) }}</div>
+                  <div class="backup-meta">
+                    {{ b.files.map((f) => f.name.replace(".db", "")).join(" · ") }}
+                    · {{ fmtBytes(b.totalBytes) }}
+                  </div>
+                </div>
+                <button type="button" class="logs-btn" :disabled="backupBusy" @click="onRestoreBackup(b)">恢复</button>
+                <button type="button" class="logs-btn" :disabled="backupBusy" @click="onDeleteBackup(b)">删除</button>
+              </div>
+
+              <!-- 板块日级快照（v2.29）-->
+              <div class="section-title" style="margin-top:24px">板块日级快照</div>
+              <div class="section-sub">收盘自动归档行业 / 概念板块涨跌幅、成交额、主力净流入、涨跌家数，供题材轮动矩阵使用</div>
+              <div class="dc-rows">
+                <div class="dc-row"><span class="dr-k">已归档交易日</span><span class="dr-v">{{ sectorDayCount }} 天</span></div>
+              </div>
+              <div class="hist-form">
+                <div class="hist-field">
+                  <label>补采指定交易日（YYYY-MM-DD）</label>
+                  <input v-model="sectorDayInput" type="text" spellcheck="false" placeholder="如 2026-10-10" />
+                </div>
+              </div>
+              <div class="ai-actions">
+                <button type="button" class="logs-btn primary" :disabled="sectorDayBusy || !sectorDayInput.trim()" @click="onSectorDaySnapshot">
+                  {{ sectorDayBusy ? "采集中…" : "补采该日" }}
+                </button>
+              </div>
+              <div v-if="sectorDayMsg" class="ai-msg" :class="{ ok: /成功|完成/.test(sectorDayMsg) }">{{ sectorDayMsg }}</div>
 
               <!-- 多年历史 K 线库（v2.27）-->
               <div class="section-title" style="margin-top:24px">多年历史 K 线库</div>
@@ -1787,6 +2126,15 @@ async function toggleDev() {
 .dc-daily.ok { color: #26d07c; border-color: rgba(38, 208, 124, 0.5); background: rgba(38, 208, 124, 0.1); }
 .dc-rows { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 11px; overflow: hidden; }
 .dc-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; font-size: 12px; background: var(--bg-card); }
+.backup-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; margin-top: 8px; font-size: 12px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 9px;
+}
+.backup-info { flex: 1; min-width: 0; }
+.backup-id { font-weight: 600; }
+.backup-meta { margin-top: 2px; color: var(--text-dim); font-size: 11px; }
+.gov-trow { display: inline-block; margin: 2px 8px 2px 0; color: var(--text-dim); font-size: 11px; }
 .dc-row + .dc-row { border-top: 1px solid var(--border); }
 .dr-k { color: var(--text-dim); }
 .dr-v { color: var(--text); }

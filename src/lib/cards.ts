@@ -41,7 +41,9 @@ export type CardId =
   | "performance"
   | "intradayai"
   | "newsdigest"
-  | "mainline";
+  | "mainline"
+  | "risk"
+  | "rotation";
 
 export type Zone = "main" | "side";
 
@@ -93,6 +95,8 @@ export const CARD_META: Record<CardId, CardMeta> = {
   intradayai: { title: "盘中解读", accent: "#e8c66a", kind: "chart" },
   newsdigest: { title: "资讯聚合", accent: "#b07cff", kind: "chart" },
   mainline: { title: "明日主线", accent: "#ff6b78", kind: "chart" },
+  risk: { title: "风险仪表盘", accent: "#ff5f57", kind: "chart" },
+  rotation: { title: "题材轮动矩阵", accent: "#e89c3d", kind: "chart" },
 };
 
 // ===== 卡片个性化（V1 单卡设置 / V3 场景模板）=====

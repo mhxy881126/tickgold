@@ -464,7 +464,7 @@ function quoteFromRank(r: RankRow): Quote {
     open: r.price, high: r.price, low: r.price, prevClose: prev,
     volume: 0, amount: r.amount, time: Date.now(), source: "rank",
     turnover: r.turnover, pe: 0, pb: 0, amplitude: 0, volumeRatio: r.volumeRatio,
-    circMv: 0, totalMv: 0,
+    circMv: 0, totalMv: 0, insideVol: 0, outsideVol: 0,
   };
 }
 

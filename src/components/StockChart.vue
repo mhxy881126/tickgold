@@ -163,10 +163,27 @@
             <span class="lvl-bar" :style="{ width: barW(ob?.bids[i]?.vol ?? 0) + '%' }"></span>
           </div>
         </div>
+        <div class="book-depth">
+          <div class="bd">
+            <label>委比</label>
+            <span :class="(ob?.weiBi ?? 0) >= 0 ? 'up' : 'down'">
+              {{ (ob?.weiBi ?? 0) >= 0 ? "+" : "" }}{{ (ob?.weiBi ?? 0).toFixed(2) }}%
+            </span>
+          </div>
+          <div class="bd">
+            <label>委差</label>
+            <span :class="(ob?.weiCha ?? 0) >= 0 ? 'up' : 'down'">
+              {{ (ob?.weiCha ?? 0) >= 0 ? "+" : "" }}{{ Math.round(ob?.weiCha ?? 0) }}
+            </span>
+          </div>
+          <div class="bd"><label>外盘</label><span class="up">{{ Math.round(ob?.outsideVol ?? 0) }}</span></div>
+          <div class="bd"><label>内盘</label><span class="down">{{ Math.round(ob?.insideVol ?? 0) }}</span></div>
+        </div>
         <div class="book-foot">
           <div><label>成交量</label><span>{{ fmtVol(volume) }}</span></div>
           <div><label>成交额</label><span>{{ fmtAmt(amount) }}</span></div>
         </div>
+        <div class="book-note">免费五档，非 Level-2</div>
       </div>
     </div>
 

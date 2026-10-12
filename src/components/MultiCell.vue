@@ -5,15 +5,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { fetchMinute, fetchKLine } from "../api/market";
 import { useQuotesStore } from "../stores/quotes";
 import { useWatchlistStore } from "../stores/watchlist";
-import type { KBar } from "../api/types";
+import type { KBar, OrderBook } from "../api/types";
 import AnimatedNumber from "./common/AnimatedNumber.vue";
-
-interface OrderLevel { price: number; vol: number }
-interface OrderBook {
-  name: string; code: string; price: number; prevClose: number;
-  open: number; high: number; low: number; volume: number; amount: number;
-  asks: OrderLevel[]; bids: OrderLevel[];
-}
 
 const props = defineProps<{
   code: string;
@@ -269,6 +262,11 @@ onBeforeUnmount(() => {
               <span class="lb">买{{ i+1 }}</span>
               <span class="pr">{{ b.price.toFixed(2) }}</span><span class="vl">{{ b.vol }}</span>
             </div>
+            <div class="ob2-foot">
+              委比 <b :class="ob.weiBi >= 0 ? 'up' : 'down'">{{ ob.weiBi >= 0 ? "+" : "" }}{{ ob.weiBi.toFixed(1) }}%</b>
+              · 外 <b class="up">{{ Math.round(ob.outsideVol) }}</b>
+              / 内 <b class="down">{{ Math.round(ob.insideVol) }}</b>
+            </div>
           </template>
           <div v-else class="loading">加载盘口…</div>
         </div>
@@ -297,10 +295,33 @@ onBeforeUnmount(() => {
                 <span>买{{ i+1 }}</span><b>{{ b.price.toFixed(2) }}</b><em>{{ b.vol }}</em>
               </div>
             </div>
+            <div class="bo-depth">
+              <div class="bd-item">
+                <span class="bd-l">委比</span>
+                <b :class="ob.weiBi >= 0 ? 'up' : 'down'">{{ ob.weiBi >= 0 ? "+" : "" }}{{ ob.weiBi.toFixed(2) }}%</b>
+              </div>
+              <div class="bd-item">
+                <span class="bd-l">委差</span>
+                <b :class="ob.weiCha >= 0 ? 'up' : 'down'">{{ ob.weiCha >= 0 ? "+" : "" }}{{ Math.round(ob.weiCha) }}</b>
+              </div>
+              <div class="bd-item">
+                <span class="bd-l">五档买</span><b class="up">{{ Math.round(ob.bidTotal) }}</b>
+              </div>
+              <div class="bd-item">
+                <span class="bd-l">五档卖</span><b class="down">{{ Math.round(ob.askTotal) }}</b>
+              </div>
+              <div class="bd-item">
+                <span class="bd-l">外盘</span><b class="up">{{ Math.round(ob.outsideVol) }}</b>
+              </div>
+              <div class="bd-item">
+                <span class="bd-l">内盘</span><b class="down">{{ Math.round(ob.insideVol) }}</b>
+              </div>
+            </div>
             <div class="bo-info">
               开 {{ ob.open.toFixed(2) }} · 高 {{ ob.high.toFixed(2) }} · 低 {{ ob.low.toFixed(2) }}
               · 量 {{ ob.volume }} · 额 {{ (ob.amount/1e8).toFixed(2) }}亿
             </div>
+            <div class="bo-note">免费五档盘口，非 Level-2；内外盘为累计主动成交（手）</div>
           </template>
           <div v-else class="loading">加载盘口…</div>
         </div>
@@ -326,6 +347,8 @@ onBeforeUnmount(() => {
 .ob2 .pr { font-variant-numeric:tabular-nums;font-weight:600; }
 .ob2 .vl { margin-left:auto;font-variant-numeric:tabular-nums;font-size:8.5px; }
 .ob2.s .pr { color:#ff6b78; } .ob2.b .pr { color:#2fe6ac; }
+.ob2-foot { margin-top:2px;font-size:8px;color:var(--text-dim);text-align:center;white-space:nowrap; }
+.ob2-foot b { font-weight:700; } .ob2-foot .up { color:#ff6b78; } .ob2-foot .down { color:#2fe6ac; }
 .loading { color:var(--text-dim);font-size:10px;text-align:center; }
 
 /* 全屏 */
@@ -344,4 +367,13 @@ onBeforeUnmount(() => {
 .bo-row.s b { color:#ff6b78; } .bo-row.b b { color:#2fe6ac; }
 .bo-mid { text-align:center;height:28px;line-height:28px;font-size:12px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin:3px 0; }
 .bo-info { font-size:11px;color:var(--text-dim);text-align:center; }
+.bo-depth {
+  display:grid; grid-template-columns:repeat(3,1fr); gap:6px 14px;
+  padding:10px 18px; border-radius:9px; background:rgba(255,255,255,.03);
+}
+.bd-item { display:flex; align-items:center; justify-content:space-between; font-size:11px; }
+.bd-l { color:var(--text-dim); }
+.bd-item b { font-variant-numeric:tabular-nums; }
+.bd-item .up { color:#ff6b78; } .bd-item .down { color:#2fe6ac; }
+.bo-note { font-size:10px;color:var(--text-dim);text-align:center;opacity:.75; }
 </style>

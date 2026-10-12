@@ -135,10 +135,57 @@ export function brokerReleaseKill() {
   return invoke<void>("broker_release_kill");
 }
 
+export interface FillResult {
+  orderId: string;
+  amount: number;
+  fee: number;
+  cash: number;
+}
+
+export function portfolioBuy(code: string, name: string, price: number, vol: number) {
+  return invoke<FillResult>("portfolio_buy", { code, name, price, vol });
+}
+
+export function portfolioSell(code: string, price: number, vol: number) {
+  return invoke<FillResult>("portfolio_sell", { code, price, vol });
+}
+
 export function mockSeedPosition(code: string, vol: number, price: number) {
   return invoke<void>("mock_seed_position", { code, vol, price });
 }
 
 export function mockReset() {
   return invoke<void>("mock_reset");
+}
+
+// ===== 风险仪表盘（v2.28）=====
+
+export interface PositionRisk {
+  code: string;
+  name: string;
+  marketValue: number;
+  pct: number; // 占总资产 %
+  floatPnl: number;
+  floatPnlPct: number;
+}
+
+export interface RiskSnapshot {
+  equity: number;
+  cash: number;
+  marketValue: number;
+  positionPct: number;
+  maxSinglePct: number;
+  maxSingleCode: string;
+  totalPnl: number;
+  totalPnlPct: number;
+  floatPnl: number;
+  dayPnl: number;
+  dayPnlPct: number;
+  drawdownPct: number;
+  peakEquity: number;
+  positions: PositionRisk[];
+}
+
+export function riskSnapshot() {
+  return invoke<RiskSnapshot>("risk_snapshot");
 }

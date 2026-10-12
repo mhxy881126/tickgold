@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { fetchZtPool, fetchZbPool, type ZtPool, type ZtStock } from "../api/market";
+import MarketReplayPopup from "./MarketReplayPopup.vue";
+
+const replay = ref<InstanceType<typeof MarketReplayPopup> | null>(null);
+function openReplay() {
+  replay.value?.open(dateStr.value);
+}
 
 const emit = defineEmits<{ select: [code: string] }>();
 
@@ -74,7 +80,9 @@ onMounted(load);
       <button class="refresh" :disabled="loading" @click="load">
         {{ loading ? "拉取中…" : "刷新" }}
       </button>
+      <button class="refresh replay-btn" @click="openReplay">盘面回放</button>
     </div>
+    <MarketReplayPopup ref="replay" />
 
     <!-- 汇总 -->
     <div class="summary">
@@ -139,6 +147,7 @@ onMounted(load);
 .pool { display: flex; flex-direction: column; height: 100%; font-size: 12px; }
 
 .bar { display: flex; align-items: center; gap: 10px; }
+.replay-btn { color: #e89c3d; }
 .date {
   background: var(--bg-hover); border: 1px solid var(--border); color: var(--text);
   font-size: 11px; padding: 3px 8px; border-radius: 6px; color-scheme: dark;

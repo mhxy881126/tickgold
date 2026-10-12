@@ -1,6 +1,6 @@
 // 行情 API：通过 Tauri command 调 Rust 端（Rust 负责请求东财/新浪公开接口，避免浏览器 CORS 与限频）
 import { invoke } from "@tauri-apps/api/core";
-import type { Quote, RankRow, KBar, StockItem, Sector, ScreenFilter, ScreenResult, AlertRule, OrderBook } from "./types";
+import type { Quote, RankRow, KBar, StockItem, Sector, ScreenFilter, ScreenResult, AlertRule, OrderBook, StockFundFlow, MarketFundPanorama, FundRankRow } from "./types";
 
 /** 批量拉实时行情 */
 export async function fetchQuotes(codes: string[]): Promise<Quote[]> {
@@ -109,6 +109,23 @@ export async function fetchSectorStocks(category: string, kind: "industry" | "co
   return await invoke<any[]>("get_sector_stocks", { category, kind });
 }
 
+// ===== 资金流（v2.28，东方财富四档口径） =====
+
+/** 个股多日四档资金流（days 返回天数，最近交易日在前） */
+export async function fetchFundFlow(code: string, days = 30): Promise<StockFundFlow> {
+  return await invoke<StockFundFlow>("get_fund_flow", { code, days });
+}
+
+/** 大盘主力资金全景：两市分时 + 多日趋势 */
+export async function fetchMarketFundPanorama(days = 10): Promise<MarketFundPanorama> {
+  return await invoke<MarketFundPanorama>("get_market_fund_panorama", { days });
+}
+
+/** 行业 / 概念板块资金排名（按主力净流入降序） */
+export async function fetchFundRank(kind: "industry" | "concept"): Promise<FundRankRow[]> {
+  return await invoke<FundRankRow[]>("get_fund_rank", { kind });
+}
+
 // ===== 盘中快讯（新浪财经 7x24） =====
 export interface NewsItem {
   id: number;
@@ -152,6 +169,19 @@ export async function startSpider(watch: string[]): Promise<string> {
 /** 停止异动监控 */
 export async function stopSpider(): Promise<string> {
   return await invoke<string>("stop_spider");
+}
+
+/** 异动检测阈值（持久化，运行中保存下一快照生效） */
+export interface SpiderThresholds {
+  surgePct: number;      // 急涨/急跌：相邻快照涨跌幅变化 %
+  bigAmountWan: number;  // 大单：区间成交额增量（万元）
+  volumeRatio: number;   // 放量：量比上穿阈值
+}
+export async function getSpiderThresholds(): Promise<SpiderThresholds> {
+  return await invoke<SpiderThresholds>("spider_get_thresholds");
+}
+export async function setSpiderThresholds(th: SpiderThresholds): Promise<SpiderThresholds> {
+  return await invoke<SpiderThresholds>("spider_set_thresholds", { thresholds: th });
 }
 
 /** 检查最新版本（Tauri updater 检查失败时的兜底，Rust 多镜像拉取） */
@@ -522,4 +552,34 @@ export async function fetchSeatTrades(
   page = 1
 ): Promise<SeatTrades> {
   return await invoke<SeatTrades>("get_seat_trades", { code, size, page });
+}
+
+// ===== 板块日级快照（v2.29）=====
+export interface SectorDayRow {
+  day: string;
+  kind: string;
+  code: string;
+  name: string;
+  changePct: number;
+  netAmount: number;
+  leadCode: string;
+  leadName: string;
+  leadPct: number;
+  upCount: number;
+  downCount: number;
+  limitUp: number;
+  turnover: number;
+  amount: number;
+}
+/** 采集并落盘指定交易日（YYYYMMDD）行业/概念板块快照 */
+export async function snapshotSectorDay(day: string): Promise<number> {
+  return await invoke<number>("sector_day_snapshot", { day });
+}
+/** 查询某类板块（industry/concept）最近 N 个交易日快照 */
+export async function fetchSectorDay(kind: string, days = 10): Promise<SectorDayRow[]> {
+  return await invoke<SectorDayRow[]>("sector_day_query", { kind, days });
+}
+/** 已积累的板块快照交易日数量 */
+export async function sectorDayStats(): Promise<number> {
+  return await invoke<number>("sector_day_stats");
 }

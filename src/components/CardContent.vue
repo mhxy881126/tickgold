@@ -41,6 +41,8 @@ import Performance from "./Performance.vue";
 import IntradayCommentary from "./cards/IntradayCommentary.vue";
 import NewsDigest from "./cards/NewsDigest.vue";
 import TomorrowMainline from "./cards/TomorrowMainline.vue";
+import RiskDashboard from "./cards/RiskDashboard.vue";
+import RotationMatrix from "./cards/RotationMatrix.vue";
 import type { CardId } from "../composables/useWorkbench";
 
 const props = defineProps<{ id: CardId; selected: string | null }>();
@@ -116,6 +118,8 @@ function retry() {
     <IntradayCommentary v-else-if="id === 'intradayai'" />
     <NewsDigest v-else-if="id === 'newsdigest'" @select="$emit('select', $event)" />
     <TomorrowMainline v-else-if="id === 'mainline'" />
+    <RiskDashboard v-else-if="id === 'risk'" />
+    <RotationMatrix v-else-if="id === 'rotation'" @sector="(name: string, kind: string) => $emit('sector', name, kind)" />
   </template>
 </template>
 

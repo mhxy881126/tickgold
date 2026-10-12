@@ -9,6 +9,7 @@ import { db } from "../db/database";
 import {
   fetchIndexQuotes,
   fetchSectors,
+  snapshotSectorDay,
   startRadar,
   type RadarData,
 } from "../api/market";
@@ -28,6 +29,9 @@ export const tsStatus = reactive({
   sectorRows: 0,
   dayRows: 0,
   lastError: "",
+  makeupPending: 0,
+  makeupDone: 0,
+  lastMakeupTs: 0,
 });
 
 let radar = ref<RadarData | null>(null);
@@ -65,12 +69,6 @@ function isTrading(d: Date) {
   const hm = d.getHours() * 60 + d.getMinutes();
   return (hm >= 9 * 60 + 30 && hm <= 11 * 60 + 30) ||
     (hm >= 13 * 60 && hm <= 15 * 60);
-}
-/** 收盘写日级窗口 15:00-15:40 */
-function isCloseWindow(d: Date) {
-  if (!isWeekday(d)) return false;
-  const hm = d.getHours() * 60 + d.getMinutes();
-  return hm >= 15 * 60 && hm <= 15 * 60 + 40;
 }
 /** 雷达数据是否新鲜（5 分钟内更新），用于过滤节假日陈旧数据 */
 function radarFresh(r: RadarData | null) {
@@ -171,21 +169,12 @@ async function writeDaily(d: Date) {
     );
   }
 
-  // 板块日级
-  const [ind, con] = await Promise.all([
-    fetchSectors("industry"),
-    fetchSectors("concept"),
-  ]);
-  const sectorPairs: [string, (typeof ind)[number]][] = [];
-  ind.forEach((x) => sectorPairs.push(["industry", x]));
-  con.forEach((x) => sectorPairs.push(["concept", x]));
-  for (const [kind, s] of sectorPairs) {
-    await db().execute(
-      `INSERT OR REPLACE INTO ts_sector_day
-       (day,kind,code,name,change_pct,net_amount,lead_code,lead_name,lead_pct)
-       VALUES(?,?,?,?,?,?,?,?,?)`,
-      [day, kind, s.code, s.name, s.changePct, s.netAmount, s.leadCode, s.leadName, s.leadPct]
-    );
+  // 板块日级：v2.29 起走 Rust 东财快照（含成交额/换手/涨跌家数/涨停家数）
+  // 字段比旧新浪口径更全；失败不阻断情绪/指数归档
+  try {
+    await snapshotSectorDay(day);
+  } catch (e) {
+    tsStatus.lastError = `板块快照:${String(e)}`;
   }
 
   dailyDoneDay = day;
@@ -239,6 +228,51 @@ async function refreshCounts() {
   } catch { /* ignore */ }
 }
 
+/** 错过交易日补采：近 10 个自然日里的工作日，若 ts_sector_day 缺该日则补板块快照。
+ *  情绪/指数分时无法事后还原，但板块日级（东财历史接口）可以补。每日最多跑一轮。 */
+async function makeupMissingDays(now: Date) {
+  const day0 = dayStr(now);
+  if (makeupDoneDay === day0) return;
+  try {
+    const have = new Set(
+      (await db().select<{ day: string }[]>("SELECT DISTINCT day FROM ts_sector_day"))
+        .map((r) => r.day)
+    );
+    const missing: string[] = [];
+    for (let back = 1; back <= 10; back++) {
+      const d = new Date(now);
+      d.setDate(now.getDate() - back);
+      if (!isWeekday(d)) continue;
+      const ds = dayStr(d);
+      if (!have.has(ds)) missing.push(ds);
+    }
+    if (!missing.length) { makeupDoneDay = day0; return; }
+    tsStatus.makeupPending = missing.length;
+    tsStatus.makeupDone = 0;
+    for (const ds of missing) {
+      try {
+        await snapshotSectorDay(ds);
+      } catch (e) {
+        tsStatus.lastError = `补采${ds}:${String(e)}`;
+      }
+      tsStatus.makeupDone += 1;
+      tsStatus.lastMakeupTs = Date.now();
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+    makeupDoneDay = day0;
+    await refreshCounts();
+  } catch (e) {
+    tsStatus.lastError = `补采扫描:${String(e)}`;
+  }
+}
+let makeupDoneDay = "";
+
+/** 收盘后（工作日 ≥15:00，含错过 15:40 窗口的场景）持续尝试日级归档，幂等 */
+function isAfterClose(d: Date) {
+  if (!isWeekday(d)) return false;
+  return d.getHours() >= 15;
+}
+
 /** 主调度：30s 一次，按时间决定动作，幂等防重复 */
 async function tick() {
   const d = new Date();
@@ -256,8 +290,14 @@ async function tick() {
         lastSectorKey = skey;
         await writeSector(d);
       }
-    } else if (isCloseWindow(d)) {
+    } else if (isAfterClose(d)) {
+      // 收盘归档：不再限于 15:00-15:40，错过窗口 / 当日失败也会持续重试
       await writeDaily(d);
+      // 16:00 后补采历史缺日（板块日级）
+      if (d.getHours() >= 16) await makeupMissingDays(d);
+    } else {
+      // 周末 / 盘前：也允许补采
+      await makeupMissingDays(d);
     }
     tsStatus.lastError = "";
   } catch (e) {
@@ -280,9 +320,9 @@ export async function startTimeSeries() {
   await purgeOld();
   await refreshCounts();
 
-  // 盘后启动：若处于收盘窗口，补写当日日级
+  // 盘后启动：收盘后任意时刻补写当日日级（writeDaily 幂等）
   const d = new Date();
-  if (isCloseWindow(d)) await writeDaily(d);
+  if (isAfterClose(d)) await writeDaily(d);
 
   await tick();
   timer = window.setInterval(tick, 30 * 1000);
