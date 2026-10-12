@@ -73,18 +73,34 @@ fn blend(items: &[(f64, f64)]) -> f64 {
 pub struct RuleBrain;
 
 impl RuleBrain {
-    pub fn decide(pack: &Value, indicators: Option<&std::collections::HashMap<String, bool>>) -> FastDecision {
+    /// 纯规则决策；indicators=指标开关，weights=因子权重覆盖（None=内置权重；
+    /// 回测参数寻优与人工批准的 weight_overrides 经此传入，离线确定性）。
+    pub fn decide_with(
+        pack: &Value,
+        indicators: Option<&std::collections::HashMap<String, bool>>,
+        weights: Option<&std::collections::HashMap<String, f64>>,
+    ) -> FastDecision {
+        Self::decide_inner(pack, indicators, weights)
+    }
+
+    fn decide_inner(
+        pack: &Value,
+        indicators: Option<&std::collections::HashMap<String, bool>>,
+        weights: Option<&std::collections::HashMap<String, f64>>,
+    ) -> FastDecision {
         let t0 = Instant::now();
         let f = &pack["features"];
         let side = pack["side"].as_str().unwrap_or("buy");
         let holding = fget(f, "currentHoldingPct");
 
-        // 指标开关：禁用的指标权重×0
+        // 指标开关：禁用的指标权重×0；weights 给出时覆盖基础权重。
         let w = |key: &str, base: f64| -> f64 {
-            match indicators {
-                Some(m) if !m.get(key).copied().unwrap_or(true) => 0.0,
-                _ => base,
+            if let Some(m) = indicators {
+                if !m.get(key).copied().unwrap_or(true) {
+                    return 0.0;
+                }
             }
+            weights.and_then(|m| m.get(key)).copied().unwrap_or(base)
         };
 
         let buy_items: Vec<(f64, f64)> = vec![
@@ -358,7 +374,8 @@ impl CloudLlmClient {
 }
 
 /// 快脑统一入口：mode="laya" 时先健康检查再调用，任一失败自动降级规则；其余直接规则。
-pub async fn fast_decide(pack: Value, mode: &str, laya_url: &str, cloud: Option<(String, String, String)>, indicators: Option<&std::collections::HashMap<String, bool>>) -> FastDecision {
+#[allow(clippy::too_many_arguments)]
+pub async fn fast_decide(pack: Value, mode: &str, laya_url: &str, cloud: Option<(String, String, String)>, indicators: Option<&std::collections::HashMap<String, bool>>, weights: Option<&std::collections::HashMap<String, f64>>) -> FastDecision {
     // 云端大模型模式
     if mode == "cloud_llm" {
         if let Some((base_url, api_key, model)) = cloud {
@@ -389,7 +406,7 @@ pub async fn fast_decide(pack: Value, mode: &str, laya_url: &str, cloud: Option<
             log::warn!("Laya 健康检查未通过，降级规则快脑");
         }
     }
-    RuleBrain::decide(&pack, indicators)
+    RuleBrain::decide_with(&pack, indicators, weights)
 }
 
 #[cfg(test)]
@@ -408,7 +425,7 @@ mod tests {
             "marketEmotion": 72, "indexChg": 0.8, "themeRank": 1,
             "catalystFreshness": 0.85, "mainNetInflowYi": 2.1, "currentHoldingPct": 0
         });
-        let d = RuleBrain::decide(&pack("buy", f), None);
+        let d = RuleBrain::decide_with(&pack("buy", f), None, None);
         assert_eq!(d.label, "BUY");
         assert!(d.confidence >= 0.7, "强买入特征 confidence 应较高, got {}", d.confidence);
         assert_eq!(d.mode, "rule");
@@ -422,7 +439,7 @@ mod tests {
             "marketEmotion": 25, "indexChg": -1.2, "themeRank": 9,
             "catalystFreshness": 0.1, "mainNetInflowYi": -1.5, "currentHoldingPct": 0
         });
-        let d = RuleBrain::decide(&pack("buy", f), None);
+        let d = RuleBrain::decide_with(&pack("buy", f), None, None);
         assert_ne!(d.label, "BUY", "弱 + 炸板不应给 BUY");
         assert!(d.probs["BUY"].as_f64().unwrap() < 0.2);
     }
@@ -433,7 +450,7 @@ mod tests {
             "pct": -6.2, "speed5m": -1.6, "pullback": -5.5, "brokenLimit": 1,
             "marketEmotion": 22, "indexChg": -1.5, "currentHoldingPct": 18
         });
-        let d = RuleBrain::decide(&pack("sell", f), None);
+        let d = RuleBrain::decide_with(&pack("sell", f), None, None);
         assert_eq!(d.label, "SELL");
         assert!(d.probs["SELL"].as_f64().unwrap() > 0.7);
     }
@@ -444,7 +461,7 @@ mod tests {
             "pct": 1.2, "speed5m": 0.2, "pullback": -0.3, "brokenLimit": 0,
             "marketEmotion": 60, "indexChg": 0.3, "currentHoldingPct": 10
         });
-        let d = RuleBrain::decide(&pack("sell", f), None);
+        let d = RuleBrain::decide_with(&pack("sell", f), None, None);
         assert_eq!(d.label, "HOLD", "健康持仓不应卖出");
     }
 }

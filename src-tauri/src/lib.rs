@@ -228,7 +228,20 @@ pub fn run() {
             market::history::hist_query,
             market::history::hist_stats,
             market::history::hist_sync_calendar,
-            market::history::hist_is_trading_day
+            market::history::hist_is_trading_day,
+            // ===== v2.30 回测引擎 =====
+            ai::backtest::backtest_run,
+            ai::backtest::backtest_save,
+            ai::backtest::backtest_list,
+            ai::backtest::backtest_load,
+            ai::backtest::backtest_delete,
+            ai::backtest::backtest_optimize,
+            // ===== v2.30 回测→实盘人工审批护栏（迁移 v52）=====
+            ai::backtest::tuning_proposal_create,
+            ai::backtest::tuning_proposal_list,
+            ai::backtest::tuning_proposal_approve,
+            ai::backtest::tuning_proposal_reject,
+            ai::backtest::tuning_proposal_revert
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

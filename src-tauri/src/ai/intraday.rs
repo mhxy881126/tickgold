@@ -101,6 +101,109 @@ pub fn assemble_features(input: &IntradayInput) -> Value {
     })
 }
 
+/// 日 K 深度技术因子（v2.30 抽取）：autoexec 实盘与 backtest 历史回放共用同一套口径。
+/// 输入为截至当日的升序 OHLCV 切片；返回需 merge 进 features 的因子对象。
+/// 与 fastbrain 因子 key 严格对齐；数据不足时各指标给中性默认。
+pub fn daily_deep_features(
+    opens: &[f64],
+    closes: &[f64],
+    highs: &[f64],
+    lows: &[f64],
+    volumes: &[f64],
+) -> Value {
+    let mut f = serde_json::Map::new();
+    if closes.is_empty() {
+        return Value::Object(f);
+    }
+    // MACD / RSI
+    let (dif, dea, macd_hist) = calc_macd(closes);
+    let rsi = calc_rsi(closes, 14);
+
+    // 均线 MA5 / MA10 / MA20 / MA60
+    let last_avg = |n: usize| -> f64 {
+        if closes.len() >= n {
+            closes.iter().rev().take(n).sum::<f64>() / n as f64
+        } else {
+            closes.last().copied().unwrap_or(0.0)
+        }
+    };
+    let ma5 = last_avg(5);
+    let ma10 = last_avg(10);
+    let ma20 = last_avg(20);
+    let ma60 = last_avg(60);
+
+    let ma_bullish = ma5 > ma10 && ma10 > ma20;
+    let ma_bearish = ma5 < ma10 && ma10 < ma20;
+
+    // 最近 20 日最高 / 最低
+    let recent20_high = highs.iter().rev().take(20).fold(f64::MIN, |a, &b| a.max(b));
+    let recent20_low = lows.iter().rev().take(20).fold(f64::MAX, |a, &b| b.min(a));
+    let current_price = closes.last().copied().unwrap_or(0.0);
+    let dist_to_resistance = if recent20_high > 0.0 {
+        (recent20_high - current_price) / recent20_high * 100.0
+    } else {
+        0.0
+    };
+    let dist_to_support = if recent20_low > 0.0 {
+        (current_price - recent20_low) / recent20_low * 100.0
+    } else {
+        0.0
+    };
+
+    // K 线形态（最近一根 vs 前一根），口径与 autoexec 完全一致。
+    if closes.len() >= 2 {
+        let n = closes.len() - 1;
+        let (cur_o, cur_c, cur_h, cur_l) = (opens[n], closes[n], highs[n], lows[n]);
+        let (prev_o, prev_c) = (opens[n - 1], closes[n - 1]);
+        let body = cur_c - cur_o;
+        let upper_shadow = cur_h - cur_c.max(cur_o);
+        let lower_shadow = cur_c.min(cur_o) - cur_l;
+        let body_size = body.abs();
+        let total_range = cur_h - cur_l;
+
+        let is_hammer =
+            lower_shadow > 2.0 * body_size && upper_shadow < body_size * 0.5 && body_size > 0.0;
+        let is_bullish_engulfing =
+            body > 0.0 && prev_c < prev_o && cur_o <= prev_c && cur_c >= prev_o;
+        let is_bearish_engulfing =
+            body < 0.0 && prev_c > prev_o && cur_o >= prev_c && cur_c <= prev_o;
+        let is_doji = total_range > 0.0 && body_size < total_range * 0.1;
+
+        f.insert("klineIsHammer".into(), json!(is_hammer));
+        f.insert("klineIsBullishEngulfing".into(), json!(is_bullish_engulfing));
+        f.insert("klineIsBearishEngulfing".into(), json!(is_bearish_engulfing));
+        f.insert("klineIsDoji".into(), json!(is_doji));
+    }
+
+    let vol20_avg = if volumes.len() >= 20 {
+        volumes.iter().rev().skip(1).take(20).sum::<f64>() / 20.0
+    } else {
+        volumes.last().copied().unwrap_or(1.0)
+    };
+    let vol_ratio_20 = if vol20_avg > 0.0 {
+        volumes.last().copied().unwrap_or(0.0) / vol20_avg
+    } else {
+        1.0
+    };
+
+    f.insert("macdDif".into(), json!(dif));
+    f.insert("macdDea".into(), json!(dea));
+    f.insert("macdHist".into(), json!(macd_hist));
+    f.insert("rsi14".into(), json!(rsi));
+    f.insert("ma5".into(), json!(ma5));
+    f.insert("ma10".into(), json!(ma10));
+    f.insert("ma20".into(), json!(ma20));
+    f.insert("ma60".into(), json!(ma60));
+    f.insert("maBullish".into(), json!(ma_bullish));
+    f.insert("maBearish".into(), json!(ma_bearish));
+    f.insert("recent20High".into(), json!(recent20_high));
+    f.insert("recent20Low".into(), json!(recent20_low));
+    f.insert("distToResistancePct".into(), json!(dist_to_resistance));
+    f.insert("distToSupportPct".into(), json!(dist_to_support));
+    f.insert("volRatio20".into(), json!(vol_ratio_20));
+    Value::Object(f)
+}
+
 /// 计算 EMA（指数移动平均）
 fn ema(values: &[f64], period: usize) -> Vec<f64> {
     if values.is_empty() { return vec![]; }
