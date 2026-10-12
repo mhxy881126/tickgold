@@ -1,5 +1,5 @@
 // 主库迁移清单（v2.27 巨石拆分：从 lib.rs 抽出）。
-// 追加式：只许新增版本，禁止改动已发布条目。共 50 条（v1..v50）。
+// 追加式：只许新增版本，禁止改动已发布条目。共 52 条（v1..v52）。
 // 数量护栏见 src-tauri/INVENTORY.md；改动后需与之一致。
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -804,6 +804,34 @@ pub fn migrations() -> Vec<Migration> {
                             DROP TABLE ts_sector_day;
                             ALTER TABLE ts_sector_day_new RENAME TO ts_sector_day;
                             CREATE INDEX IF NOT EXISTS idx_sector_day_lookup ON ts_sector_day(day, kind);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 51,
+                            description: "create backtest_run (backtest engine result storage)",
+                            sql: "CREATE TABLE IF NOT EXISTS backtest_run (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                name TEXT NOT NULL DEFAULT '',
+                                start TEXT NOT NULL,
+                                end TEXT NOT NULL,
+                                params_json TEXT NOT NULL DEFAULT '{}',
+                                result_json TEXT NOT NULL,
+                                created_at INTEGER NOT NULL
+                            );",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 52,
+                            description: "create tuning_proposal (backtest-to-live human approval queue)",
+                            sql: "CREATE TABLE IF NOT EXISTS tuning_proposal (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                backtest_id INTEGER,
+                                payload_json TEXT NOT NULL,
+                                baseline_json TEXT NOT NULL DEFAULT '{}',
+                                status TEXT NOT NULL DEFAULT 'pending',
+                                decided_at INTEGER NOT NULL DEFAULT 0,
+                                created_at INTEGER NOT NULL
+                            );",
                             kind: MigrationKind::Up,
                         },
     ]
