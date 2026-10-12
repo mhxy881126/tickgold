@@ -210,7 +210,7 @@ fn order_id_for(req: &FillReq, now: i64) -> String {
     // broker/条件单路径以 sig_id 作委托 id；纯手动路径生成 PO 前缀 id
     //（带 side 首字母，避免同一只票同秒手动买卖 id 冲突）。
     if req.sig_id.is_empty() {
-        format!("PO{now}{}{}", &req.code, req.side.as_str())
+        format!("PO{now}{}{}", req.code, req.side.as_str())
     } else {
         req.sig_id.to_string()
     }

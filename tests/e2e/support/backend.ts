@@ -28,6 +28,7 @@ class FakeDb {
   meta: Row[] = [];
   alertRules: Row[] = [];
   alertEvents: Row[] = [];
+  sectorDays: string[] = [];
   constructor() { this.reset(); }
   reset() {
     this.alertRules = [];
@@ -41,6 +42,17 @@ class FakeDb {
     ];
     // 默认标记引导已完成，避免首启弹 Onboarding 遮挡主界面
     this.meta = [{ key: "onboarding_done", value: "1" }];
+    // 近 12 个自然日的工作日都视为已有板块日快照，避免补采循环
+    this.sectorDays = [];
+    const __today = new Date();
+    for (let back = 0; back < 12; back++) {
+      const d = new Date(__today);
+      d.setDate(__today.getDate() - back);
+      const wd = d.getDay();
+      if (wd === 0 || wd === 6) continue;
+      const p = (n: number) => String(n).padStart(2, "0");
+      this.sectorDays.push(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`);
+    }
     // 模拟历史缺陷数据：watch/rank/news 三卡曾被出厂微件化为简化微件
     // （自选列表/滚动快讯），启动恢复时应被 migrateSnapshot 一次性还原为
     // 经典完整组件（WatchList 分组管理 / RankBoard 8 Tab / NewsFlash 分页开窗）
@@ -56,6 +68,16 @@ class FakeDb {
 
   async select(sql: string, params: unknown[] = []): Promise<Row[]> {
     const s = " " + sql.replace(/\s+/g, " ").trim();
+    // meta 批量读取：key IN (?,?,...) —— 只返回已存在的键
+    if (/FROM meta/i.test(s) && /\bkey\s+IN\s*\(/i.test(s)) {
+      return this.meta
+        .filter((m) => (params as string[]).includes(m.key as string))
+        .map((m) => ({ key: m.key, value: m.value }));
+    }
+    // 板块日历史：避免生产代码误判缺数据而触发 1.2s × N 的补采循环
+    if (/FROM ts_sector_day/i.test(s)) {
+      return this.sectorDays.map((day) => ({ day }));
+    }
     const metaKey = matchMetaKey(s, params);
     if (metaKey !== undefined) {
       const v = this.meta.find((m) => m.key === metaKey)?.value;
