@@ -757,7 +757,7 @@ pub struct LatestInfo {
 }
 
 pub async fn check_latest() -> Result<LatestInfo, String> {
-    let tail = "/mhxy881126/tickgold/releases/latest/download/latest.json";
+    let tail = "/mhxy881126/tickgold-public/releases/latest/download/latest.json";
     // 镜像优先、多源并行竞速：谁先成功用谁，避免串行等待
     let urls = [
         format!("https://ghproxy.net/https://github.com{tail}"),

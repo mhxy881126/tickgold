@@ -179,7 +179,7 @@ async function doUpdate() {
 
 async function manualDownload() {
   try {
-    await openInAppBrowser("https://github.com/mhxy881126/tickgold/releases/latest");
+    await openInAppBrowser("https://github.com/mhxy881126/tickgold-public/releases/latest");
   } catch { /* ignore */ }
 }
 
