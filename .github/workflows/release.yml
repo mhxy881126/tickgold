@@ -87,18 +87,23 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
-    # 注意：跨仓库发布到 tickgold-public，GITHUB_TOKEN 无权限，
-    # 必须在本仓库（tickgold 私有仓库）的 Secrets 中配置 PUBLIC_REPO_TOKEN，
-    # 该 token 需为有 tickgold-public 仓库 write 权限的 Personal Access Token。
+    # 同时向两个仓库发布二进制 Release：
+    #  - 私有仓库 tickgold：用内置 GITHUB_TOKEN（需 contents: write），源码 + 二进制 Release 都在此；
+    #  - 公开仓库 tickgold-public：跨仓库，内置 token 无权限，用 Secrets.PUBLIC_REPO_TOKEN
+    #    （有 tickgold-public 仓库 write 权限的 Personal Access Token），该仓库只有官网/文档/截图 + 二进制 Release，无业务源码。
+    permissions:
+      contents: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
 
-      - name: Publish to tickgold-public (binaries only, no source)
+      - name: Publish binaries to both repos
         env:
-          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+          PRIVATE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLIC_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+          PRIVATE_REPO: ${{ github.repository }}
           PUBLIC_REPO: mhxy881126/tickgold-public
         run: |
           set -euo pipefail
@@ -143,7 +148,7 @@ jobs:
           ARM_DMG="rel/$(basename "$ARM_RAW_DMG")"
           X64_DMG="rel/$(basename "$X64_RAW_DMG")"
 
-          # 下载 URL 统一指向公开仓库 tickgold-public
+          # 更新清单中的下载 URL 统一指向公开仓库 tickgold-public（应用内自动更新走公开 CDN + 镜像）
           GH_BASE="https://github.com/$PUBLIC_REPO/releases/download/$TAG"
 
           # ---- 签名 ----
@@ -170,36 +175,70 @@ jobs:
           gen_manifest "https://ghproxy.net/" > rel/latest.ghproxy.json
           gen_manifest "https://gh-proxy.com/" > rel/latest.gh-proxy.json
 
-          # ---- 在公开仓库创建唯一草稿 Release ----
-          # 注意：tag 推送到私有仓库触发本 workflow，但 Release 创建在公开仓库。
-          # GitHub 会自动在公开仓库创建同名 tag（指向公开仓库默认分支最新 commit）。
-          EXISTING=$(gh api "repos/$PUBLIC_REPO/releases" --paginate \
-            --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -n1)
-          if [ -n "$EXISTING" ]; then
-            RID="$EXISTING"
-            echo "reuse release $RID"
-          else
-            RID=$(gh api -X POST "repos/$PUBLIC_REPO/releases" \
-              -f tag_name="$TAG" -f name="TickGold $TAG" \
-              -F draft=true -F prerelease=false --jq ".id")
-            echo "created release $RID"
-          fi
+          # ---- 发布说明（两版，放在 rel/ 外避免被当成资产上传）----
+          # 公开仓库：强调只有二进制、无源码。
+          cat > body_public.md <<EOF
+          ## TickGold $TAG
 
-          # 清空可能残留的同名旧资产，保证幂等
-          for AID in $(gh api "repos/$PUBLIC_REPO/releases/$RID/assets" \
-              --jq ".[] | .id"); do
-            gh api "repos/$PUBLIC_REPO/releases/assets/$AID" -X DELETE >/dev/null 2>&1 || true
-          done
+          跨平台 A 股盯盘终端，本 Release 由 CI 自动构建并发布到公开仓库。
 
-          # 上传全部资产（仅二进制安装包 + 签名 + 更新清单，不含任何源码）
-          gh release upload "$TAG" rel/* --repo "$PUBLIC_REPO" --clobber
+          > **本 Release 仅包含二进制安装包与签名文件，不包含应用业务源码。** 应用源码在私有仓库维护，本仓库仅含官网 / 文档 / 截图。
 
-          # ---- 自动发布说明 ----
-          BODY=$(printf '## TickGold %s\n\n跨平台 A 股盯盘终端，本 Release 由 CI 自动构建并发布到公开仓库。\n\n> **本 Release 仅包含二进制安装包与签名文件，不包含应用业务源码。** 应用源码在私有仓库维护，构建完成后将签名资产发布到此公开仓库。\n\n### 安装包\n- Windows：%s\n- macOS（Apple 芯片）：%s\n- macOS（Intel）：%s\n\n### 更新机制\n应用内检查更新与下载已内置多镜像容灾（ghproxy / gh-proxy / 官方直连），国内网络可正常升级；安装包均带 minisign 签名校验。\n' \
-            "$TAG" "$(basename "$WIN_EXE")" "$(basename "$ARM_DMG")" "$(basename "$X64_DMG")")
+          ### 安装包
+          - Windows：$(basename "$WIN_EXE")
+          - macOS（Apple 芯片）：$(basename "$ARM_DMG")
+          - macOS（Intel）：$(basename "$X64_DMG")
 
-          # ---- 资产就位后解除草稿、正式发布 ----
-          gh api -X PATCH "repos/$PUBLIC_REPO/releases/$RID" \
-            -F draft=false -F prerelease=false -f name="TickGold $TAG" -f body="$BODY" \
-            --jq '.html_url'
-          echo "::notice::Published $TAG to $PUBLIC_REPO with all assets and mirrored manifests (binaries only, no source)."
+          ### 更新机制
+          应用内检查更新与下载已内置多镜像容灾（ghproxy / gh-proxy / 官方直连），国内网络可正常升级；安装包均带 minisign 签名校验。
+          EOF
+          sed -i 's/^          //' body_public.md
+          # 私有仓库：源码 + 二进制 Release 都在此。
+          cat > body_private.md <<EOF
+          ## TickGold $TAG
+
+          跨平台 A 股盯盘终端，本 Release 由 CI 自动构建。本仓库为私有源码仓库，Release 同时附带跨平台二进制安装包。
+
+          ### 安装包
+          - Windows：$(basename "$WIN_EXE")
+          - macOS（Apple 芯片）：$(basename "$ARM_DMG")
+          - macOS（Intel）：$(basename "$X64_DMG")
+
+          > 面向用户的公开下载页：https://github.com/$PUBLIC_REPO/releases/tag/$TAG
+          > 安装包均带 minisign 签名校验，应用内更新走多镜像容灾。
+          EOF
+          sed -i 's/^          //' body_private.md
+
+          # ---- 通用发布：在指定仓库创建/复用 Release → 清旧资产 → 上传 → 解除草稿 ----
+          # $1=目标仓库  $2=该仓库可用 token  $3=发布说明文件
+          deploy() {
+            local R="$1" T="$2" BF="$3" EXISTING RID
+            EXISTING=$(GH_TOKEN="$T" gh api "repos/$R/releases" --paginate \
+              --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -n1)
+            if [ -n "$EXISTING" ]; then
+              RID="$EXISTING"; echo "[$R] reuse release $RID"
+            else
+              RID=$(GH_TOKEN="$T" gh api -X POST "repos/$R/releases" \
+                -f tag_name="$TAG" -f name="TickGold $TAG" \
+                -F draft=true -F prerelease=false --jq ".id")
+              echo "[$R] created release $RID"
+            fi
+            # 清空可能残留的同名旧资产，保证幂等
+            for AID in $(GH_TOKEN="$T" gh api "repos/$R/releases/$RID/assets" \
+                --jq ".[] | .id"); do
+              GH_TOKEN="$T" gh api "repos/$R/releases/assets/$AID" -X DELETE >/dev/null 2>&1 || true
+            done
+            # 二进制安装包 + 签名 + 更新清单
+            GH_TOKEN="$T" gh release upload "$TAG" rel/* --repo "$R" --clobber
+            # 资产就位后解除草稿、正式发布
+            GH_TOKEN="$T" gh api -X PATCH "repos/$R/releases/$RID" \
+              -F draft=false -F prerelease=false -f name="TickGold $TAG" \
+              -f body="$(cat "$BF")" --jq '.html_url'
+          }
+
+          # 私有仓库：内置 GITHUB_TOKEN（job 已声明 contents: write）
+          deploy "$PRIVATE_REPO" "$PRIVATE_TOKEN" body_private.md
+          # 公开仓库：跨仓库 PAT
+          deploy "$PUBLIC_REPO" "$PUBLIC_TOKEN" body_public.md
+
+          echo "::notice::Published $TAG to both $PRIVATE_REPO and $PUBLIC_REPO (binaries + manifests)."
