@@ -9,9 +9,9 @@ import {
 } from "../../../src/components/spider/cardRegistry";
 
 describe("cardRegistry", () => {
-  it("注册全部 43 张卡，且每张 title 非空", () => {
+  it("注册全部 44 张卡，且每张 title 非空", () => {
     const ids = Object.keys(CARD_REGISTRY);
-    expect(ids.length).toBe(43);
+    expect(ids.length).toBe(44);
     ids.forEach((id) => {
       expect(CARD_REGISTRY[id as keyof typeof CARD_REGISTRY].title).toBeTruthy();
     });
