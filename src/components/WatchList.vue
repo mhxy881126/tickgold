@@ -23,6 +23,45 @@ const editingId = ref<number | null>(null);
 const editName = ref("");
 const groupInput = ref<HTMLInputElement | null>(null);
 
+// v2.31 智能分组：按战法/题材自动归类近 N 日涨停股
+const smartAdding = ref(false);
+const smartName = ref("");
+const smartTactic = ref("multi_board");
+const smartTheme = ref("");
+const smartDays = ref(5);
+
+function hitBadge(code: string): string {
+  const h = wl.hitOf(code);
+  if (!h) return "";
+  return h.boards >= 2 ? `${h.boards}连板` : "首板";
+}
+function isWatched(code: string): boolean {
+  return wl.stocks.some((s) => s.code === code);
+}
+async function startSmartAdd() {
+  smartAdding.value = true;
+  smartName.value = "";
+  smartTactic.value = "multi_board";
+  smartTheme.value = "";
+  smartDays.value = 5;
+  await nextTick();
+  groupInput.value?.focus();
+}
+async function commitSmartAdd() {
+  if (!smartAdding.value) return;
+  const name = smartName.value.trim();
+  smartAdding.value = false;
+  if (!name) return;
+  await wl.addSmartGroup(name, {
+    tactic: smartTactic.value || undefined,
+    theme: smartTheme.value.trim() || undefined,
+    days: smartDays.value,
+  });
+}
+function isSmartGroup(id: number): boolean {
+  return wl.groups.find((g) => g.id === id)?.kind === "smart";
+}
+
 async function doSearch() {
   if (!keyword.value.trim()) {
     searchResults.value = [];
@@ -145,11 +184,12 @@ async function moveAddGroup() {
         />
         <template v-else>
           <span class="gname">{{ g.name }}</span>
-          <span class="gcount">{{ wl.stocksOf(g.id).length }}</span>
+          <i v-if="g.kind === 'smart'" class="gsmart" title="智能分组（按规则自动归类）">智</i>
+          <span class="gcount">{{ wl.membersOf(g.id).length }}</span>
           <span
             v-if="g.id !== 1"
             class="gdel"
-            title="删除分组（股票移回默认分组）"
+            :title="g.kind === 'smart' ? '删除智能分组（不影响自选）' : '删除分组（股票移回默认分组）'"
             @click.stop="wl.removeGroup(g.id)"
             >×</span
           >
@@ -164,7 +204,49 @@ async function moveAddGroup() {
           @blur="commitAdd"
         />
       </div>
-      <div class="chip add" title="新建分组" @click="startAdd">+</div>
+      <Teleport v-if="smartAdding" to="body">
+        <div class="smart-modal">
+          <div class="sm-mask" @click="smartAdding = false"></div>
+          <div class="sm-box">
+            <div class="sm-head">
+              <span>新建智能分组</span>
+              <button class="sm-x" @click="smartAdding = false">×</button>
+            </div>
+            <input
+              ref="groupInput"
+              v-model="smartName"
+              class="sm-in"
+              placeholder="分组名称，如 连板梯队"
+              maxlength="12"
+              @keydown.enter="commitSmartAdd"
+            />
+            <div class="sm-row">
+              <label>战法</label>
+              <select v-model="smartTactic">
+                <option value="">不限</option>
+                <option value="first_board">首板</option>
+                <option value="multi_board">连板（≥2 板）</option>
+              </select>
+            </div>
+            <div class="sm-row">
+              <label>题材</label>
+              <input v-model="smartTheme" class="sm-in" placeholder="行业/概念关键词，可空" />
+            </div>
+            <div class="sm-row">
+              <label>回看</label>
+              <select v-model.number="smartDays">
+                <option :value="3">近 3 日</option>
+                <option :value="5">近 5 日</option>
+                <option :value="10">近 10 日</option>
+              </select>
+            </div>
+            <div class="sm-tip">成员由近 N 日涨停记录按规则自动归类，收盘定格后更新。</div>
+            <button class="sm-go" @click="commitSmartAdd">创建</button>
+          </div>
+        </div>
+      </Teleport>
+      <div class="chip add" title="新建普通分组" @click="startAdd">+</div>
+      <div class="chip addsmart" title="新建智能分组（按战法/题材自动归类）" @click="startSmartAdd">智+</div>
     </div>
 
     <div class="table-wrap">
@@ -186,12 +268,13 @@ async function moveAddGroup() {
           v-for="(s, i) in wl.currentStocks"
           :key="s.code"
           v-flash="qOf(s.code)?.price"
-          :class="{ active: s.code === props.selected }"
+          :class="{ active: s.code === props.selected, hit: !!hitBadge(s.code) }"
           @click="emit('select', s.code)"
         >
           <td class="stock-cell">
             <span class="nm">{{ qOf(s.code)?.name || s.name || "--" }}</span>
             <span class="cd">{{ s.code }}</span>
+            <i v-if="hitBadge(s.code)" class="hit-badge">{{ hitBadge(s.code) }}</i>
           </td>
           <td class="r" :class="cls(qOf(s.code)?.pct)">
             <AnimatedNumber v-if="qOf(s.code)" :value="qOf(s.code)!.price" kind="price" />
@@ -206,8 +289,19 @@ async function moveAddGroup() {
             <span v-else>--</span>
           </td>
           <td class="c ops">
-            <button class="op move" title="移动到其他分组" @click.stop="openMove(s.code)">⇄</button>
-            <button class="op del" title="移出自选" @click.stop="wl.remove(s.code)">×</button>
+            <template v-if="isSmartGroup(wl.currentGroupId)">
+              <button
+                v-if="!isWatched(s.code)"
+                class="op addw"
+                title="加入默认自选分组"
+                @click.stop="wl.add(s.code, s.name, 1)"
+              >+</button>
+              <span v-else class="inwatch" title="已在自选">✓</span>
+            </template>
+            <template v-else>
+              <button class="op move" title="移动到其他分组" @click.stop="openMove(s.code)">⇄</button>
+              <button class="op del" title="移出自选" @click.stop="wl.remove(s.code)">×</button>
+            </template>
           </td>
         </tr>
         <tr v-if="wl.currentStocks.length === 0">
@@ -384,4 +478,56 @@ tbody tr:hover .op { border-color: var(--border); }
 .empty { text-align: center; color: var(--text-dim); padding: 30px; font-size: 12px; }
 
 .table-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+
+/* v2.31 智能分组 / 信号高亮 */
+.chip.addsmart { font-size: 11px; line-height: 1; padding: 3px 8px; color: #e8c66a; border-color: #8a753588; }
+.gsmart {
+  font-style: normal; font-size: 9px; color: #e8c66a;
+  border: 1px solid #e8c66a66; border-radius: 4px; padding: 0 3px;
+}
+tbody tr.hit { box-shadow: inset 2px 0 0 #e8c66a; }
+.hit-badge {
+  font-style: normal; font-size: 9px; color: #ffb13d;
+  border: 1px solid #ffb13d66; background: #ffb13d12;
+  border-radius: 4px; padding: 0 4px; margin-left: 2px; flex-shrink: 0;
+}
+.op.addw:hover { color: #1dbe7d; border-color: #1dbe7d; }
+.inwatch { color: #1dbe7d; font-size: 11px; }
+.smart-modal {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+}
+.sm-mask { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px); }
+.sm-box {
+  position: relative; width: 300px; max-width: calc(100vw - 32px);
+  background: var(--bg-panel); border: 1px solid var(--border-light); border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6); padding: 14px;
+  animation: mmPop 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sm-head { display: flex; align-items: center; font-size: 13px; font-weight: 700; margin-bottom: 10px; }
+.sm-x {
+  margin-left: auto; width: 22px; height: 22px; border: none;
+  background: transparent; color: var(--text-dim); font-size: 16px;
+  cursor: pointer; border-radius: 6px; line-height: 1;
+}
+.sm-x:hover { background: var(--bg-hover); color: var(--text); }
+.sm-in {
+  width: 100%; height: 30px; border-radius: 7px; box-sizing: border-box;
+  border: 1px solid var(--border); background: var(--bg);
+  color: var(--text); padding: 0 9px; font-size: 12px; margin-bottom: 8px;
+}
+.sm-in:focus { outline: none; border-color: var(--accent); }
+.sm-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; }
+.sm-row label { width: 36px; color: var(--text-dim); flex-shrink: 0; }
+.sm-row select {
+  flex: 1; height: 28px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text); padding: 0 7px; font-size: 12px;
+}
+.sm-tip { font-size: 10px; color: var(--text-dim); line-height: 1.6; margin: 2px 0 10px; }
+.sm-go {
+  width: 100%; height: 32px; border: none; border-radius: 7px;
+  background: var(--accent); color: #1a1405; font-size: 12px;
+  font-weight: 700; cursor: pointer;
+}
+.sm-go:hover { filter: brightness(1.08); }
 </style>

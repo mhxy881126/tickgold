@@ -586,6 +586,13 @@ onMounted(async () => {
         }
       })
     );
+    // v2.31 选股订阅：定时扫描完成，仅应用内 Toast（不发系统通知）
+    unlistenFns.push(
+      await listen<{ name: string; hitCount: number }>("screen-sub:run", (e) => {
+        const p = e.payload;
+        toast.info(`选股订阅「${p.name}」执行完成：命中 ${p.hitCount} 只`);
+      })
+    );
   } catch (e) {
     console.error("[app] listeners", e);
   }

@@ -2,8 +2,8 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
-  startRadar, stopRadar, fetchZtPool, fetchQuotes,
-  type LadderGroup, type RadarData, type RadarStatus, type ZtStock,
+  startRadar, stopRadar, fetchZtPool, fetchQuotes, fetchLadderStats,
+  type LadderGroup, type LadderStat, type RadarData, type RadarStatus, type ZtStock,
 } from "../api/market";
 
 const emit = defineEmits<{ select: [code: string] }>();
@@ -181,11 +181,37 @@ async function loadBridge() {
   }
 }
 // 切到天梯 Tab 时懒加载一次
-watch(tab, (v) => { if (v === "bridge" && !bridgeLoaded.value) loadBridge(); });
+watch(tab, (v) => {
+  if (v === "bridge") {
+    if (!bridgeLoaded.value) loadBridge();
+    if (!histLoaded.value) loadHistStats();
+  }
+});
 function rateCls(r: number): string {
   if (r >= 0.5) return "hi";      // 晋级率高=接力强
   if (r >= 0.25) return "mid";
   return "lo";                    // 晋级率低=接力差
+}
+
+// ===== 近 30 交易日天梯深化：晋级率 / 隔日溢价 / 封单强度 / 炸板回封率 =====
+const histStats = ref<LadderStat[]>([]);
+const histLoaded = ref(false);
+const histError = ref("");
+async function loadHistStats() {
+  histError.value = "";
+  try {
+    histStats.value = await fetchLadderStats(30);
+    histLoaded.value = true;
+  } catch (e) {
+    histError.value = String(e);
+    histLoaded.value = true;
+  }
+}
+function pctTxt(v: number, digits = 1): string {
+  return (v >= 0 ? "+" : "") + v.toFixed(digits) + "%";
+}
+function pctCls(v: number): string {
+  return v > 0.2 ? "up" : v < -0.2 ? "down" : "flat";
 }
 
 // ===== 板块筛选：主板 / 创业板 / 科创板 / 北交所 =====
@@ -350,6 +376,38 @@ function toggleBoard(k: BoardKey) {
               <em :class="rateCls(s.promoted / s.total)">{{ s.total ? Math.round((s.promoted / s.total) * 100) : 0 }}%</em>
               <i>{{ s.promoted }}/{{ s.total }}</i>
             </span>
+          </div>
+
+          <!-- 近 30 交易日天梯深化统计 -->
+          <div class="hist-panel">
+            <div class="hist-head">近 30 交易日接力质量</div>
+            <div v-if="!histLoaded" class="empty small">正在统计历史快照…</div>
+            <div v-else-if="histError" class="empty small err">{{ histError }}</div>
+            <div v-else-if="histStats.length === 0" class="empty small">暂无历史涨停定格（盘后归因后生成）</div>
+            <table v-else class="hist-table">
+              <thead>
+                <tr>
+                  <th>板高</th><th>样本</th><th>晋级率</th>
+                  <th>次日开盘</th><th>次日收盘</th>
+                  <th>封单强度</th><th>封单均额</th><th>炸板回封率</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="h in histStats" :key="h.boards">
+                  <td class="b">{{ h.boards }}板</td>
+                  <td>{{ h.samples }}</td>
+                  <td :class="rateCls(h.promotionRatePct / 100)">{{ h.promotionRatePct.toFixed(0) }}%</td>
+                  <td :class="pctCls(h.nextOpenPremiumPct)">{{ pctTxt(h.nextOpenPremiumPct) }}</td>
+                  <td :class="pctCls(h.nextClosePremiumPct)">{{ pctTxt(h.nextClosePremiumPct) }}</td>
+                  <td>{{ h.sealStrengthPct.toFixed(1) }}%</td>
+                  <td>{{ h.avgSealFundYi.toFixed(2) }}亿</td>
+                  <td v-if="h.brokenTotal > 0" :class="rateCls(h.resealRatePct / 100)">
+                    {{ h.resealRatePct.toFixed(0) }}%<i class="hn">{{ h.resealed }}/{{ h.brokenTotal }}</i>
+                  </td>
+                  <td v-else class="flat">—</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
           <div class="br-cols">
             <!-- 左：昨日高标 -->
@@ -575,4 +633,27 @@ function toggleBoard(k: BoardKey) {
 .pct { text-align: right; font-size: 11px; font-variant-numeric: tabular-nums; }
 .pct.up { color: var(--up); }
 .pct.down { color: var(--down); }
+
+/* 天梯深化历史统计表 */
+.hist-panel {
+  margin-top: 8px; border: 1px solid var(--border); border-radius: 9px;
+  background: var(--bg-card, rgba(255,255,255,0.02)); padding: 8px 10px;
+}
+.hist-head { font-size: 11px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.hist-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.hist-table th {
+  font-size: 9.5px; font-weight: 500; color: var(--text-dim);
+  padding: 3px 4px; text-align: right; white-space: nowrap;
+}
+.hist-table th:first-child, .hist-table td:first-child { text-align: left; }
+.hist-table td {
+  font-size: 10.5px; color: var(--text-dim);
+  padding: 3px 4px; text-align: right; white-space: nowrap;
+}
+.hist-table td.b { color: var(--text); font-weight: 700; }
+.hist-table td.hi, .hist-table td.up { color: var(--up); font-weight: 700; }
+.hist-table td.mid { color: #e3b341; font-weight: 700; }
+.hist-table td.lo, .hist-table td.down { color: var(--down); }
+.hist-table td.flat { color: var(--text-dim); }
+.hist-table .hn { font-style: normal; font-size: 9px; opacity: 0.75; margin-left: 3px; }
 </style>

@@ -94,6 +94,7 @@ const RAW: Record<CardId, RawCap> = {
   rotation: { group: "mainline", rowKind: "sector", producesSignal: false, dwellMs: 5000, onTour: true },
   // ─── v2.30 回测引擎（离线，不参与巡回）───
   backtest: { group: "review", rowKind: "none", producesSignal: false, dwellMs: 3000, onTour: false },
+  strategyscan: { group: "stock", rowKind: "stock", producesSignal: true, dwellMs: 4500, onTour: false },
 };
 
 function build(id: CardId): CardCapability {
