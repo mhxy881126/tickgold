@@ -1,4 +1,4 @@
-// 性能基线：全量 44 张卡片同屏，采样帧率与 JS 堆，作为性能回归门禁。
+// 性能基线：全量 45 张卡片同屏，采样帧率与 JS 堆，作为性能回归门禁。
 // 说明：headless chromium（含软件合成）下测得，真机 GPU 通常更优；4h 长时间内存用
 // PERF_SOAK_SECONDS 环境变量启用「浸泡」测试，真机验收步骤见 docs/开发路线.md。
 import { test, expect, type Page } from "@playwright/test";

@@ -96,6 +96,7 @@ export const DOCK_GROUPS: DockGroup[] = [
       { id: "ipo", label: "新股解禁", icon: "M12 2l2.9 6.3 6.8.7-5 4.6 1.4 6.7L12 17l-6.1 3.3 1.4-6.7-5-4.6 6.8-.7z", desc: "新股/解禁日历" },
       { id: "calc", label: "投资计算器", icon: "M7 2h10a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2 0 01-2 2V4a2 2 0 012-2zm2 4h6v2H9V6zm0 4h2v2H9v-2zm4 0h2v2h-2v-2zm-4 4h2v2H9v-2zm4 0h2v2h-2v-2z", desc: "盈亏/仓位/风报比/黄金分割" },
       { id: "export", label: "数据导出", icon: "M12 3a1 1 0 011 1v8.6l3.3-3.3 1.4 1.4L12 17l-5.7-6.3 1.4-1.4L11 12.6V4a1 1 0 011-1zM5 19h14v2H5v-2z", desc: "CSV/JSON 导出自选/行情/交易" },
+      { id: "reviewreport", label: "盯盘复盘报告", icon: "M6 2h9l5 5v15H6zm8 1.5V8h4.5z", desc: "导出含盘面/信号/成交/AI复盘的 HTML 或 Markdown 报告", star: true },
     ],
   },
 ];

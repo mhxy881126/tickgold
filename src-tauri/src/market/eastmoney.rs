@@ -167,6 +167,8 @@ struct SearchItem {
     code: String,
     #[serde(rename = "MktNum")]
     mkt: String,
+    #[serde(rename = "JYS", default)]
+    jys: String,
 }
 
 pub async fn search(keyword: &str) -> Result<Vec<StockItem>, String> {
@@ -187,12 +189,15 @@ pub async fn search(keyword: &str) -> Result<Vec<StockItem>, String> {
         .into_iter()
         .filter(|i| i.code.chars().all(|c| c.is_ascii_digit()) && i.code.len() == 6)
         .map(|i| StockItem {
-            market: match i.mkt.as_str() {
-                "1" => "SH",
-                "0" => "SZ",
-                _ => "BJ",
-            }
-            .to_string(),
+            market: if i.jys == "81" {
+                "BJ".to_string()
+            } else {
+                match i.mkt.as_str() {
+                    "1" => "SH".to_string(),
+                    "0" => "SZ".to_string(),
+                    _ => "BJ".to_string(),
+                }
+            },
             code: i.code,
             name: i.name,
         })
@@ -215,6 +220,11 @@ pub struct RankRow {
     pub speed5: f64,       // 5分钟涨速 %
     pub main_net: f64,     // 主力净流入（元）
     pub big_net: f64,      // 大单净流入（元）
+    // 可转债专项（仅 scope=conv 有值；f236 转股价值、f237 转股溢价率%）
+    #[serde(default)]
+    pub convert_value: f64,
+    #[serde(default)]
+    pub convert_premium: f64,
 }
 
 #[derive(Deserialize)]
@@ -229,8 +239,9 @@ struct RankBoardData {
 
 /// 增强榜单。sort 支持：
 /// gainers=涨幅 losers=跌幅 amount=成交额 speed=快速涨幅(5分钟涨速)
-/// big=大单净量(大单净流入额) vr=量比榜 turnover=换手率 main=主力净流入
-pub async fn rank_board(sort: &str, page: i64, num: i64) -> Result<Vec<RankRow>, String> {
+/// big=大单净量(大单净流入额) vr=量比榜 turnover=换手率 main=主力净流入。
+/// scope：a=沪深 A 股 / bse=北交所 / etf=场内基金 / conv=可转债。
+pub async fn rank_board(sort: &str, page: i64, num: i64, scope: &str) -> Result<Vec<RankRow>, String> {
     // (排序字段 fid, 排序方向 po：1=降序 0=升序)
     let (fid, po) = match sort {
         "losers" => ("f3", 0),
@@ -243,12 +254,18 @@ pub async fn rank_board(sort: &str, page: i64, num: i64) -> Result<Vec<RankRow>,
         _ => ("f3", 1), // gainers 默认
     };
     let pn = page.max(1);
+    let fs = match scope {
+        "bse" => "m:0+t:81+s:2048",
+        "etf" => "b:MK0021,b:MK0022,b:MK0023,b:MK0024",
+        "conv" => "b:MK0354",
+        _ => "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23",
+    };
     // 多个 push2 节点并发竞速：任一先返回可解析 JSON 即采用，其余请求丢弃。
     // 主域被网络阻断时无需逐节点串行等超时（最坏 40s），整体只受单请求 8s 超时约束。
     let mut set = tokio::task::JoinSet::new();
     for &host in CLIST_HOSTS {
         let url = format!(
-            "https://{host}/api/qt/clist/get?pn={pn}&pz={num}&po={po}&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid={fid}&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f12,f14,f2,f3,f6,f8,f10,f22,f62,f72"
+            "https://{host}/api/qt/clist/get?pn={pn}&pz={num}&po={po}&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid={fid}&fs={fs}&fields=f12,f14,f2,f3,f6,f8,f10,f22,f62,f72,f236,f237"
         );
         set.spawn(async move {
             let resp = http()
@@ -295,9 +312,31 @@ pub async fn rank_board(sort: &str, page: i64, num: i64) -> Result<Vec<RankRow>,
             speed5: g(v, "f22"),
             main_net: g(v, "f62"),
             big_net: g(v, "f72"),
+            convert_value: g(v, "f236"),
+            convert_premium: g(v, "f237"),
         })
         .collect();
     Ok(out)
+}
+
+/// 可转债转股价值/溢价率全表快照（内存缓存 30s），供盘口按 code 补专项指标。
+/// clist 行已含 f236/f237，全市场约 320 只，一次拉全。
+pub async fn conv_metrics() -> Result<Vec<RankRow>, String> {
+    use std::sync::OnceLock;
+    use tokio::sync::Mutex;
+    static CACHE: OnceLock<Mutex<(i64, Vec<RankRow>)>> = OnceLock::new();
+    let c = CACHE.get_or_init(|| Mutex::new((0, Vec::new())));
+    let now = now_millis();
+    {
+        let g = c.lock().await;
+        if now - g.0 < 30_000 && !g.1.is_empty() {
+            return Ok(g.1.clone());
+        }
+    }
+    let rows = rank_board("amount", 1, 500, "conv").await?;
+    let mut g = c.lock().await;
+    *g = (now, rows.clone());
+    Ok(rows)
 }
 
 fn urlencode(s: &str) -> String {
@@ -1324,7 +1363,7 @@ pub async fn seat_trades(code: &str, size: i64, page: i64) -> Result<SeatTrades,
 }
 
 // ===== 逐笔成交明细（details/get）=====
-/// 返回最近 n 条逐笔（时间升序）。方向 f54：2=主动买(外盘)，1=主动卖(内盘)，其余中性。
+/// 返回最近 n 条逐笔（时间升序）。方向 f55：2=主动买(外盘)，1=主动卖(内盘)，其余中性。
 pub async fn trades(code: &str, n: i64) -> Result<Vec<TradeTick>, String> {
     let secid = format!("{}.{}", secid_prefix(code), code);
     let path = format!(
@@ -1340,7 +1379,9 @@ pub async fn trades(code: &str, n: i64) -> Result<Vec<TradeTick>, String> {
         if p.len() < 4 {
             continue;
         }
-        let side = match p[3] {
+        // f55(末列)=方向：2=主动买(外盘)，1=主动卖(内盘)，4=集合竞价/中性。
+        // 注意 f54(p[3]) 是该展示笔合并的委托笔数，不是方向。
+        let side = match p.get(4).copied().unwrap_or("0") {
             "2" => "buy",
             "1" => "sell",
             _ => "neutral",

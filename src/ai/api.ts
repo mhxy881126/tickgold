@@ -132,6 +132,14 @@ export function buildDecisionPack(date?: string | null) {
   return invoke<Record<string, unknown>>("ai_build_decision_pack", { date: date ?? null });
 }
 
+// v2.32 盯盘复盘报告数据包（Rust 聚合，前端渲染 HTML / Markdown）。
+export function buildReviewReport(date?: string | null) {
+  return invoke<import("../utils/reviewReport").ReviewReportData>(
+    "ai_build_review_report",
+    { date: date ?? null },
+  );
+}
+
 export function runReview(date?: string | null, force = false) {
   return invoke<ReviewSummaryInfo[]>("ai_run_review", { date: date ?? null, force });
 }

@@ -14,6 +14,7 @@ use std::sync::Arc;
 const BOOT_JS: &str = r#"
 var __indicators = {};
 var __datasources = {};
+var __level2 = {};
 function registerIndicator(spec) {
   if (!spec || !spec.id || typeof spec.compute !== 'function')
     throw new Error('registerIndicator 需要 {id, compute}');
@@ -24,6 +25,17 @@ function registerDataSource(spec) {
   if (!spec || !spec.id || typeof spec.buildRequest !== 'function' || typeof spec.parseResponse !== 'function')
     throw new Error('registerDataSource 需要 {id, buildRequest, parseResponse}');
   __datasources[spec.id] = spec;
+  return spec.id;
+}
+// v2.32 Level-2 数据源注册。插件依旧不能在 JS 内联网：
+// buildBookRequest 只产出请求描述（URL/方法/体），由 Rust 校验权限并代发，
+// API Key 由 Rust 从系统凭据箱取出后注入请求头，永远不会进入 JS。
+function registerLevel2(spec) {
+  if (!spec || !spec.id
+      || typeof spec.buildBookRequest !== 'function'
+      || typeof spec.parseBookResponse !== 'function')
+    throw new Error('registerLevel2 需要 {id, buildBookRequest, parseBookResponse}');
+  __level2[spec.id] = spec;
   return spec.id;
 }
 "#;
@@ -103,6 +115,70 @@ impl PluginEngine {
                 let f: Function = holder
                     .get(fn_name.as_str())
                     .map_err(|_| format!("数据源缺少 {fn_name}"))?;
+                let jsarg = json_to_js(&ctx, &arg).map_err(|e| format!("参数转换失败: {e}"))?;
+                let res: JsValue = f.call((jsarg,)).map_err(|e| format!("{fn_name} 执行失败: {e}"))?;
+                js_to_json(&res).map_err(|e| format!("结果转换失败: {e}"))
+            })
+            .await
+    }
+
+    /// Level-2：buildBookRequest(params) -> {url,method,body,headers}。
+    pub async fn l2_build_book_request(
+        &self,
+        provider_id: &str,
+        params: &Value,
+    ) -> Result<Value, String> {
+        self.call_l2_fn(provider_id, "buildBookRequest", params).await
+    }
+
+    /// Level-2：parseBookResponse({status,body}) -> {asks,bids,...}。
+    pub async fn l2_parse_book_response(
+        &self,
+        provider_id: &str,
+        resp: &Value,
+    ) -> Result<Value, String> {
+        self.call_l2_fn(provider_id, "parseBookResponse", resp).await
+    }
+
+    /// 列出本插件已注册的 Level-2 provider id（供 UI 发现 / 能力协商）。
+    pub async fn l2_providers(&self) -> Result<Vec<String>, String> {
+        self.ctx
+            .with(|ctx| -> Result<Vec<String>, String> {
+                let g = ctx.globals();
+                let l2: Object = g
+                    .get("__level2")
+                    .map_err(|e| format!("读取 Level-2 注册表失败: {e}"))?;
+                let mut ids = Vec::new();
+                for kv in l2.props::<String, JsValue>() {
+                    let (k, _) = kv.map_err(|e| format!("遍历 Level-2 注册表失败: {e}"))?;
+                    ids.push(k);
+                }
+                Ok(ids)
+            })
+            .await
+    }
+
+    async fn call_l2_fn(
+        &self,
+        provider_id: &str,
+        fn_name: &str,
+        arg: &Value,
+    ) -> Result<Value, String> {
+        let id = provider_id.to_string();
+        let fn_name = fn_name.to_string();
+        let arg = arg.clone();
+        self.ctx
+            .with(move |ctx| -> Result<Value, String> {
+                let g = ctx.globals();
+                let l2: Object = g
+                    .get("__level2")
+                    .map_err(|e| format!("读取 Level-2 注册表失败: {e}"))?;
+                let holder: Object = l2
+                    .get(id.as_str())
+                    .map_err(|_| format!("Level-2 数据源 {id} 未注册"))?;
+                let f: Function = holder
+                    .get(fn_name.as_str())
+                    .map_err(|_| format!("Level-2 数据源缺少 {fn_name}"))?;
                 let jsarg = json_to_js(&ctx, &arg).map_err(|e| format!("参数转换失败: {e}"))?;
                 let res: JsValue = f.call((jsarg,)).map_err(|e| format!("{fn_name} 执行失败: {e}"))?;
                 js_to_json(&res).map_err(|e| format!("结果转换失败: {e}"))

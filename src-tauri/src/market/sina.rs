@@ -352,7 +352,10 @@ pub async fn auction_page(page: i64, asc: i32) -> Result<Vec<AuctionStock>, Stri
 // 新浪可提供 最新价/涨跌幅/成交额/换手率；量比(f10)、5分钟涨速(f22)、
 // 主力/大单净流入(f62/f72) 无对应字段，置 0。
 // speed/big/vr/main 四类专用排序新浪不支持，回退按涨跌幅排序（基础列仍有数据）。
-pub async fn rank_board(sort: &str, page: i64, num: i64) -> Result<Vec<RankRow>, String> {
+pub async fn rank_board(sort: &str, page: i64, num: i64, scope: &str) -> Result<Vec<RankRow>, String> {
+    if scope != "a" {
+        return Err("新浪回退源暂不支持该品种榜单".into());
+    }
     let (sort_key, asc) = match sort {
         "losers" => ("changepercent", 1),
         "amount" => ("amount", 0),
@@ -390,6 +393,8 @@ pub async fn rank_board(sort: &str, page: i64, num: i64) -> Result<Vec<RankRow>,
             speed5: 0.0,
             main_net: 0.0,
             big_net: 0.0,
+            convert_value: 0.0,
+            convert_premium: 0.0,
         })
         .collect();
     Ok(out)

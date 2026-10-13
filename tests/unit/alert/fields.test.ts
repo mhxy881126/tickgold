@@ -36,9 +36,9 @@ describe("fields 元数据", () => {
     });
   });
 
-  it("六大分类标签齐全", () => {
+  it("七大分类标签齐全", () => {
     expect(Object.keys(CATEGORY_LABELS).sort()).toEqual(
-      ["auction", "book", "event", "indicator", "quote", "speed"].sort()
+      ["auction", "book", "event", "indicator", "quote", "special", "speed"].sort()
     );
   });
 });

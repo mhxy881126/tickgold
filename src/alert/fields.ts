@@ -7,7 +7,8 @@ export type FieldCategory =
   | "event" // 涨跌停事件
   | "indicator" // 技术指标
   | "book" // 盘口
-  | "auction"; // 竞价
+  | "auction" // 竞价
+  | "special"; // 品种专项（可转债/ETF）
 
 export type ParamSpec = {
   key: string;
@@ -121,6 +122,9 @@ export const FIELD_SPECS: FieldSpec[] = [
   // ===== 竞价 =====
   { field: "auction.gap", label: "竞价缺口", category: "auction", unit: "%", ops: SCALAR_OPS, default: 3 },
   { field: "auction.amountYi", label: "竞价成交额", category: "auction", unit: "亿", ops: THRESH_OPS, default: 1 },
+  // ===== 品种专项（公开源口径，源不支持时不触发） =====
+  { field: "spec.convPremium", label: "可转债转股溢价率", category: "special", unit: "%", ops: SCALAR_OPS, default: 30 },
+  { field: "spec.etfPremium", label: "ETF 折溢价率", category: "special", unit: "%", ops: SCALAR_OPS, default: 1 },
 ];
 
 const SPEC_MAP: Record<string, FieldSpec> = Object.fromEntries(
@@ -138,4 +142,5 @@ export const CATEGORY_LABELS: Record<FieldCategory, string> = {
   indicator: "指标",
   book: "盘口",
   auction: "竞价",
+  special: "品种",
 };

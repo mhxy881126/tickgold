@@ -46,6 +46,14 @@ pub(crate) async fn get_trades(code: String, n: i64) -> Result<Vec<market::Trade
     market::get_trades(code, n).await
 }
 
+// v2.32 盘口增强：分价成交分布 / 集合竞价虚拟量 / 封单额趋势（安全降级，不报错）
+#[tauri::command]
+pub(crate) async fn get_depth_enhance(
+    code: String,
+) -> Result<market::depth_enhance::DepthEnhance, String> {
+    market::depth_enhance::depth_enhance(&code).await
+}
+
 #[tauri::command]
 pub(crate) async fn get_sectors(kind: String) -> Result<Vec<market::Sector>, String> {
     market::get_sectors(kind).await
@@ -94,8 +102,9 @@ pub(crate) async fn get_rank_board(
     sort: String,
     page: i64,
     num: i64,
+    scope: Option<String>,
 ) -> Result<Vec<market::RankRow>, String> {
-    market::get_rank_board(sort, page, num).await
+    market::get_rank_board(sort, page, num, scope.unwrap_or_else(|| "a".into())).await
 }
 
 #[tauri::command]
@@ -486,6 +495,20 @@ pub(crate) async fn ai_build_decision_pack(
     let dir = state.dir();
     tauri::async_runtime::spawn_blocking(move || {
         ai::decision::build_pack(&dir, date.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// v2.32 盯盘复盘报告数据包（聚合四大块，盘后读本地库）
+#[tauri::command]
+pub(crate) async fn ai_build_review_report(
+    state: tauri::State<'_, ai::AiState>,
+    date: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let dir = state.dir();
+    tauri::async_runtime::spawn_blocking(move || {
+        ai::report::build_report(&dir, date.as_deref())
     })
     .await
     .map_err(|e| e.to_string())?

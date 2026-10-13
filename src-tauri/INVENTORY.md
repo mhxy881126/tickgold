@@ -1,13 +1,16 @@
 # TickGold 后端命令 / 迁移对照清单（v2.29.0 基线）
 
 > 巨石拆分（lib.rs → db/migrations.rs、commands.rs、setup.rs 模块化）的护栏。
-> 每次后端结构调整后，必须重新核对：**命令总数 172、迁移总数 50**，逐一对照无缺失。
+> 每次后端结构调整后，必须重新核对：**命令总数 194、迁移总数 50**，逐一对照无缺失。
 > 基线：v2.27.0（149 命令 / 48 迁移）；v2.28.0 净增 21 个命令
 > （资金流 3、组合层 2、风险仪表盘 1、异动阈值 2、板块日快照 3、备份中心 7、数据治理 3）
 > + 迁移 v49（统一账本回填）+ v50（重建 ts_sector_day 支持自建板块日历史）；
 > v2.29.0 净增 2 个数据治理命令（过期清理预览 / 执行），迁移数不变。
+>
+> v2.30 / v2.31 / v2.32 陆续新增命令（含 v2.32 `get_depth_enhance`），
+> 全表逐行重新编号在发版核对时统一进行（#20）；下列编号仅基线快照。
 
-## 一、Tauri Commands：172 个
+## 一、Tauri Commands：193 个
 
 > 编号严格按 `lib.rs` 中 `generate_handler!` 的出现顺序。
 
@@ -183,6 +186,13 @@
 | 151 | plugin_get_dev_mode |
 | 152 | plugin_set_dev_mode |
 | 153 | plugin_reload |
+| - | plugin_l2_set_key（v2.32 Level-2 Key 录入）|
+| - | plugin_l2_key_set（v2.32 查询 Key 是否已配置）|
+| - | plugin_l2_clear_key（v2.32 清除 Key）|
+| - | plugin_l2_providers（v2.32 发现 Level-2 数据源）|
+
+> v2.32 Level-2 新增 4 个命令（暂未重排编号，#20 统一编号）；
+> `level2.book` 走既有 `plugin_rpc`，不另增命令。
 
 ### backup 模块（v2.28 备份 / 恢复中心）：7 个
 

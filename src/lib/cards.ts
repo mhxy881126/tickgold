@@ -45,7 +45,8 @@ export type CardId =
   | "risk"
   | "rotation"
   | "backtest"
-  | "strategyscan";
+  | "strategyscan"
+  | "reviewreport";
 
 export type Zone = "main" | "side";
 
@@ -101,6 +102,7 @@ export const CARD_META: Record<CardId, CardMeta> = {
   rotation: { title: "题材轮动矩阵", accent: "#e89c3d", kind: "chart" },
   backtest: { title: "策略回测", accent: "#1dbe7d", kind: "chart" },
   strategyscan: { title: "战法选股", accent: "#ff3232", kind: "chart" },
+  reviewreport: { title: "盯盘复盘报告", accent: "#c9a24a", kind: "chart" },
 };
 
 // ===== 卡片个性化（V1 单卡设置 / V3 场景模板）=====

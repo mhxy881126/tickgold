@@ -110,6 +110,21 @@ pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
     Ok(book)
 }
 
+/// ETF 参考净值 IOPV（腾讯字段 f79，仅 ETF 行有值；0 = 源未提供）
+pub async fn iopv(code: &str) -> Result<f64, String> {
+    let sym = cnc_symbol(code);
+    let url = format!("https://qt.gtimg.cn/q={sym}");
+    let resp = http().get(&url).send().await.map_err(|e| e.to_string())?;
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    let (txt, _, _) = encoding_rs::GBK.decode(&bytes);
+    let line = txt.lines().next().unwrap_or("");
+    let Some((_, right)) = line.split_once('=') else {
+        return Ok(0.0);
+    };
+    let f: Vec<&str> = right.trim().trim_end_matches(';').trim_matches('"').split('~').collect();
+    Ok(f.get(79).and_then(|x| x.parse::<f64>().ok()).unwrap_or(0.0))
+}
+
 // ===== K线 =====
 /// period: 1/5/15/30/60 分钟, 101 日, 102 周, 103 月
 pub async fn kline(code: &str, period: i64, count: i64) -> Result<Vec<KBar>, String> {

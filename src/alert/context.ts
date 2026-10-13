@@ -1,5 +1,5 @@
 // 评估上下文数据供应：指标 / 盘口 / 竞价缓存，涨速价格历史，封板边沿，prev 快照
-import { fetchKLine, fetchOrderBook, fetchAuction } from "../api/market";
+import { fetchKLine, fetchOrderBook, fetchAuction, fetchRankBoard } from "../api/market";
 import type { Quote, OrderBook } from "../api/types";
 import type { AlertRuleV2, Leaf, Scope } from "./types";
 import { isNode } from "./types";
@@ -14,6 +14,7 @@ type QuotesMap = Record<string, Quote>;
 const IND_TTL = 60_000;
 const BOOK_TTL = 5_000;
 const AUC_TTL = 10_000;
+const SPEC_TTL = 15_000;
 
 /** 规则作用域 → 代码列表 */
 export function expandScope(
@@ -73,6 +74,7 @@ export class ContextProvider {
   private indAt = 0;
   private bookAt = 0;
   private aucAt = 0;
+  private specAt = 0;
 
   async refresh(targets: RuleTarget[], quotes: QuotesMap, now: number): Promise<void> {
     this.values.clear();
@@ -86,6 +88,7 @@ export class ContextProvider {
 
     const indCodes = codesFor(active, leaves, "indicator");
     const bookCodes = codesFor(active, leaves, "book");
+    const specCodes = codesFor(active, leaves, "special");
 
     if (indCodes.size > 0 && now - this.indAt > IND_TTL) {
       await this.computeIndicators(indCodes, leaves);
@@ -98,6 +101,10 @@ export class ContextProvider {
     if (hasCategory(leaves, "auction") && isAuction(new Date(now)) && now - this.aucAt > AUC_TTL) {
       await this.computeAuction();
       this.aucAt = now;
+    }
+    if (specCodes.size > 0 && now - this.specAt > SPEC_TTL) {
+      await this.computeSpecials(specCodes);
+      this.specAt = now;
     }
   }
 
@@ -194,6 +201,35 @@ export class ContextProvider {
     for (const s of [...data.highOpen, ...data.lowOpen]) {
       this.values.set(rkey(s.code, "auction.gap"), s.gap);
       this.values.set(rkey(s.code, "auction.amountYi"), s.amount / 1e8);
+    }
+  }
+
+  /** 品种专项：可转债转股溢价率（整表一次）、ETF 折溢价率（逐券盘口 IOPV） */
+  private async computeSpecials(codes: Set<string>) {
+    const convCodes = [...codes].filter((c) => c.startsWith("11") || c.startsWith("12"));
+    const etfCodes = [...codes].filter(
+      (c) => c.startsWith("5") || c.startsWith("15") || c.startsWith("16") || c.startsWith("18"),
+    );
+    if (convCodes.length > 0) {
+      try {
+        const rows = await fetchRankBoard("amount", 1, 500, "conv");
+        for (const c of convCodes) {
+          const r = rows.find((r) => r.code === c);
+          if (r?.convertPremium != null)
+            this.values.set(rkey(c, "spec.convPremium"), r.convertPremium);
+        }
+      } catch {
+        // 公开源失败：本轮不提供专项值
+      }
+    }
+    for (const c of etfCodes) {
+      try {
+        const ob = await fetchOrderBook(c);
+        if (ob.iopv)
+          this.values.set(rkey(c, "spec.etfPremium"), ((ob.price - ob.iopv) / ob.iopv) * 100);
+      } catch {
+        // 单券失败忽略
+      }
     }
   }
 

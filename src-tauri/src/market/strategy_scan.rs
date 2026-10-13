@@ -180,7 +180,7 @@ pub async fn scan(req: &StrategyScanReq) -> Result<Vec<TacticHit>, String> {
         zt_pool.list.iter().map(|z| (z.code.as_str(), z)).collect();
 
     // 2) 涨幅榜前 300（反包/弱转强/资金共振的活跃股池）。
-    let rank = get_rank_board("gainers".to_string(), 1, 300)
+    let rank = get_rank_board("gainers".to_string(), 1, 300, "a".to_string())
         .await
         .unwrap_or_default();
     let rank_map: HashMap<&str, f64> =

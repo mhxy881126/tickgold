@@ -14,6 +14,7 @@ pub mod maindb;
 pub mod plan;
 pub mod provider;
 pub mod review;
+pub mod report;
 pub mod rule_review;
 pub mod signal_quality;
 pub mod tools;

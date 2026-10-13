@@ -36,6 +36,9 @@ import {
   pluginReload,
   pluginGetDevMode,
   pluginSetDevMode,
+  pluginL2SetKey,
+  pluginL2KeySet,
+  pluginL2ClearKey,
   type PluginRow,
 } from "../plugin/api";
 import {
@@ -1084,6 +1087,7 @@ function pFlash(m: string, ok = false) {
 }
 async function loadPluginsTab() {
   await refreshPlugins();
+  await refreshL2Keys();
   try {
     devMode.value = await pluginGetDevMode();
   } catch {
@@ -1160,6 +1164,58 @@ async function toggleDev() {
     pFlash(devMode.value ? "开发者模式已开启" : "开发者模式已关闭", true);
   } catch (e) {
     pFlash(String(e));
+  }
+}
+
+// ===== v2.32 Level-2 数据源 Key（系统凭据箱，不进插件 JS）=====
+const l2KeySet = ref<Record<string, boolean>>({});
+const l2Input = ref<Record<string, string>>({});
+const l2Busy = ref<Record<string, boolean>>({});
+const isL2Plugin = (r: PluginRow) => r.permissions.includes("level2:read");
+
+async function refreshL2Keys() {
+  const next: Record<string, boolean> = {};
+  await Promise.all(
+    plugins.value
+      .filter(isL2Plugin)
+      .map(async (r) => {
+        try {
+          next[r.pluginId] = await pluginL2KeySet(r.pluginId);
+        } catch {
+          next[r.pluginId] = false;
+        }
+      }),
+  );
+  l2KeySet.value = next;
+}
+async function saveL2Key(r: PluginRow) {
+  const key = (l2Input.value[r.pluginId] || "").trim();
+  if (!key) {
+    pFlash("请先粘贴数据商 API Key");
+    return;
+  }
+  l2Busy.value[r.pluginId] = true;
+  try {
+    await pluginL2SetKey(r.pluginId, key);
+    l2Input.value[r.pluginId] = "";
+    await refreshL2Keys();
+    pFlash(`已保存 ${r.name} 的 API Key 到系统凭据箱`, true);
+  } catch (e) {
+    pFlash(String(e));
+  } finally {
+    l2Busy.value[r.pluginId] = false;
+  }
+}
+async function clearL2Key(r: PluginRow) {
+  l2Busy.value[r.pluginId] = true;
+  try {
+    await pluginL2ClearKey(r.pluginId);
+    await refreshL2Keys();
+    pFlash(`已清除 ${r.name} 的 API Key`, true);
+  } catch (e) {
+    pFlash(String(e));
+  } finally {
+    l2Busy.value[r.pluginId] = false;
   }
 }
 </script>
@@ -1980,6 +2036,36 @@ async function toggleDev() {
                     <span class="p-scopes"><span v-for="s in r.permissions" :key="s" class="p-scope">{{ s }}</span></span>
                   </div>
                   <div v-if="r.errorMsg" class="p-err">{{ r.errorMsg }}</div>
+                  <div v-if="isL2Plugin(r)" class="l2-key">
+                    <div class="l2-key-head">
+                      <span class="l2-key-title">Level-2 数据源 API Key</span>
+                      <span class="l2-key-badge" :class="{ set: l2KeySet[r.pluginId] }">
+                        {{ l2KeySet[r.pluginId] ? "已配置" : "未配置" }}
+                      </span>
+                    </div>
+                    <div class="l2-key-row">
+                      <input
+                        v-model="l2Input[r.pluginId]"
+                        type="password"
+                        spellcheck="false"
+                        autocomplete="off"
+                        placeholder="粘贴数据商 API Key（仅存本机系统凭据箱）"
+                        @keyup.enter="saveL2Key(r)"
+                      />
+                      <button type="button" class="p-op" :disabled="l2Busy[r.pluginId]" @click="saveL2Key(r)">保存</button>
+                      <button
+                        v-if="l2KeySet[r.pluginId]"
+                        type="button"
+                        class="p-op danger"
+                        :disabled="l2Busy[r.pluginId]"
+                        @click="clearL2Key(r)"
+                      >清除</button>
+                    </div>
+                    <div class="l2-key-note">
+                      Key 仅保存在系统凭据箱、由宿主代发请求时注入，永不进入插件沙箱；需自备合规数据商账号，
+                      数据口径与使用合规责任由你与数据商的协议约定，本应用不内置任何 Level-2 数据。
+                    </div>
+                  </div>
                 </div>
                 <div v-if="!plugins.length" class="p-empty">暂无插件，点击「扫描插件目录」发现内置插件</div>
               </div>
@@ -2353,6 +2439,16 @@ async function toggleDev() {
   border-radius: 4px; padding: 1px 5px; font-variant-numeric: tabular-nums; }
 .p-err { font-size: 10px; color: #f23645; margin-top: 6px; word-break: break-all; }
 .p-empty { font-size: 10.5px; color: var(--text-dim); padding: 14px 0; text-align: center; }
+.p-op:disabled { opacity: .5; cursor: default; }
+.l2-key { margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 7px; background: rgba(47,111,237,.05); }
+.l2-key-head { display: flex; align-items: center; gap: 8px; }
+.l2-key-title { font-size: 11px; font-weight: 700; color: var(--text); }
+.l2-key-badge { font-size: 9px; padding: 1px 6px; border-radius: 10px; border: 1px solid var(--border); color: var(--text-dim); }
+.l2-key-badge.set { color: #08db94; border-color: #08db94; }
+.l2-key-row { display: flex; gap: 6px; margin-top: 7px; }
+.l2-key-row input { flex: 1; min-width: 0; height: 24px; padding: 0 8px; border: 1px solid var(--border); border-radius: 5px;
+  background: rgba(255, 255, 255, .04); color: var(--text); font-size: 10.5px; }
+.l2-key-note { font-size: 9.5px; color: var(--text-dim); line-height: 1.6; margin-top: 6px; }
 
 /* 券商交易（v2.6） */
 .broker-tab { padding-bottom: 8px; }

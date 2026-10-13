@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
-import { fetchRankBoard } from "../api/market";
+import { fetchRankBoard, type RankScope } from "../api/market";
 import { useWatchlistStore } from "../stores/watchlist";
 import { useVirtualList } from "../composables/useVirtualList";
 import type { RankRow } from "../api/types";
@@ -33,7 +33,16 @@ const tabs: TabDef[] = [
   { k: "main",     label: "主力净流入", metric: "mainNet",    metricLabel: "主力净流入", kind: "money" },
 ];
 
+const scopes: { k: RankScope; label: string; note: string }[] = [
+  { k: "a", label: "沪深 A", note: "" },
+  { k: "bse", label: "北交所", note: "公开源不含逐笔委托" },
+  { k: "etf", label: "ETF/基金", note: "涨速等字段以源站返回为准" },
+  { k: "conv", label: "可转债", note: "公开源不含逐笔委托" },
+];
+
 const tab = ref<TabKey>("gainers");
+const scope = ref<RankScope>("a");
+const activeScope = computed(() => scopes.find((s) => s.k === scope.value) ?? scopes[0]);
 const activeTab = computed(() => tabs.find((t) => t.k === tab.value) ?? tabs[0]);
 const list = ref<RankRow[]>([]);
 const page = ref(0);
@@ -56,7 +65,7 @@ async function loadMore() {
   errorMsg.value = "";
   const next = page.value + 1;
   try {
-    const rows = await fetchRankBoard(tab.value, next, PAGE_SIZE);
+    const rows = await fetchRankBoard(tab.value, next, PAGE_SIZE, scope.value);
     list.value = list.value.concat(rows);
     page.value = next;
     if (rows.length < PAGE_SIZE) hasMore.value = false;
@@ -82,6 +91,7 @@ function reset() {
   loadMore();
 }
 watch(tab, reset);
+watch(scope, reset);
 
 onMounted(() => {
   measureScroll(scrollEl.value);
@@ -121,7 +131,21 @@ function metricCls(q: RankRow) {
 
 <template>
   <div class="rank">
-    <!-- 顶部密集 Tab（9 项，自动换行） -->
+    <div class="scopes">
+      <button
+        v-for="s in scopes"
+        :key="s.k"
+        type="button"
+        class="scope"
+        :class="{ active: scope === s.k }"
+        @click="scope = s.k"
+      >
+        {{ s.label }}
+      </button>
+      <span v-if="activeScope.note" class="scope-note">{{ activeScope.note }}</span>
+    </div>
+
+    <!-- 顶部密集 Tab（8 项，自动换行） -->
     <div class="tabs">
       <button
         v-for="t in tabs"
@@ -166,6 +190,11 @@ function metricCls(q: RankRow) {
             <span class="name-cell">
               <span class="nm">{{ list[index]!.name }}</span>
               <span class="code">{{ list[index]!.code }}</span>
+              <span
+                v-if="scope === 'conv' && list[index]!.convertPremium != null"
+                class="conv-tag"
+                :class="list[index]!.convertPremium! >= 0 ? 'up' : 'down'"
+              >溢{{ list[index]!.convertPremium!.toFixed(1) }}%</span>
             </span>
             <AnimatedNumber tag="span" class="price" :class="signCls(list[index]!.pct)" :value="list[index]!.price" kind="price" />
             <span class="pct-cell">
@@ -210,6 +239,17 @@ function metricCls(q: RankRow) {
   display: flex; flex-direction: column; height: 100%;
   background: #0b0e14; border: 1px solid #1b2230; border-radius: 6px; overflow: hidden;
 }
+
+.scopes {
+  flex-shrink: 0; display: flex; align-items: center; gap: 4px;
+  padding: 6px 8px; background: #0d121b; border-bottom: 1px solid #1b2230;
+}
+.scope {
+  padding: 3px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.04); color: #98a3b3; font-size: 11px; cursor: pointer;
+}
+.scope.active { color: #fff; border-color: #d4af37; background: rgba(212,175,55,.14); }
+.scope-note { margin-left: auto; color: #66717f; font-size: 10px; }
 
 /* 顶部密集 Tab：扁平分段式，8 项自动换行 */
 .tabs {
@@ -284,6 +324,7 @@ function metricCls(q: RankRow) {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .code { flex-shrink: 0; font-size: 10px; color: #5d6878; }
+.conv-tag { flex-shrink: 0; font-size: 10px; font-weight: 600; padding: 0 4px; border-radius: 3px; background: rgba(255,255,255,.05); }
 
 .price { width: 62px; flex-shrink: 0; text-align: right; font-size: 12px; }
 .pct-cell { width: 90px; flex-shrink: 0; text-align: right; position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }

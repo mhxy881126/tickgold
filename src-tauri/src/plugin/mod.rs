@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::ai::config::SecretStore;
 use crate::ai::maindb;
 
 pub struct PluginManager {
@@ -323,6 +324,15 @@ pub fn plugin_read_asset(
 
 /// datasource 实际 HTTP（权限已在调用前 check）。
 async fn ds_http(desc: &Value) -> Result<(u16, String), String> {
+    ds_http_extra(desc, None).await
+}
+
+/// 同 ds_http，extra_header 用于 Level-2：把系统凭据箱中的 API Key 注入请求头，
+/// Key 从不经过 JS。
+async fn ds_http_extra(
+    desc: &Value,
+    extra_header: Option<(&str, &str)>,
+) -> Result<(u16, String), String> {
     let url = desc.get("url").and_then(|x| x.as_str()).ok_or("buildRequest 未返回 url")?;
     let method = desc.get("method").and_then(|x| x.as_str()).unwrap_or("GET").to_uppercase();
     let client = reqwest::Client::builder()
@@ -337,6 +347,19 @@ async fn ds_http(desc: &Value) -> Result<(u16, String), String> {
     if let Some(body) = desc.get("body").and_then(|x| x.as_str()) {
         req = req.body(body.to_string());
     }
+    // 插件在 desc.headers 中声明的普通请求头（白名单：禁止其伪造鉴权头）。
+    if let Some(hdrs) = desc.get("headers").and_then(Value::as_object) {
+        for (k, v) in hdrs {
+            if let Some(s) = v.as_str() {
+                if !k.eq_ignore_ascii_case(AUTH_HEADER) {
+                    req = req.header(k, s);
+                }
+            }
+        }
+    }
+    if let Some((k, v)) = extra_header {
+        req = req.header(k, v);
+    }
     let resp = req.send().await.map_err(|e| format!("数据源请求失败：{e}"))?;
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
@@ -344,6 +367,72 @@ async fn ds_http(desc: &Value) -> Result<(u16, String), String> {
         return Err("响应超过 2MB".to_string());
     }
     Ok((status, String::from_utf8_lossy(&bytes).to_string()))
+}
+
+/// Level-2 API Key 在系统凭据箱中的存放位置。
+const L2_KEY_SERVICE: &str = "tickgold-plugin-l2";
+/// 鉴权请求头名（插件不可通过 desc.headers 伪造，只能由 Rust 注入真实 Key）。
+const AUTH_HEADER: &str = "Authorization";
+
+fn l2_secret(plugin_id: &str) -> crate::ai::config::KeyringSecret {
+    crate::ai::config::KeyringSecret {
+        service: L2_KEY_SERVICE.to_string(),
+        user: plugin_id.to_string(),
+    }
+}
+
+#[tauri::command]
+pub fn plugin_l2_set_key(plugin_id: String, key: String) -> Result<(), String> {
+    let k = key.trim();
+    if k.is_empty() {
+        return Err("Key 不能为空".to_string());
+    }
+    l2_secret(&plugin_id).set(k)
+}
+
+#[tauri::command]
+pub fn plugin_l2_key_set(plugin_id: String) -> Result<bool, String> {
+    Ok(l2_secret(&plugin_id).get()?.is_some())
+}
+
+#[tauri::command]
+pub fn plugin_l2_clear_key(plugin_id: String) -> Result<(), String> {
+    l2_secret(&plugin_id).erase()
+}
+
+/// 发现可用的 Level-2 数据源：已启用、声明 level2:read 且 main.js 已注册 provider。
+/// 返回 { pluginId, name, providers[], keySet }，供盘口卡选择 / 降级。
+#[tauri::command]
+pub async fn plugin_l2_providers(
+    mgr: State<'_, PluginManager>,
+) -> Result<Vec<Value>, String> {
+    let dir = mgr.dir_locked().clone();
+    let conn = maindb::open_readonly(&dir)?;
+    let rows = store::list(&conn);
+    drop(conn);
+    let mut out = Vec::new();
+    for row in rows {
+        if !row.enabled
+            || !permission::has_scope(&row.permissions, crate::market::level2::SCOPE_LEVEL2_READ)
+        {
+            continue;
+        }
+        let Some(engine) = mgr.engine_map().get(&row.plugin_id).cloned() else {
+            continue;
+        };
+        let providers = engine.l2_providers().await.unwrap_or_default();
+        if providers.is_empty() {
+            continue;
+        }
+        let key_set = l2_secret(&row.plugin_id).get()?.is_some();
+        out.push(json!({
+            "pluginId": row.plugin_id,
+            "name": row.name,
+            "providers": providers,
+            "keySet": key_set,
+        }));
+    }
+    Ok(out)
 }
 
 #[tauri::command]
@@ -385,6 +474,42 @@ pub async fn plugin_rpc(
             permission::check_http(&perms, &url)?;
             let (status, body) = ds_http(&desc).await?;
             e.parse_response(&ds_id, &json!({ "status": status, "body": body })).await
+        }
+        "level2.book" => {
+            // 需要 level2:read scope。
+            if !permission::has_scope(&perms, crate::market::level2::SCOPE_LEVEL2_READ) {
+                return Err(format!("缺少权限：{}", crate::market::level2::SCOPE_LEVEL2_READ));
+            }
+            let code = params.get("code").and_then(Value::as_str).unwrap_or("").to_string();
+            if code.is_empty() {
+                return Err("code 不能为空".to_string());
+            }
+            let provider = params.get("provider").and_then(Value::as_str).unwrap_or("l2").to_string();
+            let e = engine_arc(mgr.inner(), &plugin_id)?;
+
+            // 先取免费源 OrderBook 作为基础行情（现价/开高低/量额）。失败则不继续。
+            let base = crate::market::get_orderbook(code.clone()).await?;
+
+            // JS 只产出请求描述，不接触 Key。
+            let req_params = json!({ "code": code });
+            let desc = e.l2_build_book_request(&provider, &req_params).await?;
+            let url = desc.get("url").and_then(Value::as_str).unwrap_or("").to_string();
+            permission::check_http(&perms, &url)?;
+
+            // Key 由 Rust 从系统凭据箱取出并注入 Authorization 头；未配置则报错引导。
+            let key = l2_secret(&plugin_id)
+                .get()?
+                .ok_or("尚未配置该数据源的 API Key，请先在设置中录入")?;
+            let (status, body) =
+                ds_http_extra(&desc, Some((AUTH_HEADER, key.as_str()))).await?;
+            let parsed = e
+                .l2_parse_book_response(&provider, &json!({ "status": status, "body": body }))
+                .await?;
+
+            // 用更深档位替换免费五档并标注来源。
+            let source = format!("{}:{}", plugin_id, provider);
+            let book = crate::market::level2::merge_book(base, &parsed, &source)?;
+            Ok(serde_json::to_value(book).map_err(|e| e.to_string())?)
         }
         other => host::run_basic(&app, &dir, &perms, &plugin_id, other, params).await,
     }

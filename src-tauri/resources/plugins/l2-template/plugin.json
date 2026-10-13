@@ -1,0 +1,13 @@
+{
+  "id": "com.tickgold.l2-template",
+  "name": "Level-2 数据源模板",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "author": "TickGold",
+  "description": "Level-2 盘口插件开发骨架（模板，需替换为你的数据商接口与字段映射）",
+  "permissions": [
+    "level2:read",
+    "https://api.example-level2-vendor.com/*"
+  ],
+  "main": "main.js"
+}

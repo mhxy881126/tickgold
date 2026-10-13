@@ -38,6 +38,9 @@ export interface RankRow {
   speed5: number;       // 5分钟涨速 %
   mainNet: number;      // 主力净流入（元）
   bigNet: number;       // 大单净流入（元）
+  /** 可转债专项（仅可转债榜单有值） */
+  convertValue?: number;   // 转股价值
+  convertPremium?: number; // 转股溢价率 %
 }
 
 /** K线单根 */
@@ -75,6 +78,10 @@ export interface OrderBook {
   weiCha: number;      // 委差（手）=bid-ask
   insideVol: number;   // 内盘（主动卖成交，手）
   outsideVol: number;  // 外盘（主动买成交，手）
+  // v2.32 品种专项
+  iopv?: number;          // ETF 参考净值
+  convertValue?: number;  // 可转债转股价值
+  convertPremium?: number; // 可转债转股溢价率 %
 }
 
 /** 逐笔成交（时间 / 价 / 量 / 主动方向） */
@@ -83,6 +90,32 @@ export interface TradeTick {
   price: number;
   vol: number; // 手
   side: "buy" | "sell" | "neutral";
+}
+
+// ===== v2.32 盘口增强 =====
+/** 分价成交桶（当日累计，量单位手） */
+export interface PriceBucket {
+  price: number;
+  vol: number;
+  buyVol: number;
+  sellVol: number;
+}
+/** 集合竞价虚拟快照（09:15–09:25） */
+export interface AuctionPoint {
+  time: string;
+  price: number;
+  matchVol: number;
+}
+/** 封单额趋势点（元） */
+export interface SealPoint {
+  time: string;
+  fund: number;
+}
+/** 盘口增强聚合 */
+export interface DepthEnhance {
+  priceDist: PriceBucket[];
+  auction: AuctionPoint[];
+  sealTrend: SealPoint[];
 }
 
 /** 单日资金流（元；占比 %） */
@@ -199,9 +232,10 @@ export interface AlertRule {
   lastFiredAt?: number;
 }
 
-/** secid 前缀：1=沪市, 0=深市/北交所 */
+/** secid 前缀：1=沪市, 0=深市/北交所（北交所新号段 920 须先于 '9' 判定） */
 export function marketPrefix(code: string): string {
-  if (code.startsWith("6") || code.startsWith("9") || code.startsWith("5")) return "1";
+  if (code.startsWith("920")) return "0";
+  if (code.startsWith("6") || code.startsWith("9") || code.startsWith("5") || code.startsWith("11")) return "1";
   return "0";
 }
 

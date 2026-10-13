@@ -1,6 +1,6 @@
 // 行情 API：通过 Tauri command 调 Rust 端（Rust 负责请求东财/新浪公开接口，避免浏览器 CORS 与限频）
 import { invoke } from "@tauri-apps/api/core";
-import type { Quote, RankRow, KBar, StockItem, Sector, ScreenFilter, ScreenResult, AlertRule, OrderBook, StockFundFlow, MarketFundPanorama, FundRankRow } from "./types";
+import type { Quote, RankRow, KBar, StockItem, Sector, ScreenFilter, ScreenResult, AlertRule, OrderBook, StockFundFlow, MarketFundPanorama, FundRankRow, DepthEnhance } from "./types";
 
 /** 批量拉实时行情 */
 export async function fetchQuotes(codes: string[]): Promise<Quote[]> {
@@ -77,6 +77,15 @@ export async function fetchOrderBook(code: string): Promise<OrderBook> {
   return await invoke<OrderBook>("get_orderbook", { code });
 }
 
+/** v2.32 盘口增强：分价成交分布 / 集合竞价虚拟量 / 封单额趋势（失败安全降级为空） */
+export async function fetchDepthEnhance(code: string): Promise<DepthEnhance> {
+  try {
+    return await invoke<DepthEnhance>("get_depth_enhance", { code });
+  } catch {
+    return { priceDist: [], auction: [], sealTrend: [] };
+  }
+}
+
 /** 榜单：gainers=涨幅榜 losers=跌幅榜 amount=成交额榜（失败抛出错误供上层展示） */
 export async function fetchRankPage(
   sort: "gainers" | "losers" | "amount",
@@ -91,12 +100,15 @@ export async function fetchRankPage(
  * sort: gainers 涨幅 / losers 跌幅 / amount 成交额 / speed 快速涨幅(5分钟涨速)
  *       big 大单净量(大单净流入额) / vr 量比榜 / turnover 换手率 / main 主力净流入
  */
+export type RankScope = "a" | "bse" | "etf" | "conv";
+
 export async function fetchRankBoard(
   sort: "gainers" | "losers" | "amount" | "speed" | "big" | "vr" | "turnover" | "main",
   page: number,
   num = 50,
+  scope: RankScope = "a",
 ): Promise<RankRow[]> {
-  return await invoke<RankRow[]>("get_rank_board", { sort, page, num });
+  return await invoke<RankRow[]>("get_rank_board", { sort, page, num, scope });
 }
 
 /** 板块行情：industry=行业板块, concept=概念板块 */

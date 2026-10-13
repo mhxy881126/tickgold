@@ -363,6 +363,8 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<LimitRadar>) {
             RadarStatus { scanning: true, trading, time: now_millis() },
         );
         let (fast, zt, zb, dt) = scan_fast(trading).await;
+        // v2.32：顺带采样封单额，供盘口“封单趋势”曲线。
+        super::depth_enhance::record_seal_snapshot(&zt.list).await;
         let _ = app.emit("radar:data", fast);
         // 阶段2：补充全市场宽度（3-5秒）
         let full = scan_full(trading, zt, zb, dt).await;

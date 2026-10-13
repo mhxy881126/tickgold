@@ -18,6 +18,7 @@ pub mod sector_day;
 pub mod strategy_scan;
 pub mod ladder_stats;
 pub mod screen_sub;
+pub mod depth_enhance;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -116,6 +117,13 @@ pub struct OrderBook {
     pub inside_vol: f64,  // 内盘（主动卖成交，手）
     #[serde(default)]
     pub outside_vol: f64, // 外盘（主动买成交，手）
+    // v2.32 品种专项：ETF 参考净值(IOPV)；可转债转股价值与转股溢价率%
+    #[serde(default)]
+    pub iopv: f64,
+    #[serde(default)]
+    pub convert_value: f64,
+    #[serde(default)]
+    pub convert_premium: f64,
 }
 
 impl OrderBook {
@@ -267,11 +275,18 @@ pub async fn http_permit() -> tokio::sync::SemaphorePermit<'static> {
         .expect("global http semaphore closed")
 }
 
-/// 东财 secid 前缀：6/9/5 开头沪市=1，其余=0
+/// 东财 secid 前缀：沪深股票/基金/转债与北交所新号段区分。
 pub fn secid_prefix(code: &str) -> &'static str {
-    match code.chars().next().unwrap_or('0') {
-        '6' | '9' | '5' => "1",
-        _ => "0",
+    if code.starts_with("920") {
+        "0"
+    } else {
+        match code.chars().next().unwrap_or('0') {
+            '6' | '9' | '5' => "1",
+            _ => match code.get(..2) {
+                Some("11") => "1", // 沪市可转债
+                _ => "0",
+            },
+        }
     }
 }
 
@@ -282,12 +297,27 @@ pub fn cnc_symbol(code: &str) -> String {
     if lower.starts_with("sh") || lower.starts_with("sz") || lower.starts_with("bj") {
         return lower;
     }
-    let prefix = match code.chars().next().unwrap_or('0') {
-        '6' | '9' | '5' => "sh",
-        '4' | '8' => "bj",
-        _ => "sz",
+    let prefix = if code.starts_with("920") {
+        "bj" // 北交所新号段，须先于首字符 '9' 判定
+    } else if code.starts_with("11") {
+        "sh" // 沪市可转债
+    } else {
+        match code.chars().next().unwrap_or('0') {
+            '6' | '9' | '5' => "sh",
+            '4' | '8' => "bj",
+            _ => "sz",
+        }
     };
     format!("{}{}", prefix, code)
+}
+
+/// 是否场内 ETF/基金（沪 5 开头、深 15/16/18 开头）
+pub fn is_etf_code(code: &str) -> bool {
+    code.starts_with('5') || code.starts_with("15") || code.starts_with("16") || code.starts_with("18")
+}
+/// 是否可转债（沪 11 开头、深 12 开头）
+pub fn is_conv_code(code: &str) -> bool {
+    code.starts_with("11") || code.starts_with("12")
 }
 
 pub fn now_millis() -> i64 {
@@ -554,6 +584,23 @@ pub async fn get_orderbook(code: String) -> Result<OrderBook, String> {
             }
         }
     }
+    // v2.32 品种专项指标（失败安全降级：不影响盘口主结果）
+    if is_conv_code(&code) {
+        if let Ok(Ok(rows)) =
+            tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), eastmoney::conv_metrics()).await
+        {
+            if let Some(r) = rows.iter().find(|r| r.code == code || r.code == book.code) {
+                book.convert_value = r.convert_value;
+                book.convert_premium = r.convert_premium;
+            }
+        }
+    } else if is_etf_code(&code) {
+        if let Ok(Ok(v)) =
+            tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), tencent::iopv(&code)).await
+        {
+            book.iopv = v;
+        }
+    }
     book.fill_depth();
     Ok(book)
 }
@@ -646,12 +693,13 @@ pub async fn get_rank_page(sort: String, page: i64, num: i64) -> Result<Vec<Quot
 pub use eastmoney::RankRow;
 
 /// 增强榜单（东方财富，含换手/量比/5分钟涨速/主力净流入/大单净流入）。
-/// sort = gainers/losers/amount/speed/big/vr/turnover/main，page 从 1 开始
-pub async fn get_rank_board(sort: String, page: i64, num: i64) -> Result<Vec<RankRow>, String> {
+/// sort = gainers/losers/amount/speed/big/vr/turnover/main，page 从 1 开始。
+/// scope = a/bse/etf/conv。
+pub async fn get_rank_board(sort: String, page: i64, num: i64, scope: String) -> Result<Vec<RankRow>, String> {
     // 东财多节点故障转移；整体失败/超时则降级新浪（push2 在部分网络被阻断时新浪仍可达）
     let em = tokio::time::timeout(
         Duration::from_secs(12),
-        eastmoney::rank_board(&sort, page, num),
+        eastmoney::rank_board(&sort, page, num, &scope),
     )
     .await;
     match em {
@@ -660,7 +708,7 @@ pub async fn get_rank_board(sort: String, page: i64, num: i64) -> Result<Vec<Ran
             log::warn!("增强榜单东财返回空，降级新浪");
             tokio::time::timeout(
                 Duration::from_secs(10),
-                sina::rank_board(&sort, page, num),
+                sina::rank_board(&sort, page, num, &scope),
             )
             .await
             .map_err(|_| "增强榜单新浪回退: 超时".to_string())?
@@ -669,7 +717,7 @@ pub async fn get_rank_board(sort: String, page: i64, num: i64) -> Result<Vec<Ran
             log::warn!("增强榜单东财源失败，降级新浪: {e}");
             tokio::time::timeout(
                 Duration::from_secs(10),
-                sina::rank_board(&sort, page, num),
+                sina::rank_board(&sort, page, num, &scope),
             )
             .await
             .map_err(|_| "增强榜单新浪回退: 超时".to_string())?
@@ -678,7 +726,7 @@ pub async fn get_rank_board(sort: String, page: i64, num: i64) -> Result<Vec<Ran
             log::warn!("增强榜单东财源超时(12s)，降级新浪");
             tokio::time::timeout(
                 Duration::from_secs(10),
-                sina::rank_board(&sort, page, num),
+                sina::rank_board(&sort, page, num, &scope),
             )
             .await
             .map_err(|_| "增强榜单新浪回退: 超时".to_string())?

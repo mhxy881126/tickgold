@@ -2,10 +2,11 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as echarts from "echarts";
 import { invoke } from "@tauri-apps/api/core";
-import { fetchMinute, fetchKLine } from "../api/market";
+import { fetchMinute, fetchKLine, fetchDepthEnhance } from "../api/market";
+import { pluginL2Providers, pluginL2Book, type L2ProviderInfo } from "../plugin/api";
 import { useQuotesStore } from "../stores/quotes";
 import { useWatchlistStore } from "../stores/watchlist";
-import type { KBar, OrderBook } from "../api/types";
+import type { KBar, OrderBook, DepthEnhance } from "../api/types";
 import AnimatedNumber from "./common/AnimatedNumber.vue";
 
 const props = defineProps<{
@@ -24,6 +25,34 @@ const minute = ref<KBar[]>([]);
 const kline = ref<KBar[]>([]);
 const ob = ref<OrderBook | null>(null);
 const got = new Set<string>();
+
+// ===== v2.32 Level-2 插件盘口：有数据源则升级免费五档为十档，失败安全降级 =====
+const l2Sources = ref<L2ProviderInfo[]>([]);
+const l2Using = ref<L2ProviderInfo | null>(null); // 当前成功出数的源（null=免费五档）
+let l2Discovered = false;
+async function discoverL2() {
+  if (l2Discovered) return;
+  l2Discovered = true;
+  try {
+    l2Sources.value = await pluginL2Providers();
+  } catch {
+    l2Sources.value = [];
+  }
+}
+async function tryL2Upgrade() {
+  await discoverL2();
+  // 只自动选用已配置 Key 的第一个源；其余留给后续手动切换。
+  const src = l2Sources.value.find((s) => s.keySet && s.providers.length);
+  if (!src) return;
+  try {
+    const book = await pluginL2Book(src.pluginId, props.code, src.providers[0]);
+    ob.value = book;
+    l2Using.value = src;
+  } catch {
+    // 保留免费五档，不打扰用户
+    l2Using.value = null;
+  }
+}
 
 // ===== 分时数据同 code 共享：10s 内复用同一 promise，避免多格/刷新并发风暴 =====
 const minuteCache = new Map<string, { at: number; p: Promise<KBar[]> }>();
@@ -49,10 +78,138 @@ async function ensure(kind: string) {
   try {
     if (kind === "m") minute.value = await fetchMinuteShared(props.code);
     else if (kind === "k") kline.value = await fetchKLine(props.code, 101, 180);
-    else ob.value = await invoke<OrderBook>("get_orderbook", { code: props.code });
+    else {
+      ob.value = await invoke<OrderBook>("get_orderbook", { code: props.code });
+      void tryL2Upgrade(); // 有 Level-2 插件则后台升级为十档，失败保留五档
+    }
   } catch {
     got.delete(kind);
   }
+}
+
+// ETF 折溢价率 = (价格-IOPV)/IOPV*100
+function etfPremium(o: OrderBook): number {
+  return o.iopv ? ((o.price - o.iopv) / o.iopv) * 100 : 0;
+}
+function etfPremiumCls(o: OrderBook): string {
+  const v = etfPremium(o);
+  return v > 0.005 ? "up" : v < -0.005 ? "down" : "flat";
+}
+
+// ===== v2.32 盘口增强子页 =====
+type ObTab = "depth" | "dist" | "auction" | "seal";
+const obTab = ref<ObTab>("depth");
+const enh = ref<DepthEnhance | null>(null);
+const enhLoading = ref(false);
+let enhLoaded = false;
+const enhEl = ref<HTMLElement | null>(null);
+let enhChart: echarts.ECharts | null = null;
+
+async function loadEnhance(force = false) {
+  if ((enhLoaded && !force) || enhLoading.value) return;
+  enhLoading.value = true;
+  try {
+    enh.value = await fetchDepthEnhance(props.code);
+    enhLoaded = true;
+  } finally {
+    enhLoading.value = false;
+  }
+  await nextTick();
+  renderEnhance();
+}
+
+function switchObTab(t: ObTab) {
+  obTab.value = t;
+  if (t !== "depth") void loadEnhance();
+  nextTick(renderEnhance);
+}
+
+function distOption() {
+  const rows = [...(enh.value?.priceDist ?? [])].sort((a, b) => a.price - b.price);
+  return {
+    animation: false,
+    grid: { left: 56, right: 18, top: 26, bottom: 28 },
+    title: { text: "分价成交分布（当日累计·手）", left: 8, top: 4,
+      textStyle: { color: "#8a93a5", fontSize: 11, fontWeight: 400 } },
+    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+    legend: { data: ["主动买", "主动卖"], top: 4, right: 8,
+      textStyle: { color: "#8a93a5", fontSize: 10 } },
+    xAxis: { type: "value", axisLabel: { color: "#8a93a5", fontSize: 10 },
+      splitLine: { lineStyle: { color: "rgba(255,255,255,.05)" } } },
+    yAxis: { type: "category", data: rows.map((r) => r.price.toFixed(2)),
+      axisLabel: { color: "#8a93a5", fontSize: 9, interval: Math.max(0, Math.floor(rows.length / 18)) },
+      axisTick: { show: false } },
+    series: [
+      { name: "主动买", type: "bar", stack: "v", data: rows.map((r) => r.buyVol), itemStyle: { color: "#f23645" } },
+      { name: "主动卖", type: "bar", stack: "v", data: rows.map((r) => -r.sellVol), itemStyle: { color: "#08db94" } },
+    ],
+  };
+}
+
+function auctionOption() {
+  const rows = enh.value?.auction ?? [];
+  const base = ob.value?.prevClose ?? 0;
+  return {
+    animation: false,
+    grid: { left: 52, right: 52, top: 30, bottom: 30 },
+    title: { text: "集合竞价虚拟量（09:15–09:25，量单位手）", left: 8, top: 4,
+      textStyle: { color: "#8a93a5", fontSize: 11, fontWeight: 400 } },
+    tooltip: { trigger: "axis" },
+    legend: { data: ["虚拟参考价", "累计虚拟匹配量"], top: 4, right: 8,
+      textStyle: { color: "#8a93a5", fontSize: 10 } },
+    xAxis: { type: "category", boundaryGap: false, data: rows.map((r) => r.time.slice(0, 5)),
+      axisLabel: { color: "#8a93a5", fontSize: 10 } },
+    yAxis: [
+      { type: "value", scale: true, name: "价", nameTextStyle: { color: "#8a93a5", fontSize: 9 },
+        axisLabel: { color: "#8a93a5", fontSize: 10 }, splitLine: { lineStyle: { color: "rgba(255,255,255,.05)" } } },
+      { type: "value", name: "量", nameTextStyle: { color: "#8a93a5", fontSize: 9 },
+        axisLabel: { color: "#8a93a5", fontSize: 10 }, splitLine: { show: false } },
+    ],
+    series: [
+      { name: "虚拟参考价", type: "line", data: rows.map((r) => r.price), showSymbol: false,
+        lineStyle: { width: 1.5, color: "#ffd24d" },
+        markLine: base ? { symbol: "none", silent: true, data: [{ yAxis: base }],
+          lineStyle: { color: "#8a93a5", type: "dashed" }, label: { show: false } } : undefined },
+      { name: "累计虚拟匹配量", type: "bar", yAxisIndex: 1, data: rows.map((r) => r.matchVol),
+        itemStyle: { color: "rgba(93,184,255,.55)" } },
+    ],
+  };
+}
+
+function sealOption() {
+  const rows = enh.value?.sealTrend ?? [];
+  return {
+    animation: false,
+    grid: { left: 60, right: 18, top: 30, bottom: 30 },
+    title: { text: "涨停封单额趋势（元）", left: 8, top: 4,
+      textStyle: { color: "#8a93a5", fontSize: 11, fontWeight: 400 } },
+    tooltip: { trigger: "axis", valueFormatter: (v: number) => (v >= 1e8 ? (v / 1e8).toFixed(2) + "亿" : (v / 1e4).toFixed(0) + "万") },
+    xAxis: { type: "category", boundaryGap: false, data: rows.map((r) => r.time),
+      axisLabel: { color: "#8a93a5", fontSize: 10 } },
+    yAxis: { type: "value", axisLabel: { color: "#8a93a5", fontSize: 10,
+        formatter: (v: number) => (v >= 1e8 ? (v / 1e8).toFixed(1) + "亿" : (v / 1e4).toFixed(0) + "万") },
+      splitLine: { lineStyle: { color: "rgba(255,255,255,.05)" } } },
+    series: [{ type: "line", data: rows.map((r) => r.fund), showSymbol: true, symbolSize: 4,
+      lineStyle: { width: 1.6, color: "#f23645" }, itemStyle: { color: "#f23645" },
+      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: "#f2364544" }, { offset: 1, color: "#f2364500" }]) } }],
+  };
+}
+
+function enhEmpty(): boolean {
+  if (!enh.value) return false;
+  if (obTab.value === "dist") return enh.value.priceDist.length === 0;
+  if (obTab.value === "auction") return enh.value.auction.length === 0;
+  if (obTab.value === "seal") return enh.value.sealTrend.length === 0;
+  return false;
+}
+
+function renderEnhance() {
+  if (obTab.value === "depth" || !enhEl.value) return;
+  if (!enhChart) enhChart = echarts.init(enhEl.value);
+  if (obTab.value === "dist") enhChart.setOption(distOption(), true);
+  else if (obTab.value === "auction") enhChart.setOption(auctionOption(), true);
+  else enhChart.setOption(sealOption(), true);
 }
 
 const focus = ref(false);
@@ -232,7 +389,9 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   mini?.dispose();
   big?.dispose();
+  enhChart?.dispose();
   mini = big = null;
+  enhChart = null;
   io?.disconnect();
   if (liveTimer) clearInterval(liveTimer);
 });
@@ -267,6 +426,15 @@ onBeforeUnmount(() => {
               · 外 <b class="up">{{ Math.round(ob.outsideVol) }}</b>
               / 内 <b class="down">{{ Math.round(ob.insideVol) }}</b>
             </div>
+            <!-- v2.32 品种专项 -->
+            <div v-if="ob.convertPremium" class="ob2-foot spec">
+              转股价值 <b>{{ ob.convertValue!.toFixed(2) }}</b>
+              · 溢价 <b :class="ob.convertPremium >= 0 ? 'up' : 'down'">{{ ob.convertPremium!.toFixed(2) }}%</b>
+            </div>
+            <div v-else-if="ob.iopv" class="ob2-foot spec">
+              IOPV <b>{{ ob.iopv!.toFixed(3) }}</b>
+              · 折溢价 <b :class="etfPremiumCls(ob)">{{ etfPremium(ob).toFixed(2) }}%</b>
+            </div>
           </template>
           <div v-else class="loading">加载盘口…</div>
         </div>
@@ -285,6 +453,13 @@ onBeforeUnmount(() => {
         </div>
         <div v-show="view !== 'o'" ref="bigEl" class="big"></div>
         <div v-if="view === 'o'" class="big-ob">
+          <div class="ob-tabs">
+            <button type="button" :class="{ on: obTab === 'depth' }" @click="switchObTab('depth')">盘口</button>
+            <button type="button" :class="{ on: obTab === 'dist' }" @click="switchObTab('dist')">分价成交</button>
+            <button type="button" :class="{ on: obTab === 'auction' }" @click="switchObTab('auction')">竞价量</button>
+            <button type="button" :class="{ on: obTab === 'seal' }" @click="switchObTab('seal')">封单额</button>
+          </div>
+          <div v-show="obTab === 'depth'" class="ob-pane">
           <template v-if="ob">
             <div class="bo-grid">
               <div v-for="(a,i) in [...ob.asks].reverse()" :key="'A'+i" class="bo-row s">
@@ -305,10 +480,10 @@ onBeforeUnmount(() => {
                 <b :class="ob.weiCha >= 0 ? 'up' : 'down'">{{ ob.weiCha >= 0 ? "+" : "" }}{{ Math.round(ob.weiCha) }}</b>
               </div>
               <div class="bd-item">
-                <span class="bd-l">五档买</span><b class="up">{{ Math.round(ob.bidTotal) }}</b>
+                <span class="bd-l">{{ ob.bids.length }}档买</span><b class="up">{{ Math.round(ob.bidTotal) }}</b>
               </div>
               <div class="bd-item">
-                <span class="bd-l">五档卖</span><b class="down">{{ Math.round(ob.askTotal) }}</b>
+                <span class="bd-l">{{ ob.asks.length }}档卖</span><b class="down">{{ Math.round(ob.askTotal) }}</b>
               </div>
               <div class="bd-item">
                 <span class="bd-l">外盘</span><b class="up">{{ Math.round(ob.outsideVol) }}</b>
@@ -317,13 +492,42 @@ onBeforeUnmount(() => {
                 <span class="bd-l">内盘</span><b class="down">{{ Math.round(ob.insideVol) }}</b>
               </div>
             </div>
+            <!-- v2.32 品种专项指标 -->
+            <div v-if="ob.convertPremium" class="bo-depth">
+              <div class="bd-item">
+                <span class="bd-l">转股价值</span><b>{{ ob.convertValue!.toFixed(3) }}</b>
+              </div>
+              <div class="bd-item">
+                <span class="bd-l">转股溢价率</span>
+                <b :class="ob.convertPremium >= 0 ? 'up' : 'down'">{{ ob.convertPremium!.toFixed(2) }}%</b>
+              </div>
+            </div>
+            <div v-else-if="ob.iopv" class="bo-depth">
+              <div class="bd-item">
+                <span class="bd-l">IOPV</span><b>{{ ob.iopv!.toFixed(3) }}</b>
+              </div>
+              <div class="bd-item">
+                <span class="bd-l">折溢价率</span>
+                <b :class="etfPremiumCls(ob)">{{ etfPremium(ob).toFixed(2) }}%</b>
+              </div>
+            </div>
             <div class="bo-info">
               开 {{ ob.open.toFixed(2) }} · 高 {{ ob.high.toFixed(2) }} · 低 {{ ob.low.toFixed(2) }}
               · 量 {{ ob.volume }} · 额 {{ (ob.amount/1e8).toFixed(2) }}亿
             </div>
-            <div class="bo-note">免费五档盘口，非 Level-2；内外盘为累计主动成交（手）</div>
+            <div v-if="l2Using" class="bo-note l2">
+              Level-2 {{ ob.asks.length }}档盘口（{{ l2Using.name }}，用户自带 Key）；数据口径与合规责任由数据源协议约定
+            </div>
+            <div v-else class="bo-note">免费五档盘口，非 Level-2；内外盘为累计主动成交（手）；专项指标以公开源返回为准</div>
           </template>
           <div v-else class="loading">加载盘口…</div>
+          </div>
+          <!-- v2.32 盘口增强子页 -->
+          <div v-show="obTab !== 'depth'" class="ob-pane enh-pane">
+            <div ref="enhEl" class="enh-chart"></div>
+            <div v-if="enhLoading" class="loading">加载专项数据…</div>
+            <div v-else-if="enhEmpty()" class="loading">公开源暂无该数据（源不支持 / 非交易时段 / 盘后）</div>
+          </div>
         </div>
       </div>
     </template>
@@ -361,6 +565,13 @@ onBeforeUnmount(() => {
 .x:hover { background:#e23b45; }
 .big { flex:1;min-height:0; }
 .big-ob { flex:1;min-height:0;display:flex;flex-direction:column;padding:14px;gap:10px; }
+.ob-tabs { display:flex;gap:6px;flex-shrink:0; }
+.ob-tabs button { flex:1;height:26px;border:1px solid var(--border);border-radius:7px;
+  background:rgba(255,255,255,.03);color:var(--text-dim);font-size:11px;cursor:pointer; }
+.ob-tabs button.on { color:#fff;background:#2a3344;border-color:#3a475f; }
+.ob-pane { flex:1;min-height:0;display:flex;flex-direction:column;gap:10px; }
+.enh-pane { position:relative; }
+.enh-chart { flex:1;min-height:0;width:100%; }
 .bo-grid { flex:1;display:flex;flex-direction:column;justify-content:center; }
 .bo-row { display:grid;grid-template-columns:60px 1fr 90px;align-items:center;height:26px;font-size:12px; }
 .bo-row b { font-variant-numeric:tabular-nums; } .bo-row em { font-style:normal;text-align:right;font-variant-numeric:tabular-nums;color:var(--text-dim); }
@@ -376,4 +587,5 @@ onBeforeUnmount(() => {
 .bd-item b { font-variant-numeric:tabular-nums; }
 .bd-item .up { color:#ff6b78; } .bd-item .down { color:#2fe6ac; }
 .bo-note { font-size:10px;color:var(--text-dim);text-align:center;opacity:.75; }
+.bo-note.l2 { color:var(--accent);opacity:.95; }
 </style>

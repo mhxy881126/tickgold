@@ -56,6 +56,7 @@ pub fn run() {
             commands::get_hist_minute_days,
             commands::get_orderbook,
             commands::get_trades,
+            commands::get_depth_enhance,
             commands::get_sectors,
             commands::get_sector_stocks,
             commands::get_stock_theme_tags,
@@ -130,6 +131,7 @@ pub fn run() {
             commands::ai_reindex,
             commands::ai_index_daily,
             commands::ai_build_decision_pack,
+            commands::ai_build_review_report,
             commands::ai_run_review,
             commands::ai_list_reviews,
             commands::ai_get_review,
@@ -209,6 +211,11 @@ pub fn run() {
             plugin::plugin_get_dev_mode,
             plugin::plugin_set_dev_mode,
             plugin::plugin_reload,
+            // v2.32 Level-2 数据源试点
+            plugin::plugin_l2_set_key,
+            plugin::plugin_l2_key_set,
+            plugin::plugin_l2_clear_key,
+            plugin::plugin_l2_providers,
             // ===== v2.29 备份 / 恢复中心 =====
             backup::backup_full_create,
             backup::backup_full_list,

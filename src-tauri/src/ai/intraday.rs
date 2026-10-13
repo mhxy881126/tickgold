@@ -289,7 +289,7 @@ pub async fn refresh_market_ctx() -> MarketCtx {
     // 情绪温度：涨停数加分、炸板数扣分，围绕 40 中性浮动
     ctx.market_emotion = clampf(40.0 + zt_total * 0.6 - zb_total * 1.5, 5.0, 95.0);
 
-    if let Ok(rows) = market::get_rank_board("main".to_string(), 1, 150).await {
+    if let Ok(rows) = market::get_rank_board("main".to_string(), 1, 150, "a".to_string()).await {
         for r in rows {
             ctx.fund_inflow.insert(r.code, r.main_net / 1e8);
         }

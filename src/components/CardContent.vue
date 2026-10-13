@@ -45,6 +45,7 @@ import RiskDashboard from "./cards/RiskDashboard.vue";
 import RotationMatrix from "./cards/RotationMatrix.vue";
 import Backtest from "./cards/Backtest.vue";
 import StrategyScan from "./cards/StrategyScan.vue";
+import ReviewReport from "./ReviewReport.vue";
 import type { CardId } from "../composables/useWorkbench";
 
 const props = defineProps<{ id: CardId; selected: string | null }>();
@@ -124,6 +125,7 @@ function retry() {
     <RotationMatrix v-else-if="id === 'rotation'" @sector="(name: string, kind: string) => $emit('sector', name, kind)" />
     <Backtest v-else-if="id === 'backtest'" />
     <StrategyScan v-else-if="id === 'strategyscan'" />
+    <ReviewReport v-else-if="id === 'reviewreport'" />
   </template>
 </template>
 
