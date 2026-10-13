@@ -355,13 +355,15 @@ mod tests {
             verdict: "good".into(),
             ret: Some(2.0),
         };
-        let mut q = QualityQuery::default();
-        q.strategy = "daban".into();
-        q.session = "open".into();
         let mut factors = HashMap::new();
         factors.insert("rsi14".to_string(), 60.0);
-        q.factors = Some(factors);
-        q.theme = "证券".into();
+        let mut q = QualityQuery {
+            strategy: "daban".into(),
+            session: "open".into(),
+            factors: Some(factors),
+            theme: "证券".into(),
+            ..Default::default()
+        };
         assert!(matches_query(&row, &q));
 
         q.session = "close".into();

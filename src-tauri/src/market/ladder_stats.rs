@@ -311,7 +311,7 @@ mod tests {
     #[test]
     fn ts_to_ymd_utc8() {
         // 2026-10-13 00:30 北京 = 前一日 16:30 UTC → 日历仍应落在 10-13。
-        let ts = (days_from_civil_ymd(2026, 10, 12) as f64 + 0.5) * 86_400_000.0 + 8. * 3600_000.0;
+        let ts = (days_from_civil_ymd(2026, 10, 12) as f64 + 0.5) * 86_400_000.0 + 8. * 3_600_000.0;
         assert_eq!(ymd_from_ts(ts as i64), "2026-10-13");
     }
 }
