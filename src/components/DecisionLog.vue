@@ -11,6 +11,7 @@
           {{ pct(latest.confidence) }}
         </span>
         <span class="dl-action" :data-a="latest.action">{{ actionTxt(latest.action) }}</span>
+        <QualityChip v-if="latest.quality" :q="latest.quality" />
         <span class="dl-ts">{{ latest.ts }}</span>
       </template>
       <template v-else>
@@ -63,6 +64,25 @@
         </div>
 
         <div v-if="expanded === row.id" class="dl-detail">
+          <!-- v2.31 同型历史命中率 -->
+          <div class="dl-qline">
+            <QualityChip v-if="row.quality" :q="row.quality" />
+            <span v-else-if="qualityLoading[row.id]" class="dl-qload">命中率查询中…</span>
+            <span v-else class="dl-qna">同型样本未统计</span>
+          </div>
+          <!-- v2.31 因子归因 -->
+          <div v-if="factorRowsOf(row).length" class="dl-factors">
+            <div v-for="f in factorRowsOf(row)" :key="f.factor" class="dl-factor">
+              <span class="dl-fname">{{ factorLabel(f.factor) }}</span>
+              <span class="dl-ftrack">
+                <i class="dl-fzero" />
+                <i class="dl-fbar" :style="factorBarStyle(f.contribution)" />
+              </span>
+              <span class="dl-fval" :class="f.contribution >= 0 ? 'up' : 'k'">
+                {{ signed3(f.contribution) }}
+              </span>
+            </div>
+          </div>
           <!-- 四类概率 -->
           <div class="dl-probs">
             <div v-for="k in probKeys" :key="k" class="dl-prob">
@@ -88,9 +108,43 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, reactive, ref } from "vue";
 import { listen } from "@tauri-apps/api/event";
-import { autoexecGetConfig, listDecisionLogs, type DecisionLogInfo } from "../ai/api";
+import {
+  autoexecGetConfig,
+  listDecisionLogs,
+  signalQualityLookup,
+  type DecisionLogInfo,
+  type FactorContribInfo,
+} from "../ai/api";
+import QualityChip from "./QualityChip.vue";
+
+/// 因子名中文标签（与快脑打分 key 对齐；未列出的原样显示）。
+const FACTOR_LABELS: Record<string, string> = {
+  pct: "涨跌幅",
+  speed5m: "5分钟涨速",
+  volumeRatio: "量比",
+  turnover: "换手率",
+  distToLimit: "距涨停",
+  pullback: "回撤",
+  blastCount: "炸板次数",
+  marketEmotion: "市场情绪",
+  indexChg: "指数涨跌",
+  themeRank: "题材地位",
+  catalystFreshness: "催化剂新鲜度",
+  mainNetInflowYi: "主力净流入",
+  macdHist: "MACD柱",
+  rsi14: "RSI",
+  maBullish: "均线多头",
+  maBearish: "均线空头",
+  distToSupportPct: "距支撑位",
+  distToResistancePct: "距压力位",
+  klineIsHammer: "锤子线",
+  klineIsBullishEngulfing: "看涨吞没",
+  klineIsBearishEngulfing: "看跌吞没",
+  volRatio20: "量比20日",
+  brokenLimit: "破板",
+};
 
 const logs = ref<DecisionLogInfo[]>([]);
 const loading = ref(false);
@@ -135,8 +189,57 @@ function lbStyle(k: string) {
 function pct(v: number) {
   return Math.round((v || 0) * 100) + "%";
 }
+/// 展开行按需补查命中率；因子归因直接取行数据（实时信号），历史行可能为空。
+const qualityLoading = reactive<Record<number, boolean>>({});
+
+function factorRowsOf(row: DecisionLogInfo): FactorContribInfo[] {
+  return row.factorContributions ?? [];
+}
+function factorLabel(k: string) {
+  return FACTOR_LABELS[k] ?? k;
+}
+function signed3(v: number) {
+  return (v > 0 ? "+" : "") + v.toFixed(2);
+}
+/// 归因条：中线为 0，正贡献红色向右、负贡献青色向左；最大宽度按 |c|/w 归一。
+const MAX_ABS_CONTRIB = 1.5;
+function factorBarStyle(c: number) {
+  const widthPct = Math.min(Math.abs(c) / MAX_ABS_CONTRIB, 1) * 50;
+  const color = c >= 0 ? "#FF3232" : "#1dbe7d";
+  if (c >= 0) {
+    return { left: "50%", width: widthPct + "%", background: color };
+  }
+  return { right: "50%", width: widthPct + "%", background: color };
+}
+
+async function ensureQuality(row: DecisionLogInfo) {
+  if (row.quality || qualityLoading[row.id]) {
+    return;
+  }
+  qualityLoading[row.id] = true;
+  try {
+    row.quality = await signalQualityLookup({
+      strategy: row.strategy || "",
+      session: "",
+      side: row.label === "SELL" ? "sell" : "buy",
+    });
+  } catch {
+    row.quality = null;
+  } finally {
+    qualityLoading[row.id] = false;
+  }
+}
+
 function toggle(id: number) {
-  expanded.value = expanded.value === id ? null : id;
+  if (expanded.value === id) {
+    expanded.value = null;
+    return;
+  }
+  expanded.value = id;
+  const row = logs.value.find((r) => r.id === id);
+  if (row) {
+    void ensureQuality(row);
+  }
 }
 
 interface FeatRow {
@@ -179,9 +282,25 @@ async function load() {
   }
 }
 
+/// 实时事件携带的命中率/因子归因合并进最新行（DB 重读不带这两列）。
+async function onSignal(event: { payload: Record<string, unknown> }) {
+  await load();
+  const p = event.payload;
+  const target = logs.value.find(
+    (r) => r.code === p.code && r.ts === p.ts,
+  ) ?? logs.value[0];
+  if (target) {
+    if (p.quality) target.quality = p.quality as DecisionLogInfo["quality"];
+    if (p.factorContributions) {
+      target.factorContributions = p.factorContributions as FactorContribInfo[];
+    }
+    latest.value = target;
+  }
+}
+
 onMounted(async () => {
   await load();
-  unlisten = await listen("fastbrain-signal", load);
+  unlisten = await listen("fastbrain-signal", onSignal);
   timer = window.setInterval(load, 8000);
 });
 onUnmounted(() => {
@@ -404,6 +523,70 @@ onUnmounted(() => {
   color: var(--text-dim, #8a93a6);
   width: 14px;
   text-align: center;
+}
+
+/* 命中率行 */
+.dl-qline {
+  padding: 7px 0 3px;
+}
+.dl-qload,
+.dl-qna {
+  font-size: 10px;
+  color: var(--text-dim, #7e879b);
+}
+/* 因子归因条形 */
+.dl-factors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 18px;
+  padding: 6px 0 4px;
+}
+.dl-factor {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+}
+.dl-fname {
+  width: 64px;
+  flex: none;
+  color: var(--text-dim, #98a1b5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dl-ftrack {
+  position: relative;
+  flex: 1;
+  height: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+.dl-fzero {
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  bottom: -1px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.25);
+}
+.dl-fbar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+}
+.dl-fval {
+  width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim, #aab2c4);
+}
+.dl-fval.up {
+  color: #ff3232;
+}
+.dl-fval.k {
+  color: #1dbe7d;
 }
 
 /* 详情 */
