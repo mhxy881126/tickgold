@@ -1,5 +1,5 @@
 // 主库迁移清单（v2.27 巨石拆分：从 lib.rs 抽出）。
-// 追加式：只许新增版本，禁止改动已发布条目。共 52 条（v1..v52）。
+// 追加式：只许新增版本，禁止改动已发布条目。共 54 条（v1..v54）。
 // 数量护栏见 src-tauri/INVENTORY.md；改动后需与之一致。
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -831,6 +831,48 @@ pub fn migrations() -> Vec<Migration> {
                                 status TEXT NOT NULL DEFAULT 'pending',
                                 decided_at INTEGER NOT NULL DEFAULT 0,
                                 created_at INTEGER NOT NULL
+                            );",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 53,
+                            description: "smart watch groups + screener subscription (v2.31 signal quality & quant screening)",
+                            sql: "ALTER TABLE groups ADD COLUMN kind TEXT NOT NULL DEFAULT 'manual';
+                            ALTER TABLE groups ADD COLUMN rule_json TEXT NOT NULL DEFAULT '{}';
+                            CREATE TABLE IF NOT EXISTS screen_subscription (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                name TEXT NOT NULL,
+                                tactic TEXT NOT NULL DEFAULT '',
+                                filter_json TEXT NOT NULL DEFAULT '{}',
+                                run_time TEXT NOT NULL DEFAULT '15:30',
+                                enabled INTEGER NOT NULL DEFAULT 1,
+                                last_run_at INTEGER NOT NULL DEFAULT 0,
+                                created_at INTEGER NOT NULL
+                            );
+                            CREATE TABLE IF NOT EXISTS screen_subscription_run (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                subscription_id INTEGER NOT NULL,
+                                ran_at INTEGER NOT NULL,
+                                hit_count INTEGER NOT NULL DEFAULT 0,
+                                codes_json TEXT NOT NULL DEFAULT '[]'
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_screen_sub_run_sub
+                                ON screen_subscription_run(subscription_id);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 54,
+                            description: "persist broken-limit pool for ladder reseal rate + amount on limit_up_record (v2.31 ladder depth)",
+                            sql: "ALTER TABLE limit_up_record ADD COLUMN amount REAL DEFAULT 0;
+                            CREATE TABLE IF NOT EXISTS broken_limit_record (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                trade_date TEXT NOT NULL,
+                                code TEXT NOT NULL,
+                                name TEXT DEFAULT '',
+                                price REAL DEFAULT 0,
+                                pct REAL DEFAULT 0,
+                                created_at INTEGER NOT NULL DEFAULT 0,
+                                UNIQUE(trade_date, code)
                             );",
                             kind: MigrationKind::Up,
                         },

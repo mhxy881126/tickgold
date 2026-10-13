@@ -523,11 +523,34 @@ fn log_decision(
     );
 }
 
-fn emit_signal(app: &AppHandle, item: &WatchItem, d: &FastDecision, action: &str, message: &str) {
+fn emit_signal(
+    app: &AppHandle,
+    data_dir: &std::path::Path,
+    item: &WatchItem,
+    d: &FastDecision,
+    action: &str,
+    message: &str,
+    features: &Value,
+) {
+    // v2.31：实时信号挂「同型历史命中率」。只读聚合，失败安全降级为缺省（前端标灰）。
+    let quality = crate::ai::signal_quality::lookup(
+        data_dir,
+        &crate::ai::signal_quality::QualityQuery {
+            strategy: item.strategy.clone(),
+            session: crate::ai::signal_quality::session_of(&now_hms()).to_string(),
+            theme: String::new(),
+            factors: None,
+            side: if d.label == "SELL" { "sell".to_string() } else { "buy".to_string() },
+        },
+    )
+    .ok();
     let payload = json!({
         "code": item.code, "name": item.name, "label": d.label,
         "confidence": d.confidence, "action": action, "message": message,
         "mode": d.mode, "ts": now_hms(),
+        "quality": quality,
+        "factorContributions": d.factor_contributions,
+        "features": features,
     });
     let _ = app.emit("fastbrain-signal", payload);
 }
@@ -692,11 +715,12 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                         mode: "rule".to_string(),
                         model_version: format!("hardstop{}", cfg.hard_stop_pct),
                         infer_ms: 0.0,
+                        factor_contributions: Value::Null,
                     };
                     match paper_sell(&mut conn, &item.code, &item.name, q, &cfg, p, p.vol) {
                         Ok(msg) => {
                             log_decision(&conn, item, &d, "executed", &features, true);
-                            emit_signal(&app, item, &d, "executed", &msg);
+                            emit_signal(&app, &data_dir, item, &d, "executed", &msg, &features);
                             bridge_push(&app, &conn, &cfg, bridge::SignalInput {
                                 code: item.code.clone(),
                                 name: item.name.clone(),
@@ -714,7 +738,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                         Err(e) => {
                             log_decision(&conn, item, &d, "watch", &features, true);
                             if can_fire(&mut fire_hist, &item.code) {
-                                emit_signal(&app, item, &d, "watch", &format!("硬止损命中但{e}，请人工处理"));
+                                emit_signal(&app, &data_dir, item, &d, "watch", &format!("硬止损命中但{e}，请人工处理"), &features);
                             }
                         }
                     }
@@ -776,7 +800,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                         match paper_buy(&mut conn, item, q, &cfg, total_asset, cash, total_pos_pct) {
                             Ok(msg) => {
                                 log_decision(&conn, item, &d, "executed", &features, false);
-                                emit_signal(&app, item, &d, "executed", &msg);
+                                emit_signal(&app, &data_dir, item, &d, "executed", &msg, &features);
                                 let budget = total_asset * cfg.max_single_pct / 100.0;
                                 bridge_push(&app, &conn, &cfg, bridge::SignalInput {
                                     code: item.code.clone(),
@@ -795,7 +819,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                             Err(reason) => {
                                 log_decision(&conn, item, &d, "drop", &features, false);
                                 if can_fire(&mut fire_hist, &item.code) {
-                                    emit_signal(&app, item, &d, "watch", &format!("快脑买入但{reason}"));
+                                    emit_signal(&app, &data_dir, item, &d, "watch", &format!("快脑买入但{reason}"), &features);
                                 }
                             }
                         }
@@ -812,17 +836,17 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                             match paper_buy(&mut conn, item, q, &cfg, total_asset, cash, total_pos_pct) {
                                 Ok(msg) => {
                                     log_decision(&conn, item, &d, "executed", &features, false);
-                                    emit_signal(&app, item, &d, "executed", &msg);
+                                    emit_signal(&app, &data_dir, item, &d, "executed", &msg, &features);
                                 }
                                 Err(reason) => {
                                     log_decision(&conn, item, &d, "drop", &features, false);
-                                    emit_signal(&app, item, &d, "watch", &format!("全自动买入但{reason}"));
+                                    emit_signal(&app, &data_dir, item, &d, "watch", &format!("全自动买入但{reason}"), &features);
                                 }
                             }
                         } else {
                             // 半自动/人工确认模式：只发信号到确认桥
                             log_decision(&conn, item, &d, "watch", &features, false);
-                            emit_signal(&app, item, &d, "watch", "快脑买入观察信号，请人工确认");
+                            emit_signal(&app, &data_dir, item, &d, "watch", "快脑买入观察信号，请人工确认", &features);
                             let budget = total_asset * cfg.max_single_pct / 100.0;
                             bridge_push(&app, &conn, &cfg, bridge::SignalInput {
                                 code: item.code.clone(),
@@ -845,7 +869,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                         match paper_sell(&mut conn, &item.code, &item.name, q, &cfg, p, p.vol) {
                             Ok(msg) => {
                                 log_decision(&conn, item, &d, "executed", &features, false);
-                                emit_signal(&app, item, &d, "executed", &msg);
+                                emit_signal(&app, &data_dir, item, &d, "executed", &msg, &features);
                                 bridge_push(&app, &conn, &cfg, bridge::SignalInput {
                                     code: item.code.clone(),
                                     name: item.name.clone(),
@@ -863,7 +887,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                             Err(e) => {
                                 log_decision(&conn, item, &d, "watch", &features, false);
                                 if can_fire(&mut fire_hist, &item.code) {
-                                    emit_signal(&app, item, &d, "watch", &format!("快脑卖出但{e}，请人工确认"));
+                                    emit_signal(&app, &data_dir, item, &d, "watch", &format!("快脑卖出但{e}，请人工确认"), &features);
                                 }
                             }
                         }

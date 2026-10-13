@@ -81,6 +81,17 @@ export interface LimitUpRecordRow {
   turnover: number;
   industry: string;
   concepts: string;
+  amount: number;
+}
+
+/** 炸板池定格（v2.31 天梯回封率分母） */
+export interface BrokenLimitRecordRow {
+  id: number;
+  tradeDate: string;
+  code: string;
+  name: string;
+  price: number;
+  pct: number;
 }
 
 /** 新建题材时的输入（id/时间戳由 repo 补） */

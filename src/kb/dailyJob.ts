@@ -2,13 +2,14 @@
 // 题材 upsert → 角色写入 → 退股 left_date → 退潮标记 → 催化剂关联。
 // 编排层只管顺序与落库；所有判断都在已测纯函数中（cluster/roles/freshness）。
 import { fetchStockThemeTags, type StockThemeTags } from "../api/kb";
-import { fetchZtPool } from "../api/market";
+import { fetchZbPool, fetchZtPool } from "../api/market";
 import {
   listCatalysts,
   listThemes,
   listThemeStocks,
   linkCatalyst,
   markStocksLeft,
+  replaceBrokenLimitRecords,
   setThemeStage,
   getThemeByName,
   upsertTheme,
@@ -86,7 +87,26 @@ export async function runAttributionJob(
       turnover: z.turnover,
       industry: industryOf(z.code, z.industry),
       concepts: tag?.concepts.join("，") ?? "",
+      amount: z.amount,
     });
+  }
+
+  // ②b 炸板池定格（v2.31 天梯回封率分母）；失败不阻断归因。
+  try {
+    const zb = await fetchZbPool(tradeDateCompact);
+    await replaceBrokenLimitRecords(
+      d,
+      tradeDateIso,
+      zb.list.map((z) => ({
+        tradeDate: tradeDateIso,
+        code: z.code,
+        name: z.name,
+        price: z.price,
+        pct: z.pct,
+      }))
+    );
+  } catch (e) {
+    console.warn("[attribution] 炸板池定格跳过：", e);
   }
 
   // ③ 概念成分映射：聚合所有标签股 concept → codes；

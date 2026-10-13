@@ -144,6 +144,112 @@ export async function fetchScreener(filter: ScreenFilter): Promise<ScreenResult[
   return await invoke<ScreenResult[]>("get_screener", { filter });
 }
 
+// ===== v2.31 战法选股 =====
+export interface StrategyScanReq {
+  tactics?: string[];
+  limit?: number;
+  theme?: string;
+}
+
+export interface TacticHit {
+  code: string;
+  name: string;
+  price: number;
+  pct: number;
+  amount: number;
+  turnover: number;
+  volumeRatio: number;
+  speed5: number;
+  mainNet: number;
+  boards: number;
+  fund: number;
+  firstSeal: number;
+  broken: number;
+  industry: string;
+  tactics: string[];
+  reasons: string[];
+}
+
+/** 全市场战法扫描（首板/连板/反包/弱转强/资金共振/题材龙头）。 */
+export async function runStrategyScan(req: StrategyScanReq): Promise<TacticHit[]> {
+  return await invoke<TacticHit[]>("strategy_scan_run", { req });
+}
+
+// ===== v2.31 连板天梯深化 =====
+export interface LadderStat {
+  boards: number;
+  samples: number;
+  /** 晋级率 %（N 板次日封 N+1） */
+  promotionRatePct: number;
+  nextOpenPremiumPct: number;
+  nextClosePremiumPct: number;
+  /** 封单强度 %（封单资金 / 成交额） */
+  sealStrengthPct: number;
+  avgSealFundYi: number;
+  /** 炸板回封率 % */
+  resealRatePct: number;
+  /** 炸板尝试总数（回封成功 + 未回封）；0 = 无样本不展示 */
+  brokenTotal: number;
+  resealed: number;
+}
+
+/** 近 N 日连板天梯统计（默认 30 个交易日）。 */
+export async function fetchLadderStats(days?: number): Promise<LadderStat[]> {
+  return await invoke<LadderStat[]>("ladder_stats", { days });
+}
+
+// ===== v2.31 选股订阅 =====
+export interface ScreenSubscription {
+  id: number;
+  name: string;
+  /** 逗号分隔战法 id；空 = 全部 */
+  tactic: string;
+  filterJson: string;
+  /** HH:MM 北京时间 */
+  runTime: string;
+  enabled: boolean;
+  lastRunAt: number;
+  createdAt: number;
+}
+
+export interface ScreenSubscriptionRun {
+  id: number;
+  subscriptionId: number;
+  ranAt: number;
+  hitCount: number;
+  codesJson: string;
+}
+
+export interface ScreenSubscriptionInput {
+  id?: number;
+  name: string;
+  tactic: string;
+  filterJson: string;
+  runTime: string;
+  enabled: boolean;
+}
+
+export async function screenSubList(): Promise<ScreenSubscription[]> {
+  return await invoke<ScreenSubscription[]>("screen_sub_list");
+}
+
+export async function screenSubUpsert(input: ScreenSubscriptionInput): Promise<number> {
+  return await invoke<number>("screen_sub_upsert", { input });
+}
+
+export async function screenSubDelete(id: number): Promise<void> {
+  await invoke("screen_sub_delete", { id });
+}
+
+export async function screenSubRuns(id: number, limit = 30): Promise<ScreenSubscriptionRun[]> {
+  return await invoke<ScreenSubscriptionRun[]>("screen_sub_runs", { subscriptionId: id, limit });
+}
+
+/** 立即执行一次；返回 runId（零命中时为负 runId）。 */
+export async function screenSubRunNow(id: number): Promise<number> {
+  return await invoke<number>("screen_sub_run_now", { id });
+}
+
 // ===== 短线精灵 / 异动实时流 =====
 export interface SpiderEvent {
   time: number;

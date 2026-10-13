@@ -1,5 +1,6 @@
 // 题材库 repo：所有函数接收 db 句柄，便于测试与复用；不持有全局状态。
 import type {
+  BrokenLimitRecordRow,
   CatalystKind,
   CatalystRow,
   CollectorJob,
@@ -104,6 +105,18 @@ function mapLimitUp(r: Record<string, unknown>): LimitUpRecordRow {
     turnover: (r.turnover as number) ?? 0,
     industry: (r.industry as string) ?? "",
     concepts: (r.concepts as string) ?? "",
+    amount: (r.amount as number) ?? 0,
+  };
+}
+
+function mapBrokenLimit(r: Record<string, unknown>): BrokenLimitRecordRow {
+  return {
+    id: r.id as number,
+    tradeDate: r.trade_date as string,
+    code: r.code as string,
+    name: (r.name as string) ?? "",
+    price: (r.price as number) ?? 0,
+    pct: (r.pct as number) ?? 0,
   };
 }
 
@@ -296,17 +309,34 @@ export async function listCatalysts(
 export async function upsertLimitUpRecord(d: Db, r: Omit<LimitUpRecordRow, "id">): Promise<void> {
   await d.execute(
     `INSERT INTO limit_up_record(trade_date, code, name, boards, first_seal, last_seal,
-                                seal_fund, broken, turnover, industry, concepts)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                seal_fund, broken, turnover, industry, concepts, amount)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(trade_date, code) DO UPDATE SET
        name=excluded.name, boards=excluded.boards, first_seal=excluded.first_seal,
        last_seal=excluded.last_seal, seal_fund=excluded.seal_fund, broken=excluded.broken,
-       turnover=excluded.turnover, industry=excluded.industry, concepts=excluded.concepts`,
+       turnover=excluded.turnover, industry=excluded.industry, concepts=excluded.concepts,
+       amount=excluded.amount`,
     [
       r.tradeDate, r.code, r.name, r.boards, r.firstSeal, r.lastSeal,
-      r.sealFund, r.broken, r.turnover, r.industry, r.concepts,
+      r.sealFund, r.broken, r.turnover, r.industry, r.concepts, r.amount,
     ]
   );
+}
+
+/** 炸板池定格（v2.31 天梯回封率分母）。同日重跑先清旧再写，保证与当日炸板池一致。 */
+export async function replaceBrokenLimitRecords(
+  d: Db,
+  tradeDate: string,
+  rows: Omit<BrokenLimitRecordRow, "id">[]
+): Promise<void> {
+  await d.execute("DELETE FROM broken_limit_record WHERE trade_date=?", [tradeDate]);
+  for (const r of rows) {
+    await d.execute(
+      `INSERT OR IGNORE INTO broken_limit_record(trade_date, code, name, price, pct, created_at)
+       VALUES(?, ?, ?, ?, ?, ?)`,
+      [r.tradeDate, r.code, r.name, r.price, r.pct, Date.now()]
+    );
+  }
 }
 
 export async function listLimitUpByDate(d: Db, tradeDate: string): Promise<LimitUpRecordRow[]> {

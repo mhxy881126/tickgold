@@ -205,11 +205,24 @@ export function marketPrefix(code: string): string {
   return "0";
 }
 
+/** 智能分组规则（v2.31）：按战法（板高）或题材关键词，从近 N 日涨停记录自动归类 */
+export interface SmartGroupRule {
+  /** first_board（首板）/ multi_board（连板）；空 = 不按战法限 */
+  tactic?: string;
+  /** 行业/题材关键词（命中 industry 或 concepts） */
+  theme?: string;
+  /** 回看交易日数，默认 5 */
+  days?: number;
+}
+
 /** 自选分组 */
 export interface Group {
   id: number;
   name: string;
   sortOrder: number;
+  /** manual 普通分组 / smart 智能分组（成员按规则动态计算） */
+  kind?: "manual" | "smart";
+  ruleJson?: string;
 }
 
 /** 自选股记录（含分组归属与排序） */

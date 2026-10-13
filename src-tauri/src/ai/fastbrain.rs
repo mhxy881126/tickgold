@@ -17,6 +17,9 @@ pub struct FastDecision {
     pub mode: String,
     pub model_version: String,
     pub infer_ms: f64,
+    /// v2.31 因子归因：[{factor,weight,value,contribution}]，按 |contribution| 降序；
+    /// 非规则通道（laya/cloud）无法分解时为 null。
+    pub factor_contributions: Value,
 }
 
 // ===== 因子标准化工具：把原始因子映射到 [-1,1] 的"看多/看空"标准分 =====
@@ -55,10 +58,13 @@ fn fget(f: &Value, key: &str) -> f64 {
     f[key].as_f64().unwrap_or(0.0)
 }
 
-/// 加权汇总一组 (权重, 标准分)，返回综合分 ∈[-1,1]。
-fn blend(items: &[(f64, f64)]) -> f64 {
+/// 一个因子的打分三元组：(因子名, 生效权重, 归一标准分 ∈[-1,1])。
+type FactorItem<'a> = (&'a str, f64, f64);
+
+/// 加权汇总一组因子，返回综合分 ∈[-1,1]。
+fn blend(items: &[FactorItem<'_>]) -> f64 {
     let (mut s, mut w) = (0.0, 0.0);
-    for (weight, x) in items {
+    for (_, weight, x) in items {
         s += weight * x;
         w += weight.abs();
     }
@@ -67,6 +73,27 @@ fn blend(items: &[(f64, f64)]) -> f64 {
     } else {
         0.0
     }
+}
+
+/// 因子归因 JSON：contribution = weight × 归一值，按绝对值降序（上限 12 条）。
+fn contributions_of(items: &[FactorItem<'_>]) -> Value {
+    let mut rows: Vec<Value> = items
+        .iter()
+        .filter(|(_, weight, _)| weight.abs() > 1e-9)
+        .map(|(name, weight, x)| {
+            json!({
+                "factor": name, "weight": round3(*weight),
+                "value": round3(*x), "contribution": round3(weight * x),
+            })
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        b["contribution"].as_f64().unwrap_or(0.0)
+            .partial_cmp(&a["contribution"].as_f64().unwrap_or(0.0))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    rows.truncate(12);
+    Value::Array(rows)
 }
 
 /// 规则快脑：纯同步、确定性。
@@ -103,60 +130,46 @@ impl RuleBrain {
             weights.and_then(|m| m.get(key)).copied().unwrap_or(base)
         };
 
-        let buy_items: Vec<(f64, f64)> = vec![
-            (w("pct", 1.0), lin(fget(f, "pct"), -2.0, 7.0)),
-            (w("speed5m", 0.8), lin(fget(f, "speed5m"), -1.0, 2.0)),
-            (w("volumeRatio", 0.9), peak(fget(f, "volumeRatio"), 1.0, 2.5, 5.0)),
-            (w("turnover", 0.7), peak(fget(f, "turnover"), 3.0, 9.0, 18.0)),
-            (w("distToLimit", 1.0), lin_inv(fget(f, "distToLimit"), 0.0, 6.0)),
-            (w("pullback", 0.8), lin(fget(f, "pullback"), -3.0, 0.0)),
-            (w("blastCount", 1.2), lin_inv(fget(f, "blastCount"), 0.0, 3.0)),
-            (w("marketEmotion", 1.0), lin(fget(f, "marketEmotion"), 30.0, 80.0)),
-            (w("indexChg", 0.8), lin(fget(f, "indexChg"), -1.0, 1.5)),
-            (w("themeRank", 0.9), lin_inv(fget(f, "themeRank"), 1.0, 8.0)),
-            (w("catalystFreshness", 0.7), lin(fget(f, "catalystFreshness"), 0.2, 0.9)),
-            (w("mainNetInflowYi", 0.9), lin(fget(f, "mainNetInflowYi"), -1.0, 3.0)),
+        let buy_items: Vec<FactorItem> = vec![
+            ("pct", w("pct", 1.0), lin(fget(f, "pct"), -2.0, 7.0)),
+            ("speed5m", w("speed5m", 0.8), lin(fget(f, "speed5m"), -1.0, 2.0)),
+            ("volumeRatio", w("volumeRatio", 0.9), peak(fget(f, "volumeRatio"), 1.0, 2.5, 5.0)),
+            ("turnover", w("turnover", 0.7), peak(fget(f, "turnover"), 3.0, 9.0, 18.0)),
+            ("distToLimit", w("distToLimit", 1.0), lin_inv(fget(f, "distToLimit"), 0.0, 6.0)),
+            ("pullback", w("pullback", 0.8), lin(fget(f, "pullback"), -3.0, 0.0)),
+            ("blastCount", w("blastCount", 1.2), lin_inv(fget(f, "blastCount"), 0.0, 3.0)),
+            ("marketEmotion", w("marketEmotion", 1.0), lin(fget(f, "marketEmotion"), 30.0, 80.0)),
+            ("indexChg", w("indexChg", 0.8), lin(fget(f, "indexChg"), -1.0, 1.5)),
+            ("themeRank", w("themeRank", 0.9), lin_inv(fget(f, "themeRank"), 1.0, 8.0)),
+            ("catalystFreshness", w("catalystFreshness", 0.7), lin(fget(f, "catalystFreshness"), 0.2, 0.9)),
+            ("mainNetInflowYi", w("mainNetInflowYi", 0.9), lin(fget(f, "mainNetInflowYi"), -1.0, 3.0)),
             // MACD 金叉：DIF>DEA（hist>0）看多
-            (w("macdHist", 0.8), lin(fget(f, "macdHist"), -0.5, 0.5)),
+            ("macdHist", w("macdHist", 0.8), lin(fget(f, "macdHist"), -0.5, 0.5)),
             // RSI 40~65 健康区间
-            (w("rsi14", 0.7), peak(fget(f, "rsi14"), 30.0, 55.0, 75.0)),
+            ("rsi14", w("rsi14", 0.7), peak(fget(f, "rsi14"), 30.0, 55.0, 75.0)),
             // ===== K线深度分析（买入加分项）=====
-            // 均线多头排列：MA5>MA10>MA20 = 强上涨趋势
-            (w("maBullish", 1.0), lin(fget(f, "maBullish"), 0.0, 1.0)),
-            // 均线空头排列：反过来 = 减分
-            (w("maBearish", 0.8), lin_inv(fget(f, "maBearish"), 0.0, 1.0)),
-            // 距支撑位近：离20天最低点近 = 安全
-            (w("distToSupportPct", 0.7), lin_inv(fget(f, "distToSupportPct"), 0.0, 10.0)),
-            // 距压力位远：离20天最高点远 = 空间大
-            (w("distToResistancePct", 0.6), lin(fget(f, "distToResistancePct"), 0.0, 10.0)),
-            // 锤子线：下影线长 = 见底信号
-            (w("klineIsHammer", 0.9), lin(fget(f, "klineIsHammer"), 0.0, 1.0)),
-            // 看涨吞没：阳包阴 = 反转信号
-            (w("klineIsBullishEngulfing", 1.0), lin(fget(f, "klineIsBullishEngulfing"), 0.0, 1.0)),
-            // 看跌吞没：阴包阳 = 见顶信号（减分）
-            (w("klineIsBearishEngulfing", 0.9), lin_inv(fget(f, "klineIsBearishEngulfing"), 0.0, 1.0)),
-            // 放量：今天量比20天平均大 = 资金涌入
-            (w("volRatio20", 0.7), peak(fget(f, "volRatio20"), 0.8, 1.5, 3.0)),
+            ("maBullish", w("maBullish", 1.0), lin(fget(f, "maBullish"), 0.0, 1.0)),
+            ("maBearish", w("maBearish", 0.8), lin_inv(fget(f, "maBearish"), 0.0, 1.0)),
+            ("distToSupportPct", w("distToSupportPct", 0.7), lin_inv(fget(f, "distToSupportPct"), 0.0, 10.0)),
+            ("distToResistancePct", w("distToResistancePct", 0.6), lin(fget(f, "distToResistancePct"), 0.0, 10.0)),
+            ("klineIsHammer", w("klineIsHammer", 0.9), lin(fget(f, "klineIsHammer"), 0.0, 1.0)),
+            ("klineIsBullishEngulfing", w("klineIsBullishEngulfing", 1.0), lin(fget(f, "klineIsBullishEngulfing"), 0.0, 1.0)),
+            ("klineIsBearishEngulfing", w("klineIsBearishEngulfing", 0.9), lin_inv(fget(f, "klineIsBearishEngulfing"), 0.0, 1.0)),
+            ("volRatio20", w("volRatio20", 0.7), peak(fget(f, "volRatio20"), 0.8, 1.5, 3.0)),
         ];
 
-        let sell_items: Vec<(f64, f64)> = vec![
-            (w("pct", 1.2), lin_inv(fget(f, "pct"), -7.0, 3.0)),
-            (w("speed5m", 1.0), lin_inv(fget(f, "speed5m"), -2.0, 1.0)),
-            (w("pullback", 1.1), lin_inv(fget(f, "pullback"), -6.0, 0.0)),
-            (w("brokenLimit", 1.3), lin(fget(f, "brokenLimit"), 0.0, 1.0)),
-            (w("marketEmotion", 0.8), lin_inv(fget(f, "marketEmotion"), 20.0, 70.0)),
-            (w("indexChg", 0.7), lin_inv(fget(f, "indexChg"), -2.0, 1.0)),
-            // RSI>75 超买该卖
-            (w("rsi14", 0.6), lin_inv(fget(f, "rsi14"), 50.0, 80.0)),
-            // ===== K线深度分析（卖出加分项）=====
-            // 均线空头排列：下跌趋势 = 该卖
-            (w("maBearish", 1.0), lin(fget(f, "maBearish"), 0.0, 1.0)),
-            // 看跌吞没：阴包阳 = 见顶信号，该卖
-            (w("klineIsBearishEngulfing", 1.1), lin(fget(f, "klineIsBearishEngulfing"), 0.0, 1.0)),
-            // 看涨吞没：阳包阴 = 不该卖（减分）
-            (w("klineIsBullishEngulfing", 0.8), lin_inv(fget(f, "klineIsBullishEngulfing"), 0.0, 1.0)),
-            // 离支撑位远：跌太多了，离支撑位还远，还要跌
-            (w("distToSupportPct", 0.6), lin(fget(f, "distToSupportPct"), 0.0, 15.0)),
+        let sell_items: Vec<FactorItem> = vec![
+            ("pct", w("pct", 1.2), lin_inv(fget(f, "pct"), -7.0, 3.0)),
+            ("speed5m", w("speed5m", 1.0), lin_inv(fget(f, "speed5m"), -2.0, 1.0)),
+            ("pullback", w("pullback", 1.1), lin_inv(fget(f, "pullback"), -6.0, 0.0)),
+            ("brokenLimit", w("brokenLimit", 1.3), lin(fget(f, "brokenLimit"), 0.0, 1.0)),
+            ("marketEmotion", w("marketEmotion", 0.8), lin_inv(fget(f, "marketEmotion"), 20.0, 70.0)),
+            ("indexChg", w("indexChg", 0.7), lin_inv(fget(f, "indexChg"), -2.0, 1.0)),
+            ("rsi14", w("rsi14", 0.6), lin_inv(fget(f, "rsi14"), 50.0, 80.0)),
+            ("maBearish", w("maBearish", 1.0), lin(fget(f, "maBearish"), 0.0, 1.0)),
+            ("klineIsBearishEngulfing", w("klineIsBearishEngulfing", 1.1), lin(fget(f, "klineIsBearishEngulfing"), 0.0, 1.0)),
+            ("klineIsBullishEngulfing", w("klineIsBullishEngulfing", 0.8), lin_inv(fget(f, "klineIsBullishEngulfing"), 0.0, 1.0)),
+            ("distToSupportPct", w("distToSupportPct", 0.6), lin(fget(f, "distToSupportPct"), 0.0, 15.0)),
         ];
 
         let probs: Value = if side == "sell" || holding > 0.0 {
@@ -177,6 +190,8 @@ impl RuleBrain {
         };
 
         let (label, confidence) = argmax(&probs);
+        let used_items: &[FactorItem] =
+            if side == "sell" || holding > 0.0 { &sell_items } else { &buy_items };
         FastDecision {
             label,
             confidence,
@@ -184,6 +199,7 @@ impl RuleBrain {
             mode: "rule".to_string(),
             model_version: RULE_MODEL_VERSION.to_string(),
             infer_ms: t0.elapsed().as_secs_f64() * 1000.0,
+            factor_contributions: contributions_of(used_items),
         }
     }
 }
@@ -272,6 +288,7 @@ impl LayaClient {
             infer_ms: v["infer_ms"]
                 .as_f64()
                 .unwrap_or_else(|| t0.elapsed().as_secs_f64() * 1000.0),
+            factor_contributions: Value::Null,
         })
     }
 }
@@ -369,6 +386,7 @@ impl CloudLlmClient {
             mode: "cloud_llm".to_string(),
             model_version: format!("cloud-{}", self.model),
             infer_ms: t0.elapsed().as_secs_f64() * 1000.0,
+            factor_contributions: Value::Null,
         })
     }
 }

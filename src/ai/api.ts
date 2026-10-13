@@ -225,6 +225,45 @@ export interface DecisionLogInfo {
   modelVersion: string;
   inferMs: number;
   createdAt: number;
+  /** v2.31 实时信号附带的同型历史命中率（历史行展开时按需补查）。 */
+  quality?: QualityViewInfo | null;
+  /** v2.31 因子归因（仅规则通道）。 */
+  factorContributions?: FactorContribInfo[] | null;
+}
+
+// ===== v2.31 信号质量 =====
+export interface QualityViewInfo {
+  strategy: string;
+  session: string;
+  samples: number;
+  winRatePct: number;
+  avgRetPct: number;
+  profitFactor: number;
+  sufficient: boolean;
+  level: string;
+}
+
+export interface FactorContribInfo {
+  factor: string;
+  weight: number;
+  value: number;
+  contribution: number;
+}
+
+export interface QualityQueryInfo {
+  strategy?: string;
+  session?: string;
+  theme?: string;
+  factors?: Record<string, number> | null;
+  side?: string;
+}
+
+export function signalQualityLookup(query: QualityQueryInfo) {
+  return invoke<QualityViewInfo>("signal_quality_lookup", { query });
+}
+
+export function signalQualityOverview() {
+  return invoke<QualityViewInfo[]>("signal_quality_overview");
 }
 
 export function autoexecGetConfig() {

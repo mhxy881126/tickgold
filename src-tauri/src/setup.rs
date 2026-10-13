@@ -194,6 +194,15 @@ pub(crate) fn init(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
 
         // v2.23 高阶盯盘：注册条件单触发监听（落信号票；模拟盘可自动确认提交）
         broker::register_co_listener(app.handle());
+
+        // v2.31 选股订阅：30s 常驻调度，到点执行已保存战法扫描并应用内推送
+        {
+            let handle = app.handle().clone();
+            let data_dir = dir.clone();
+            tauri::async_runtime::spawn(async move {
+                crate::market::screen_sub::scheduler_loop(handle, data_dir).await;
+            });
+        }
     }
     // ===== 内置浏览器本地 HTTP 代理：绕过 WebView2 在部分环境下外网被拦截的问题 =====
     {

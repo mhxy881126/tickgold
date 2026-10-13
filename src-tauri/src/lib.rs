@@ -161,6 +161,8 @@ pub fn run() {
             ai::evolution::evolution_list_labels,
             ai::evolution::evolution_stats,
             ai::evolution::evolution_data_check,
+            ai::signal_quality::signal_quality_lookup,
+            ai::signal_quality::signal_quality_overview,
             ai::bridge::signal_list,
             ai::bridge::signal_confirm,
             ai::bridge::signal_reject,
@@ -241,7 +243,16 @@ pub fn run() {
             ai::backtest::tuning_proposal_list,
             ai::backtest::tuning_proposal_approve,
             ai::backtest::tuning_proposal_reject,
-            ai::backtest::tuning_proposal_revert
+            ai::backtest::tuning_proposal_revert,
+            // ===== v2.31 战法选股 / 天梯深化 =====
+            market::strategy_scan::strategy_scan_run,
+            market::ladder_stats::ladder_stats,
+            // ===== v2.31 选股订阅（定时战法扫描 + 应用内推送）=====
+            market::screen_sub::screen_sub_list,
+            market::screen_sub::screen_sub_upsert,
+            market::screen_sub::screen_sub_delete,
+            market::screen_sub::screen_sub_runs,
+            market::screen_sub::screen_sub_run_now
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

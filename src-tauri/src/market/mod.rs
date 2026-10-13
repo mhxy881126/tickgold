@@ -15,6 +15,9 @@ pub mod history;
 pub mod fundflow;
 pub mod level2;
 pub mod sector_day;
+pub mod strategy_scan;
+pub mod ladder_stats;
+pub mod screen_sub;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};

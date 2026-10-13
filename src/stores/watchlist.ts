@@ -11,9 +11,20 @@ function watchChanged() {
     /* 非 Tauri 环境忽略 */
   }
 }
-import type { Group, WatchStock } from "../api/types";
+import type { Group, SmartGroupRule, WatchStock } from "../api/types";
+
+/** 近 N 日涨停记录（智能分组归类 / 信号命中高亮的数据源，v2.31） */
+export interface SmartHit {
+  tradeDate: string;
+  code: string;
+  name: string;
+  boards: number;
+  industry: string;
+  concepts: string;
+}
 
 const GROUP_PREF_KEY = "sd_current_group";
+const SMART_LOOKBACK_DAYS = 5;
 
 /** 自选股 + 分组：SQLite 持久化 */
 export const useWatchlistStore = defineStore("watchlist", () => {
@@ -21,6 +32,59 @@ export const useWatchlistStore = defineStore("watchlist", () => {
   const stocks = ref<WatchStock[]>([]);
   const loaded = ref(false);
   const currentGroupId = ref<number>(1);
+  /** 近 N 日涨停记录（含已在自选与未在自选），智能分组与信号高亮共用 */
+  const smartHits = ref<SmartHit[]>([]);
+
+  function parseRule(g: Group): SmartGroupRule {
+    try {
+      return JSON.parse(g.ruleJson || "{}") as SmartGroupRule;
+    } catch {
+      return {};
+    }
+  }
+
+  /** 智能分组的动态成员：命中规则的近 N 日涨停记录（无需手动维护） */
+  function smartMembers(g: Group): WatchStock[] {
+    const rule = parseRule(g);
+    const days = Math.max(1, rule.days || SMART_LOOKBACK_DAYS);
+    const seen = new Set<string>();
+    const out: WatchStock[] = [];
+    for (const h of smartHits.value) {
+      if (seen.has(h.code)) continue;
+      if (rule.tactic === "first_board" && h.boards !== 1) continue;
+      if (rule.tactic === "multi_board" && h.boards < 2) continue;
+      if (rule.theme) {
+        const kw = rule.theme.trim();
+        if (kw && !h.industry.includes(kw) && !h.concepts.includes(kw)) continue;
+      }
+      // days 截断：记录按日期倒序时按出现条数近似 N 日即可，这里按日期集合精确判断
+      if (hitAgeDays(h.tradeDate) >= days) continue;
+      seen.add(h.code);
+      out.push({ code: h.code, name: h.name, groupId: g.id, sortOrder: out.length });
+    }
+    return out;
+  }
+
+  /** 涨停记录距今天数（自然日，0 = 今天） */
+  function hitAgeDays(tradeDate: string): number {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const d = new Date(tradeDate.replace(/-/g, "/") + "T00:00:00");
+    if (Number.isNaN(d.getTime())) return 0;
+    return Math.floor((today.getTime() - d.getTime()) / 86_400_000);
+  }
+
+  /** 当前展示行：智能分组给动态成员，普通分组给表内成员 */
+  function membersOf(groupId: number): WatchStock[] {
+    const g = groups.value.find((x) => x.id === groupId);
+    if (g?.kind === "smart") return smartMembers(g);
+    return stocksOf(groupId);
+  }
+
+  /** 某只自选股近 N 日的战法信号（用于列表高亮） */
+  function hitOf(code: string): SmartHit | undefined {
+    return smartHits.value.find((h) => h.code === code);
+  }
 
   /** 全部股票代码（跨分组，供行情轮询/灵动岛使用） */
   const codes = computed(() =>
@@ -29,12 +93,8 @@ export const useWatchlistStore = defineStore("watchlist", () => {
       .map((s) => s.code)
   );
 
-  /** 当前分组下的股票（按排序） */
-  const currentStocks = computed(() =>
-    stocks.value
-      .filter((s) => s.groupId === currentGroupId.value)
-      .sort((a, b) => a.sortOrder - b.sortOrder)
-  );
+  /** 当前分组下的股票（智能分组为动态命中成员） */
+  const currentStocks = computed(() => membersOf(currentGroupId.value));
 
   const currentGroup = computed(
     () => groups.value.find((g) => g.id === currentGroupId.value) ?? groups.value[0]
@@ -50,19 +110,53 @@ export const useWatchlistStore = defineStore("watchlist", () => {
     return stocks.value.find((s) => s.code === code)?.name ?? "";
   }
 
+  /** 拉取近 N 个交易日涨停记录，供智能分组 / 信号高亮 */
+  async function refreshSmartHits() {
+    try {
+      const dates = await db().select<{ d: string }[]>(
+        "SELECT DISTINCT trade_date AS d FROM limit_up_record ORDER BY d DESC LIMIT ?",
+        [SMART_LOOKBACK_DAYS]
+      );
+      if (!dates.length) {
+        smartHits.value = [];
+        return;
+      }
+      const ph = dates.map(() => "?").join(",");
+      const rows = await db().select<
+        { tradeDate: string; code: string; name: string; boards: number; industry: string; concepts: string }[]
+      >(
+        `SELECT trade_date AS tradeDate, code, name, boards, industry, concepts
+         FROM limit_up_record WHERE trade_date IN (${ph})
+         ORDER BY trade_date DESC, boards DESC`,
+        dates.map((x) => x.d)
+      );
+      smartHits.value = rows;
+    } catch (e) {
+      // 表不存在（旧库未迁移）等情况静默
+      console.warn("[watchlist] 智能命中加载失败", e);
+    }
+  }
+
   /** 启动时加载全部分组与股票 */
   async function load() {
     await ensureDb();
-    const gs = await db().select<{ id: number; name: string; sortOrder: number }[]>(
-      "SELECT id, name, sort_order AS sortOrder FROM groups ORDER BY sort_order, id"
+    const gs = await db().select<
+      { id: number; name: string; sortOrder: number; kind: string; ruleJson: string }[]
+    >(
+      "SELECT id, name, sort_order AS sortOrder, kind, rule_json AS ruleJson FROM groups ORDER BY sort_order, id"
     );
-    groups.value = gs;
+    groups.value = gs.map((g) => ({
+      ...g,
+      kind: g.kind === "smart" ? "smart" : "manual",
+    }));
     const ss = await db().select<
       { code: string; name: string; groupId: number; sortOrder: number }[]
     >(
       "SELECT code, name, group_id AS groupId, sort_order AS sortOrder FROM stocks ORDER BY group_id, sort_order, id"
     );
     stocks.value = ss;
+    // 智能命中为增强数据：失败/旧库不阻塞自选主数据加载
+    await refreshSmartHits();
     // 恢复上次选中的分组
     const saved = Number(localStorage.getItem(GROUP_PREF_KEY));
     if (saved && groups.value.some((g) => g.id === saved)) currentGroupId.value = saved;
@@ -160,6 +254,23 @@ export const useWatchlistStore = defineStore("watchlist", () => {
     return id;
   }
 
+  /** 新建智能分组（成员按规则从涨停记录动态计算），返回 id 并切换过去 */
+  async function addSmartGroup(name: string, rule: SmartGroupRule): Promise<number> {
+    const n = name.trim();
+    if (!n) return currentGroupId.value;
+    const order = groups.value.length;
+    const ruleJson = JSON.stringify(rule);
+    const r = await db().execute(
+      "INSERT INTO groups(name, sort_order, created_at, kind, rule_json) VALUES(?,?,?, 'smart', ?)",
+      [n, order, Date.now(), ruleJson]
+    );
+    const id = (r.lastInsertId as number) ?? groups.value[groups.value.length - 1].id + 1;
+    groups.value.push({ id, name: n, sortOrder: order, kind: "smart", ruleJson });
+    selectGroup(id);
+    watchChanged();
+    return id;
+  }
+
   async function renameGroup(id: number, name: string) {
     const n = name.trim();
     if (!n) return;
@@ -207,7 +318,12 @@ export const useWatchlistStore = defineStore("watchlist", () => {
     addGroup,
     renameGroup,
     removeGroup,
+    addSmartGroup,
     stocksOf,
+    membersOf,
+    smartHits,
+    hitOf,
+    refreshSmartHits,
     nameOf,
   };
 });
