@@ -48,8 +48,8 @@ test("全量卡片同屏：帧率 ≥50fps、内存无明显增长", async ({ pa
   await mountAll(page);
   await page.waitForTimeout(800);
 
-  // 出厂左侧导航共 44 个功能项（玻璃浮岛：开卡在导航中标记，主区一次渲染一张）
-  expect(await cardCount(page)).toBe(44);
+  // 出厂左侧导航共 45 个功能项（玻璃浮岛：开卡在导航中标记，主区一次渲染一张）
+  expect(await cardCount(page)).toBe(45);
   const stats = await page.evaluate(() => ({
     nodes: document.querySelectorAll("*").length,
     canvases: document.querySelectorAll("canvas").length,
@@ -70,7 +70,7 @@ test("全量卡片同屏：帧率 ≥50fps、内存无明显增长", async ({ pa
   writeFileSync(
     "screenshots/perf.txt",
     [
-      "cards 44",
+      "cards 45",
       `dom nodes ${stats.nodes}, canvases ${stats.canvases}`,
       `fps ${fps.fps.toFixed(1)} (p95 ${fps.p95.toFixed(0)} ms, worst ${fps.worst.toFixed(0)} ms)`,
       `heap ${(heap0 / 1048576).toFixed(1)}MB -> ${(heap1 / 1048576).toFixed(1)}MB, growth ${(growth * 100).toFixed(1)}% over 8s`,
