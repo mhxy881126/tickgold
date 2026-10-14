@@ -106,6 +106,16 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
 
+          # v3.0.0-rc 起分通道：预发布（版本号含 -rc）发布到滚动 rc Release，
+          # 清单命名 latest-rc*.json；正式版走 latest Release / latest*.json。
+          # 正式版用户只检查 latest 通道，不会被预发布升级。
+          if [[ "$VERSION" == *-rc* ]]; then
+            CHANNEL="rc"; PUB_TAG="rc"; PRERELEASE=true
+          else
+            CHANNEL="stable"; PUB_TAG="$TAG"; PRERELEASE=false
+          fi
+          echo "channel=$CHANNEL pub_tag=$PUB_TAG"
+
           echo "== collected files =="
           find dist -type f | sort
 
@@ -145,7 +155,8 @@ jobs:
           X64_DMG="rel/$(basename "$X64_RAW_DMG")"
 
           # 更新清单中的下载 URL 统一指向公开仓库 tickgold-public（应用内自动更新走公开 CDN + 镜像）
-          GH_BASE="https://github.com/$PUBLIC_REPO/releases/download/$TAG"
+          # RC 通道资产挂在滚动 rc Release 上；正式通道挂版本 tag Release。
+          GH_BASE="https://github.com/$PUBLIC_REPO/releases/download/$PUB_TAG"
 
           # ---- 签名 ----
           win_sig=$(cat "$WIN_SIG")
@@ -167,9 +178,14 @@ jobs:
                              "darwin-aarch64":{signature:$mas,url:$mau},
                              "darwin-x86_64":{signature:$mxs,url:$mxu} } }'
           }
-          gen_manifest ""                     > rel/latest.json
-          gen_manifest "https://ghproxy.net/" > rel/latest.ghproxy.json
-          gen_manifest "https://gh-proxy.com/" > rel/latest.gh-proxy.json
+          if [ "$CHANNEL" = "rc" ]; then
+            MANIFEST="latest-rc"
+          else
+            MANIFEST="latest"
+          fi
+          gen_manifest ""                       > "rel/$MANIFEST.json"
+          gen_manifest "https://ghproxy.net/"   > "rel/$MANIFEST.ghproxy.json"
+          gen_manifest "https://gh-proxy.com/"  > "rel/$MANIFEST.gh-proxy.json"
 
           # ---- 发布说明（放在 rel/ 外，避免被当成资产上传）----
           cat > body.md <<EOF
@@ -190,14 +206,15 @@ jobs:
           sed -i 's/^          //' body.md
 
           # ---- 在公开仓库创建/复用唯一 Release → 清旧资产 → 上传 → 解除草稿 ----
+          # RC 通道复用滚动 tag=rc 的 Release（每次构建覆盖同名资产与清单）。
           EXISTING=$(gh api "repos/$PUBLIC_REPO/releases" --paginate \
-            --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -n1)
+            --jq ".[] | select(.tag_name==\"$PUB_TAG\") | .id" | head -n1)
           if [ -n "$EXISTING" ]; then
             RID="$EXISTING"; echo "reuse release $RID"
           else
             RID=$(gh api -X POST "repos/$PUBLIC_REPO/releases" \
-              -f tag_name="$TAG" -f name="TickGold $TAG" \
-              -F draft=true -F prerelease=false --jq ".id")
+              -f tag_name="$PUB_TAG" -f name="TickGold $TAG" \
+              -F draft=true -F prerelease="$PRERELEASE" --jq ".id")
             echo "created release $RID"
           fi
           # 清空可能残留的同名旧资产，保证幂等
@@ -207,8 +224,8 @@ jobs:
           done
           # 二进制安装包 + 签名 + 更新清单（不含任何源码）
           gh release upload "$TAG" rel/* --repo "$PUBLIC_REPO" --clobber
-          # 资产就位后解除草稿、正式发布
+          # 资产就位后解除草稿（RC 通道保持 prerelease=true）
           gh api -X PATCH "repos/$PUBLIC_REPO/releases/$RID" \
-            -F draft=false -F prerelease=false -f name="TickGold $TAG" \
+            -F draft=false -F prerelease="$PRERELEASE" -f name="TickGold $TAG" \
             -f body="$(cat body.md)" --jq '.html_url'
           echo "::notice::Published $TAG to $PUBLIC_REPO with all assets (binaries only, no source)."

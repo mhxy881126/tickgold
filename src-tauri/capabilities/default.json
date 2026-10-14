@@ -17,13 +17,11 @@
     "core:window:allow-is-minimized",
     "core:webview:allow-create-webview-window",
     "core:webview:allow-create-webview",
-    "global-shortcut:default",
     "sql:default",
     "sql:allow-execute",
     "sql:allow-select",
     "updater:default",
     "process:default",
-    "shell:default",
     "opener:default",
     "autostart:default"
   ]

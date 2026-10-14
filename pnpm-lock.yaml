@@ -14,9 +14,6 @@ importers:
       '@tauri-apps/plugin-autostart':
         specifier: ^2.7.0
         version: 2.7.0
-      '@tauri-apps/plugin-global-shortcut':
-        specifier: ^2.4.0
-        version: 2.4.0
       '@tauri-apps/plugin-notification':
         specifier: ^2.5.0
         version: 2.5.1
@@ -26,9 +23,6 @@ importers:
       '@tauri-apps/plugin-process':
         specifier: ^2.4.0
         version: 2.4.0
-      '@tauri-apps/plugin-shell':
-        specifier: ^2.4.0
-        version: 2.4.1
       '@tauri-apps/plugin-sql':
         specifier: ^2.5.0
         version: 2.5.0
@@ -506,9 +500,6 @@ packages:
   '@tauri-apps/plugin-autostart@2.7.0':
     resolution: {integrity: sha512-4uRq+rqKSAh6MWAxgk6FnUPigc8VMG8eDVYTLk3A7OfKs9sLVwfeM8kbUvzjpabRQvyl4zd9tfzXBTrrtuprsA==}
 
-  '@tauri-apps/plugin-global-shortcut@2.4.0':
-    resolution: {integrity: sha512-XBA4PcRjRdJBp/jwFxc5YZ/yKhZuslpOG/pGaNfhnRDVGMQfoXEKMv/6A6vjzfKLUxr8ml3ay8o2W8Rk6mHICA==}
-
   '@tauri-apps/plugin-notification@2.5.1':
     resolution: {integrity: sha512-i0nD48YsLov18siENevC3X7SmJpQE1cImq+JUsjrUPdu73J8cTIOyNIS8H0qxftFAc1k2w6s1E74DoFE02Jirw==}
 
@@ -517,9 +508,6 @@ packages:
 
   '@tauri-apps/plugin-process@2.4.0':
     resolution: {integrity: sha512-GddrmsSLAYrLa/yTXlXK/YRDzUgYeeOnUXTbiyvJWkmI424RmDPD3FVLeqcon7rv6O6ZfhBilcrHWnSo7o6hIQ==}
-
-  '@tauri-apps/plugin-shell@2.4.1':
-    resolution: {integrity: sha512-gFRjdGPz7r7u+4Oaky6E0jl/7fFY+Oq2XsHH9pCBxW/u8b4Q/mjWWKpuDaEqVYrlzlocA4tFtq0p26dgvvBheg==}
 
   '@tauri-apps/plugin-sql@2.5.0':
     resolution: {integrity: sha512-wHzfXAgMbn3G1xWQWM1LlWLJkBEfO2CkAWvu+VYigRBXBocPXZqvGEkYWSM1RrZSSc4iJYAWXkFZrgTyu8zBkw==}
@@ -1236,10 +1224,6 @@ snapshots:
     dependencies:
       '@tauri-apps/api': 2.12.2
 
-  '@tauri-apps/plugin-global-shortcut@2.4.0':
-    dependencies:
-      '@tauri-apps/api': 2.12.2
-
   '@tauri-apps/plugin-notification@2.5.1':
     dependencies:
       '@tauri-apps/api': 2.12.2
@@ -1249,10 +1233,6 @@ snapshots:
       '@tauri-apps/api': 2.12.2
 
   '@tauri-apps/plugin-process@2.4.0':
-    dependencies:
-      '@tauri-apps/api': 2.12.2
-
-  '@tauri-apps/plugin-shell@2.4.1':
     dependencies:
       '@tauri-apps/api': 2.12.2
 
