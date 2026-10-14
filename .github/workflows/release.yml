@@ -83,6 +83,8 @@ jobs:
           name: ${{ matrix.label }}
           path: ${{ matrix.artifact }}
           if-no-files-found: error
+          # 构建产物仅用于 publish 传递，保留 3 天后自动过期，防止累积占满 Actions 存储配额
+          retention-days: 3
 
   publish:
     needs: build
