@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 信号人工确认桥：行情特征信号落「待确认单」，人工改价改量、选券商，
 // 生成下单指令（复制/导出/唤起券商软件）。不自动成交，全程状态留痕。
+import ComplianceFooter from "./ComplianceFooter.vue";
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { confirmDialog } from "../composables/useDialog";
 import {
@@ -656,6 +657,7 @@ onUnmounted(() => {
       <div v-if="toastMsg" class="sb-toast">{{ toastMsg }}</div>
     </transition>
   </div>
+<ComplianceFooter />
 </template>
 
 <style scoped>

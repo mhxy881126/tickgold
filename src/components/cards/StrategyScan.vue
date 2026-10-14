@@ -99,9 +99,11 @@
       </div>
     </div>
   </div>
+<ComplianceFooter />
 </template>
 
 <script setup lang="ts">
+import ComplianceFooter from "../ComplianceFooter.vue";
 import { ref, reactive, onMounted, onBeforeUnmount } from "vue";
 import {
   runStrategyScan,

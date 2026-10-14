@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ComplianceFooter from "./ComplianceFooter.vue";
 import { ref, reactive, computed, onMounted, onUnmounted } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -380,6 +381,7 @@ onUnmounted(() => unlisteners.forEach((fn) => fn()));
       </table>
     </div>
   </div>
+<ComplianceFooter />
 </template>
 
 <style scoped>

@@ -195,7 +195,7 @@ onBeforeUnmount(() => {
     <div class="card-header">
       <div class="header-left">
         <span class="header-badge">AI</span>
-        <span class="header-title">明日主线</span>
+        <span class="header-title">今日题材热度</span>
         <span class="header-sub">涨停梯队 · 板块 · 快讯</span>
         <span v-if="fromCache" class="cache-tag" title="当前为缓存数据">缓存</span>
       </div>
@@ -204,7 +204,7 @@ onBeforeUnmount(() => {
         <span v-if="lastUpdate" class="update-time">{{ lastUpdate }}</span>
         <button class="refresh-btn" :disabled="loading && !fromCache" @click="refresh(false)">
           <svg v-if="!loading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
-          {{ loading ? "预测中…" : "刷新" }}
+          {{ loading ? "分析中…" : "刷新" }}
         </button>
       </div>
     </div>
@@ -218,7 +218,7 @@ onBeforeUnmount(() => {
 
     <!-- 慢加载提示 -->
     <div v-if="slowLoading && !data" class="slow-hint">
-      <span>AI 预测需要一点时间… 正在分析涨停梯队和板块轮动</span>
+      <span>AI 正在梳理涨停梯队与板块热度，需要一点时间…</span>
     </div>
 
     <!-- 加载状态 -->
@@ -226,7 +226,7 @@ onBeforeUnmount(() => {
       <div class="spinner-wrap">
         <div class="spinner"></div>
       </div>
-      <div class="loading-title">AI 主线预测引擎运行中</div>
+      <div class="loading-title">AI 题材热度梳理引擎运行中</div>
       <div class="loading-sub">正在分析涨停梯队 / 板块轮动 / 市场快讯…</div>
       <div v-if="streamText" class="stream-box">
         <div class="stream-text">{{ streamText }}<span class="cursor">▊</span></div>
@@ -236,7 +236,7 @@ onBeforeUnmount(() => {
     <!-- 错误状态 -->
     <div v-else-if="error" class="error-state">
       <div class="error-icon">!</div>
-      <div class="error-title">预测失败</div>
+      <div class="error-title">梳理失败</div>
       <div class="error-text">{{ error }}</div>
       <div class="error-actions">
         <button class="retry-btn" @click="() => refresh()">重试</button>
@@ -314,7 +314,7 @@ onBeforeUnmount(() => {
       <!-- 底部免责 -->
       <div class="disclaimer">
         <span class="disc-icon">ⓘ</span>
-        AI 预测仅供参考，不构成投资建议 · 置信度 {{ confidenceScore }}%
+        AI 基于今日数据的题材关联归纳，仅供参考，不构成投资建议，不预测明日行情 · 置信度 {{ confidenceScore }}%
       </div>
     </div>
   </div>

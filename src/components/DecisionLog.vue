@@ -105,9 +105,11 @@
       </div>
     </div>
   </div>
+<ComplianceFooter />
 </template>
 
 <script setup lang="ts">
+import ComplianceFooter from "./ComplianceFooter.vue";
 import { onMounted, onUnmounted, reactive, ref } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import {

@@ -321,9 +321,11 @@
       </div>
     </div>
   </div>
+<ComplianceFooter />
 </template>
 
 <script setup lang="ts">
+import ComplianceFooter from "../ComplianceFooter.vue";
 import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import * as echarts from "echarts";
 import {

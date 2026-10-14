@@ -92,7 +92,7 @@
       <div v-if="!stats || !stats.groups.length" class="ev-empty">
         <div class="empty-icon">📈</div>
         <div class="empty-title">还没有战绩数据</div>
-        <div class="empty-desc">进化回灌会回测历史决策的涨跌结果，帮你验证机器人的真实胜率。</div>
+        <div class="empty-desc">进化回灌会回测历史决策的涨跌结果，输出样本内统计（不代表未来收益）。</div>
         <div class="empty-steps">
           <div class="step">
             <span class="step-num">1</span>
@@ -112,7 +112,7 @@
             <span class="step-num">3</span>
             <div class="step-body">
               <div class="step-title">点击「分析历史决策」</div>
-              <div class="step-sub">回测计算胜率、盈亏比等指标</div>
+              <div class="step-sub">回测计算样本内胜率、盈亏比等指标（仅历史样本）</div>
             </div>
           </div>
         </div>
@@ -187,9 +187,11 @@
       </table>
     </div>
   </div>
+<ComplianceFooter />
 </template>
 
 <script setup lang="ts">
+import ComplianceFooter from "./ComplianceFooter.vue";
 import { onMounted, reactive, ref } from "vue";
 import {
   evolutionRunLabeling,

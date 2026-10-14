@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ComplianceFooter from "./ComplianceFooter.vue";
 import { ref, computed, onMounted } from "vue";
 import {
   fetchLhbList,
@@ -20,7 +21,7 @@ const detail = ref<LhbDetail | null>(null);
 const loading = ref(false);
 const sortMode = ref<"net" | "pct">("net");
 
-// ===== 席位跟庄统计 =====
+// ===== 席位历史样本统计 =====
 const view = ref<"seat" | "dept">("seat");
 const seatBack = ref<SeatBack | null>(null);
 const seatTrades = ref<SeatTrades | null>(null);
@@ -110,7 +111,7 @@ async function pick(code: string, link = true) {
   }
 }
 
-// ===== 点击营业部名 → 该席位跟庄统计 =====
+// ===== 点击营业部名 → 该席位历史样本统计 =====
 async function openSeat(s: { code: string; name: string; tag: string }) {
   if (!s.code) return;
   seatLoading.value = true;
@@ -227,11 +228,11 @@ onMounted(() => loadDate(""));
         <div v-if="!loading && !stocks.length" class="empty">当日无龙虎榜数据</div>
       </div>
 
-      <!-- 右侧席位明细 / 席位跟庄统计 -->
+      <!-- 右侧席位明细 / 席位历史样本统计 -->
       <div class="dt-right">
         <div v-if="seatLoading" class="loading seat-loading">席位统计加载中…</div>
         <template v-else>
-        <!-- 跟庄统计视图 -->
+        <!-- 席位历史样本统计视图 -->
         <div v-if="view === 'dept'" class="dept-wrap">
           <button class="back-btn" @click="backToSeat">‹ 返回个股席位</button>
           <div class="dept-head">
@@ -239,8 +240,8 @@ onMounted(() => loadDate(""));
             <em v-if="seatTag" class="tag" :class="tagClass(seatTag)">{{ seatTag }}</em>
           </div>
 
-          <!-- 回测概况：胜率矩阵 -->
-          <div class="sec-title">上榜后表现回测</div>
+          <!-- 回测概况：上涨占比矩阵（历史样本） -->
+          <div class="sec-title">上榜后历史样本统计</div>
           <div class="back-table">
             <div class="bt-row bt-head">
               <span class="bt-cycle">周期</span>
@@ -251,7 +252,7 @@ onMounted(() => loadDate(""));
               <span v-for="hk in horizons" :key="hk" class="bt-cell">
                 <template v-if="r[hk].times > 0">
                   <b :class="pctCls(r[hk].avg)">{{ r[hk].avg > 0 ? "+" : "" }}{{ r[hk].avg.toFixed(2) }}%</b>
-                  <i class="prob">胜率 {{ r[hk].prob.toFixed(0) }}%</i>
+                  <i class="prob">上涨占比 {{ r[hk].prob.toFixed(0) }}%</i>
                   <i class="times">{{ r[hk].times }} 次</i>
                 </template>
                 <i v-else class="no">—</i>
@@ -350,6 +351,7 @@ onMounted(() => loadDate(""));
       </div>
     </div>
   </div>
+<ComplianceFooter />
 </template>
 
 <style scoped>
@@ -643,7 +645,7 @@ onMounted(() => loadDate(""));
   padding-top: 48px;
 }
 
-/* 跟庄统计面板 */
+/* 席位历史样本统计面板 */
 .dept-wrap {
   padding: 8px 10px 16px;
 }
@@ -694,7 +696,7 @@ onMounted(() => loadDate(""));
   color: var(--text-dim);
 }
 
-/* 回测胜率矩阵 */
+/* 回测上涨占比矩阵 */
 .back-table {
   margin-top: 6px;
   border: 1px solid var(--border);

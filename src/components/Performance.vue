@@ -4,7 +4,7 @@
     <div class="perf-intro">
       <div class="perf-intro-title">📊 绩效分析</div>
       <div class="perf-intro-desc">
-        机器人到底行不行？一眼看出<b>胜率、盈亏比、最大回撤</b>。
+        查看历史样本的<b>胜率、盈亏比、最大回撤</b>（样本内统计，不代表未来收益）。
       </div>
     </div>
 

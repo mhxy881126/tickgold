@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // v2.32 盯盘复盘报告导出：拉取后端聚合数据包，前端渲染单文件 HTML / Markdown，
 // 通过原生保存框落盘。报告只如实记录，不出现荐股措辞，固定附免责声明。
+import ComplianceFooter from "./ComplianceFooter.vue";
 import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { buildReviewReport } from "../ai/api";
@@ -89,6 +90,7 @@ async function exportAs(kind: "html" | "md") {
 
     <div class="rr-disclaimer">本报告仅为个人盯盘记录与数据复盘，不构成任何投资建议。</div>
   </div>
+<ComplianceFooter />
 </template>
 
 <style scoped>

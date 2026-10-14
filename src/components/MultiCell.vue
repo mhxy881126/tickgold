@@ -466,6 +466,7 @@ onBeforeUnmount(() => {
                 <span>卖{{ ob.asks.length - i }}</span><b>{{ a.price.toFixed(2) }}</b><em>{{ a.vol }}</em>
               </div>
               <div class="bo-mid">现价 {{ ob.price.toFixed(2) }}</div>
+              <div v-if="l2Using" class="l2-note">Level-2 十档 · 数据由你自备的授权数据商账号提供，仅供个人使用，不得转售/再分发</div>
               <div v-for="(b,i) in ob.bids" :key="'B'+i" class="bo-row b">
                 <span>买{{ i+1 }}</span><b>{{ b.price.toFixed(2) }}</b><em>{{ b.vol }}</em>
               </div>
@@ -577,6 +578,7 @@ onBeforeUnmount(() => {
 .bo-row b { font-variant-numeric:tabular-nums; } .bo-row em { font-style:normal;text-align:right;font-variant-numeric:tabular-nums;color:var(--text-dim); }
 .bo-row.s b { color:#ff6b78; } .bo-row.b b { color:#2fe6ac; }
 .bo-mid { text-align:center;height:28px;line-height:28px;font-size:12px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin:3px 0; }
+.l2-note{margin:6px 0 0;font-size:10px;color:var(--text-dim,#8a93a8);line-height:1.5}
 .bo-info { font-size:11px;color:var(--text-dim);text-align:center; }
 .bo-depth {
   display:grid; grid-template-columns:repeat(3,1fr); gap:6px 14px;
