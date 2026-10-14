@@ -239,6 +239,8 @@
 
 **rc 验收：** 风险仪表盘覆盖全通道；实盘最小限额完成真实周联调、风控零绕过、急停有效；全量回归绿。**实盘节奏：先模拟跑满完整进化周期 → 信号+人工确认 →（v3.1 视稳定性）半自动，逐笔/限额可配。**
 
+> **v3.0.0-rc.0 代码侧已完成（2026-10-14）：** 任务 1/2/3/5 全部落地——五通道统一 `risk::gate`（拒绝写 signal_audit）、仪表盘定稿（回撤/暴露/情绪/告警/急停横条）、`Ctrl+Alt+K` 三入口急停（撤条件单+在途委托+断 sidecar）、capabilities 移除 shell/global-shortcut；任务 4 代码链路已通（asset/position 双缓存、live_enabled、`live_max_order_amount` 默认 0 锁定），**真机小限额周联调待用户执行**。静态验证：cargo test 179 绿、clippy `--all-targets -D warnings` 干净、vitest 694 绿、pnpm build 通过。
+
 ### v3.0.0 — 正式版
 
 - [ ] Windows Authenticode 代码签名（消除 SmartScreen）；
