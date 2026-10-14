@@ -2,6 +2,7 @@
 import { computed, onUnmounted, reactive, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit as tauriEmit } from "@tauri-apps/api/event";
+import { openInAppBrowser } from "../utils/openInApp";
 import { useTheme, type ThemeId } from "../composables/useTheme";
 import { useAccessibility } from "../composables/useAccessibility";
 import { useMotion } from "../composables/useMotion";
@@ -152,6 +153,12 @@ const tab = ref<Tab>("appearance");
 
 // ===== Pro 订阅授权（v3.0.2 面包多卡密 · 离线验签）=====
 const license = useLicenseStore();
+
+// 面包多购买链接（商品上架后替换为商品页地址）
+const PRO_PURCHASE_URL = "https://mbd.pub";
+function goBuy() {
+  void openInAppBrowser(PRO_PURCHASE_URL);
+}
 const codeInput = ref("");
 const actBusy = ref(false);
 const actMsg = ref("");
@@ -1373,7 +1380,6 @@ async function clearL2Key(r: PluginRow) {
             <!-- Pro 订阅 -->
             <div v-if="tab === 'pro'" class="ai-tab">
               <div class="section-title">订阅 Pro</div>
-              <div class="section-sub" style="margin:4px 0 14px">解锁 AI 盘中解读 · 今日题材热度 · 信号归因 · 策略回测 · 战法选股 · 进化回灌 · 复盘报告 · L2 十档 · QMT 实盘接入</div>
               <template v-if="license.isPro">
                 <div class="pro-status-row" style="display:flex;align-items:center;gap:8px;padding:12px 14px;border:1px solid rgba(0,255,213,.4);border-radius:10px;background:rgba(0,255,213,.06)">
                   <span style="width:9px;height:9px;border-radius:50%;background:#00ffd5"></span>
@@ -1386,11 +1392,20 @@ async function clearL2Key(r: PluginRow) {
                 <button class="primary-btn" style="margin-top:16px" :disabled="actBusy" @click="onDeactivate">{{ actBusy ? "处理中…" : "退出 Pro（恢复免费版）" }}</button>
               </template>
               <template v-else>
-                <div class="section-sub" style="margin:4px 0 10px">尚未激活 Pro，当前为免费版（基础盯盘功能完整可用）。</div>
+                <div class="section-sub" style="margin:4px 0 10px">尚未激活 Pro，当前为免费版。</div>
+                <div style="margin:0 0 12px;padding:12px 14px;border:1px solid #1f2a3f;border-radius:10px;background:rgba(15,23,42,.5)">
+                  <div style="font-size:13px;font-weight:600;margin-bottom:8px">如何获取激活码</div>
+                  <div style="font-size:12px;line-height:1.9;color:#9fb3d1">
+                    ① 在面包多购买「TickGold Pro 年卡」（¥99/年）；<br>
+                    ② 卡密自动发货，复制收到的 TG 激活码；<br>
+                    ③ 粘贴到下方输入框，点击「激活 Pro」。
+                  </div>
+                  <button class="primary-btn" style="margin-top:10px" @click="goBuy">去面包多购买</button>
+                </div>
                 <textarea v-model="codeInput" rows="3" style="width:100%;box-sizing:border-box;background:#0a0f1a;border:1px solid #1f2a3f;border-radius:8px;color:#e6edf7;font-size:13px;padding:10px 12px;resize:vertical" placeholder="粘贴激活码（TG.xxx.xxx.xxx）"></textarea>
                 <button class="primary-btn" style="margin-top:12px" :disabled="actBusy" @click="onActivate">{{ actBusy ? "激活中…" : "激活 Pro" }}</button>
                 <div v-if="actMsg" style="margin-top:10px;font-size:12.5px;color:#ffd76a">{{ actMsg }}</div>
-                <div class="section-sub" style="margin-top:14px;font-size:12px;line-height:1.8">激活码通过官方购买渠道获取（面包多商品上架后开放，敬请期待）。激活后立即生效，到期自动降级免费版。</div>
+                <div class="section-sub" style="margin-top:14px;font-size:12px;line-height:1.8">激活后立即生效，到期自动降级免费版。卡密仅供本人使用，请勿转售。</div>
               </template>
             </div>
             <!-- 外观 / 配色 -->
