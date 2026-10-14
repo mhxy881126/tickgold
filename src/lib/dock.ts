@@ -80,7 +80,7 @@ export const DOCK_GROUPS: DockGroup[] = [
       { id: "performance", label: "绩效分析", icon: "M3 3v18h18M7 14l4-4 4 4 5-5", desc: "胜率/盈亏比/最大回撤/每月收益", star: true },
       { id: "review", label: "AI 复盘", icon: "M6 2h9l5 5v15H6zm8 1.5V8h4.5z", desc: "盘后市场/题材/个股三层复盘", star: true },
       { id: "battleplan", label: "作战计划", icon: "M6 3v18M6 4h12l-2.5 4L18 12H6", desc: "次日触发/候选/观察指令，一键转预警", star: true },
-      { id: "mainline", label: "明日主线", icon: "M12 2l9 5-9 5-9-5zm-9 10l9 5 9-5", desc: "AI 基于涨停梯队梳理次日跟踪方向（非预测）", star: true },
+      { id: "mainline", label: "今日题材热度", icon: "M12 2l9 5-9 5-9-5zm-9 10l9 5 9-5", desc: "AI 基于今日数据梳理题材热度与关联方向（不预测明日行情）", star: true },
       { id: "decisionlog", label: "决策日志", icon: "M4 6h16M4 12h16M4 18h10", desc: "快脑行情特征信号审计与回放", star: true },
       { id: "evolution", label: "进化回灌", icon: "M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z", desc: "决策自动打标 + 版本胜率/盈亏比回灌", star: true },
       { id: "backtest", label: "策略回测", icon: "M9 11.75a1.5 1.5 0 013 0v.5a1.5 1.5 0 003 0v-4a1.5 1.5 0 00-3 0", desc: "历史K线回测 + 绩效/寻优 + 人工审批护栏", star: true },

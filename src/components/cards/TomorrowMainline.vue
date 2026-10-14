@@ -157,10 +157,10 @@ async function refresh(backgroundRefresh = false) {
       slowLoading.value = false;
       if (data.value) {
         error.value = msg;
-        logger.warn("明日主线刷新失败，继续展示缓存", msg);
+        logger.warn("题材热度刷新失败，继续展示缓存", msg);
       } else {
         error.value = msg;
-        logger.error("明日主线失败", msg);
+        logger.error("题材热度失败", msg);
       }
       loading.value = false;
       refreshing.value = false;
@@ -171,7 +171,7 @@ async function refresh(backgroundRefresh = false) {
     const msg = e instanceof Error ? e.message : String(e);
     if (data.value) {
       error.value = msg;
-      logger.warn("明日主线刷新失败，继续展示缓存", msg);
+      logger.warn("题材热度刷新失败，继续展示缓存", msg);
     } else {
       error.value = msg;
     }
