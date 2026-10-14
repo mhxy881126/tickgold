@@ -50,9 +50,9 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY5RDUyQTUzQjk1RUE2Q0IKUldUTHBsNjVVeXJWK2Nuc3ZiN1lqQ3pLeW5CNG9hSnZkUmlPYjRWZTJRaVRyZS96N3NVQ0YybXcK",
       "endpoints": [
-        "https://ghproxy.net/https://github.com/mhxy881126/tickgold-public/releases/download/rc/latest-rc.ghproxy.json",
-        "https://gh-proxy.com/https://github.com/mhxy881126/tickgold-public/releases/download/rc/latest-rc.gh-proxy.json",
-        "https://github.com/mhxy881126/tickgold-public/releases/download/rc/latest-rc.json"
+        "https://ghproxy.net/https://github.com/mhxy881126/tickgold-public/releases/latest/download/latest.ghproxy.json",
+        "https://gh-proxy.com/https://github.com/mhxy881126/tickgold-public/releases/latest/download/latest.gh-proxy.json",
+        "https://github.com/mhxy881126/tickgold-public/releases/latest/download/latest.json"
       ]
     }
   }
