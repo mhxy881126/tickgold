@@ -6,6 +6,7 @@ mod db;
 mod error;
 mod logging;
 mod market;
+mod license;
 mod plugin;
 mod proxy;
 mod setup;
@@ -259,7 +260,11 @@ pub fn run() {
             market::screen_sub::screen_sub_upsert,
             market::screen_sub::screen_sub_delete,
             market::screen_sub::screen_sub_runs,
-            market::screen_sub::screen_sub_run_now
+            market::screen_sub::screen_sub_run_now,
+            // ===== v3.0.2 Pro 订阅授权（面包多卡密 · 离线验签）=====
+            license::license_status,
+            license::license_activate,
+            license::license_deactivate
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

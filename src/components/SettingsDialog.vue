@@ -71,6 +71,7 @@ import {
 } from "../api/backup";
 import { exit as exitApp } from "@tauri-apps/plugin-process";
 import { confirmDialog } from "../composables/useDialog";
+import { useLicenseStore } from "../stores/license";
 
 const props = defineProps<{ open: boolean; initialTab?: Tab }>();
 const emit = defineEmits<{ "update:open": [boolean]; "replay-onboarding": []; "check-update": [] }>();
@@ -146,8 +147,38 @@ async function toggleAutoStart(v: boolean) {
 }
 void loadAutoStart();
 
-type Tab = "appearance" | "data" | "ai" | "autotrade" | "knowledge" | "broker" | "plugins" | "logs" | "about";
+type Tab = "pro" | "appearance" | "data" | "ai" | "autotrade" | "knowledge" | "broker" | "plugins" | "logs" | "about";
 const tab = ref<Tab>("appearance");
+
+// ===== Pro 订阅授权（v3.0.2 面包多卡密 · 离线验签）=====
+const license = useLicenseStore();
+const codeInput = ref("");
+const actBusy = ref(false);
+const actMsg = ref("");
+async function onActivate() {
+  actMsg.value = "";
+  const c = codeInput.value.trim();
+  if (!c) {
+    actMsg.value = "请先粘贴激活码";
+    return;
+  }
+  actBusy.value = true;
+  try {
+    const ok = await license.activate(c);
+    actMsg.value = ok ? "激活成功，Pro 已生效" : (license.error || "激活失败");
+    if (ok) codeInput.value = "";
+  } finally {
+    actBusy.value = false;
+  }
+}
+async function onDeactivate() {
+  actBusy.value = true;
+  try {
+    await license.deactivate();
+  } finally {
+    actBusy.value = false;
+  }
+}
 watch(() => props.open, (v) => {
   if (v && props.initialTab) tab.value = props.initialTab;
 });
@@ -1285,6 +1316,11 @@ async function clearL2Key(r: PluginRow) {
         <div class="set-main">
           <!-- 左侧分组 -->
           <nav class="set-nav">
+            <button class="nav-item" :class="{ on: tab === 'pro' }" @click="pickTab('pro')">
+              <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 17.3 6.1 20l1.1-6.5L2.5 9l6.5-1L12 2l3 6 6.5 1-4.7 4.5L17.9 20z" /></svg>
+              订阅 Pro
+              <span v-if="license.isPro" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#00ffd5;margin-left:6px" title="Pro 已生效"></span>
+            </button>
             <button class="nav-item" :class="{ on: tab === 'appearance' }" @click="pickTab('appearance')">
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 3a9 9 0 100 18 9 9 0 000-18zm0 2v14a7 7 0 000-14zm0 0a7 7 0 010 14z" /></svg>
               外观
@@ -1325,6 +1361,29 @@ async function clearL2Key(r: PluginRow) {
 
           <!-- 右侧内容 -->
           <div class="set-content">
+            <!-- Pro 订阅 -->
+            <div v-if="tab === 'pro'" class="ai-tab">
+              <div class="section-title">订阅 Pro</div>
+              <div class="section-sub" style="margin:4px 0 14px">解锁 AI 盘中解读 · 今日题材热度 · 信号归因 · 策略回测 · 战法选股 · 进化回灌 · 复盘报告 · L2 十档 · QMT 实盘接入</div>
+              <template v-if="license.isPro">
+                <div class="pro-status-row" style="display:flex;align-items:center;gap:8px;padding:12px 14px;border:1px solid rgba(0,255,213,.4);border-radius:10px;background:rgba(0,255,213,.06)">
+                  <span style="width:9px;height:9px;border-radius:50%;background:#00ffd5"></span>
+                  <span style="font-weight:600">Pro 订阅生效中</span>
+                </div>
+                <div style="margin-top:12px;font-size:13px;color:#e6edf7">
+                  订阅计划：{{ license.plan || "pro-annual" }} · 到期：{{ license.expiresAt }} · 剩余 {{ license.daysLeft }} 天
+                </div>
+                <div v-if="license.status?.rollback_detected" style="margin-top:10px;font-size:12.5px;color:#ff5f57">检测到系统时间回拨，Pro 已暂停，请校正系统时间后重新打开软件。</div>
+                <button class="primary-btn" style="margin-top:16px" :disabled="actBusy" @click="onDeactivate">{{ actBusy ? "处理中…" : "退出 Pro（恢复免费版）" }}</button>
+              </template>
+              <template v-else>
+                <div class="section-sub" style="margin:4px 0 10px">尚未激活 Pro，当前为免费版（基础盯盘功能完整可用）。</div>
+                <textarea v-model="codeInput" rows="3" style="width:100%;box-sizing:border-box;background:#0a0f1a;border:1px solid #1f2a3f;border-radius:8px;color:#e6edf7;font-size:13px;padding:10px 12px;resize:vertical" placeholder="粘贴激活码（TG.xxx.xxx.xxx）"></textarea>
+                <button class="primary-btn" style="margin-top:12px" :disabled="actBusy" @click="onActivate">{{ actBusy ? "激活中…" : "激活 Pro" }}</button>
+                <div v-if="actMsg" style="margin-top:10px;font-size:12.5px;color:#ffd76a">{{ actMsg }}</div>
+                <div class="section-sub" style="margin-top:14px;font-size:12px;line-height:1.8">激活码通过官方购买渠道获取（面包多商品上架后开放，敬请期待）。激活后立即生效，到期自动降级免费版。</div>
+              </template>
+            </div>
             <!-- 外观 / 配色 -->
             <div v-if="tab === 'appearance'">
               <div class="section-title">启动设置</div>

@@ -231,6 +231,16 @@
 > 以 `generate_handler!` 实际枚举为准：本地 97 + ai 22 + broker 23 + plugin 11
 > + backup 7 + storage 5 + history 7 = **172 个**。
 
+### license 模块（v3.0.2 Pro 订阅授权）：3 个
+
+| # | 命令 |
+| --- | --- |
+| - | license_status（查询授权状态） |
+| - | license_activate（粘贴卡密激活 Pro） |
+| - | license_deactivate（退出 Pro） |
+
+> v3.0.2 授权系统新增 3 个命令（暂未重排编号，发版核对时统一 #20）。
+
 ---
 
 ## 二、数据库迁移：50 条（主库 sqlite:stock-dock.db）

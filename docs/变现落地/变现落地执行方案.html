@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TickGold 变现落地执行方案</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2300ffd5' d='M3 3v18h18M7 14l4-4 4 4 5-5'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0b0f1a; --panel:#111827; --panel2:#0f1626; --line:#1f2a3f;
+  --text:#e6edf7; --dim:#8a93a8; --accent:#00ffd5; --gold:#ffd76a;
+  --red:#ff5f57; --green:#08db94; --yellow:#ffd76a;
+  --radius:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:"Noto Sans SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif;line-height:1.65;padding:0 0 48px}
+.wrap{max-width:1020px;margin:0 auto;padding:0 20px}
+/* ===== Hero ===== */
+.hero{background:linear-gradient(160deg,#101a2e 0%,#0b0f1a 55%,#0e1524 100%);border-bottom:1px solid var(--line);padding:44px 0 36px;margin-bottom:34px}
+.hero .kicker{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--accent);border:1px solid rgba(0,255,213,.35);border-radius:20px;padding:3px 12px;margin-bottom:14px}
+.hero h1{font-size:30px;font-weight:800;letter-spacing:.5px}
+.hero .sub{margin-top:10px;color:var(--dim);font-size:14px;max-width:720px}
+.decisions{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:26px}
+.dec-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+.dec-card .dc-label{font-size:11px;color:var(--dim);margin-bottom:6px}
+.dec-card .dc-value{font-size:16px;font-weight:700;color:var(--accent)}
+.dec-card .dc-note{font-size:11.5px;color:var(--dim);margin-top:5px;line-height:1.5}
+/* ===== Section ===== */
+section{margin-top:38px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:18px}
+.sec-num{font-size:12px;font-weight:700;color:var(--accent);border:1px solid rgba(0,255,213,.4);border-radius:6px;padding:2px 8px}
+.sec-head h2{font-size:21px;font-weight:700}
+.sec-desc{color:var(--dim);font-size:13px;margin-top:2px}
+/* ===== 定价 ===== */
+.price-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.price-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:22px;position:relative}
+.price-card.hot{border-color:rgba(0,255,213,.55);box-shadow:0 0 0 1px rgba(0,255,213,.18),0 10px 30px rgba(0,255,213,.06)}
+.price-card .pc-name{font-size:15px;font-weight:700}
+.price-card .pc-price{font-size:30px;font-weight:800;margin:10px 0 4px}
+.price-card .pc-price small{font-size:13px;font-weight:500;color:var(--dim)}
+.price-card .pc-desc{font-size:12.5px;color:var(--dim);line-height:1.6}
+.price-card ul{margin:12px 0 0 18px;font-size:12.5px;color:var(--text);line-height:1.9}
+.price-card .pc-badge{position:absolute;top:14px;right:14px;font-size:11px;color:#04121a;background:var(--accent);border-radius:12px;padding:2px 10px;font-weight:700}
+/* ===== 功能分级表 ===== */
+table{width:100%;border-collapse:collapse;background:var(--panel);border-radius:var(--radius);overflow:hidden;table-layout:fixed}
+th,td{padding:12px 14px;font-size:13px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+th{background:var(--panel2);font-size:12px;color:var(--dim);font-weight:600}
+td:first-child{width:34%}
+td.pro-col{width:20%;text-align:center}
+td.free-col{width:20%;text-align:center}
+.tag{display:inline-block;font-size:11px;font-weight:600;border-radius:10px;padding:1px 9px}
+.tag.pro{color:#04121a;background:var(--accent)}
+.tag.free{color:var(--dim);background:#1a2436;border:1px solid var(--line)}
+.tag.lock{color:var(--gold);background:rgba(255,215,106,.12);border:1px solid rgba(255,215,106,.4)}
+tr:last-child td{border-bottom:none}
+/* ===== 授权流程 ===== */
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:6px}
+.flow-step{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 12px;text-align:center;position:relative}
+.flow-step .fs-no{width:24px;height:24px;line-height:24px;border-radius:50%;background:rgba(0,255,213,.15);color:var(--accent);font-size:12px;font-weight:700;margin:0 auto 8px}
+.flow-step .fs-t{font-size:12px;font-weight:600}
+.flow-step .fs-d{font-size:10.5px;color:var(--dim);margin-top:4px;line-height:1.5}
+.flow-arrow{display:none}
+.code-box{background:#0a0f1a;border:1px solid var(--line);border-radius:8px;padding:14px 16px;font-family:Consolas,"Courier New",monospace;font-size:12px;color:#9fe8d8;margin-top:16px;overflow-x:auto;white-space:pre;line-height:1.7}
+/* ===== 合规三色 ===== */
+.rule{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.rule-card{border-radius:var(--radius);padding:16px 18px;border:1px solid var(--line)}
+.rule-card.g{border-color:rgba(8,219,148,.45);background:rgba(8,219,148,.06)}
+.rule-card.y{border-color:rgba(255,215,106,.45);background:rgba(255,215,106,.06)}
+.rule-card.r{border-color:rgba(255,95,87,.5);background:rgba(255,95,87,.06)}
+.rule-card .rc-t{font-size:14px;font-weight:700;margin-bottom:8px}
+.rule-card.g .rc-t{color:var(--green)}
+.rule-card.y .rc-t{color:var(--yellow)}
+.rule-card.r .rc-t{color:var(--red)}
+.rule-card ul{margin-left:16px;font-size:12px;line-height:1.9;color:var(--text)}
+.rule-card.r ul{color:#ffd5d2}
+/* ===== 时间轴 ===== */
+.timeline{display:grid;grid-template-columns:92px 44px 1fr;gap:0;margin-top:8px}
+.tl-date{padding:0 12px 30px 0;text-align:right;font-size:12px;color:var(--dim);padding-top:2px;line-height:1.4}
+.tl-mid{position:relative;width:44px}
+.tl-dot{width:13px;height:13px;border-radius:50%;background:var(--accent);position:absolute;left:50%;top:4px;transform:translateX(-50%);z-index:2;box-shadow:0 0 0 4px rgba(0,255,213,.15)}
+.tl-line{position:absolute;left:50%;top:0;bottom:0;width:2px;background:var(--line);transform:translateX(-50%)}
+.tl-item:last-child .tl-line{display:none}
+.tl-body{padding:0 0 28px 4px}
+.tl-body .tb-t{font-size:14px;font-weight:700;color:var(--accent)}
+.tl-body .tb-s{font-size:12px;color:var(--dim);margin-top:3px}
+.tl-body .tb-l{margin-top:8px;font-size:12px;line-height:1.9;color:var(--text)}
+.tl-body .tb-l li{margin-left:16px}
+/* ===== 运营流程 ===== */
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.step-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.step-card .sc-n{font-size:11px;color:var(--accent);font-weight:700;margin-bottom:6px}
+.step-card .sc-t{font-size:13.5px;font-weight:700;margin-bottom:6px}
+.step-card .sc-d{font-size:11.5px;color:var(--dim);line-height:1.7}
+.warn{background:rgba(255,215,106,.08);border:1px solid rgba(255,215,106,.4);border-radius:var(--radius);padding:14px 16px;font-size:12.5px;color:#ffe9b0;margin-top:16px;line-height:1.8}
+@media (max-width:760px){
+  .decisions{grid-template-columns:1fr}
+  .price-grid{grid-template-columns:1fr}
+  .rule{grid-template-columns:1fr}
+  .flow{grid-template-columns:1fr 1fr}
+  .steps{grid-template-columns:1fr 1fr}
+  .timeline{grid-template-columns:64px 36px 1fr}
+  th,td{font-size:12px;padding:10px 8px}
+  td:first-child{width:auto}
+  .hero h1{font-size:23px}
+}
+@media (max-width:480px){
+  .flow{grid-template-columns:1fr}
+  .steps{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="hero">
+  <div class="wrap">
+    <span class="kicker">变现落地 · 阶段主线</span>
+    <h1>TickGold 变现落地执行方案</h1>
+    <div class="sub">个人开发者 · 合规红线已收敛（P0/P1/P2 整改完成、v3.0.1 已发布）。本方案把"卖软件"这件事拆成可逐项验收的执行清单：先卖工具本身，不碰荐股、不承诺收益，与既有合规整改完全兼容。</div>
+    <div class="decisions">
+      <div class="dec-card"><div class="dc-label">变现模式（已确认）</div><div class="dc-value">年度订阅</div><div class="dc-note">Pro 按年收费，到期降级免费版；收入持续，需到期校验</div></div>
+      <div class="dec-card"><div class="dc-label">收款渠道（已确认）</div><div class="dc-value">面包多卡密自动发货</div><div class="dc-note">付款自动发激活码，软件内输入即离线激活，全程零人工</div></div>
+      <div class="dec-card"><div class="dc-label">授权方式（推荐）</div><div class="dc-value">离线 RSA 激活</div><div class="dc-note">无需服务器：付款后人工签发授权文件，软件本地验签</div></div>
+    </div>
+  </div>
+</div>
+<div class="wrap">
+
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><div><h2>定价方案</h2><div class="sec-desc">建议值，上线前可调；定价策略：免费版够用引流，Pro 覆盖 AI 与高级能力</div></div></div>
+    <div class="price-grid">
+      <div class="price-card">
+        <div class="pc-name">免费版</div>
+        <div class="pc-price">¥0<small> / 永久</small></div>
+        <div class="pc-desc">基础盯盘工具，无期限限制，用于拉新与口碑传播</div>
+        <ul>
+          <li>行情盯盘 · K 线 · 自选股 · 板块联动</li>
+          <li>龙虎榜 · 资讯聚合 · 基础预警</li>
+          <li>本地条件单 · 模拟交易（全自动仅限模拟盘）</li>
+        </ul>
+      </div>
+      <div class="price-card hot">
+        <span class="pc-badge">建议 ¥99/年</span>
+        <div class="pc-name">Pro 订阅</div>
+        <div class="pc-price">¥99<small> / 年（可调）</small></div>
+        <div class="pc-desc">解锁 AI 与高级能力；到期降级免费版，数据不丢失</div>
+        <ul>
+          <li>AI 盘中解读 · 今日题材热度 · 信号归因</li>
+          <li>策略回测 · 战法选股 · 进化回灌 · 复盘报告</li>
+          <li>Level-2 十档盘口（自备授权数据商账号）</li>
+          <li>QMT 实盘接入（延续 P1 三前置护栏）</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><div><h2>功能分级</h2><div class="sec-desc">Pro 门控按"AI 与高级分析能力"划分，基础行情永远免费；分级落地在组件入口与后端命令双重校验</div></div></div>
+    <table>
+      <colgroup><col style="width:46%"><col style="width:27%"><col style="width:27%"></colgroup>
+      <thead><tr><th>功能</th><th class="free-col">免费版</th><th class="pro-col">Pro</th></tr></thead>
+      <tbody>
+        <tr><td>行情盯盘 · K 线 · 自选 · 板块</td><td class="free-col"><span class="tag free">免费</span></td><td class="pro-col"><span class="tag free">免费</span></td></tr>
+        <tr><td>龙虎榜 · 资讯聚合 · 基础预警</td><td class="free-col"><span class="tag free">免费</span></td><td class="pro-col"><span class="tag free">免费</span></td></tr>
+        <tr><td>本地条件单 · 模拟交易</td><td class="free-col"><span class="tag free">免费</span></td><td class="pro-col"><span class="tag free">免费</span></td></tr>
+        <tr><td>AI 盘中解读 · 今日题材热度 · 信号归因</td><td class="free-col"><span class="tag lock">锁定</span></td><td class="pro-col"><span class="tag pro">Pro</span></td></tr>
+        <tr><td>策略回测 · 战法选股 · 进化回灌 · 复盘报告</td><td class="free-col"><span class="tag lock">锁定</span></td><td class="pro-col"><span class="tag pro">Pro</span></td></tr>
+        <tr><td>Level-2 十档盘口（自备授权账号）</td><td class="free-col"><span class="tag lock">锁定</span></td><td class="pro-col"><span class="tag pro">Pro</span></td></tr>
+        <tr><td>QMT 实盘接入（限额 + 确认护栏）</td><td class="free-col"><span class="tag lock">锁定</span></td><td class="pro-col"><span class="tag pro">Pro</span></td></tr>
+      </tbody>
+    </table>
+    <div class="warn">免费版与 Pro 共用同一安装包：未激活时 Pro 入口显示"订阅后可解锁"；激活后解锁全部。AI 输出维持中性口径（P0 整改成果），付费墙只锁功能入口，不改任何合规文案。</div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><div><h2>授权系统设计（离线 RSA）</h2><div class="sec-desc">个人开发者无服务器：面包多收款 → 自动发货激活码 → 软件本地验签。私钥仅你持有（预生成卡密），公钥内置安装包</div></div></div>
+    <div class="flow">
+      <div class="flow-step"><div class="fs-no">1</div><div class="fs-t">预生成卡密</div><div class="fs-d">本地工具批量签发年卡激活码，导入面包多库存</div></div>
+      <div class="flow-step"><div class="fs-no">2</div><div class="fs-t">用户付款</div><div class="fs-d">面包多收银台（支付宝 / 微信）支付年费</div></div>
+      <div class="flow-step"><div class="fs-no">3</div><div class="fs-t">自动发货</div><div class="fs-d">平台自动发放激活码，无需人工介入</div></div>
+      <div class="flow-step"><div class="fs-no">4</div><div class="fs-t">软件内激活</div><div class="fs-d">用户粘贴激活码，本地 RSA 验签</div></div>
+      <div class="flow-step"><div class="fs-no">5</div><div class="fs-t">解锁 Pro</div><div class="fs-d">解析到期日 → 解锁 / 到期降级免费版</div></div>
+    </div>
+    <div class="code-box">激活码 = RSA-SHA256 签名的短数据（Base64 短码，约 80 字符），内含计划与到期日：
+TICKGOLD-PRO-2027-XXXX-XXXX-XXXX-XXXX（示例，实际为签名码）
+  载荷：{ plan: "pro-annual", expires_at: "2027-10-15", product: "tickgold" }
+  签名：RSA 私钥签名（Base64）
+软件内置公钥验签 → 解析出到期日 → 解锁 Pro 至该日期</div>
+    <div class="warn">防篡改：任何字段改动都会导致验签失败；防回拨：本地记录"最近一次运行日期"，发现时间回退超过容差即拒绝 Pro 并提示校正系统时间。</div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span><div><h2>合规边界（红黄绿）</h2><div class="sec-desc">变现必须在整改后的红线内进行；以下清单作为每步改动前的自检依据</div></div></div>
+    <div class="rule">
+      <div class="rule-card g"><div class="rc-t">绿色 · 可做</div><ul><li>卖软件工具本身（订阅 / 买断）</li><li>功能分级：基础免费 + AI 高级付费</li><li>用户自备数据账号（L2 Key 模式）</li><li>模拟盘功能收费</li><li>免责声明、样本内统计口径（沿用 P2）</li></ul></div>
+      <div class="rule-card y"><div class="rc-t">黄色 · 注意</div><ul><li>面包多平台抽成与数字商品审核规则（以平台实际为准）</li><li>付费页不得出现"跟庄 / 胜率 / 收益承诺"</li><li>实盘接入仅限 Pro + 三前置护栏（P1 成果不可回退）</li><li>定价文案避免"包赚钱"暗示</li></ul></div>
+      <div class="rule-card r"><div class="rc-t">红色 · 禁止</div><ul><li>荐股分成 / 收益分成模式</li><li>代客理财、托管账户</li><li>承诺收益、宣传历史收益诱导购买</li><li>无资质程序化交易代执行服务</li><li>销售 / 转售未授权 Level-2 数据</li></ul></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">05</span><div><h2>执行时间轴</h2><div class="sec-desc">按依赖关系排序，每阶段完成后验收再进下一阶段</div></div></div>
+    <div class="timeline">
+      <div class="tl-item"><div class="tl-date">第 1 步</div><div class="tl-mid"><div class="tl-dot"></div><div class="tl-line"></div></div><div class="tl-body"><div class="tb-t">P-1 授权系统</div><div class="tb-s">核心代码：Rust 验签 + 前端门控 + 签发工具</div><ul class="tb-l"><li>license.rs：RSA 公钥验签 / 授权解析 / 到期判断 / 防回拨</li><li>tauri 命令：license_status / license_activate / license_deactivate</li><li>前端 LicenseDialog + 启动校验 + Pro 组件门控</li><li>本地签发工具 gen_license（私钥在你手里）</li></ul></div></div>
+      <div class="tl-item"><div class="tl-date">第 2 步</div><div class="tl-mid"><div class="tl-dot"></div><div class="tl-line"></div></div><div class="tl-body"><div class="tb-t">P-2 官网与定价页</div><div class="tb-s">说明免费 vs Pro、价格、购买流程（扫码 → 收授权文件）</div><ul class="tb-l"><li>官网（GitHub Pages 已有基础）补定价 / 购买 / 常见问题</li><li>购买流程页：扫码付款 → 发邮箱 → 收到授权文件 → 软件导入</li><li>文案过合规自检（黄/红清单）</li></ul></div></div>
+      <div class="tl-item"><div class="tl-date">第 3 步</div><div class="tl-mid"><div class="tl-dot"></div><div class="tl-line"></div></div><div class="tl-body"><div class="tb-t">P-3 发布 v3.0.2</div><div class="tb-s">带授权系统的正式版，全量验证后发布</div><ul class="tb-l"><li>cargo test / clippy / vitest / vue-tsc 全绿</li><li>本地构建 + 上传公开仓（沿用 v3.0.1 手动发布流程）</li><li>免费版回归：未激活时所有基础功能正常</li></ul></div></div>
+      <div class="tl-item"><div class="tl-date">第 4 步</div><div class="tl-mid"><div class="tl-dot"></div><div class="tl-line"></div></div><div class="tl-body"><div class="tb-t">P-4 上线运营</div><div class="tb-s">收款、签发、客服 SOP</div><ul class="tb-l"><li>个人收款码上线，收款 → 24h 内人工签发授权</li><li>到期前 7 天应用内提醒续费</li><li>收集反馈迭代；大额高频后转个体工商户商户码</li></ul></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">06</span><div><h2>收款与运营流程</h2><div class="sec-desc">个人收款码起步的操作细则</div></div></div>
+    <div class="steps">
+      <div class="step-card"><div class="sc-n">STEP A</div><div class="sc-t">开店与上架</div><div class="sc-d">面包多实名开店，创建"TickGold Pro 年卡"商品，定价 ¥99/年，库存导入预生成卡密</div></div>
+      <div class="step-card"><div class="sc-n">STEP B</div><div class="sc-t">自动发货</div><div class="sc-d">用户付款后平台自动发激活码；软件内粘贴激活码即离线解锁，无需你介入</div></div>
+      <div class="step-card"><div class="sc-n">STEP C</div><div class="sc-t">补货与续费</div><div class="sc-d">库存告警前用 gen_license 批量补一批年卡；到期前 7 天应用内提醒用户回店续费</div></div>
+      <div class="step-card"><div class="sc-n">STEP D</div><div class="sc-t">售后与退款</div><div class="sc-d">平台订单记录即凭证；退款纠纷走平台流程，卡密已用则不退、未用可回收再上架</div></div>
+    </div>
+    <div class="warn">面包多模式注意：① 平台对商品有合规审核，商品页与软件内不得出现"跟庄 / 胜率 / 收益承诺"等营销词（沿用合规自检清单）；② 卡密为一次性使用（软件激活后记录该码已用），丢失不补发，建议用户在面包多订单页自取；③ 平台抽成以实际结算为准，定价 ¥99 时到手约 ¥90+；④ 月收入增长后仍建议逐步转向商户直连（方案 B），费率更低、完全自控。</div>
+  </section>
+
+</div>
+</body>
+</html>

@@ -42,6 +42,12 @@ tokio-stream = "0.1"
 rquickjs = { version = "0.14.0", features = ["macro", "loader", "futures", "parallel"] }
 url = "2.5.8"
 
+# ===== v3.0.2 Pro 订阅授权：离线非对称签名卡密（验签/签发） =====
+rsa = "0.9"
+sha2 = "0.10"
+chrono = { version = "0.4", features = ["serde"] }
+rand = "0.8"
+
 # macOS 私有 API：灵动岛需要透明背景 + 无标题栏 API
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri = { version = "2", features = ["macos-private-api"] }

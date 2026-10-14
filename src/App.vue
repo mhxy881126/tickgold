@@ -65,6 +65,7 @@ import { initPluginSystem } from "./plugin/register";
 import { promptDialog } from "./composables/useDialog";
 import { toast } from "./composables/useToast";
 import { useNovice } from "./composables/useNovice";
+import { useLicenseStore } from "./stores/license";
 
 const wl = useWatchlistStore();
 const quotes = useQuotesStore();
@@ -478,6 +479,13 @@ onMounted(async () => {
 
   // —— 平台、版本与窗口最大化状态 ——
   await initPlatform();
+
+  // —— Pro 订阅授权状态（v3.0.2，启动即加载）——
+  try {
+    await useLicenseStore().load();
+  } catch (e) {
+    console.error("[app] license", e);
+  }
 
   // —— 基础数据（各自独立容错，互不影响）——
   try { await ensureDb(); } catch (e) { console.error("[app] db", e); }

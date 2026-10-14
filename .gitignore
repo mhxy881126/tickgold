@@ -71,3 +71,7 @@ _check_env.js
 /_v227_transfer/
 /nulnset
 /src-tauri/src/.omc/
+
+# HTML 自检过程产物（截图/报告，禁删但不入库）
+_shots/
+
