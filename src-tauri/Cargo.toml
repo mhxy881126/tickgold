@@ -1,6 +1,6 @@
 [package]
 name = "tickgold"
-version = "3.0.2"
+version = "3.0.3"
 description = "TickGold - 专业交易者跨平台 A 股盯盘终端"
 authors = ["tickgold"]
 edition = "2021"
@@ -43,7 +43,7 @@ tokio-stream = "0.1"
 rquickjs = { version = "0.14.0", features = ["macro", "loader", "futures", "parallel"] }
 url = "2.5.8"
 
-# ===== v3.0.2 Pro 订阅授权：离线非对称签名卡密（验签/签发） =====
+# ===== v3.0.3 Pro 订阅授权：离线非对称签名卡密（验签/签发） =====
 rsa = "0.9"
 sha2 = "0.10"
 chrono = { version = "0.4", features = ["serde"] }
