@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>资讯聚合卡片 · 需求重设计 & 效果图</title>
+<style>
+  :root{
+    --bg:#0d0f14; --panel:#15181f; --panel2:#1b1f29; --border:#2a3344;
+    --text:#e6ecf5; --dim:#8a93a6; --dim2:#5d6878;
+    --gold:#e8c66a; --blue:#4ea1ff; --teal:#35c4a8;
+    --red:#ff5d6b; --green:#08c98a; --purple:#b07cff;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif}
+  body{background:var(--bg);color:var(--text);padding:32px 24px 80px}
+  h1{font-size:22px;font-weight:800;margin-bottom:4px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:24px}
+
+  /* ---------- 需求说明区 ---------- */
+  .spec{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:36px}
+  .spec h2{font-size:15px;color:var(--gold);margin-bottom:12px}
+  .spec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px 28px}
+  .spec-item{font-size:12.5px;line-height:1.7;color:#c2cad8}
+  .spec-item b{color:var(--text)}
+  .tag-new{display:inline-block;font-size:9px;background:rgba(232,198,106,.15);color:var(--gold);border:1px solid rgba(232,198,106,.4);border-radius:3px;padding:0 4px;margin-left:4px;vertical-align:1px}
+  .tag-ai{display:inline-block;font-size:9px;background:rgba(176,124,255,.15);color:var(--purple);border:1px solid rgba(176,124,255,.4);border-radius:3px;padding:0 4px;margin-left:4px;vertical-align:1px}
+
+  .variants{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+  .variant-wrap{width:400px;flex-shrink:0}
+  .variant-title{font-size:14px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+  .variant-title .no{width:20px;height:20px;border-radius:6px;background:var(--gold);color:#1a1400;font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:800}
+  .variant-desc{font-size:11.5px;color:var(--dim);margin-bottom:10px;line-height:1.6}
+
+  /* ---------- 通用卡片容器 ---------- */
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;height:640px;display:flex;flex-direction:column}
+
+  /* ============ 方案 A：头条 + 时间线（情绪分层） ============ */
+  .a-head{padding:14px 16px 10px;border-bottom:1px solid var(--border)}
+  .a-row1{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .a-name{font-size:13px;font-weight:700;color:var(--gold)}
+  .a-live{font-size:9.5px;color:var(--dim);display:flex;align-items:center;gap:5px}
+  .a-dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px rgba(8,201,138,.8);animation:pulse 1.6s infinite}
+  @keyframes pulse{50%{opacity:.4}}
+  .a-ai{background:linear-gradient(135deg,rgba(176,124,255,.12),rgba(78,161,255,.08));border:1px solid rgba(176,124,255,.25);border-radius:10px;padding:8px 10px;font-size:11px;line-height:1.6;color:#d4c8f0;position:relative}
+  .a-ai b{color:var(--purple)}
+  .a-ai .ai-tag{position:absolute;top:-7px;left:8px;font-size:8.5px;background:var(--purple);color:#fff;padding:1px 6px;border-radius:4px;font-weight:700}
+  .a-tabs{display:flex;gap:4px;padding:8px 12px 0}
+  .a-tab{font-size:11px;padding:3px 10px;border-radius:6px;color:var(--dim);cursor:pointer}
+  .a-tab.on{background:rgba(232,198,106,.12);color:var(--gold)}
+  .a-tab i{font-style:normal;font-size:9px;opacity:.7;margin-left:2px}
+  .a-body{flex:1;overflow-y:auto;padding:6px 12px 8px}
+  /* 头条 */
+  .a-hero{border:1px solid rgba(255,93,107,.35);background:linear-gradient(135deg,rgba(255,93,107,.1),rgba(255,93,107,.02));border-radius:10px;padding:10px;margin-bottom:8px;position:relative}
+  .a-hero .flame{position:absolute;top:8px;right:10px;font-size:9px;color:var(--red);display:flex;align-items:center;gap:2px}
+  .a-hero .h-title{font-size:13px;font-weight:700;line-height:1.45;margin-bottom:4px;padding-right:44px}
+  .a-hero .h-sum{font-size:11px;color:var(--dim);line-height:1.55;margin-bottom:6px}
+  /* 时间线条目 */
+  .a-item{display:flex;gap:10px;padding:8px 2px;border-bottom:1px solid rgba(42,51,68,.5)}
+  .a-item:last-child{border-bottom:none}
+  .a-time{font-size:9.5px;color:var(--dim2);font-variant-numeric:tabular-nums;padding-top:2px;flex:none;width:34px}
+  .a-line{flex:1;min-width:0}
+  .a-line .t{font-size:11.5px;font-weight:600;line-height:1.45;margin-bottom:2px}
+  .a-line .s{font-size:10.5px;color:var(--dim);line-height:1.5}
+  .a-chips{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;align-items:center}
+  .chip{font-size:9px;padding:1px 6px;border-radius:4px;font-weight:600}
+  .chip.bull{background:rgba(255,93,107,.14);color:#ff8a93}
+  .chip.bear{background:rgba(8,201,138,.14);color:#3ddcaa}
+  .chip.neutral{background:rgba(138,147,166,.14);color:var(--dim)}
+  .chip.cat-macro{background:rgba(78,161,255,.14);color:var(--blue)}
+  .chip.cat-ind{background:rgba(53,196,168,.14);color:var(--teal)}
+  .chip.stock{background:rgba(232,198,106,.12);color:var(--gold);font-family:Consolas,monospace}
+  .chip.up{background:rgba(255,93,107,.14);color:#ff8a93;font-family:Consolas,monospace}
+  .chip.down{background:rgba(8,201,138,.14);color:#3ddcaa;font-family:Consolas,monospace}
+  .a-foot{padding:6px 16px;border-top:1px solid var(--border);font-size:9px;color:var(--dim2);text-align:center}
+  .hl{color:var(--gold)}
+
+  /* ============ 方案 B：主题聚合式 ============ */
+  .b-head{padding:14px 16px 10px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+  .b-name{font-size:13px;font-weight:700;color:var(--gold)}
+  .b-sort{font-size:10px;color:var(--dim);border:1px solid var(--border);border-radius:6px;padding:2px 8px}
+  .b-body{flex:1;overflow-y:auto;padding:10px 12px}
+  .b-theme{border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden}
+  .b-th-head{padding:8px 10px;display:flex;align-items:center;gap:8px;background:var(--panel2)}
+  .b-heat{width:34px;height:4px;border-radius:2px;background:var(--border);flex:none;position:relative;overflow:hidden}
+  .b-heat i{position:absolute;left:0;top:0;bottom:0;border-radius:2px}
+  .b-th-name{font-size:12px;font-weight:700;flex:1}
+  .b-th-cnt{font-size:9px;color:var(--dim)}
+  .b-th-body{padding:6px 10px 8px}
+  .b-news{padding:5px 0;border-bottom:1px dashed rgba(42,51,68,.6)}
+  .b-news:last-child{border-bottom:none}
+  .b-news .n1{font-size:11px;line-height:1.5;color:#d5dce8}
+  .b-news .n2{display:flex;gap:5px;margin-top:3px;align-items:center}
+  .b-time{font-size:9px;color:var(--dim2);font-variant-numeric:tabular-nums}
+  .b-src{font-size:9px;color:var(--dim2)}
+  /* 龙头股联动条 */
+  .b-leaders{display:flex;gap:6px;padding:7px 10px;border-top:1px solid var(--border);background:rgba(232,198,106,.04)}
+  .b-leader{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:4px 7px}
+  .b-leader .lc{font-size:9px;color:var(--dim);font-family:Consolas,monospace}
+  .b-leader .lp{font-size:11px;font-weight:700;font-family:Consolas,monospace}
+  .lp.r{color:#ff7080} .lp.g{color:#2fdca0}
+  .b-ai{margin:0 12px 10px;border-radius:10px;padding:8px 10px;font-size:10.5px;line-height:1.6;color:#c2cad8;background:rgba(78,161,255,.07);border:1px solid rgba(78,161,255,.22)}
+  .b-ai b{color:var(--blue)}
+  .b-foot{padding:6px 16px;border-top:1px solid var(--border);font-size:9px;color:var(--dim2);text-align:center}
+
+  /* ============ 方案 C：紧凑终端式 ============ */
+  .c-head{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+  .c-name{font-size:11px;font-weight:700;color:var(--gold);letter-spacing:1px}
+  .c-search{flex:1;background:var(--panel2);border:1px solid var(--border);border-radius:5px;font-size:10px;padding:2px 8px;color:var(--dim)}
+  .c-filter{font-size:9.5px;color:var(--dim);border:1px solid var(--border);border-radius:5px;padding:2px 7px;white-space:nowrap}
+  .c-cols{display:flex;font-size:9px;color:var(--dim2);padding:4px 12px;border-bottom:1px solid var(--border);gap:8px;background:var(--panel2)}
+  .c-cols span:nth-child(1){width:34px;flex:none}
+  .c-cols span:nth-child(2){width:26px;flex:none}
+  .c-cols span:nth-child(3){flex:1}
+  .c-cols span:nth-child(4){width:70px;flex:none;text-align:right}
+  .c-body{flex:1;overflow-y:auto;font-family:Consolas,"SF Mono",monospace}
+  .c-row{display:flex;gap:8px;padding:3.5px 12px;border-bottom:1px solid rgba(42,51,68,.35);font-size:10.5px;align-items:baseline;cursor:pointer}
+  .c-row:hover{background:rgba(78,161,255,.06)}
+  .c-row.unread{background:rgba(232,198,106,.03)}
+  .c-row .tm{width:34px;flex:none;color:var(--dim2);font-size:9.5px}
+  .c-sent{width:26px;flex:none;font-size:11px;text-align:center}
+  .c-row .tx{flex:1;color:#c2cad8;line-height:1.4;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .c-row .stocks{width:70px;flex:none;text-align:right;font-size:9.5px}
+  .st-r{color:#ff7080} .st-g{color:#2fdca0}
+  .c-mark{color:var(--gold);margin-right:3px}
+  .c-status{padding:5px 12px;border-top:1px solid var(--border);font-size:9px;color:var(--dim2);display:flex;justify-content:space-between}
+
+  /* ============ 方案 D：情绪杂志式（大卡） ============ */
+  .d-head{padding:14px 16px 8px;display:flex;justify-content:space-between;align-items:center}
+  .d-name{font-size:13px;font-weight:700;color:var(--gold)}
+  .d-time{font-size:9.5px;color:var(--dim)}
+  .d-summary{margin:0 12px 10px;border-radius:10px;padding:9px 12px 9px 28px;font-size:11px;line-height:1.65;color:#d8cfeef0;background:linear-gradient(135deg,rgba(176,124,255,.13),rgba(78,161,255,.05));border:1px solid rgba(176,124,255,.25);position:relative}
+  .d-summary::before{content:"AI";position:absolute;left:9px;top:9px;font-size:8px;font-weight:800;color:var(--purple);border:1px solid rgba(176,124,255,.5);border-radius:3px;padding:0 3px}
+  .d-body{flex:1;overflow-y:auto;padding:0 12px 10px;display:flex;flex-direction:column;gap:9px}
+  .d-card{border:1px solid var(--border);border-left:3px solid;border-radius:10px;padding:10px 12px;background:var(--panel2)}
+  .d-card.bull{border-left-color:var(--red)}
+  .d-card.bear{border-left-color:var(--green)}
+  .d-card.neutral{border-left-color:var(--dim)}
+  .d-top{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+  .d-sent{font-size:9px;font-weight:700;padding:1px 7px;border-radius:4px}
+  .d-sent.bull{background:rgba(255,93,107,.15);color:#ff8a93}
+  .d-sent.bear{background:rgba(8,201,138,.15);color:#3ddcaa}
+  .d-sent.neutral{background:rgba(138,147,166,.15);color:var(--dim)}
+  .d-stars{margin-left:auto;font-size:9px;color:var(--gold);letter-spacing:1px}
+  .d-title{font-size:12.5px;font-weight:700;line-height:1.5;margin-bottom:4px}
+  .d-sum{font-size:11px;color:var(--dim);line-height:1.6;margin-bottom:7px}
+  .d-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .d-meta .m-time{font-size:9px;color:var(--dim2);margin-left:auto}
+  .d-impact{font-size:9px;color:var(--dim);background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:1px 6px}
+  .d-foot{padding:6px 16px;border-top:1px solid var(--border);font-size:9px;color:var(--dim2);text-align:center}
+
+  .legend{margin-top:36px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px 24px}
+  .legend h2{font-size:14px;color:var(--gold);margin-bottom:10px}
+  .legend table{width:100%;border-collapse:collapse;font-size:12px}
+  .legend td,.legend th{padding:7px 10px;border-bottom:1px solid var(--border);text-align:left}
+  .legend th{color:var(--dim);font-weight:600;font-size:11px}
+  .legend td:first-child{color:var(--blue);font-family:Consolas,monospace;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<h1>资讯聚合卡片 · 需求重设计与视觉方案</h1>
+<div class="sub">股票盯盘系统 · 灵动岛版 ｜ 现状：分类 Tab + 平铺列表（标题/摘要/时间/关联代码/原文） ｜ 下文 4 款效果图均为静态高保真原型</div>
+
+<!-- ============ 需求重设计 ============ -->
+<div class="spec">
+  <h2>一、需求功能重设计（在现有字段基础上扩展）</h2>
+  <div class="spec-grid">
+    <div class="spec-item"><b>1. 情绪倾向判定</b><span class="tag-ai">AI</span>：每条标注 <b>利好 / 利空 / 中性</b>，红涨绿跌配色（A股习惯），一眼分辨多空。</div>
+    <div class="spec-item"><b>2. 重要度分级</b><span class="tag-ai">AI</span>：三星评级（影响大盘 / 板块 / 仅个股），头条要闻自动置顶并加「热」标。</div>
+    <div class="spec-item"><b>3. AI 盘面一句话</b><span class="tag-ai">AI</span>：卡片顶部固定一条 AI 综述，汇总当下资讯面整体偏多/偏空，流式生成、随刷新更新。</div>
+    <div class="spec-item"><b>4. 主题/主线聚合</b><span class="tag-new">新增</span>：同一事件的多条快讯去重合并为一条主线（如"降息预期"下 5 条快讯），含热度条与新闻条数。</div>
+    <div class="spec-item"><b>5. 关联个股行情联动</b><span class="tag-new">新增</span>：related_codes 旁直接显示迷你涨跌幅（红/绿），点击代码可跳转个股详情/灵动岛。</div>
+    <div class="spec-item"><b>6. 双排序模式</b>：时间线（最新在前）/ 热度（重要度+关联度排序）一键切换。</div>
+    <div class="spec-item"><b>7. 已读 / 收藏</b><span class="tag-new">新增</span>：未读条目高亮 + 金色星标收藏，收藏快讯持久化，可单独筛选。</div>
+    <div class="spec-item"><b>8. 关键词搜索 & 高亮</b><span class="tag-new">新增</span>：按代码/关键词过滤，命中词金色高亮（如"降准""涨停""600519"）。</div>
+    <div class="spec-item"><b>9. 信息源与时间</b>：保留时间戳，补充来源（财联社/上证报等）与可信度，支持跳转应用内浏览器原文。</div>
+    <div class="spec-item"><b>10. 直播状态延续</b>：保留 45s 智能轮询与"直播中"状态灯；AI 聚合时展示流式生成过程，底部固定免责声明。</div>
+  </div>
+</div>
+
+<div class="variants">
+
+  <!-- ============ 方案 A ============ -->
+  <div class="variant-wrap">
+    <div class="variant-title"><span class="no">A</span>头条 + 时间线式（推荐 · 均衡）</div>
+    <div class="variant-desc">AI 一句话综述置顶 → 重要要闻大卡突出 → 其余按时间线流排列。情绪/分类/关联个股涨跌用彩色 chip 表达，信息层次最清晰，适合中等卡片高度。</div>
+    <div class="card">
+      <div class="a-head">
+        <div class="a-row1">
+          <span class="a-name">资讯聚合</span>
+          <span class="a-live"><span class="a-dot"></span>直播中 · 刚刚更新 10:32:18</span>
+        </div>
+        <div class="a-ai"><span class="ai-tag">AI 综述</span>
+          <b>资讯面偏多。</b>降准释放流动性利好券商地产，算力板块受英伟达链催化持续走强；仅个别高位股遭减持利空，注意分化风险。
+        </div>
+      </div>
+      <div class="a-tabs">
+        <span class="a-tab on">全部 12</span><span class="a-tab">宏观 3</span><span class="a-tab">行业 5</span><span class="a-tab">个股 4</span><span class="a-tab" style="margin-left:auto">★ 已藏</span>
+      </div>
+      <div class="a-body">
+        <div class="a-hero">
+          <span class="flame">🔥 头条 · 三星</span>
+          <div class="h-title">央行宣布降准 0.5 个百分点，释放长期资金约 1 万亿元</div>
+          <div class="h-sum">本次降准为年内第二次，旨在保持流动性合理充裕，市场解读为对券商、地产链构成直接利好，沪指期货盘后涨 0.8%。</div>
+          <div class="a-chips">
+            <span class="chip bull">利好</span><span class="chip cat-macro">宏观</span><span class="chip stock">券商ETF</span><span class="chip stock">地产</span>
+          </div>
+        </div>
+
+        <div class="a-item">
+          <span class="a-time">10:28</span>
+          <div class="a-line">
+            <div class="t">英伟达供应链再传扩单，<span class="hl">算力</span>光模块板块直线拉升</div>
+            <div class="s">产业链消息称 800G 光模块 Q4 订单上修，中际旭创、新易盛盘中涨超 8%。</div>
+            <div class="a-chips"><span class="chip bull">利好</span><span class="chip cat-ind">行业</span><span class="chip stock">300308</span><span class="chip up">+8.2%</span><span class="chip stock">300502</span><span class="chip up">+6.5%</span></div>
+          </div>
+        </div>
+        <div class="a-item">
+          <span class="a-time">10:15</span>
+          <div class="a-line">
+            <div class="t">某高位龙头公告股东拟减持不超 3% 股份</div>
+            <div class="s">公司称系股东自身资金需求，二级市场近期累计涨幅已达 90%，资金分歧加大。</div>
+            <div class="a-chips"><span class="chip bear">利空</span><span class="chip cat-stock" style="background:rgba(232,198,106,.14);color:var(--gold)">个股</span><span class="chip stock">002XXX</span><span class="chip down">-4.1%</span></div>
+          </div>
+        </div>
+        <div class="a-item">
+          <span class="a-time">09:58</span>
+          <div class="a-line">
+            <div class="t">9 月社融数据超预期，新增人民币贷款 2.3 万亿</div>
+            <div class="s">企业中长贷为主要拉动，分析师认为宽信用效果逐步显现。</div>
+            <div class="a-chips"><span class="chip bull">利好</span><span class="chip cat-macro">宏观</span></div>
+          </div>
+        </div>
+        <div class="a-item">
+          <span class="a-time">09:41</span>
+          <div class="a-line">
+            <div class="t">创新药板块多股冲高，医保谈判规则优化预期升温</div>
+            <div class="a-chips"><span class="chip neutral">中性偏好</span><span class="chip cat-ind">行业</span><span class="chip stock">600276</span><span class="chip up">+3.3%</span></div>
+          </div>
+        </div>
+        <div class="a-item">
+          <span class="a-time">09:32</span>
+          <div class="a-line">
+            <div class="t">离岸人民币短线拉升 200 点，报 7.08</div>
+            <div class="a-chips"><span class="chip bull">利好</span><span class="chip cat-macro">宏观</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="a-foot">AI 生成，仅供参考，不构成投资建议</div>
+    </div>
+  </div>
+
+  <!-- ============ 方案 B ============ -->
+  <div class="variant-wrap">
+    <div class="variant-title"><span class="no">B</span>投资主线聚合式（题材视角）</div>
+    <div class="variant-desc">不按单条新闻罗列，而是 AI 把全天快讯聚合成 3-5 条「投资主线」，每条含热度、新闻数、龙头股实时表现。最贴近盯盘决策，但对 AI 聚类能力要求最高。</div>
+    <div class="card">
+      <div class="b-head">
+        <span class="b-name">资讯聚合 · 主线视图</span>
+        <span class="b-sort">按热度排序 ▾</span>
+      </div>
+      <div class="b-body">
+        <div class="b-ai"><b>AI 研判：</b>今日主线清晰，<b style="color:#ff8a93">算力链 &gt; 降准金融</b> 双主线并行，医药为轮动支线，建议关注龙头持续性。</div>
+
+        <div class="b-theme">
+          <div class="b-th-head">
+            <span class="b-heat"><i style="width:92%;background:linear-gradient(90deg,#e8c66a,#ff5d6b)"></i></span>
+            <span class="b-th-name">算力 · 光模块扩单</span>
+            <span class="b-th-cnt">5 条快讯</span>
+          </div>
+          <div class="b-th-body">
+            <div class="b-news"><div class="n1">英伟达链 800G 光模块 Q4 订单上修，台系代工产能满载</div><div class="n2"><span class="b-time">10:28</span><span class="b-src">财联社</span></div></div>
+            <div class="b-news"><div class="n1">某光模块龙头互动平台确认高速产品出货放量</div><div class="n2"><span class="b-time">10:02</span><span class="b-src">上证报</span></div></div>
+            <div class="b-news"><div class="n1">机构：北美云厂 capex 上修，算力需求能见度延至明年</div><div class="n2"><span class="b-time">09:36</span><span class="b-src">券商研报</span></div></div>
+          </div>
+          <div class="b-leaders">
+            <div class="b-leader"><div class="lc">300308 中际旭创</div><div class="lp r">+8.21%</div></div>
+            <div class="b-leader"><div class="lc">300502 新易盛</div><div class="lp r">+6.54%</div></div>
+            <div class="b-leader"><div class="lc">002281 光迅科技</div><div class="lp r">+4.10%</div></div>
+          </div>
+        </div>
+
+        <div class="b-theme">
+          <div class="b-th-head">
+            <span class="b-heat"><i style="width:71%;background:linear-gradient(90deg,#e8c66a,#ff5d6b)"></i></span>
+            <span class="b-th-name">降准 · 金融地产链</span>
+            <span class="b-th-cnt">4 条快讯</span>
+          </div>
+          <div class="b-th-body">
+            <div class="b-news"><div class="n1">央行降准 0.5pct，释放长期资金约 1 万亿元</div><div class="n2"><span class="b-time">10:30</span><span class="b-src">新华社</span></div></div>
+            <div class="b-news"><div class="n1">内房股盘后走高，多地房贷利率同步下调</div><div class="n2"><span class="b-time">10:31</span><span class="b-src">财联社</span></div></div>
+          </div>
+          <div class="b-leaders">
+            <div class="b-leader"><div class="lc">600030 中信证券</div><div class="lp r">+3.62%</div></div>
+            <div class="b-leader"><div class="lc">600048 保利发展</div><div class="lp r">+2.88%</div></div>
+            <div class="b-leader"><div class="lc">512880 证券ETF</div><div class="lp r">+2.15%</div></div>
+          </div>
+        </div>
+
+        <div class="b-theme">
+          <div class="b-th-head">
+            <span class="b-heat"><i style="width:38%;background:#4ea1ff"></i></span>
+            <span class="b-th-name">创新药 · 医保谈判预期</span>
+            <span class="b-th-cnt">2 条快讯</span>
+          </div>
+          <div class="b-th-body">
+            <div class="b-news"><div class="n1">医保谈判规则优化预期升温，创新药板块多股冲高</div><div class="n2"><span class="b-time">09:41</span><span class="b-src">财联社</span></div></div>
+          </div>
+          <div class="b-leaders">
+            <div class="b-leader"><div class="lc">600276 恒瑞医药</div><div class="lp r">+3.31%</div></div>
+            <div class="b-leader"><div class="lc">688235 百济神州</div><div class="lp g">-0.62%</div></div>
+            <div class="b-leader"><div class="lc">159992 创新药ETF</div><div class="lp r">+1.24%</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="b-foot">AI 聚类生成 · 关联行情实时联动 · 不构成投资建议</div>
+    </div>
+  </div>
+
+  <!-- ============ 方案 C ============ -->
+  <div class="variant-wrap">
+    <div class="variant-title"><span class="no">C</span>紧凑终端式（高信息密度）</div>
+    <div class="variant-desc">彭博/同花顺风格：单行一条，等宽字体，情绪用 +/-/○ 符号，未读金点、★收藏，支持代码搜索过滤。一屏可看 15+ 条，适合放在侧栏小卡或多屏盯盘。</div>
+    <div class="card">
+      <div class="c-head">
+        <span class="c-name">资讯聚合</span>
+        <input class="c-search" placeholder="搜索代码 / 关键词…" value="算力">
+        <span class="c-filter">全部 ▾</span>
+        <span class="c-filter">★</span>
+      </div>
+      <div class="c-cols"><span>时间</span><span>多空</span><span>快讯</span><span>关联个股</span></div>
+      <div class="c-body">
+        <div class="c-row unread"><span class="tm">10:32</span><span class="c-sent" style="color:#ff7080">+</span><span class="tx"><span class="c-mark">●</span>央行降准0.5pct释放1万亿，<span style="color:var(--gold)">券商地产</span>直线拉升</span><span class="stocks st-r">600030 +3.6%</span></div>
+        <div class="c-row unread"><span class="tm">10:28</span><span class="c-sent" style="color:#ff7080">+</span><span class="tx"><span class="c-mark">●</span>英伟达链扩单，<span style="color:var(--gold)">算力光模块</span>板块涨超5%</span><span class="stocks st-r">300308 +8.2%</span></div>
+        <div class="c-row"><span class="tm">10:21</span><span class="c-sent" style="color:#ff7080">+</span><span class="tx">★ 800G光模块Q4订单上修，代工产能满载</span><span class="stocks st-r">300502 +6.5%</span></div>
+        <div class="c-row"><span class="tm">10:15</span><span class="c-sent" style="color:#2fdca0">−</span><span class="tx">高位龙头公告股东拟减持不超3%股份</span><span class="stocks st-g">002XXX -4.1%</span></div>
+        <div class="c-row"><span class="tm">10:02</span><span class="c-sent" style="color:#ff7080">+</span><span class="tx">光模块龙头确认高速产品出货放量</span><span class="stocks st-r">002281 +4.1%</span></div>
+        <div class="c-row"><span class="tm">09:58</span><span class="c-sent" style="color:#ff7080">+</span><span class="tx">9月社融超预期，新增人民币贷款2.3万亿</span><span class="stocks">—</span></div>
+        <div class="c-row"><span class="tm">09:47</span><span class="c-sent" style="color:var(--dim)">○</span><span class="tx">北向资金净流入32亿，沪股通占六成</span><span class="stocks">—</span></div>
+        <div class="c-row"><span class="tm">09:41</span><span class="c-sent" style="color:#ff7080">+</span><span class="tx">★ 医保谈判规则优化预期，创新药冲高</span><span class="stocks st-r">600276 +3.3%</span></div>
+        <div class="c-row"><span class="tm">09:36</span><span class="c-sent" style="color:#ff7080">+</span><span class="tx">机构：北美云厂capex上修，算力能见度延至明年</span><span class="stocks">—</span></div>
+        <div class="c-row"><span class="tm">09:32</span><span class="c-sent" style="color:#ff7080">+</span><span class="tx">离岸人民币短线拉升200点报7.08</span><span class="stocks">—</span></div>
+        <div class="c-row"><span class="tm">09:25</span><span class="c-sent" style="color:var(--dim)">○</span><span class="tx">三大指数集体高开，沪指开涨0.4%</span><span class="stocks">—</span></div>
+        <div class="c-row"><span class="tm">09:18</span><span class="c-sent" style="color:#2fdca0">−</span><span class="tx">隔夜美股科技股回调，纳指跌0.7%</span><span class="stocks">—</span></div>
+        <div class="c-row"><span class="tm">09:05</span><span class="c-sent" style="color:var(--dim)">○</span><span class="tx">今日新股申购：2 只创业板、1 只科创板</span><span class="stocks">—</span></div>
+      </div>
+      <div class="c-status"><span><span style="color:var(--green)">●</span> 直播中 · 45s 自动刷新</span><span>未读 2 · ★ 2 · AI 多空已标注</span></div>
+    </div>
+  </div>
+
+  <!-- ============ 方案 D ============ -->
+  <div class="variant-wrap">
+    <div class="variant-title"><span class="no">D</span>情绪杂志式（大卡易读）</div>
+    <div class="variant-desc">每条新闻一张大卡，左侧 3px 情绪色条（红利好/绿利空/灰中性）+ 星级 + 影响面标签，摘要完整展示。可读性最佳、点击区域大，适合卡片宽度充足、资讯条数不多（AI 精选 6-8 条）的场景。</div>
+    <div class="card">
+      <div class="d-head">
+        <span class="d-name">资讯聚合 · AI 精选</span>
+        <span class="d-time">10:32 更新 · 共 8 条</span>
+      </div>
+      <div class="d-summary">截至 10:32，资讯面整体<b style="color:#ff8a93">偏多</b>：降准落地 + 算力催化双轮驱动，建议重点跟踪金融与光模块龙头的量能持续性，回避减持类高位个股。</div>
+      <div class="d-body">
+        <div class="d-card bull">
+          <div class="d-top"><span class="d-sent bull">利好 · 大盘</span><span class="d-stars">★★★</span></div>
+          <div class="d-title">央行宣布降准 0.5 个百分点，释放长期资金约 1 万亿元</div>
+          <div class="d-sum">年内第二次降准，保持流动性合理充裕。券商、地产链盘后普遍走高，市场风险偏好回升。</div>
+          <div class="d-meta"><span class="chip cat-macro">宏观</span><span class="d-impact">影响：大盘</span><span class="chip stock">600030</span><span class="m-time">10:32 · 新华社 ›</span></div>
+        </div>
+        <div class="d-card bull">
+          <div class="d-top"><span class="d-sent bull">利好 · 板块</span><span class="d-stars">★★☆</span></div>
+          <div class="d-title">英伟达供应链再传扩单，算力光模块板块直线拉升</div>
+          <div class="d-sum">800G 光模块 Q4 订单上修，机构上调北美云厂资本开支预期，板块内 6 股涨超 5%。</div>
+          <div class="d-meta"><span class="chip cat-ind">行业</span><span class="d-impact">影响：算力板块</span><span class="chip stock">300308</span><span class="chip up">+8.2%</span><span class="m-time">10:28 · 财联社 ›</span></div>
+        </div>
+        <div class="d-card bear">
+          <div class="d-top"><span class="d-sent bear">利空 · 个股</span><span class="d-stars">★☆☆</span></div>
+          <div class="d-title">高位龙头公告股东拟减持不超 3% 股份</div>
+          <div class="d-sum">股东称系自身资金需求。该股近一个月累计涨幅 90%，盘中跳水跌逾 4%，或影响短线连板情绪。</div>
+          <div class="d-meta"><span class="d-sent bear" style="font-size:9px;padding:1px 7px">个股</span><span class="d-impact">影响：002XXX</span><span class="m-time">10:15 · 公告 ›</span></div>
+        </div>
+        <div class="d-card neutral">
+          <div class="d-top"><span class="d-sent neutral">中性 · 关注</span><span class="d-stars">★★☆</span></div>
+          <div class="d-title">9 月社融数据超预期，新增人民币贷款 2.3 万亿</div>
+          <div class="d-sum">企业中长贷为主要拉动项，宽信用效果显现，但居民短贷仍偏弱，持续性有待观察。</div>
+          <div class="d-meta"><span class="chip cat-macro">宏观</span><span class="d-impact">影响：大盘</span><span class="m-time">09:58 · 央行 ›</span></div>
+        </div>
+      </div>
+      <div class="d-foot">AI 生成，仅供参考，不构成投资建议</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============ 字段扩展建议 ============ -->
+<div class="legend">
+  <h2>二、数据字段扩展建议（AI Prompt 输出结构升级）</h2>
+  <table>
+    <tr><th>字段</th><th>类型</th><th>说明</th><th>现状</th></tr>
+    <tr><td>title / summary / time / url</td><td>string</td><td>标题、摘要、时间、原文链接（应用内浏览器打开）</td><td>已有</td></tr>
+    <tr><td>category</td><td>macro / industry / stock</td><td>宏观 / 行业 / 个股 分类</td><td>已有</td></tr>
+    <tr><td>related_codes</td><td>string[]</td><td>关联股票代码，前端补拉实时涨跌幅</td><td>已有（增强）</td></tr>
+    <tr><td>sentiment</td><td>bull / bear / neutral</td><td>利好 / 利空 / 中性，决定红/绿/灰标识</td><td>新增</td></tr>
+    <tr><td>importance</td><td>1 | 2 | 3</td><td>重要度星级，3 星自动进头条</td><td>新增</td></tr>
+    <tr><td>impact_scope</td><td>market / sector / stock</td><td>影响面：大盘 / 板块 / 个股</td><td>新增</td></tr>
+    <tr><td>theme_id / theme_name</td><td>string</td><td>主线聚类 ID 与名称（方案 B 使用）</td><td>新增</td></tr>
+    <tr><td>source / heat</td><td>string / number</td><td>信息来源；主线热度 0-100（同主题快讯数+时效计算）</td><td>新增</td></tr>
+    <tr><td>ai_brief</td><td>string</td><td>卡片顶部 AI 一句话盘面综述（整体偏多/偏空）</td><td>新增</td></tr>
+  </table>
+</div>
+
+</body>
+</html>

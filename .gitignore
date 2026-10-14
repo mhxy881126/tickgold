@@ -54,3 +54,20 @@ co_*.ps1
 vite.1430.config.ts
 scripts/tauri.dev1430.conf.json
 src-tauri/tauri.override.json
+
+# 本地诊断/辅助脚本（含本机绝对路径，不入库）
+_*.ps1
+_*.js
+_*.mjs
+start-tauri.js
+start-tauri-dev.mjs
+run_cargo_test.bat
+tgcc*.bat
+tglib*.bat
+_check_env.js
+
+# 本地临时目录与构建产物缓存（不入库）
+/_jobs/
+/_v227_transfer/
+/nulnset
+/src-tauri/src/.omc/
