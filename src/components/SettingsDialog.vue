@@ -19,7 +19,7 @@ import {
   brokerEnableLive,
   brokerConnect,
   brokerDisconnect,
-  brokerKillSwitch,
+  brokerEmergencyHalt,
   brokerReleaseKill,
   mockSeedPosition,
   mockReset,
@@ -967,6 +967,10 @@ async function saveBroker() {
       feePct: f.feePct,
       mockAllowAnytime: f.mockAllowAnytime,
       mockInitCash: f.mockInitCash,
+      dailyLossLimitPct: f.dailyLossLimitPct,
+      maxDrawdownLimitPct: f.maxDrawdownLimitPct,
+      consecutiveLossLimit: f.consecutiveLossLimit,
+      liveMaxOrderAmount: f.liveMaxOrderAmount,
     });
     bFlash("配置已保存");
   } catch (e) {
@@ -1011,9 +1015,19 @@ async function toggleLive(v: boolean) {
     bFlash(String(e));
   }
 }
-async function bKill(cancelAll: boolean) {
+// v3.0.0-rc 一键急停：封新委托 + 停自动执行 + 撤全部条件单 / 在途委托 + 断通道
+async function bEmergencyHalt() {
+  const ok = await confirmDialog({
+    title: "一键急停",
+    danger: true,
+    confirmText: "立即急停",
+    message:
+      "将立即执行：① 封死全部新委托 ② 停止自动执行 ③ 撤销全部条件单 ④ 撤销全部在途委托并断开券商通道。\n\n该操作不可撤销，恢复需手动解除、重连并重启自动执行。确认继续？",
+  });
+  if (!ok) return;
   try {
-    bFlash(await brokerKillSwitch(cancelAll));
+    const r = await brokerEmergencyHalt();
+    bFlash(`已急停：撤销条件单 ${r.coCount} 个、在途委托 ${r.orderCount} 笔`);
     await refreshBStatus();
   } catch (e) {
     bFlash(String(e));
@@ -1024,6 +1038,31 @@ async function bReleaseKill() {
     await brokerReleaseKill();
     await refreshBStatus();
     bFlash("Kill Switch 已解除");
+  } catch (e) {
+    bFlash(String(e));
+  }
+}
+// 实盘单笔金额上限：默认 0 = 锁定；设置 >0 放开实盘委托，须 danger 二次确认
+async function bSaveLiveLimit() {
+  if (!bForm.value) return;
+  const amount = Number(bForm.value.liveMaxOrderAmount);
+  if (!(amount >= 0) || Number.isNaN(amount)) {
+    bFlash("单笔金额上限须为不小于 0 的数字");
+    return;
+  }
+  if (amount > 0) {
+    const ok = await confirmDialog({
+      title: "放开实盘限额",
+      danger: true,
+      confirmText: "设置并放开",
+      message:
+        `单笔金额上限设为 ${amount.toLocaleString("zh-CN")} 元后，已确认信号将可能提交真实委托，单笔成交金额不得超过该上限。\n\n设为 0 则实盘重新锁定。确认设置？`,
+    });
+    if (!ok) return;
+  }
+  try {
+    await brokerSetConfig({ liveMaxOrderAmount: amount });
+    bFlash(amount > 0 ? `实盘单笔上限已设为 ${amount.toLocaleString("zh-CN")} 元` : "实盘已锁定（上限 0）");
   } catch (e) {
     bFlash(String(e));
   }
@@ -1140,6 +1179,13 @@ async function togglePlugin(r: PluginRow) {
   await refreshPlugins();
 }
 async function removePlugin(r: PluginRow) {
+  const ok = await confirmDialog({
+    title: "卸载插件",
+    danger: true,
+    message: `确认卸载插件「${r.name}」？其文件与配置将被移除。`,
+    confirmText: "卸载",
+  });
+  if (!ok) return;
   try {
     await pluginUninstall(r.pluginId);
     pFlash(`已卸载 ${r.name}`, true);
@@ -1961,14 +2007,41 @@ async function clearL2Key(r: PluginRow) {
                 </button>
               </div>
 
+              <!-- 实盘单笔金额上限（仅 QMT，默认 0 = 锁定） -->
+              <template v-if="bForm && bForm.kind === 'qmt'">
+                <div class="section-title" style="margin-top:16px">实盘单笔金额上限</div>
+                <div class="section-sub">
+                  硬兜底：单笔委托金额（价格 × 数量）超过上限一律拒绝；<b>0 = 实盘锁定</b>，须显式设置正数后已确认信号才能提交真实委托。
+                </div>
+                <div class="mock-cash-row">
+                  <label class="mock-cash-lb">上限（元）</label>
+                  <input v-model.number="bForm.liveMaxOrderAmount" type="number" min="0" step="1000" class="mock-cash-in" />
+                  <button type="button" class="mock-cash-preset" @click="bForm.liveMaxOrderAmount = 10000">1万</button>
+                  <button type="button" class="mock-cash-preset" @click="bForm.liveMaxOrderAmount = 50000">5万</button>
+                  <button type="button" class="mock-cash-preset" @click="bForm.liveMaxOrderAmount = 100000">10万</button>
+                  <button type="button" class="logs-btn danger" @click="bSaveLiveLimit">保存限额</button>
+                </div>
+              </template>
+
+              <!-- 账户级风控阈值（全通道唯一事实源；模拟 / 条件单 / 自动机器人 / 实盘共用） -->
+              <template v-if="bForm">
+                <div class="section-title" style="margin-top:20px">账户级风控阈值（全通道统一）</div>
+                <div class="section-sub">
+                  手动模拟、条件单、自动机器人、QMT 实盘共用同一套阈值；触发后仅停止开新仓，卖出永不锁死。
+                </div>
+                <div class="bridge-grid" style="margin-top:8px">
+                  <label class="ai-field"><span>单日亏损上限 %：{{ bForm.dailyLossLimitPct }}</span>
+                    <input v-model.number="bForm.dailyLossLimitPct" type="range" min="1" max="20" step="0.5" /></label>
+                  <label class="ai-field"><span>累计回撤上限 %：{{ bForm.maxDrawdownLimitPct }}</span>
+                    <input v-model.number="bForm.maxDrawdownLimitPct" type="range" min="5" max="50" step="1" /></label>
+                  <label class="ai-field"><span>连续亏损笔数上限：{{ bForm.consecutiveLossLimit }}</span>
+                    <input v-model.number="bForm.consecutiveLossLimit" type="range" min="2" max="10" step="1" /></label>
+                </div>
+              </template>
+
               <!-- 折叠：高级设置 -->
               <details class="bk-advanced" style="margin-top:20px">
                 <summary>高级设置（模拟工具 / 紧急停止）</summary>
-
-                <!-- 说明 -->
-                <div class="section-sub" style="margin-top:14px; color: var(--accent-2)">
-                  💡 仓位、止损、风控等参数统一在「AI 操盘手」选项卡设置
-                </div>
 
                 <div v-if="bForm" class="bridge-grid" style="margin-top:10px">
                   <label class="ai-field"><span>预留费用%：{{ bForm.feePct }}</span>
@@ -1984,12 +2057,13 @@ async function clearL2Key(r: PluginRow) {
                   </label>
                 </div>
 
-                <!-- Kill Switch -->
-                <div class="section-title" style="margin-top:18px">紧急停止 Kill Switch</div>
-                <div class="section-sub">立即断开券商通道，任何模型或流程不得拦截</div>
+                <!-- 一键急停（v3.0.0-rc 全局统一） -->
+                <div class="section-title" style="margin-top:18px">一键急停</div>
+                <div class="section-sub">
+                  封死新委托、停止自动执行、撤销全部条件单与在途委托、断开券商通道；快捷键 Ctrl+Alt+K（零确认）。恢复需手动解除 → 重连 → 重启自动执行。
+                </div>
                 <div class="bk-actions">
-                  <button type="button" class="logs-btn danger" @click="bKill(false)">紧急停止（断开）</button>
-                  <button type="button" class="logs-btn danger" @click="bKill(true)">紧急停止 + 全撤</button>
+                  <button type="button" class="logs-btn danger" @click="bEmergencyHalt">一键急停（撤全部）</button>
                 </div>
               </details>
 

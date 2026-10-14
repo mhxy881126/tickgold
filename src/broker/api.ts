@@ -38,8 +38,11 @@ export interface BrokerAsset {
 
 export interface BrokerPosition {
   code: string;
+  name?: string;
   vol: number;
   avail: number;
+  cost?: number;
+  marketValue?: number;
 }
 
 export interface BrokerConfigPatch {
@@ -53,6 +56,11 @@ export interface BrokerConfigPatch {
   feePct?: number;
   mockAllowAnytime?: boolean;
   mockInitCash?: number;
+  // v3.0.0-rc 账户级风控阈值 / 实盘限额
+  dailyLossLimitPct?: number;
+  maxDrawdownLimitPct?: number;
+  consecutiveLossLimit?: number;
+  liveMaxOrderAmount?: number;
 }
 
 export function brokerGetStatus() {
@@ -71,6 +79,10 @@ export interface BrokerConfigFull {
   feePct: number;
   mockAllowAnytime: boolean;
   mockInitCash: number;
+  dailyLossLimitPct: number;
+  maxDrawdownLimitPct: number;
+  consecutiveLossLimit: number;
+  liveMaxOrderAmount: number;
 }
 
 export function brokerGetConfig() {
@@ -89,6 +101,10 @@ export function brokerSetConfig(patch: BrokerConfigPatch) {
     feePct: patch.feePct ?? null,
     mockAllowAnytime: patch.mockAllowAnytime ?? null,
     mockInitCash: patch.mockInitCash ?? null,
+    dailyLossLimitPct: patch.dailyLossLimitPct ?? null,
+    maxDrawdownLimitPct: patch.maxDrawdownLimitPct ?? null,
+    consecutiveLossLimit: patch.consecutiveLossLimit ?? null,
+    liveMaxOrderAmount: patch.liveMaxOrderAmount ?? null,
   });
 }
 
@@ -131,6 +147,16 @@ export function brokerKillSwitch(cancelAll = false) {
   return invoke<string>("broker_kill_switch", { cancelAll });
 }
 
+// v3.0.0-rc 一键急停：封新委托 + 停自动执行 + 撤全部条件单 + 撤全部在途委托
+export interface EmergencyHaltResult {
+  coCount: number;
+  orderCount: number;
+}
+
+export function brokerEmergencyHalt() {
+  return invoke<EmergencyHaltResult>("broker_emergency_halt");
+}
+
 export function brokerReleaseKill() {
   return invoke<void>("broker_release_kill");
 }
@@ -169,6 +195,19 @@ export interface PositionRisk {
   floatPnlPct: number;
 }
 
+export interface SectorExposure {
+  theme: string;
+  marketValue: number;
+  pct: number;
+  count: number;
+}
+
+export interface RiskWarning {
+  level: string; // danger / warn
+  code: string;
+  text: string;
+}
+
 export interface RiskSnapshot {
   equity: number;
   cash: number;
@@ -183,6 +222,16 @@ export interface RiskSnapshot {
   dayPnlPct: number;
   drawdownPct: number;
   peakEquity: number;
+  dayDrawdownPct: number;
+  sectorExposure: SectorExposure[];
+  marketEmotion: number;
+  indexChg: number;
+  systemicRiskLevel: string; // low / mid / high
+  stopTriggerCount: number;
+  dailyLossPct: number;
+  consecutiveLosses: number;
+  warnings: RiskWarning[];
+  killSwitch: boolean;
   positions: PositionRisk[];
 }
 

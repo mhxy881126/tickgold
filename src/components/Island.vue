@@ -171,14 +171,21 @@ function oneClickTrade() {
   emit("island:open-card", "signalbridge");
   if (expanded.value) toggleExpand();
 }
-// 委托 tab
-async function cancelAllOrders() {
+// v3.0.0-rc 一键急停（灵动岛无对话框宿主，用原生 confirm 做最后确认；
+// 全局快捷键 Ctrl+Alt+K 为零确认）
+const halted = ref(false);
+async function emergencyHalt() {
+  if (halted.value) return;
+  if (!window.confirm("一键急停：立即封死新委托、停止自动执行、撤销全部条件单与在途委托并断开通道。\n恢复需手动操作，确认继续？")) {
+    return;
+  }
   try {
-    const { brokerKillSwitch } = await import("../broker/api");
-    await brokerKillSwitch(true);
+    const { brokerEmergencyHalt } = await import("../broker/api");
+    await brokerEmergencyHalt();
+    halted.value = true;
     void syncOrders();
   } catch (e) {
-    console.error("cancel all failed", e);
+    console.error("emergency halt failed", e);
   }
 }
 function openTrade() {
@@ -342,6 +349,11 @@ onMounted(async () => {
   await listen("broker:event", () => void syncOrders());
   await listen("broker:sidecar", () => void syncOrders());
   await listen("broker:kill", () => void syncOrders());
+  // 快捷键 / 主窗口触发的急停：灵动岛同步显示不可关闭红条
+  await listen("risk:halted", () => {
+    halted.value = true;
+    void syncOrders();
+  });
 
   // 主窗口切换灵动岛皮肤：立即重新应用
   await listen(ISLAND_SKIN_EVENT, () => {
@@ -420,7 +432,18 @@ onBeforeUnmount(() => {
             {{ current.pct > 0 ? "+" : "" }}{{ current.pct.toFixed(2) }}%
           </span>
         </div>
+        <button
+          class="halt-ico"
+          :class="{ on: halted }"
+          :title="halted ? '交易已锁定（恢复需手动）' : '一键急停 Ctrl+Alt+K'"
+          @click.stop="emergencyHalt"
+        >■</button>
         <button class="chev up" title="收起" @click.stop="toggleExpand">⌃</button>
+      </div>
+
+      <!-- 急停红条：不可关闭，恢复需手动解除→重连→重启自动执行 -->
+      <div v-if="halted" class="halt-bar">
+        <span class="halt-dot" />交易已锁定，恢复需手动
       </div>
 
       <!-- tabs 分段控制器 -->
@@ -508,7 +531,7 @@ onBeforeUnmount(() => {
           <div class="btn primary" @click="oneClickTrade">一键下单</div>
         </template>
         <template v-else>
-          <div class="btn" @click="cancelAllOrders">撤全部</div>
+          <div class="btn danger" @click="emergencyHalt">一键急停</div>
           <div class="btn primary" @click="openTrade">打开交易</div>
         </template>
       </div>
@@ -613,6 +636,40 @@ body,
 .head-name { font-size: 12px; color: #e8eaed; }
 .head-px { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
 
+/* 头部急停按钮 */
+.halt-ico {
+  width: 22px; height: 22px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 8px; color: #ff6b62; cursor: pointer;
+  background: rgba(255, 59, 48, 0.1);
+  border: 1px solid rgba(255, 59, 48, 0.45);
+  margin-left: auto; margin-right: 8px;
+}
+.halt-ico:hover { background: rgba(255, 59, 48, 0.22); }
+.halt-ico.on {
+  background: rgba(255, 59, 48, 0.28);
+  border-color: rgba(255, 59, 48, 0.8);
+  cursor: default;
+}
+/* 急停红条 */
+.halt-bar {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 10px; padding: 6px 10px;
+  border-radius: 7px; font-size: 11px; font-weight: 600;
+  color: #ff6b62;
+  background: rgba(255, 59, 48, 0.12);
+  border: 1px solid rgba(255, 59, 48, 0.5);
+}
+.halt-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #ff3b30; flex: none;
+  animation: halt-pulse 1.2s infinite;
+}
+@keyframes halt-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 .tabs {
   display: flex; gap: 4px; background: rgba(0,0,0,.35);
   padding: 3px; border-radius: 8px; margin-bottom: 10px;
@@ -678,4 +735,10 @@ body,
 .btn:hover { background: rgba(255,255,255,.1); }
 .btn.primary { background: var(--accent); color: #000; font-weight: 600; }
 .btn.primary:hover { filter: brightness(1.1); }
+.btn.danger {
+  color: #ff6b62; font-weight: 600;
+  background: rgba(255, 59, 48, 0.12);
+  border: 1px solid rgba(255, 59, 48, 0.45);
+}
+.btn.danger:hover { background: rgba(255, 59, 48, 0.22); }
 </style>
