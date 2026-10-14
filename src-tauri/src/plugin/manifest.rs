@@ -64,7 +64,10 @@ impl Manifest {
     /// 结构 + 语义校验。返回所有问题（用于安装/启用时报错）。
     pub fn validate(&self) -> Result<(), String> {
         if !valid_id(&self.id) {
-            return Err(format!("非法插件 id：{:?}（仅允许小写字母/数字/点/连字符）", self.id));
+            return Err(format!(
+                "非法插件 id：{:?}（仅允许小写字母/数字/点/连字符）",
+                self.id
+            ));
         }
         if self.name.trim().is_empty() {
             return Err("插件 name 不能为空".to_string());
@@ -135,6 +138,9 @@ mod tests {
 
     #[test]
     fn rejects_unknown_scope() {
-        assert!(parse_manifest(r#"{"id":"a.b","name":"x","version":"1","permissions":["root"]}"#).is_err());
+        assert!(
+            parse_manifest(r#"{"id":"a.b","name":"x","version":"1","permissions":["root"]}"#)
+                .is_err()
+        );
     }
 }

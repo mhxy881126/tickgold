@@ -25,7 +25,11 @@ pub struct SpiderThresholds {
 }
 impl Default for SpiderThresholds {
     fn default() -> Self {
-        Self { surge_pct: 0.5, big_amount_wan: 1000.0, volume_ratio: 3.0 }
+        Self {
+            surge_pct: 0.5,
+            big_amount_wan: 1000.0,
+            volume_ratio: 3.0,
+        }
     }
 }
 impl SpiderThresholds {
@@ -188,18 +192,42 @@ fn detect(
         let c_up = c.price >= lu - eps;
         let p_up = p.price >= lu - eps;
         if c_up && !p_up {
-            evs.push(mk("limit_up", "涨停突破", format!("现价{}", c.price), "up", c));
+            evs.push(mk(
+                "limit_up",
+                "涨停突破",
+                format!("现价{}", c.price),
+                "up",
+                c,
+            ));
         } else if !c_up && p_up {
-            evs.push(mk("limit_up_open", "打开涨停板", format!("现价{}", c.price), "down", c));
+            evs.push(mk(
+                "limit_up_open",
+                "打开涨停板",
+                format!("现价{}", c.price),
+                "down",
+                c,
+            ));
         }
 
         // 封 / 开 跌停板
         let c_dn = c.price <= ld + eps && c.price > 0.0;
         let p_dn = p.price <= ld + eps && p.price > 0.0;
         if c_dn && !p_dn {
-            evs.push(mk("limit_down", "跌停突破", format!("现价{}", c.price), "down", c));
+            evs.push(mk(
+                "limit_down",
+                "跌停突破",
+                format!("现价{}", c.price),
+                "down",
+                c,
+            ));
         } else if !c_dn && p_dn {
-            evs.push(mk("limit_down_open", "打开跌停板", format!("现价{}", c.price), "up", c));
+            evs.push(mk(
+                "limit_down_open",
+                "打开跌停板",
+                format!("现价{}", c.price),
+                "up",
+                c,
+            ));
         }
 
         // 快速拉升 / 下跌（区间涨跌幅变化）
@@ -214,15 +242,33 @@ fn detect(
         let d_amt = c.amount - p.amount;
         if d_amt >= th.big_amount_wan * 1e4 {
             if c.price + eps >= p.price {
-                evs.push(mk("big_buy", "大笔买入", format!("{:.0}万", d_amt / 1e4), "up", c));
+                evs.push(mk(
+                    "big_buy",
+                    "大笔买入",
+                    format!("{:.0}万", d_amt / 1e4),
+                    "up",
+                    c,
+                ));
             } else {
-                evs.push(mk("big_sell", "大笔卖出", format!("{:.0}万", d_amt / 1e4), "down", c));
+                evs.push(mk(
+                    "big_sell",
+                    "大笔卖出",
+                    format!("{:.0}万", d_amt / 1e4),
+                    "down",
+                    c,
+                ));
             }
         }
 
         // 量比放大（上穿阈值，触发一次）
         if c.volume_ratio >= th.volume_ratio && p.volume_ratio < th.volume_ratio {
-            evs.push(mk("volume", "放量异动", format!("量比{:.1}", c.volume_ratio), "neutral", c));
+            evs.push(mk(
+                "volume",
+                "放量异动",
+                format!("量比{:.1}", c.volume_ratio),
+                "neutral",
+                c,
+            ));
         }
     }
     evs
@@ -250,7 +296,11 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<SpiderCtl>, data_dir: PathBuf) {
             let _ = app.emit("spider:events", evs);
             let _ = app.emit(
                 "spider:status",
-                SpiderStatus { trading, pool_size: pool.len(), time: now_millis() },
+                SpiderStatus {
+                    trading,
+                    pool_size: pool.len(),
+                    time: now_millis(),
+                },
             );
             tick += 1;
             for _ in 0..5 {
@@ -262,7 +312,11 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<SpiderCtl>, data_dir: PathBuf) {
         } else {
             let _ = app.emit(
                 "spider:status",
-                SpiderStatus { trading, pool_size: pool.len(), time: now_millis() },
+                SpiderStatus {
+                    trading,
+                    pool_size: pool.len(),
+                    time: now_millis(),
+                },
             );
             prev.clear();
             for _ in 0..30 {

@@ -72,13 +72,14 @@ pub fn open(path: &Path) -> Result<AiDb, String> {
 }
 
 fn migrate(c: &Connection) -> Result<(), String> {
-    let mut version: i64 =
-        c.query_row("PRAGMA user_version", [], |r| r.get(0))
-            .map_err(|e| e.to_string())?;
+    let mut version: i64 = c
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
     let batches: Vec<(i64, &str)> = vec![(1, V1), (2, V2), (3, V3), (4, V4)];
     for (v, sql) in batches {
         if version < v {
-            c.execute_batch(sql).map_err(|e| format!("ai.db migration v{v} failed: {e}"))?;
+            c.execute_batch(sql)
+                .map_err(|e| format!("ai.db migration v{v} failed: {e}"))?;
             c.execute_batch(&format!("PRAGMA user_version = {v}"))
                 .map_err(|e| e.to_string())?;
             version = v;
@@ -227,7 +228,11 @@ pub fn search(
             h
         })
         .collect();
-    scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    scored.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     scored.truncate(k.max(1) as usize);
     Ok(scored)
 }
@@ -244,10 +249,7 @@ pub fn delete_by_source_ref(
     .map_err(|e| e.to_string())
 }
 
-pub fn list_sources(
-    c: &Connection,
-    source_type: &str,
-) -> Result<Vec<(String, i64)>, String> {
+pub fn list_sources(c: &Connection, source_type: &str) -> Result<Vec<(String, i64)>, String> {
     let mut stmt = c
         .prepare(
             "SELECT source_ref, count(*) FROM kb_chunk WHERE source_type=?1
@@ -265,11 +267,20 @@ pub fn list_sources(
 }
 
 pub fn stats(c: &Connection) -> Result<KbStats, String> {
-    let total: i64 = c.query_row("SELECT count(*) FROM kb_chunk", [], |r| r.get(0)).unwrap_or(0);
-    let embedded: i64 =
-        c.query_row("SELECT count(*) FROM kb_chunk WHERE embedded=1", [], |r| r.get(0)).unwrap_or(0);
+    let total: i64 = c
+        .query_row("SELECT count(*) FROM kb_chunk", [], |r| r.get(0))
+        .unwrap_or(0);
+    let embedded: i64 = c
+        .query_row("SELECT count(*) FROM kb_chunk WHERE embedded=1", [], |r| {
+            r.get(0)
+        })
+        .unwrap_or(0);
     let bytes_estimate: i64 = c
-        .query_row("SELECT COALESCE(sum(length(embedding)),0) FROM kb_chunk", [], |r| r.get(0))
+        .query_row(
+            "SELECT COALESCE(sum(length(embedding)),0) FROM kb_chunk",
+            [],
+            |r| r.get(0),
+        )
         .unwrap_or(0);
     let mut stmt = c
         .prepare("SELECT source_type, count(*) FROM kb_chunk GROUP BY source_type")
@@ -279,7 +290,12 @@ pub fn stats(c: &Connection) -> Result<KbStats, String> {
         .map_err(|e| e.to_string())?
         .collect::<Result<_, _>>()
         .map_err(|e| e.to_string())?;
-    Ok(KbStats { total, embedded, bytes_estimate, by_type })
+    Ok(KbStats {
+        total,
+        embedded,
+        bytes_estimate,
+        by_type,
+    })
 }
 
 pub struct PendingChunk {
@@ -292,7 +308,10 @@ pub fn list_pending(c: &Connection, limit: i64) -> Result<Vec<PendingChunk>, Str
         .map_err(|e| e.to_string())?;
     let rows: Vec<PendingChunk> = stmt
         .query_map(rusqlite::params![limit], |r| {
-            Ok(PendingChunk { id: r.get(0)?, text: r.get(1)? })
+            Ok(PendingChunk {
+                id: r.get(0)?,
+                text: r.get(1)?,
+            })
         })
         .map_err(|e| e.to_string())?
         .collect::<Result<_, _>>()
@@ -300,12 +319,7 @@ pub fn list_pending(c: &Connection, limit: i64) -> Result<Vec<PendingChunk>, Str
     Ok(rows)
 }
 
-pub fn set_embedding(
-    c: &Connection,
-    id: i64,
-    model_hash: &str,
-    v: &[f32],
-) -> Result<(), String> {
+pub fn set_embedding(c: &Connection, id: i64, model_hash: &str, v: &[f32]) -> Result<(), String> {
     c.execute(
         "UPDATE kb_chunk SET embedding=?1, dim=?2, model_hash=?3, embedded=1 WHERE id=?4",
         rusqlite::params![encode_f32(v), v.len() as i64, model_hash, id],
@@ -348,7 +362,12 @@ pub fn list_sessions(c: &Connection) -> Result<Vec<SessionRow>, String> {
         .map_err(|e| e.to_string())?;
     let rows: Vec<SessionRow> = stmt
         .query_map([], |r| {
-            Ok(SessionRow { id: r.get(0)?, title: r.get(1)?, created_at: r.get(2)?, last_at: r.get(3)? })
+            Ok(SessionRow {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                created_at: r.get(2)?,
+                last_at: r.get(3)?,
+            })
         })
         .map_err(|e| e.to_string())?
         .collect::<Result<_, _>>()
@@ -357,8 +376,11 @@ pub fn list_sessions(c: &Connection) -> Result<Vec<SessionRow>, String> {
 }
 
 pub fn delete_session(c: &Connection, id: i64) -> Result<(), String> {
-    c.execute("DELETE FROM ai_message WHERE session_id=?1", rusqlite::params![id])
-        .map_err(|e| e.to_string())?;
+    c.execute(
+        "DELETE FROM ai_message WHERE session_id=?1",
+        rusqlite::params![id],
+    )
+    .map_err(|e| e.to_string())?;
     c.execute("DELETE FROM ai_session WHERE id=?1", rusqlite::params![id])
         .map(|_| ())
         .map_err(|e| e.to_string())
@@ -401,8 +423,12 @@ pub fn list_messages(c: &Connection, session: i64, limit: i64) -> Result<Vec<Msg
     let mut rows: Vec<MsgRow> = stmt
         .query_map(rusqlite::params![session, limit], |r| {
             Ok(MsgRow {
-                id: r.get(0)?, role: r.get(1)?, content: r.get(2)?,
-                tool_calls: r.get(3)?, refs: r.get(4)?, created_at: r.get(5)?,
+                id: r.get(0)?,
+                role: r.get(1)?,
+                content: r.get(2)?,
+                tool_calls: r.get(3)?,
+                refs: r.get(4)?,
+                created_at: r.get(5)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -412,13 +438,16 @@ pub fn list_messages(c: &Connection, session: i64, limit: i64) -> Result<Vec<Msg
     Ok(rows)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn tmp_db(name: &str) -> AiDb {
-        let p = std::env::temp_dir().join(format!("tickgold-ai-test-{}-{}.db", name, crate::ai::now_millis()));
+        let p = std::env::temp_dir().join(format!(
+            "tickgold-ai-test-{}-{}.db",
+            name,
+            crate::ai::now_millis()
+        ));
         let _ = std::fs::remove_file(&p);
         open(&p).unwrap()
     }
@@ -426,12 +455,19 @@ mod tests {
     #[test]
     fn migrate_to_v4_and_idempotent() {
         let db = tmp_db("migrate");
-        let v: i64 = db.0.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        let v: i64 =
+            db.0.query_row("PRAGMA user_version", [], |r| r.get(0))
+                .unwrap();
         assert_eq!(v, 4);
-        for t in ["kb_chunk", "ai_session", "ai_message", "ai_config", "ai_index_state"] {
-            let n: i64 = db
-                .0
-                .query_row(
+        for t in [
+            "kb_chunk",
+            "ai_session",
+            "ai_message",
+            "ai_config",
+            "ai_index_state",
+        ] {
+            let n: i64 =
+                db.0.query_row(
                     "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1",
                     [t],
                     |r| r.get(0),
@@ -451,7 +487,10 @@ mod tests {
             }
         }
         let db2 = open(&found.unwrap()).unwrap();
-        let v2: i64 = db2.0.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        let v2: i64 = db2
+            .0
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(v2, 4);
     }
 
@@ -464,18 +503,28 @@ mod tests {
         assert!(insert_chunk_ignore(
             &db.0,
             &NewChunk {
-                text: "正交文档", source_type: "manual_doc", source_ref: "b.md",
-                title: "B", chunk_index: 0, content_hash: &h2,
-                model_hash: "m1", embedding: Some(&[0.0, 1.0]),
+                text: "正交文档",
+                source_type: "manual_doc",
+                source_ref: "b.md",
+                title: "B",
+                chunk_index: 0,
+                content_hash: &h2,
+                model_hash: "m1",
+                embedding: Some(&[0.0, 1.0]),
             }
         )
         .unwrap());
         assert!(insert_chunk_ignore(
             &db.0,
             &NewChunk {
-                text: "同向文档", source_type: "manual_doc", source_ref: "a.md",
-                title: "A", chunk_index: 0, content_hash: &h1,
-                model_hash: "m1", embedding: Some(&[1.0, 0.0]),
+                text: "同向文档",
+                source_type: "manual_doc",
+                source_ref: "a.md",
+                title: "A",
+                chunk_index: 0,
+                content_hash: &h1,
+                model_hash: "m1",
+                embedding: Some(&[1.0, 0.0]),
             }
         )
         .unwrap());
@@ -483,9 +532,14 @@ mod tests {
         assert!(!insert_chunk_ignore(
             &db.0,
             &NewChunk {
-                text: "同向文档", source_type: "manual_doc", source_ref: "a.md",
-                title: "A", chunk_index: 0, content_hash: &h1,
-                model_hash: "m1", embedding: Some(&[1.0, 0.0]),
+                text: "同向文档",
+                source_type: "manual_doc",
+                source_ref: "a.md",
+                title: "A",
+                chunk_index: 0,
+                content_hash: &h1,
+                model_hash: "m1",
+                embedding: Some(&[1.0, 0.0]),
             }
         )
         .unwrap());
@@ -501,8 +555,13 @@ mod tests {
         insert_chunk_ignore(
             &db.0,
             &NewChunk {
-                text: "三维", source_type: "catalyst", source_ref: "x", title: "",
-                chunk_index: 0, content_hash: &h3, model_hash: "m1",
+                text: "三维",
+                source_type: "catalyst",
+                source_ref: "x",
+                title: "",
+                chunk_index: 0,
+                content_hash: &h3,
+                model_hash: "m1",
                 embedding: Some(&[1.0, 0.0, 0.0]),
             },
         )
@@ -518,8 +577,14 @@ mod tests {
         insert_chunk_ignore(
             &db.0,
             &NewChunk {
-                text: "hello", source_type: "catalyst", source_ref: "cat:1", title: "",
-                chunk_index: 0, content_hash: &h, model_hash: "", embedding: None,
+                text: "hello",
+                source_type: "catalyst",
+                source_ref: "cat:1",
+                title: "",
+                chunk_index: 0,
+                content_hash: &h,
+                model_hash: "",
+                embedding: None,
             },
         )
         .unwrap();
@@ -558,15 +623,24 @@ mod tests {
             insert_chunk_ignore(
                 &db.0,
                 &NewChunk {
-                    text: txt, source_type: "manual_doc", source_ref: "战法.md", title: "战法",
-                    chunk_index: i as i64, content_hash: &h, model_hash: "", embedding: None,
+                    text: txt,
+                    source_type: "manual_doc",
+                    source_ref: "战法.md",
+                    title: "战法",
+                    chunk_index: i as i64,
+                    content_hash: &h,
+                    model_hash: "",
+                    embedding: None,
                 },
             )
             .unwrap();
         }
         let srcs = list_sources(&db.0, "manual_doc").unwrap();
         assert_eq!(srcs, vec![("战法.md".to_string(), 2)]);
-        assert_eq!(delete_by_source_ref(&db.0, "manual_doc", "战法.md").unwrap(), 2);
+        assert_eq!(
+            delete_by_source_ref(&db.0, "manual_doc", "战法.md").unwrap(),
+            2
+        );
         assert_eq!(stats(&db.0).unwrap().total, 0);
     }
 }

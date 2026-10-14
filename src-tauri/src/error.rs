@@ -42,7 +42,10 @@ impl AppError {
     }
 
     pub fn http(code: u16, msg: impl Into<String>) -> Self {
-        AppError::Http { code: Some(code), msg: msg.into() }
+        AppError::Http {
+            code: Some(code),
+            msg: msg.into(),
+        }
     }
 
     pub fn parse(msg: impl Into<String>) -> Self {

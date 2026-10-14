@@ -71,7 +71,11 @@ pub async fn run_basic(
             let codes: Vec<String> = params
                 .get("codes")
                 .and_then(|x| x.as_array())
-                .map(|a| a.iter().filter_map(|c| c.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|c| c.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
             let q = crate::market::get_quotes(codes).await?;
             Ok(json!(q))
@@ -149,7 +153,11 @@ pub async fn run_basic(
         "store.set" => {
             need!("store");
             let key = p_str(&params, "key");
-            let value = params.get("value").cloned().unwrap_or(Value::Null).to_string();
+            let value = params
+                .get("value")
+                .cloned()
+                .unwrap_or(Value::Null)
+                .to_string();
             let conn = maindb::open_readwrite(dir)?;
             store::kv_set(&conn, plugin_id, &key, &value)?;
             store::audit(&conn, plugin_id, "store.set", "store.set", &key);
@@ -200,7 +208,13 @@ pub async fn run_basic(
 
 fn store_audit_http(dir: &Path, plugin_id: &str, url: &str, status: u16) -> Result<(), String> {
     let conn = maindb::open_readwrite(dir)?;
-    store::audit(&conn, plugin_id, "http.fetch", "http.fetch", &format!("{status} {url}"));
+    store::audit(
+        &conn,
+        plugin_id,
+        "http.fetch",
+        "http.fetch",
+        &format!("{status} {url}"),
+    );
     checkpoint(&conn);
     Ok(())
 }

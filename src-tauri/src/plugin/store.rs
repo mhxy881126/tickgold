@@ -126,11 +126,16 @@ pub fn set_state(
 }
 
 pub fn delete(conn: &Connection, plugin_id: &str) -> Result<(), String> {
-    conn.execute("DELETE FROM plugin_registry WHERE plugin_id=?1 AND builtin=0",
-        rusqlite::params![plugin_id])
-        .map(|_| ())
-        .map_err(|e| format!("删除插件登记失败: {e}"))?;
-    let _ = conn.execute("DELETE FROM plugin_kv WHERE plugin_id=?1", rusqlite::params![plugin_id]);
+    conn.execute(
+        "DELETE FROM plugin_registry WHERE plugin_id=?1 AND builtin=0",
+        rusqlite::params![plugin_id],
+    )
+    .map(|_| ())
+    .map_err(|e| format!("删除插件登记失败: {e}"))?;
+    let _ = conn.execute(
+        "DELETE FROM plugin_kv WHERE plugin_id=?1",
+        rusqlite::params![plugin_id],
+    );
     Ok(())
 }
 
@@ -190,7 +195,8 @@ mod tests {
     #[test]
     fn upsert_list_and_state() {
         let c = memdb();
-        let m = parse_manifest(r#"{"id":"a.b","name":"X","version":"1","permissions":["store"]}"#).unwrap();
+        let m = parse_manifest(r#"{"id":"a.b","name":"X","version":"1","permissions":["store"]}"#)
+            .unwrap();
         upsert(&c, &m, "/p/a.b", false, "h", false).unwrap();
         assert_eq!(list(&c).len(), 1);
         set_state(&c, "a.b", true, "ready", "").unwrap();

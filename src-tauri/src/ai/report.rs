@@ -27,7 +27,10 @@ pub fn build_report(data_dir: &Path, date: Option<&str>) -> Result<Value, String
         obj.insert("todayAlertEvents".into(), alerts);
         obj.insert("aiReviews".into(), reviews);
         obj.insert("performance".into(), performance);
-        obj.insert("disclaimer".into(), json!("本报告仅为个人盯盘记录与数据复盘，不构成任何投资建议。"));
+        obj.insert(
+            "disclaimer".into(),
+            json!("本报告仅为个人盯盘记录与数据复盘，不构成任何投资建议。"),
+        );
     }
     Ok(out)
 }
@@ -160,7 +163,11 @@ fn performance_snapshot(c: &Connection, day: &str) -> Result<Value, String> {
             wins += 1;
         }
     }
-    let win_rate = if sells > 0 { wins as f64 / sells as f64 * 100.0 } else { 0.0 };
+    let win_rate = if sells > 0 {
+        wins as f64 / sells as f64 * 100.0
+    } else {
+        0.0
+    };
 
     // 持仓成本（无实时行情，按成本估值，明确标注）。
     let mut pos_stmt = c

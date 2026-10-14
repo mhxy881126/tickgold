@@ -37,8 +37,8 @@ pub struct MarketCtx {
     pub index_chg: f64,
     pub zt_codes: HashSet<String>,
     pub broken_codes: HashMap<String, u32>, // 炸板次数（含回封）
-    pub final_broken: HashSet<String>,     // 最终炸板（断板）
-    pub fund_inflow: HashMap<String, f64>, // 主力净流入（亿）
+    pub final_broken: HashSet<String>,      // 最终炸板（断板）
+    pub fund_inflow: HashMap<String, f64>,  // 主力净流入（亿）
 }
 
 /// 单标的盘中组装输入。
@@ -170,8 +170,14 @@ pub fn daily_deep_features(
         let is_doji = total_range > 0.0 && body_size < total_range * 0.1;
 
         f.insert("klineIsHammer".into(), json!(is_hammer));
-        f.insert("klineIsBullishEngulfing".into(), json!(is_bullish_engulfing));
-        f.insert("klineIsBearishEngulfing".into(), json!(is_bearish_engulfing));
+        f.insert(
+            "klineIsBullishEngulfing".into(),
+            json!(is_bullish_engulfing),
+        );
+        f.insert(
+            "klineIsBearishEngulfing".into(),
+            json!(is_bearish_engulfing),
+        );
         f.insert("klineIsDoji".into(), json!(is_doji));
     }
 
@@ -206,7 +212,9 @@ pub fn daily_deep_features(
 
 /// 计算 EMA（指数移动平均）
 fn ema(values: &[f64], period: usize) -> Vec<f64> {
-    if values.is_empty() { return vec![]; }
+    if values.is_empty() {
+        return vec![];
+    }
     let k = 2.0 / (period as f64 + 1.0);
     let mut out = Vec::with_capacity(values.len());
     let mut prev = values[0];
@@ -220,10 +228,16 @@ fn ema(values: &[f64], period: usize) -> Vec<f64> {
 
 /// MACD: 返回 (dif, dea, macd_hist)，dif=EMA12-EMA26, dea=EMA9(dif)
 pub fn calc_macd(closes: &[f64]) -> (f64, f64, f64) {
-    if closes.len() < 35 { return (0.0, 0.0, 0.0); }
+    if closes.len() < 35 {
+        return (0.0, 0.0, 0.0);
+    }
     let ema12 = ema(closes, 12);
     let ema26 = ema(closes, 26);
-    let difs: Vec<f64> = closes.iter().enumerate().map(|(i, _)| ema12[i] - ema26[i]).collect();
+    let difs: Vec<f64> = closes
+        .iter()
+        .enumerate()
+        .map(|(i, _)| ema12[i] - ema26[i])
+        .collect();
     let deas = ema(&difs, 9);
     let n = closes.len() - 1;
     let dif = difs[n];
@@ -234,16 +248,24 @@ pub fn calc_macd(closes: &[f64]) -> (f64, f64, f64) {
 
 /// RSI(14): 返回 0~100
 pub fn calc_rsi(closes: &[f64], period: usize) -> f64 {
-    if closes.len() < period + 1 { return 50.0; }
+    if closes.len() < period + 1 {
+        return 50.0;
+    }
     let mut gains = 0.0;
     let mut losses = 0.0;
     for i in 1..=period {
         let chg = closes[closes.len() - period - 1 + i] - closes[closes.len() - period - 2 + i];
-        if chg > 0.0 { gains += chg; } else { losses -= chg; }
+        if chg > 0.0 {
+            gains += chg;
+        } else {
+            losses -= chg;
+        }
     }
     let avg_gain = gains / period as f64;
     let avg_loss = losses / period as f64;
-    if avg_loss < 1e-9 { return 100.0; }
+    if avg_loss < 1e-9 {
+        return 100.0;
+    }
     let rs = avg_gain / avg_loss;
     100.0 - 100.0 / (1.0 + rs)
 }

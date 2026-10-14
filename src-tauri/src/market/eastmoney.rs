@@ -114,8 +114,8 @@ pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
         "/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f4,f5,f6,f7,f8,f9,f10,f15,f16,f17,f18,f20,f21,f23&secids={}",
         secids.join(",")
     );
-    let json: ListResp = serde_json::from_value(push2_json(&path).await?)
-        .map_err(|e| e.to_string())?;
+    let json: ListResp =
+        serde_json::from_value(push2_json(&path).await?).map_err(|e| e.to_string())?;
     let now = now_millis();
     let out = json
         .data
@@ -176,11 +176,7 @@ pub async fn search(keyword: &str) -> Result<Vec<StockItem>, String> {
         "https://searchapi.eastmoney.com/api/suggest/get?input={}&type=14&count=10",
         urlencode(keyword)
     );
-    let resp = http()
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    let resp = http().get(&url).send().await.map_err(|e| e.to_string())?;
     let json: SearchResp = resp.json().await.map_err(|e| e.to_string())?;
     let out = json
         .table
@@ -204,7 +200,6 @@ pub async fn search(keyword: &str) -> Result<Vec<StockItem>, String> {
         .collect();
     Ok(out)
 }
-
 
 // ===== 增强榜单：专用 RankRow（含换手/量比/5分钟涨速/主力净流入/大单净流入）=====
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -241,7 +236,12 @@ struct RankBoardData {
 /// gainers=涨幅 losers=跌幅 amount=成交额 speed=快速涨幅(5分钟涨速)
 /// big=大单净量(大单净流入额) vr=量比榜 turnover=换手率 main=主力净流入。
 /// scope：a=沪深 A 股 / bse=北交所 / etf=场内基金 / conv=可转债。
-pub async fn rank_board(sort: &str, page: i64, num: i64, scope: &str) -> Result<Vec<RankRow>, String> {
+pub async fn rank_board(
+    sort: &str,
+    page: i64,
+    num: i64,
+    scope: &str,
+) -> Result<Vec<RankRow>, String> {
     // (排序字段 fid, 排序方向 po：1=降序 0=升序)
     let (fid, po) = match sort {
         "losers" => ("f3", 0),
@@ -275,8 +275,10 @@ pub async fn rank_board(sort: &str, page: i64, num: i64, scope: &str) -> Result<
                 .send()
                 .await
                 .map_err(|e| format!("{host}: {e}"))?;
-            let json: RankBoardResp =
-                resp.json().await.map_err(|e| format!("{host}: decode {e}"))?;
+            let json: RankBoardResp = resp
+                .json()
+                .await
+                .map_err(|e| format!("{host}: decode {e}"))?;
             Ok::<Vec<Value>, String>(json.data.map(|d| d.diff).unwrap_or_default())
         });
     }
@@ -302,8 +304,16 @@ pub async fn rank_board(sort: &str, page: i64, num: i64, scope: &str) -> Result<
     let out = rows
         .iter()
         .map(|v| RankRow {
-            code: v.get("f12").and_then(|x| x.as_str()).unwrap_or("").to_string(),
-            name: v.get("f14").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+            code: v
+                .get("f12")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
+            name: v
+                .get("f14")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
             price: g(v, "f2"),
             pct: g(v, "f3"),
             amount: g(v, "f6"),
@@ -357,8 +367,8 @@ pub async fn index_quotes() -> Result<Vec<Quote>, String> {
         "/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18&secids={}",
         secids.join(",")
     );
-    let json: ListResp = serde_json::from_value(push2_json(&path).await?)
-        .map_err(|e| e.to_string())?;
+    let json: ListResp =
+        serde_json::from_value(push2_json(&path).await?).map_err(|e| e.to_string())?;
     let now = now_millis();
     let out = json
         .data
@@ -400,10 +410,10 @@ pub struct MarketRestricted {
     pub name: String,
     pub date: String,
     pub type_name: String,
-    pub shares: f64,       // 实际解禁数量（万股）
-    pub able_shares: f64,  // 解禁数量（万股）
-    pub market_cap: f64,   // 实际解禁市值（万元）
-    pub free_ratio: f64,   // 占解禁前流通市值比例（%）
+    pub shares: f64,      // 实际解禁数量（万股）
+    pub able_shares: f64, // 解禁数量（万股）
+    pub market_cap: f64,  // 实际解禁市值（万元）
+    pub free_ratio: f64,  // 占解禁前流通市值比例（%）
 }
 
 #[derive(serde::Serialize)]
@@ -626,7 +636,11 @@ pub async fn zb_pool(date: &str) -> Result<ZtPool, String> {
             }
         })
         .collect();
-    list.sort_by(|a, b| b.pct.partial_cmp(&a.pct).unwrap_or(std::cmp::Ordering::Equal));
+    list.sort_by(|a, b| {
+        b.pct
+            .partial_cmp(&a.pct)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     let total = list.len();
     Ok(ZtPool {
         date: date.to_string(),
@@ -640,27 +654,29 @@ pub async fn dt_pool(date: &str) -> Result<ZtPool, String> {
     let pool = topic_pool("getTopicDTPool", date, "fund:desc").await?;
     let mut list: Vec<ZtStock> = pool
         .iter()
-        .map(|v| {
-            ZtStock {
-                code: vs2(v, "c"),
-                name: vs2(v, "n"),
-                price: vf(v, "p") / 1000.0,
-                pct: vf(v, "zdp"),
-                amount: vf(v, "amount"),
-                fund: vf(v, "fund"),
-                boards: 0,
-                first_seal: vi(v, "fbt"),
-                last_seal: vi(v, "lbt"),
-                broken: vi(v, "zbc") as u32,
-                turnover: vf(v, "hs"),
-                industry: vs2(v, "hybk"),
-                stat_days: 0,
-                stat_count: 0,
-                limit_price: vf(v, "djtp") / 1000.0,
-            }
+        .map(|v| ZtStock {
+            code: vs2(v, "c"),
+            name: vs2(v, "n"),
+            price: vf(v, "p") / 1000.0,
+            pct: vf(v, "zdp"),
+            amount: vf(v, "amount"),
+            fund: vf(v, "fund"),
+            boards: 0,
+            first_seal: vi(v, "fbt"),
+            last_seal: vi(v, "lbt"),
+            broken: vi(v, "zbc") as u32,
+            turnover: vf(v, "hs"),
+            industry: vs2(v, "hybk"),
+            stat_days: 0,
+            stat_count: 0,
+            limit_price: vf(v, "djtp") / 1000.0,
         })
         .collect();
-    list.sort_by(|a, b| b.fund.partial_cmp(&a.fund).unwrap_or(std::cmp::Ordering::Equal));
+    list.sort_by(|a, b| {
+        b.fund
+            .partial_cmp(&a.fund)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     let total = list.len();
     Ok(ZtPool {
         date: date.to_string(),
@@ -697,7 +713,12 @@ const CLIST_HOSTS: &[&str] = PUSH2_HOSTS;
 
 /// clist 单页（自定义排序字段/升降序），返回本页行情。
 /// fid: 排序字段（f3=涨跌幅, f6=成交额）；po: 1=降序, 0=升序。
-async fn clist_page_sorted_once(fs: &str, fid: &str, po: i32, pn: i32) -> Result<(i64, Vec<EmQuote>), String> {
+async fn clist_page_sorted_once(
+    fs: &str,
+    fid: &str,
+    po: i32,
+    pn: i32,
+) -> Result<(i64, Vec<EmQuote>), String> {
     let _permit = http_permit().await;
     let mut last = String::new();
     for host in CLIST_HOSTS {
@@ -735,7 +756,12 @@ async fn clist_page_sorted_once(fs: &str, fid: &str, po: i32, pn: i32) -> Result
 }
 
 /// clist 单页（自定义排序 + 3 次退避重试）
-async fn clist_page_sorted(fs: &str, fid: &str, po: i32, pn: i32) -> Result<(i64, Vec<EmQuote>), String> {
+async fn clist_page_sorted(
+    fs: &str,
+    fid: &str,
+    po: i32,
+    pn: i32,
+) -> Result<(i64, Vec<EmQuote>), String> {
     let mut last = String::new();
     for attempt in 0..3u32 {
         match clist_page_sorted_once(fs, fid, po, pn).await {
@@ -828,10 +854,15 @@ pub async fn auction() -> Result<AuctionData, String> {
     for (res, is_high) in [(h, true), (l, false)] {
         if let Ok((_, quotes)) = res {
             for q in quotes {
-                if !seen.insert(q.code.clone()) { continue; }
+                if !seen.insert(q.code.clone()) {
+                    continue;
+                }
                 if let Some(s) = to_auction_stock(&q) {
-                    if is_high && s.gap > 0.0 { high.push(s); }
-                    else if !is_high && s.gap < 0.0 { low.push(s); }
+                    if is_high && s.gap > 0.0 {
+                        high.push(s);
+                    } else if !is_high && s.gap < 0.0 {
+                        low.push(s);
+                    }
                 }
             }
         }
@@ -875,11 +906,11 @@ pub struct LhbStock {
     pub price: f64,
     pub pct: f64,
     pub turnover: f64,
-    pub net_amt: f64,   // 龙虎榜净买入（元）
+    pub net_amt: f64, // 龙虎榜净买入（元）
     pub buy_amt: f64,
     pub sell_amt: f64,
-    pub deal_amt: f64,  // 龙虎榜成交额（元）
-    pub free_mv: f64,   // 流通市值（元）
+    pub deal_amt: f64, // 龙虎榜成交额（元）
+    pub free_mv: f64,  // 流通市值（元）
     pub reasons: Vec<String>,
 }
 
@@ -894,15 +925,15 @@ pub struct LhbList {
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct LhbSeat {
-    pub name: String,      // 营业部名称
-    pub code: String,      // 营业部代码
+    pub name: String, // 营业部名称
+    pub code: String, // 营业部代码
     pub buy: f64,
     pub sell: f64,
     pub net: f64,
-    pub buy_ratio: f64,    // 买入占总成交比例 %
+    pub buy_ratio: f64, // 买入占总成交比例 %
     pub sell_ratio: f64,
-    pub times3: i64,       // 近 3 日上榜次数
-    pub tag: String,       // 知名游资 / 机构 / 北向 标签
+    pub times3: i64, // 近 3 日上榜次数
+    pub tag: String, // 知名游资 / 机构 / 北向 标签
 }
 
 #[derive(Serialize, Clone)]
@@ -977,8 +1008,13 @@ async fn dc_get(
 /// 最新一个龙虎榜交易日（YYYY-MM-DD）
 async fn latest_lhb_date() -> Result<String, String> {
     let rows = dc_get(
-        "RPT_DAILYBILLBOARD_DETAILS", "TRADE_DATE", "",
-        "TRADE_DATE", "-1", 1, 1,
+        "RPT_DAILYBILLBOARD_DETAILS",
+        "TRADE_DATE",
+        "",
+        "TRADE_DATE",
+        "-1",
+        1,
+        1,
     )
     .await?;
     let raw = rows
@@ -1004,8 +1040,13 @@ pub async fn lhb_list(date: &str) -> Result<LhbList, String> {
     };
     let filter = enc_filter(&format!("(TRADE_DATE='{}')", date));
     let rows = dc_get(
-        "RPT_DAILYBILLBOARD_DETAILS", LHB_COLS, &filter,
-        "BILLBOARD_NET_AMT", "-1", 500, 1,
+        "RPT_DAILYBILLBOARD_DETAILS",
+        LHB_COLS,
+        &filter,
+        "BILLBOARD_NET_AMT",
+        "-1",
+        500,
+        1,
     )
     .await?;
 
@@ -1028,7 +1069,11 @@ pub async fn lhb_list(date: &str) -> Result<LhbList, String> {
             sell_amt: vf(v, "BILLBOARD_SELL_AMT"),
             deal_amt: vf(v, "BILLBOARD_DEAL_AMT"),
             free_mv: vf(v, "FREE_MARKET_CAP"),
-            reasons: if reason.is_empty() { vec![] } else { vec![reason.clone()] },
+            reasons: if reason.is_empty() {
+                vec![]
+            } else {
+                vec![reason.clone()]
+            },
         });
         if !reason.is_empty() && !e.reasons.contains(&reason) {
             e.reasons.push(reason);
@@ -1122,13 +1167,23 @@ pub async fn lhb_detail(code: &str, date: &str) -> Result<LhbDetail, String> {
         date, code
     ));
     let buyers = dc_get(
-        "RPT_BILLBOARD_DAILYDETAILSBUY", "ALL", &filter,
-        "BUY", "-1", 100, 1,
+        "RPT_BILLBOARD_DAILYDETAILSBUY",
+        "ALL",
+        &filter,
+        "BUY",
+        "-1",
+        100,
+        1,
     )
     .await?;
     let sellers = dc_get(
-        "RPT_BILLBOARD_DAILYDETAILSSELL", "ALL", &filter,
-        "SELL", "-1", 100, 1,
+        "RPT_BILLBOARD_DAILYDETAILSSELL",
+        "ALL",
+        &filter,
+        "SELL",
+        "-1",
+        100,
+        1,
     )
     .await?;
 
@@ -1188,15 +1243,15 @@ pub async fn lhb_detail(code: &str, date: &str) -> Result<LhbDetail, String> {
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SeatHorizonStat {
-    pub avg: f64,    // 上榜后平均涨幅 %
-    pub prob: f64,   // 上涨概率 %
-    pub times: i64,  // 样本（买入）次数
+    pub avg: f64,   // 上榜后平均涨幅 %
+    pub prob: f64,  // 上涨概率 %
+    pub times: i64, // 样本（买入）次数
 }
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SeatBackRow {
-    pub cycle: String,   // 近一月 / 近三月 / 近六月 / 近一年
+    pub cycle: String, // 近一月 / 近三月 / 近六月 / 近一年
     pub d1: SeatHorizonStat,
     pub d2: SeatHorizonStat,
     pub d3: SeatHorizonStat,
@@ -1249,10 +1304,7 @@ fn vfo(v: &Value, k: &str) -> Option<f64> {
 /// 营业部上榜后表现回测概况（近月/季/半年/一年 × 1/2/3/5/10 日胜率）
 pub async fn seat_back(code: &str) -> Result<SeatBack, String> {
     let filter = enc_filter(&format!("(OPERATEDEPT_CODE=\"{}\")", code));
-    let rows = dc_get(
-        "RPT_TRADE_BACK_PROFILE", "ALL", &filter, "", "", 50, 1,
-    )
-    .await?;
+    let rows = dc_get("RPT_TRADE_BACK_PROFILE", "ALL", &filter, "", "", 50, 1).await?;
 
     let mut sorted = rows.clone();
     sorted.sort_by_key(|v| vs2(v, "STATISTICSCYCLE"));
@@ -1407,9 +1459,11 @@ pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
     // f43最新价 f44高 f45低 f46开 f47量 f48额 f57代码 f58名称 f60昨收
     let mut fields: Vec<String> = (11..=40).map(|i| format!("f{i}")).collect();
     fields.extend(
-        ["f43", "f44", "f45", "f46", "f47", "f48", "f57", "f58", "f60"]
-            .iter()
-            .map(|s| s.to_string()),
+        [
+            "f43", "f44", "f45", "f46", "f47", "f48", "f57", "f58", "f60",
+        ]
+        .iter()
+        .map(|s| s.to_string()),
     );
     let path = format!(
         "/api/qt/stock/get?secid={secid}\
@@ -1433,7 +1487,10 @@ pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
         if price <= 0.0 {
             break;
         }
-        bids.push(OrderLevel { price, vol: fnum(&vk) });
+        bids.push(OrderLevel {
+            price,
+            vol: fnum(&vk),
+        });
     }
     // 卖盘：从 f31 起扫描（f31-f40 = 5 档）
     let mut asks: Vec<OrderLevel> = Vec::new();
@@ -1444,7 +1501,10 @@ pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
         if price <= 0.0 {
             break;
         }
-        asks.push(OrderLevel { price, vol: fnum(&vk) });
+        asks.push(OrderLevel {
+            price,
+            vol: fnum(&vk),
+        });
     }
 
     let code_s = d
@@ -1453,7 +1513,11 @@ pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
         .unwrap_or(code)
         .to_string();
     Ok(OrderBook {
-        name: d.get("f58").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+        name: d
+            .get("f58")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string(),
         code: code_s,
         price: fnum("f43"),
         prev_close: fnum("f60"),
@@ -1552,7 +1616,10 @@ async fn tags_chunk_once(fs: &str) -> Result<Vec<TagsRow>, String> {
         );
         let got = tokio::time::timeout(
             Duration::from_secs(15),
-            http().get(&url).header("Referer", "https://quote.eastmoney.com/").send(),
+            http()
+                .get(&url)
+                .header("Referer", "https://quote.eastmoney.com/")
+                .send(),
         )
         .await;
         match got {
@@ -1591,7 +1658,8 @@ pub async fn stock_theme_tags(codes: &[String]) -> Result<Vec<StockThemeTags>, S
     }
 
     // code -> (industry, concepts)
-    let mut map: std::collections::HashMap<String, (String, Vec<String>)> = std::collections::HashMap::new();
+    let mut map: std::collections::HashMap<String, (String, Vec<String>)> =
+        std::collections::HashMap::new();
     for chunk in valid.chunks(50) {
         let secids: Vec<String> = chunk
             .iter()
@@ -1605,7 +1673,9 @@ pub async fn stock_theme_tags(codes: &[String]) -> Result<Vec<StockThemeTags>, S
             }
             let industry = tag_str(&r.industry);
             let concepts = split_concepts(&tag_str(&r.concepts));
-            let entry = map.entry(r.code.clone()).or_insert_with(|| (String::new(), Vec::new()));
+            let entry = map
+                .entry(r.code.clone())
+                .or_insert_with(|| (String::new(), Vec::new()));
             if entry.0.is_empty() && !industry.is_empty() {
                 entry.0 = industry;
             }
@@ -1687,7 +1757,10 @@ mod tests {
         let rows = parse_fixture();
         // "-" 行业归一化为空；空 f128 无概念
         assert_eq!(tag_str(&rows[2].industry), "");
-        assert_eq!(split_concepts(&tag_str(&rows[2].concepts)), Vec::<String>::new());
+        assert_eq!(
+            split_concepts(&tag_str(&rows[2].concepts)),
+            Vec::<String>::new()
+        );
         // f127 缺失（只有 f128）时行业为空、概念正常
         assert_eq!(tag_str(&rows[3].industry), "");
         assert_eq!(
@@ -1696,7 +1769,10 @@ mod tests {
         );
         // f127/f128 显式 null
         assert_eq!(tag_str(&rows[4].industry), "");
-        assert_eq!(split_concepts(&tag_str(&rows[4].concepts)), Vec::<String>::new());
+        assert_eq!(
+            split_concepts(&tag_str(&rows[4].concepts)),
+            Vec::<String>::new()
+        );
     }
 
     #[test]

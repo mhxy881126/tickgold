@@ -234,7 +234,10 @@ fn parse_finance(html: &str) -> FinanceReport {
             continue;
         }
         let values = tds[1..].iter().map(|td| parse_num(&el_text(td))).collect();
-        cur.rows.push(FinanceRow { name: first, values });
+        cur.rows.push(FinanceRow {
+            name: first,
+            values,
+        });
     }
     if cur.name != "核心指标" || !cur.rows.is_empty() {
         groups.push(cur);

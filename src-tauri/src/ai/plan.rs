@@ -70,7 +70,8 @@ fn extract_plan_json(raw: &str) -> Value {
         (Some(s), Some(e)) if e >= s => &t[s..=e],
         _ => t,
     };
-    serde_json::from_str(body).unwrap_or_else(|_| json!({"title":"", "marketView": t, "instructions": []}))
+    serde_json::from_str(body)
+        .unwrap_or_else(|_| json!({"title":"", "marketView": t, "instructions": []}))
 }
 
 /// 当日复盘内容（市场/题材/个股）供计划引用。
@@ -106,7 +107,9 @@ fn current_profiles(
 ) -> Result<Vec<Value>, String> {
     let sql = "SELECT key,name,version,spec FROM strategy_profile WHERE is_current=1 \
         AND (?1 IS NULL OR key=?1)";
-    let mut stmt = c.prepare(sanitize_profile_sql(sql)).map_err(|e| e.to_string())?;
+    let mut stmt = c
+        .prepare(sanitize_profile_sql(sql))
+        .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(rusqlite::params![profile_key], |r| {
             Ok(json!({
@@ -151,7 +154,9 @@ fn save_plan(
     )
     .map_err(|e| e.to_string())?;
     let plan_id: i64 = c
-        .query_row("SELECT id FROM plan WHERE plan_date=?1", [plan_date], |r| r.get(0))
+        .query_row("SELECT id FROM plan WHERE plan_date=?1", [plan_date], |r| {
+            r.get(0)
+        })
         .map_err(|e| e.to_string())?;
     // 指令全量重建（编辑旧计划时以最新生成结果为准）
     c.execute("DELETE FROM plan_instruction WHERE plan_id=?1", [plan_id])
@@ -233,7 +238,11 @@ pub async fn generate_plan(
     };
     save_plan(&c, &plan_date, &source_date, profile_key, &model_used, &pj)?;
     let id: i64 = c
-        .query_row("SELECT id FROM plan WHERE plan_date=?1", [&plan_date], |r| r.get(0))
+        .query_row(
+            "SELECT id FROM plan WHERE plan_date=?1",
+            [&plan_date],
+            |r| r.get(0),
+        )
         .map_err(|e| e.to_string())?;
     plan_to_json(&c, id)
 }
@@ -264,22 +273,23 @@ fn plan_to_json(c: &rusqlite::Connection, id: i64) -> Result<Value, String> {
              FROM plan_instruction WHERE plan_id=?1 ORDER BY sort",
         )
         .map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([id], |r| {
-        Ok(json!({
-            "id": r.get::<_, i64>(0)?,
-            "tier": r.get::<_, String>(1)?,
-            "code": r.get::<_, String>(2)?,
-            "name": r.get::<_, String>(3)?,
-            "theme": r.get::<_, String>(4)?,
-            "condition": r.get::<_, String>(5)?,
-            "action": r.get::<_, String>(6)?,
-            "positionHint": r.get::<_, String>(7)?,
-            "alertRule": r.get::<_, String>(8)?,
-            "status": r.get::<_, String>(9)?,
-            "sort": r.get::<_, i64>(10)?
-        }))
-    })
-    .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([id], |r| {
+            Ok(json!({
+                "id": r.get::<_, i64>(0)?,
+                "tier": r.get::<_, String>(1)?,
+                "code": r.get::<_, String>(2)?,
+                "name": r.get::<_, String>(3)?,
+                "theme": r.get::<_, String>(4)?,
+                "condition": r.get::<_, String>(5)?,
+                "action": r.get::<_, String>(6)?,
+                "positionHint": r.get::<_, String>(7)?,
+                "alertRule": r.get::<_, String>(8)?,
+                "status": r.get::<_, String>(9)?,
+                "sort": r.get::<_, i64>(10)?
+            }))
+        })
+        .map_err(|e| e.to_string())?;
     let mut arr = vec![];
     for r in rows {
         arr.push(r.map_err(|e| e.to_string())?);
@@ -292,9 +302,11 @@ fn plan_to_json(c: &rusqlite::Connection, id: i64) -> Result<Value, String> {
 pub fn get_latest_plan(data_dir: &Path) -> Result<Value, String> {
     let c = open_readwrite(data_dir)?;
     let id = c
-        .query_row("SELECT id FROM plan ORDER BY plan_date DESC LIMIT 1", [], |r| {
-            r.get::<_, i64>(0)
-        })
+        .query_row(
+            "SELECT id FROM plan ORDER BY plan_date DESC LIMIT 1",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
         .map_err(|_| "暂无作战计划，请先生成".to_string())?;
     plan_to_json(&c, id)
 }
@@ -314,12 +326,7 @@ pub fn set_plan_status(data_dir: &Path, id: i64, status: &str) -> Result<(), Str
     Ok(())
 }
 
-pub fn update_plan_text(
-    data_dir: &Path,
-    id: i64,
-    field: &str,
-    value: &str,
-) -> Result<(), String> {
+pub fn update_plan_text(data_dir: &Path, id: i64, field: &str, value: &str) -> Result<(), String> {
     let col = match field {
         "title" => "title",
         "marketView" => "market_view",
@@ -361,12 +368,13 @@ pub fn update_instruction(
 /// 指令 alertRule 映射为 alerts 行，返回新预警 id。
 pub fn convert_instruction_to_alert(data_dir: &Path, instr_id: i64) -> Result<String, String> {
     let c = open_readwrite(data_dir)?;
-    let (code, name, rule_json): (String, String, String) = c.query_row(
-        "SELECT code,name,alert_rule FROM plan_instruction WHERE id=?1",
-        [instr_id],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-    )
-    .map_err(|e| e.to_string())?;
+    let (code, name, rule_json): (String, String, String) = c
+        .query_row(
+            "SELECT code,name,alert_rule FROM plan_instruction WHERE id=?1",
+            [instr_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .map_err(|e| e.to_string())?;
     let rule = serde_json::from_str::<Value>(&rule_json).unwrap_or(json!({}));
     let id = format!("plan-{}-{}", code, now_millis());
     c.execute(
@@ -422,8 +430,8 @@ mod tests {
     fn fresh_db() -> (std::path::PathBuf, rusqlite::Connection) {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir()
-            .join(format!("tickgold-plan-{}-{}", crate::ai::now_millis(), seq));
+        let dir =
+            std::env::temp_dir().join(format!("tickgold-plan-{}-{}", crate::ai::now_millis(), seq));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let c = rusqlite::Connection::open(dir.join("stock-dock.db")).unwrap();
@@ -453,10 +461,12 @@ mod tests {
         let p2 = json!({"title":"T2","marketView":"V2","instructions":[
             {"tier":"candidate","code":"300003","name":"丙"}]});
         save_plan(&c, "2026-10-05", "2026-10-02", None, &cfg.chat_model, &p2).unwrap();
-        let plan_count: i64 =
-            c.query_row("SELECT count(*) FROM plan", [], |r| r.get(0)).unwrap();
-        let instr_count: i64 =
-            c.query_row("SELECT count(*) FROM plan_instruction", [], |r| r.get(0)).unwrap();
+        let plan_count: i64 = c
+            .query_row("SELECT count(*) FROM plan", [], |r| r.get(0))
+            .unwrap();
+        let instr_count: i64 = c
+            .query_row("SELECT count(*) FROM plan_instruction", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(plan_count, 1);
         assert_eq!(instr_count, 1, "旧指令应被删除后重建");
         let _ = std::fs::remove_dir_all(&dir);
@@ -478,9 +488,11 @@ mod tests {
         .unwrap();
         let id = convert_instruction_to_alert(&dir, 7).unwrap();
         let (up_price, up_pct, rise): (f64, f64, f64) = c
-            .query_row("SELECT up_price,up_pct,rise_speed FROM alerts WHERE id=?1", [&id], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
-            })
+            .query_row(
+                "SELECT up_price,up_pct,rise_speed FROM alerts WHERE id=?1",
+                [&id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
             .unwrap();
         assert_eq!(up_price, 10.5);
         assert_eq!(up_pct, 5.0);

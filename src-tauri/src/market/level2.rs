@@ -120,11 +120,19 @@ mod tests {
 
     fn base_book() -> OrderBook {
         let mut b = OrderBook {
-            name: "甲".into(), code: "300001".into(), price: 10.0,
+            name: "甲".into(),
+            code: "300001".into(),
+            price: 10.0,
             ..Default::default()
         };
-        b.bids = vec![OrderLevel { price: 9.9, vol: 10.0 }];
-        b.asks = vec![OrderLevel { price: 10.1, vol: 20.0 }];
+        b.bids = vec![OrderLevel {
+            price: 9.9,
+            vol: 10.0,
+        }];
+        b.asks = vec![OrderLevel {
+            price: 10.1,
+            vol: 20.0,
+        }];
         b.fill_depth();
         b
     }

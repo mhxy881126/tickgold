@@ -13,9 +13,9 @@ use tauri::State;
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct EvolutionConfig {
-    pub stop_pct: f64,     // 止损阈值（%，负数）
-    pub target_pct: f64,   // 止盈阈值（%）
-    pub horizon: i64,      // 评估后续交易日数（≤5）
+    pub stop_pct: f64,       // 止损阈值（%，负数）
+    pub target_pct: f64,     // 止盈阈值（%）
+    pub horizon: i64,        // 评估后续交易日数（≤5）
     pub include_watch: bool, // 是否同时评估观察信号（纸面校准阈值）
 }
 
@@ -326,35 +326,36 @@ pub fn list_labels(
     sql.push_str(&format!(" ORDER BY t.id DESC LIMIT {limit}"));
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let mapped = stmt.query_map(rusqlite::params_from_iter(vfilter.iter()), |r| {
-                let opt = |i: usize| r.get::<_, Option<f64>>(i).unwrap_or(None);
-                Ok(json!({
-                    "id": r.get::<_, i64>(0)?,
-                    "decisionId": r.get::<_, i64>(1)?,
-                    "tradeDate": r.get::<_, String>(2)?,
-                    "code": r.get::<_, String>(3)?,
-                    "name": r.get::<_, String>(4)?,
-                    "decisionLabel": r.get::<_, String>(5)?,
-                    "modelVersion": r.get::<_, String>(6)?,
-                    "strategy": r.get::<_, String>(7)?,
-                    "entryPrice": r.get::<_, f64>(8)?,
-                    "ret1d": opt(9),
-                    "ret2d": opt(10),
-                    "ret3d": opt(11),
-                    "ret5d": opt(12),
-                    "maxGain": r.get::<_, f64>(13)?,
-                    "maxPain": r.get::<_, f64>(14)?,
-                    "hitStop": r.get::<_, i64>(15).unwrap_or(0) == 1,
-                    "hitTarget": r.get::<_, i64>(16).unwrap_or(0) == 1,
-                    "horizonDays": r.get::<_, i64>(17).unwrap_or(0),
-                    "verdict": r.get::<_, String>(18)?,
-                    "missType": r.get::<_, String>(19)?,
-                    "checkedAt": r.get::<_, i64>(20)?,
-                    "confidence": r.get::<_, f64>(21).unwrap_or(0.0),
-                    "ts": r.get::<_, String>(22).unwrap_or_default(),
-                    "action": r.get::<_, String>(23).unwrap_or_default(),
-                }))
-            })
+    let mapped = stmt
+        .query_map(rusqlite::params_from_iter(vfilter.iter()), |r| {
+            let opt = |i: usize| r.get::<_, Option<f64>>(i).unwrap_or(None);
+            Ok(json!({
+                "id": r.get::<_, i64>(0)?,
+                "decisionId": r.get::<_, i64>(1)?,
+                "tradeDate": r.get::<_, String>(2)?,
+                "code": r.get::<_, String>(3)?,
+                "name": r.get::<_, String>(4)?,
+                "decisionLabel": r.get::<_, String>(5)?,
+                "modelVersion": r.get::<_, String>(6)?,
+                "strategy": r.get::<_, String>(7)?,
+                "entryPrice": r.get::<_, f64>(8)?,
+                "ret1d": opt(9),
+                "ret2d": opt(10),
+                "ret3d": opt(11),
+                "ret5d": opt(12),
+                "maxGain": r.get::<_, f64>(13)?,
+                "maxPain": r.get::<_, f64>(14)?,
+                "hitStop": r.get::<_, i64>(15).unwrap_or(0) == 1,
+                "hitTarget": r.get::<_, i64>(16).unwrap_or(0) == 1,
+                "horizonDays": r.get::<_, i64>(17).unwrap_or(0),
+                "verdict": r.get::<_, String>(18)?,
+                "missType": r.get::<_, String>(19)?,
+                "checkedAt": r.get::<_, i64>(20)?,
+                "confidence": r.get::<_, f64>(21).unwrap_or(0.0),
+                "ts": r.get::<_, String>(22).unwrap_or_default(),
+                "action": r.get::<_, String>(23).unwrap_or_default(),
+            }))
+        })
         .map_err(|e| e.to_string())?;
     Ok(mapped.flatten().collect())
 }
@@ -464,7 +465,11 @@ pub fn stats(data_dir: &std::path::Path) -> Result<Value, String> {
         } else {
             0.0
         };
-        let avg_win = if a.win_n > 0 { a.win_sum / a.win_n as f64 } else { 0.0 };
+        let avg_win = if a.win_n > 0 {
+            a.win_sum / a.win_n as f64
+        } else {
+            0.0
+        };
         let avg_loss = if a.loss_n > 0 {
             (a.loss_sum / a.loss_n as f64).abs()
         } else {
@@ -592,7 +597,10 @@ pub fn data_check(
             )
             .map_err(|e| e.to_string())? as i64;
         deleted_old_labels = wc
-            .execute("DELETE FROM trade_label WHERE trade_date<?1", rusqlite::params![keep_cutoff])
+            .execute(
+                "DELETE FROM trade_label WHERE trade_date<?1",
+                rusqlite::params![keep_cutoff],
+            )
             .map_err(|e| e.to_string())? as i64;
         deleted_old_decisions = wc
             .execute(
@@ -631,7 +639,12 @@ pub async fn evolution_run_labeling(
     config: Option<EvolutionConfig>,
     force: Option<bool>,
 ) -> Result<Value, String> {
-    run_labeling(&state.dir(), config.unwrap_or_default(), force.unwrap_or(false)).await
+    run_labeling(
+        &state.dir(),
+        config.unwrap_or_default(),
+        force.unwrap_or(false),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -654,7 +667,11 @@ pub fn evolution_data_check(
     cleanup: Option<bool>,
     keep_days: Option<i64>,
 ) -> Result<Value, String> {
-    data_check(&state.dir(), cleanup.unwrap_or(false), keep_days.unwrap_or(180))
+    data_check(
+        &state.dir(),
+        cleanup.unwrap_or(false),
+        keep_days.unwrap_or(180),
+    )
 }
 
 // ===== 单测 =====

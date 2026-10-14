@@ -12,11 +12,11 @@ fn round2(v: f64) -> f64 {
 
 /// 最近交易日：优先日级情绪表 ts_day，回退涨停定格表。
 fn latest_day(c: &Connection) -> Result<String, String> {
-    if let Ok(d) =
-        c.query_row("SELECT day FROM ts_day ORDER BY day DESC LIMIT 1", [], |r| {
-            r.get::<_, String>(0)
-        })
-    {
+    if let Ok(d) = c.query_row(
+        "SELECT day FROM ts_day ORDER BY day DESC LIMIT 1",
+        [],
+        |r| r.get::<_, String>(0),
+    ) {
         return Ok(d);
     }
     c.query_row(
@@ -127,20 +127,19 @@ fn market_trend(c: &Connection) -> Result<Vec<Value>, String> {
 /// 当日指数日级快照。
 fn indices(c: &Connection, date: &str) -> Result<Vec<Value>, String> {
     let mut stmt = c
-        .prepare(
-            "SELECT code,name,price,pct,amount FROM ts_index_day WHERE day=?1",
-        )
+        .prepare("SELECT code,name,price,pct,amount FROM ts_index_day WHERE day=?1")
         .map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([date], |r| {
-        Ok(json!({
-            "code": r.get::<_, String>(0)?,
-            "name": r.get::<_, String>(1)?,
-            "price": r.get::<_, Option<f64>>(2)?,
-            "pct": r.get::<_, Option<f64>>(3)?,
-            "amount": r.get::<_, Option<f64>>(4)?,
-        }))
-    })
-    .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([date], |r| {
+            Ok(json!({
+                "code": r.get::<_, String>(0)?,
+                "name": r.get::<_, String>(1)?,
+                "price": r.get::<_, Option<f64>>(2)?,
+                "pct": r.get::<_, Option<f64>>(3)?,
+                "amount": r.get::<_, Option<f64>>(4)?,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
     let mut out = vec![];
     for r in rows {
         out.push(r.map_err(|e| e.to_string())?);
@@ -261,17 +260,18 @@ fn catalysts(c: &Connection) -> Result<Vec<Value>, String> {
              ORDER BY COALESCE(c.published_at,c.collected_at) DESC LIMIT 15",
         )
         .map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([], |r| {
-        Ok(json!({
-            "kind": r.get::<_, String>(0)?,
-            "title": r.get::<_, String>(1)?,
-            "direction": r.get::<_, Option<String>>(2)?,
-            "code": r.get::<_, Option<String>>(3)?,
-            "theme": r.get::<_, Option<String>>(4)?,
-            "ts": r.get::<_, Option<i64>>(5)?,
-        }))
-    })
-    .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(json!({
+                "kind": r.get::<_, String>(0)?,
+                "title": r.get::<_, String>(1)?,
+                "direction": r.get::<_, Option<String>>(2)?,
+                "code": r.get::<_, Option<String>>(3)?,
+                "theme": r.get::<_, Option<String>>(4)?,
+                "ts": r.get::<_, Option<i64>>(5)?,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
     let mut out = vec![];
     for r in rows {
         out.push(r.map_err(|e| e.to_string())?);
@@ -289,18 +289,19 @@ fn multiboard(c: &Connection, date: &str) -> Result<Vec<Value>, String> {
              ORDER BY boards DESC, first_seal LIMIT 30",
         )
         .map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([date], |r| {
-        Ok(json!({
-            "code": r.get::<_, String>(0)?,
-            "name": r.get::<_, String>(1)?,
-            "boards": r.get::<_, i64>(2)?,
-            "firstSeal": r.get::<_, Option<i64>>(3)?,
-            "sealFund": r.get::<_, Option<f64>>(4)?,
-            "broken": r.get::<_, i64>(5)?,
-            "industry": r.get::<_, Option<String>>(6)?,
-        }))
-    })
-    .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([date], |r| {
+            Ok(json!({
+                "code": r.get::<_, String>(0)?,
+                "name": r.get::<_, String>(1)?,
+                "boards": r.get::<_, i64>(2)?,
+                "firstSeal": r.get::<_, Option<i64>>(3)?,
+                "sealFund": r.get::<_, Option<f64>>(4)?,
+                "broken": r.get::<_, i64>(5)?,
+                "industry": r.get::<_, Option<String>>(6)?,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
     let mut out = vec![];
     for r in rows {
         out.push(r.map_err(|e| e.to_string())?);
@@ -316,16 +317,17 @@ fn positions(c: &Connection) -> Result<Vec<Value>, String> {
              FROM paper_position WHERE vol>0 ORDER BY code",
         )
         .map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([], |r| {
-        Ok(json!({
-            "code": r.get::<_, String>(0)?,
-            "name": r.get::<_, String>(1)?,
-            "vol": r.get::<_, i64>(2)?,
-            "availVol": r.get::<_, i64>(3)?,
-            "costAmount": r.get::<_, f64>(4)?,
-        }))
-    })
-    .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(json!({
+                "code": r.get::<_, String>(0)?,
+                "name": r.get::<_, String>(1)?,
+                "vol": r.get::<_, i64>(2)?,
+                "availVol": r.get::<_, i64>(3)?,
+                "costAmount": r.get::<_, f64>(4)?,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
     let mut out = vec![];
     for r in rows {
         out.push(r.map_err(|e| e.to_string())?);
@@ -345,13 +347,13 @@ pub fn build_pack(data_dir: &Path, date: Option<&str>) -> Result<Value, String> 
         Some(d) => d.to_string(),
         None => latest_day(&c)?,
     };
-    
+
     // 读取当日作战计划
     let plan = read_today_plan(&c, &date).unwrap_or_default();
-    
+
     // 读取当日决策日志
     let decision_logs = read_today_decision_logs(&c, &date).unwrap_or_default();
-    
+
     Ok(json!({
         "date": date,
         "generatedAt": crate::ai::now_millis(),
@@ -374,42 +376,48 @@ pub fn build_pack(data_dir: &Path, date: Option<&str>) -> Result<Value, String> 
 /// 读取当日作战计划
 fn read_today_plan(c: &rusqlite::Connection, date: &str) -> Result<Value, String> {
     // 查 plan 表，找到当日的计划
-    let plan_id: i64 = c.query_row(
-        "SELECT id FROM plan WHERE plan_date=?1 LIMIT 1",
-        [date],
-        |r| r.get(0),
-    ).unwrap_or(0);
-    
+    let plan_id: i64 = c
+        .query_row(
+            "SELECT id FROM plan WHERE plan_date=?1 LIMIT 1",
+            [date],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+
     if plan_id == 0 {
         return Ok(json!({ "exists": false, "instructions": [] }));
     }
-    
+
     // 读计划基本信息
-    let (title, market_view): (String, String) = c.query_row(
-        "SELECT title, market_view FROM plan WHERE id=?1",
-        [plan_id],
-        |r| Ok((r.get(0)?, r.get(1)?)),
-    ).unwrap_or((String::new(), String::new()));
-    
+    let (title, market_view): (String, String) = c
+        .query_row(
+            "SELECT title, market_view FROM plan WHERE id=?1",
+            [plan_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap_or((String::new(), String::new()));
+
     // 读计划指令
     let mut stmt = c.prepare(
         "SELECT tier, code, name, condition, action FROM plan_instruction WHERE plan_id=?1 ORDER BY sort",
     ).map_err(|e| e.to_string())?;
-    let instructions = stmt.query_map([plan_id], |r| {
-        Ok(json!({
-            "tier": r.get::<_, String>(0)?,
-            "code": r.get::<_, String>(1)?,
-            "name": r.get::<_, String>(2)?,
-            "condition": r.get::<_, String>(3)?,
-            "action": r.get::<_, String>(4)?,
-        }))
-    }).map_err(|e| e.to_string())?;
-    
+    let instructions = stmt
+        .query_map([plan_id], |r| {
+            Ok(json!({
+                "tier": r.get::<_, String>(0)?,
+                "code": r.get::<_, String>(1)?,
+                "name": r.get::<_, String>(2)?,
+                "condition": r.get::<_, String>(3)?,
+                "action": r.get::<_, String>(4)?,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+
     let mut list = vec![];
     for ins in instructions {
         list.push(ins.map_err(|e| e.to_string())?);
     }
-    
+
     Ok(json!({
         "exists": true,
         "title": title,
@@ -423,23 +431,25 @@ fn read_today_decision_logs(c: &rusqlite::Connection, date: &str) -> Result<Valu
     let mut stmt = c.prepare(
         "SELECT code, name, label, confidence, mode, action, features FROM decision_log WHERE trade_date=?1 ORDER BY id DESC LIMIT 20",
     ).map_err(|e| e.to_string())?;
-    let logs = stmt.query_map([date], |r| {
-        Ok(json!({
-            "code": r.get::<_, String>(0)?,
-            "name": r.get::<_, String>(1)?,
-            "label": r.get::<_, String>(2)?,
-            "confidence": r.get::<_, f64>(3)?,
-            "mode": r.get::<_, String>(4)?,
-            "action": r.get::<_, String>(5)?,
-            "features": r.get::<_, String>(6).unwrap_or_default(),
-        }))
-    }).map_err(|e| e.to_string())?;
-    
+    let logs = stmt
+        .query_map([date], |r| {
+            Ok(json!({
+                "code": r.get::<_, String>(0)?,
+                "name": r.get::<_, String>(1)?,
+                "label": r.get::<_, String>(2)?,
+                "confidence": r.get::<_, f64>(3)?,
+                "mode": r.get::<_, String>(4)?,
+                "action": r.get::<_, String>(5)?,
+                "features": r.get::<_, String>(6).unwrap_or_default(),
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+
     let mut list = vec![];
     for log in logs {
         list.push(log.map_err(|e| e.to_string())?);
     }
-    
+
     Ok(json!(list))
 }
 
@@ -477,8 +487,11 @@ mod tests {
     fn seeded() -> std::path::PathBuf {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir()
-            .join(format!("tickgold-decision-{}-{}", crate::ai::now_millis(), seq));
+        let dir = std::env::temp_dir().join(format!(
+            "tickgold-decision-{}-{}",
+            crate::ai::now_millis(),
+            seq
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let c = Connection::open(dir.join("stock-dock.db")).unwrap();
@@ -560,8 +573,11 @@ mod tests {
     fn latest_day_falls_back_to_limit_record() {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir()
-            .join(format!("tickgold-decision-lb-{}-{}", crate::ai::now_millis(), seq));
+        let dir = std::env::temp_dir().join(format!(
+            "tickgold-decision-lb-{}-{}",
+            crate::ai::now_millis(),
+            seq
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let c = Connection::open(dir.join("stock-dock.db")).unwrap();

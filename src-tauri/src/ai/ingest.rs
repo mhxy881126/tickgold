@@ -340,9 +340,9 @@ mod tests {
         let chunks = split_markdown(&md);
         assert!(chunks.len() >= 2);
         // 代码块完整落在某一个块中
-        assert!(chunks.iter().any(
-            |c| c.contains("```rust") && c.contains("fn main()") && c.contains("```")
-        ));
+        assert!(chunks
+            .iter()
+            .any(|c| c.contains("```rust") && c.contains("fn main()") && c.contains("```")));
     }
 
     #[test]
@@ -367,7 +367,9 @@ mod tests {
     fn headings_split_sections() {
         let md = "# 一\n内容甲\n# 二\n内容乙";
         let chunks = split_markdown(md);
-        assert!(chunks.iter().any(|c| c.contains("内容甲") && c.contains("# 一")));
+        assert!(chunks
+            .iter()
+            .any(|c| c.contains("内容甲") && c.contains("# 一")));
         assert!(chunks.iter().any(|c| c.contains("内容乙")));
     }
 
@@ -391,8 +393,11 @@ mod tests {
     fn seeded_dir() -> std::path::PathBuf {
         static DIR_SEQ: AtomicU64 = AtomicU64::new(0);
         let seq = DIR_SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir()
-            .join(format!("tickgold-ai-ingest-{}-{}", crate::ai::now_millis(), seq));
+        let dir = std::env::temp_dir().join(format!(
+            "tickgold-ai-ingest-{}-{}",
+            crate::ai::now_millis(),
+            seq
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let c = rusqlite::Connection::open(dir.join("stock-dock.db")).unwrap();
@@ -466,9 +471,8 @@ mod tests {
         let db = vectordb::open(&dir.join("ai.db")).unwrap();
         let pending = vectordb::list_pending(&db.0, 100).unwrap();
         assert_eq!(pending.len(), 4);
-        let embedded: i64 = db
-            .0
-            .query_row("SELECT count(*) FROM kb_chunk WHERE embedded=1", [], |r| {
+        let embedded: i64 =
+            db.0.query_row("SELECT count(*) FROM kb_chunk WHERE embedded=1", [], |r| {
                 r.get(0)
             })
             .unwrap();

@@ -82,7 +82,11 @@ pub(crate) fn classify(tactic: &str, c: &Candidate) -> Option<String> {
         "first_board" => {
             let z = c.zt?;
             if z.boards == 1 {
-                Some(format!("首板涨停 · 封单{:.1}亿 · 首封 {}", z.fund / 1e8, hms(z.first_seal)))
+                Some(format!(
+                    "首板涨停 · 封单{:.1}亿 · 首封 {}",
+                    z.fund / 1e8,
+                    hms(z.first_seal)
+                ))
             } else {
                 None
             }
@@ -101,7 +105,10 @@ pub(crate) fn classify(tactic: &str, c: &Candidate) -> Option<String> {
             let bear_prev = p.close < p.open;
             let bull_today = today.close > today.open;
             if bear_prev && bull_today && today.close >= p.high {
-                Some(format!("阳包阴反包 · 收盘{:.2}站上昨日高点{:.2}", today.close, p.high))
+                Some(format!(
+                    "阳包阴反包 · 收盘{:.2}站上昨日高点{:.2}",
+                    today.close, p.high
+                ))
             } else {
                 None
             }
@@ -122,7 +129,11 @@ pub(crate) fn classify(tactic: &str, c: &Candidate) -> Option<String> {
                 0.0
             };
             if weak_prev && chg >= 3.0 && close_pos >= 0.7 {
-                Some(format!("弱转强 · 涨{:.1}% · 收盘位于日高{:.0}%", chg, close_pos * 100.0))
+                Some(format!(
+                    "弱转强 · 涨{:.1}% · 收盘位于日高{:.0}%",
+                    chg,
+                    close_pos * 100.0
+                ))
             } else {
                 None
             }
@@ -166,7 +177,11 @@ pub async fn scan(req: &StrategyScanReq) -> Result<Vec<TacticHit>, String> {
     let wanted: Vec<&str> = if req.tactics.is_empty() {
         TACTICS.to_vec()
     } else {
-        req.tactics.iter().map(String::as_str).filter(|t| TACTICS.contains(t)).collect()
+        req.tactics
+            .iter()
+            .map(String::as_str)
+            .filter(|t| TACTICS.contains(t))
+            .collect()
     };
     if wanted.is_empty() {
         return Ok(Vec::new());
@@ -175,7 +190,11 @@ pub async fn scan(req: &StrategyScanReq) -> Result<Vec<TacticHit>, String> {
     // 1) 涨停池（板块龙头/首板/连板的权威来源；失败不致命）。
     let zt_pool = get_zt_pool(today_yyyymmdd())
         .await
-        .unwrap_or_else(|_| ZtPool { date: String::new(), total: 0, list: Vec::new() });
+        .unwrap_or_else(|_| ZtPool {
+            date: String::new(),
+            total: 0,
+            list: Vec::new(),
+        });
     let zt_map: HashMap<&str, &ZtStock> =
         zt_pool.list.iter().map(|z| (z.code.as_str(), z)).collect();
 
@@ -183,8 +202,7 @@ pub async fn scan(req: &StrategyScanReq) -> Result<Vec<TacticHit>, String> {
     let rank = get_rank_board("gainers".to_string(), 1, 300, "a".to_string())
         .await
         .unwrap_or_default();
-    let rank_map: HashMap<&str, f64> =
-        rank.iter().map(|r| (r.code.as_str(), r.main_net)).collect();
+    let rank_map: HashMap<&str, f64> = rank.iter().map(|r| (r.code.as_str(), r.main_net)).collect();
 
     // 3) 候选码并集。
     let mut codes: Vec<String> = zt_map.keys().map(|s| s.to_string()).collect();
@@ -227,7 +245,9 @@ pub async fn scan(req: &StrategyScanReq) -> Result<Vec<TacticHit>, String> {
     }
 
     for code in &codes {
-        let Some(kbars) = kdata.get(code) else { continue };
+        let Some(kbars) = kdata.get(code) else {
+            continue;
+        };
         let zt = zt_map.get(code.as_str()).copied();
         let rank_main_net = rank_map.get(code.as_str()).copied().unwrap_or(0.0);
 
@@ -239,7 +259,11 @@ pub async fn scan(req: &StrategyScanReq) -> Result<Vec<TacticHit>, String> {
             }
         }
 
-        let c = Candidate { zt, rank_main_net, kbars };
+        let c = Candidate {
+            zt,
+            rank_main_net,
+            kbars,
+        };
         let mut tactics_hit: Vec<String> = Vec::new();
         let mut reasons: Vec<String> = Vec::new();
         for t in &wanted {
@@ -280,11 +304,17 @@ pub async fn scan(req: &StrategyScanReq) -> Result<Vec<TacticHit>, String> {
         hits.push(TacticHit {
             code: code.clone(),
             name: zt.map(|z| z.name.clone()).unwrap_or_else(|| {
-                rank.iter().find(|r| r.code == *code).map(|r| r.name.clone()).unwrap_or_default()
+                rank.iter()
+                    .find(|r| r.code == *code)
+                    .map(|r| r.name.clone())
+                    .unwrap_or_default()
             }),
             price,
             pct: zt.map(|z| z.pct).unwrap_or_else(|| {
-                rank.iter().find(|r| r.code == *code).map(|r| r.pct).unwrap_or(0.0)
+                rank.iter()
+                    .find(|r| r.code == *code)
+                    .map(|r| r.pct)
+                    .unwrap_or(0.0)
             }),
             amount,
             turnover,
@@ -303,7 +333,11 @@ pub async fn scan(req: &StrategyScanReq) -> Result<Vec<TacticHit>, String> {
 
     // 涨停池股票优先，其次按主力净流入降序。
     hits.sort_by(|a, b| {
-        b.boards.cmp(&a.boards).then_with(|| b.main_net.partial_cmp(&a.main_net).unwrap_or(std::cmp::Ordering::Equal))
+        b.boards.cmp(&a.boards).then_with(|| {
+            b.main_net
+                .partial_cmp(&a.main_net)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     });
     Ok(hits)
 }
@@ -318,7 +352,14 @@ mod tests {
     use super::*;
 
     fn bar(o: f64, c: f64, h: f64, l: f64) -> KBar {
-        KBar { timestamp: 0, open: o, close: c, high: h, low: l, volume: 1.0 }
+        KBar {
+            timestamp: 0,
+            open: o,
+            close: c,
+            high: h,
+            low: l,
+            volume: 1.0,
+        }
     }
 
     #[test]
@@ -330,7 +371,11 @@ mod tests {
     #[test]
     fn first_and_multi_board_need_zt() {
         let kbars = vec![bar(10.0, 10.5, 10.6, 9.9)];
-        let c = Candidate { zt: None, rank_main_net: 0.0, kbars: &kbars };
+        let c = Candidate {
+            zt: None,
+            rank_main_net: 0.0,
+            kbars: &kbars,
+        };
         assert!(classify("first_board", &c).is_none());
         assert!(classify("multi_board", &c).is_none());
     }
@@ -338,12 +383,28 @@ mod tests {
     #[test]
     fn first_board_hit() {
         let zt = ZtStock {
-            code: "000001".into(), name: "X".into(), price: 11.0, pct: 10.0, amount: 1e8,
-            fund: 8e7, boards: 1, first_seal: 93105, last_seal: 93105, broken: 0,
-            turnover: 5.0, industry: "证券".into(), stat_days: 1, stat_count: 1, limit_price: 11.0,
+            code: "000001".into(),
+            name: "X".into(),
+            price: 11.0,
+            pct: 10.0,
+            amount: 1e8,
+            fund: 8e7,
+            boards: 1,
+            first_seal: 93105,
+            last_seal: 93105,
+            broken: 0,
+            turnover: 5.0,
+            industry: "证券".into(),
+            stat_days: 1,
+            stat_count: 1,
+            limit_price: 11.0,
         };
         let kbars = vec![bar(10.0, 11.0, 11.0, 10.0)];
-        let c = Candidate { zt: Some(&zt), rank_main_net: 0.0, kbars: &kbars };
+        let c = Candidate {
+            zt: Some(&zt),
+            rank_main_net: 0.0,
+            kbars: &kbars,
+        };
         assert!(classify("first_board", &c).is_some());
         assert!(classify("multi_board", &c).is_none());
     }
@@ -352,14 +413,22 @@ mod tests {
     fn reversal_pattern() {
         // 昨阴线，今阳线收盘破昨高。
         let kbars = vec![bar(11.0, 10.2, 11.1, 10.1), bar(10.3, 11.2, 11.3, 10.2)];
-        let c = Candidate { zt: None, rank_main_net: 0.0, kbars: &kbars };
+        let c = Candidate {
+            zt: None,
+            rank_main_net: 0.0,
+            kbars: &kbars,
+        };
         assert!(classify("reversal", &c).is_some());
     }
 
     #[test]
     fn reversal_not_when_no_engulf() {
         let kbars = vec![bar(11.0, 10.2, 11.1, 10.1), bar(10.3, 10.8, 11.0, 10.2)];
-        let c = Candidate { zt: None, rank_main_net: 0.0, kbars: &kbars };
+        let c = Candidate {
+            zt: None,
+            rank_main_net: 0.0,
+            kbars: &kbars,
+        };
         assert!(classify("reversal", &c).is_none());
     }
 
@@ -367,37 +436,72 @@ mod tests {
     fn weak_to_strong_needs_close_near_high() {
         // 昨阴线，今涨约 4% 但收盘在中位 → 不命中。
         let kbars = vec![bar(10.0, 9.5, 10.1, 9.4), bar(9.6, 9.9, 10.2, 9.5)];
-        let c = Candidate { zt: None, rank_main_net: 0.0, kbars: &kbars };
+        let c = Candidate {
+            zt: None,
+            rank_main_net: 0.0,
+            kbars: &kbars,
+        };
         assert!(classify("weak_to_strong", &c).is_none());
         // 收盘靠日高 → 命中。
         let kbars2 = vec![bar(10.0, 9.5, 10.1, 9.4), bar(9.6, 10.1, 10.15, 9.55)];
-        let c2 = Candidate { zt: None, rank_main_net: 0.0, kbars: &kbars2 };
+        let c2 = Candidate {
+            zt: None,
+            rank_main_net: 0.0,
+            kbars: &kbars2,
+        };
         assert!(classify("weak_to_strong", &c2).is_some());
     }
 
     #[test]
     fn fund_resonance_threshold() {
         let kbars = vec![bar(10.0, 10.4, 10.5, 9.9), bar(10.4, 10.8, 10.9, 10.3)];
-        let c = Candidate { zt: None, rank_main_net: 4e7, kbars: &kbars };
+        let c = Candidate {
+            zt: None,
+            rank_main_net: 4e7,
+            kbars: &kbars,
+        };
         assert!(classify("fund_resonance", &c).is_none()); // 4000万 < 5000万
-        let c = Candidate { zt: None, rank_main_net: 6e7, kbars: &kbars };
+        let c = Candidate {
+            zt: None,
+            rank_main_net: 6e7,
+            kbars: &kbars,
+        };
         assert!(classify("fund_resonance", &c).is_some());
     }
 
     #[test]
     fn theme_leader_requires_hard_multi_board() {
         let make_zt = |boards: u32, broken: u32| ZtStock {
-            code: "300001".into(), name: "L".into(), price: 12.0, pct: 20.0, amount: 2e8,
-            fund: 1e8, boards, first_seal: 93000, last_seal: 150000, broken,
-            turnover: 6.0, industry: "半导体".into(), stat_days: boards, stat_count: boards,
+            code: "300001".into(),
+            name: "L".into(),
+            price: 12.0,
+            pct: 20.0,
+            amount: 2e8,
+            fund: 1e8,
+            boards,
+            first_seal: 93000,
+            last_seal: 150000,
+            broken,
+            turnover: 6.0,
+            industry: "半导体".into(),
+            stat_days: boards,
+            stat_count: boards,
             limit_price: 12.0,
         };
         let kbars = vec![bar(10.0, 12.0, 12.0, 10.0)];
         let zt = make_zt(3, 1);
-        let c = Candidate { zt: Some(&zt), rank_main_net: 0.0, kbars: &kbars };
+        let c = Candidate {
+            zt: Some(&zt),
+            rank_main_net: 0.0,
+            kbars: &kbars,
+        };
         assert!(classify("theme_leader", &c).is_none()); // 有炸板
         let zt = make_zt(3, 0);
-        let c = Candidate { zt: Some(&zt), rank_main_net: 0.0, kbars: &kbars };
+        let c = Candidate {
+            zt: Some(&zt),
+            rank_main_net: 0.0,
+            kbars: &kbars,
+        };
         assert!(classify("theme_leader", &c).is_some());
     }
 }

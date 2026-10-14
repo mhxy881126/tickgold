@@ -86,11 +86,16 @@ fn fetch_broken(conn: &Connection, dates: &[String]) -> Result<Vec<BrokenSnap>, 
         "SELECT trade_date,code FROM broken_limit_record WHERE trade_date IN ({placeholders})"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let params: Vec<&dyn rusqlite::types::ToSql> =
-        dates.iter().map(|d| d as &dyn rusqlite::types::ToSql).collect();
+    let params: Vec<&dyn rusqlite::types::ToSql> = dates
+        .iter()
+        .map(|d| d as &dyn rusqlite::types::ToSql)
+        .collect();
     let rows = stmt
         .query_map(params.as_slice(), |r| {
-            Ok(BrokenSnap { date: r.get(0)?, code: r.get(1)? })
+            Ok(BrokenSnap {
+                date: r.get(0)?,
+                code: r.get(1)?,
+            })
         })
         .map_err(|e| e.to_string())?;
     Ok(rows.flatten().collect())
@@ -152,7 +157,16 @@ pub async fn stats(data_dir: &std::path::Path, max_days: i64) -> Result<Vec<Ladd
     let prev_day_of: HashMap<String, Option<String>> = dates
         .iter()
         .enumerate()
-        .map(|(i, d)| (d.clone(), if i == 0 { None } else { dates.get(i - 1).cloned() }))
+        .map(|(i, d)| {
+            (
+                d.clone(),
+                if i == 0 {
+                    None
+                } else {
+                    dates.get(i - 1).cloned()
+                },
+            )
+        })
         .collect();
     // (code, date) → boards。
     let boards_on: HashMap<(String, String), i64> = snaps
@@ -206,7 +220,9 @@ pub async fn stats(data_dir: &std::path::Path, max_days: i64) -> Result<Vec<Ladd
                 a.seal_strength_sum += s.seal_fund / s.amount * 100.0;
             }
         }
-        let Some(Some(nd)) = next_day_of.get(&s.date) else { continue };
+        let Some(Some(nd)) = next_day_of.get(&s.date) else {
+            continue;
+        };
         // 晋级：次日同 code boards = 当日 boards + 1。
         if boards_on.get(&(s.code.clone(), nd.clone())).copied() == Some(s.boards + 1) {
             a.promoted += 1;
@@ -227,9 +243,16 @@ pub async fn stats(data_dir: &std::path::Path, max_days: i64) -> Result<Vec<Ladd
     // 炸板未回封：按试图冲击的板高（前一日 boards+1，无前序=首板）计入失败分母。
     for b in &broken_snaps {
         let attempted = match prev_day_of.get(&b.date).and_then(|p| p.as_ref()) {
-            Some(pd) => boards_on.get(&(b.code.clone(), pd.clone())).copied().unwrap_or(0) + 1,
+            Some(pd) => {
+                boards_on
+                    .get(&(b.code.clone(), pd.clone()))
+                    .copied()
+                    .unwrap_or(0)
+                    + 1
+            }
             None => 1,
-        }.max(1);
+        }
+        .max(1);
         accs.entry(attempted).or_default().failed += 1;
     }
 
@@ -304,7 +327,10 @@ mod tests {
 
     #[test]
     fn civil_days_roundtrip() {
-        assert_eq!(civil_from_days(days_from_civil_ymd(2026, 10, 13)), (2026, 10, 13));
+        assert_eq!(
+            civil_from_days(days_from_civil_ymd(2026, 10, 13)),
+            (2026, 10, 13)
+        );
         assert_eq!(civil_from_days(0), (1970, 1, 1));
     }
 

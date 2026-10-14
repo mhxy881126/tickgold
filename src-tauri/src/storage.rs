@@ -28,13 +28,21 @@ fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn classify(name: &str) -> &'static str {
-    if name == DB_NAME { "main-db" }
-    else if name == "ai.db" { "ai-db" }
-    else if name.ends_with(".db-wal") || name.ends_with(".db-shm") { "wal" }
-    else if name.contains(".pre-restore-") { "restore-proof" }
-    else if name.ends_with(".restore-staging") { "staging" }
-    else if name == "backups" { "backups-dir" }
-    else { "other" }
+    if name == DB_NAME {
+        "main-db"
+    } else if name == "ai.db" {
+        "ai-db"
+    } else if name.ends_with(".db-wal") || name.ends_with(".db-shm") {
+        "wal"
+    } else if name.contains(".pre-restore-") {
+        "restore-proof"
+    } else if name.ends_with(".restore-staging") {
+        "staging"
+    } else if name == "backups" {
+        "backups-dir"
+    } else {
+        "other"
+    }
 }
 
 fn dir_size(p: &Path) -> u64 {
@@ -65,13 +73,21 @@ pub(crate) fn storage_stats(app: AppHandle) -> Result<StorageStats, String> {
             if path.is_dir() {
                 if name == "backups" {
                     let sz = dir_size(&path);
-                    files.push(FileSizeInfo { name, size: sz, kind: "backups-dir".into() });
+                    files.push(FileSizeInfo {
+                        name,
+                        size: sz,
+                        kind: "backups-dir".into(),
+                    });
                     total += sz;
                 }
                 continue;
             }
             if let Ok(md) = ent.metadata() {
-                files.push(FileSizeInfo { name: name.clone(), size: md.len(), kind: classify(&name).into() });
+                files.push(FileSizeInfo {
+                    name: name.clone(),
+                    size: md.len(),
+                    kind: classify(&name).into(),
+                });
                 total += md.len();
             }
         }
@@ -117,11 +133,14 @@ pub(crate) fn storage_cleanup_orphans(app: AppHandle) -> Result<(usize, u64), St
     if let Ok(rd) = std::fs::read_dir(&dir) {
         for ent in rd.flatten() {
             let name = ent.file_name().to_string_lossy().to_string();
-            let is_orphan = name.contains(".pre-restore-")
-                || name.ends_with(".restore-staging");
+            let is_orphan = name.contains(".pre-restore-") || name.ends_with(".restore-staging");
             if is_orphan {
-                if let Ok(md) = ent.metadata() { bytes += md.len(); }
-                if std::fs::remove_file(ent.path()).is_ok() { removed += 1; }
+                if let Ok(md) = ent.metadata() {
+                    bytes += md.len();
+                }
+                if std::fs::remove_file(ent.path()).is_ok() {
+                    removed += 1;
+                }
             }
         }
     }
@@ -131,7 +150,8 @@ pub(crate) fn storage_cleanup_orphans(app: AppHandle) -> Result<(usize, u64), St
     if let Ok(rd) = std::fs::read_dir(&tmp) {
         for ent in rd.flatten() {
             let name = ent.file_name().to_string_lossy().to_string();
-            if name.starts_with("tg-restore-") && name.ends_with(".bat")
+            if name.starts_with("tg-restore-")
+                && name.ends_with(".bat")
                 && std::fs::remove_file(ent.path()).is_ok()
             {
                 removed += 1;
@@ -224,7 +244,11 @@ fn cutoff_ms(keep_days: i64) -> i64 {
     now - keep_days * 86_400_000
 }
 
-fn build_plan(app: &AppHandle, keep_intraday_days: i64, keep_ai_days: i64) -> Result<PurgePlan, String> {
+fn build_plan(
+    app: &AppHandle,
+    keep_intraday_days: i64,
+    keep_ai_days: i64,
+) -> Result<PurgePlan, String> {
     let dir = data_dir(app)?;
     let mut targets = Vec::new();
 
@@ -233,8 +257,15 @@ fn build_plan(app: &AppHandle, keep_intraday_days: i64, keep_ai_days: i64) -> Re
         let conn = rusqlite::Connection::open(dir.join(DB_NAME)).map_err(|e| e.to_string())?;
         for (table, label) in INTRADAY_TABLES {
             let sql = format!("SELECT COUNT(*) FROM {table} WHERE day < ?1");
-            let n: i64 = conn.query_row(&sql, rusqlite::params![day], |r| r.get(0)).unwrap_or(0);
-            targets.push(PurgeTarget { key: table.to_string(), label: label.to_string(), cutoff: day.clone(), rows: n });
+            let n: i64 = conn
+                .query_row(&sql, rusqlite::params![day], |r| r.get(0))
+                .unwrap_or(0);
+            targets.push(PurgeTarget {
+                key: table.to_string(),
+                label: label.to_string(),
+                cutoff: day.clone(),
+                rows: n,
+            });
         }
         day
     } else {
@@ -247,9 +278,18 @@ fn build_plan(app: &AppHandle, keep_intraday_days: i64, keep_ai_days: i64) -> Re
         if ai_path.exists() {
             let conn = rusqlite::Connection::open(ai_path).map_err(|e| e.to_string())?;
             let chunks: i64 = conn
-                .query_row("SELECT COUNT(*) FROM kb_chunk WHERE created_at < ?1", rusqlite::params![ai_cutoff_ms], |r| r.get(0))
+                .query_row(
+                    "SELECT COUNT(*) FROM kb_chunk WHERE created_at < ?1",
+                    rusqlite::params![ai_cutoff_ms],
+                    |r| r.get(0),
+                )
                 .unwrap_or(0);
-            targets.push(PurgeTarget { key: "kb_chunk".into(), label: "知识库切块".into(), cutoff: ai_cutoff_ms.to_string(), rows: chunks });
+            targets.push(PurgeTarget {
+                key: "kb_chunk".into(),
+                label: "知识库切块".into(),
+                cutoff: ai_cutoff_ms.to_string(),
+                rows: chunks,
+            });
             // 孤儿消息（无会话）+ 久未触达会话内的消息
             let msgs: i64 = conn
                 .query_row(
@@ -261,12 +301,22 @@ fn build_plan(app: &AppHandle, keep_intraday_days: i64, keep_ai_days: i64) -> Re
                     |r| r.get(0),
                 )
                 .unwrap_or(0);
-            targets.push(PurgeTarget { key: "ai_message".into(), label: "历史对话消息".into(), cutoff: ai_cutoff_ms.to_string(), rows: msgs });
+            targets.push(PurgeTarget {
+                key: "ai_message".into(),
+                label: "历史对话消息".into(),
+                cutoff: ai_cutoff_ms.to_string(),
+                rows: msgs,
+            });
         }
     }
 
     let total_rows = targets.iter().map(|t| t.rows).sum();
-    Ok(PurgePlan { intraday_cutoff, ai_cutoff_ms, targets, total_rows })
+    Ok(PurgePlan {
+        intraday_cutoff,
+        ai_cutoff_ms,
+        targets,
+        total_rows,
+    })
 }
 
 /// 过期清理预览：返回各目标将删除的行数，不执行删除。
@@ -293,7 +343,8 @@ pub(crate) fn storage_purge_run(
         let conn = rusqlite::Connection::open(dir.join(DB_NAME)).map_err(|e| e.to_string())?;
         for (table, _) in INTRADAY_TABLES {
             let sql = format!("DELETE FROM {table} WHERE day < ?1");
-            conn.execute(&sql, rusqlite::params![plan.intraday_cutoff]).map_err(|e| e.to_string())?;
+            conn.execute(&sql, rusqlite::params![plan.intraday_cutoff])
+                .map_err(|e| e.to_string())?;
         }
     }
 
@@ -301,8 +352,11 @@ pub(crate) fn storage_purge_run(
         let ai_path = dir.join(AI_DB_NAME);
         if ai_path.exists() {
             let conn = rusqlite::Connection::open(ai_path).map_err(|e| e.to_string())?;
-            conn.execute("DELETE FROM kb_chunk WHERE created_at < ?1", rusqlite::params![plan.ai_cutoff_ms])
-                .map_err(|e| e.to_string())?;
+            conn.execute(
+                "DELETE FROM kb_chunk WHERE created_at < ?1",
+                rusqlite::params![plan.ai_cutoff_ms],
+            )
+            .map_err(|e| e.to_string())?;
             conn.execute(
                 "DELETE FROM ai_message WHERE created_at < ?1
                    AND (NOT EXISTS (SELECT 1 FROM ai_session s WHERE s.id = ai_message.session_id)
@@ -310,8 +364,11 @@ pub(crate) fn storage_purge_run(
                 rusqlite::params![plan.ai_cutoff_ms],
             )
             .map_err(|e| e.to_string())?;
-            conn.execute("DELETE FROM ai_session WHERE last_at < ?1", rusqlite::params![plan.ai_cutoff_ms])
-                .map_err(|e| e.to_string())?;
+            conn.execute(
+                "DELETE FROM ai_session WHERE last_at < ?1",
+                rusqlite::params![plan.ai_cutoff_ms],
+            )
+            .map_err(|e| e.to_string())?;
         }
     }
 

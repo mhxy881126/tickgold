@@ -61,7 +61,9 @@ impl PluginEngine {
             rt.set_interrupt_handler(Some(Box::new(move || k.load(Ordering::Relaxed))))
                 .await;
         }
-        let ctx = AsyncContext::full(&rt).await.map_err(|e| format!("创建上下文失败: {e}"))?;
+        let ctx = AsyncContext::full(&rt)
+            .await
+            .map_err(|e| format!("创建上下文失败: {e}"))?;
 
         ctx.with(|ctx| -> rquickjs::Result<()> {
             // 先注入注册 API，再执行插件 main.js。
@@ -83,7 +85,9 @@ impl PluginEngine {
             .with(move |ctx| -> Result<Value, String> {
                 let f = global_fn(&ctx, "__indicators", &id)?;
                 let arg = json_to_js(&ctx, &input).map_err(|e| format!("参数转换失败: {e}"))?;
-                let res: JsValue = f.call((arg,)).map_err(|e| format!("compute 执行失败: {e}"))?;
+                let res: JsValue = f
+                    .call((arg,))
+                    .map_err(|e| format!("compute 执行失败: {e}"))?;
                 js_to_json(&res).map_err(|e| format!("结果转换失败: {e}"))
             })
             .await
@@ -116,7 +120,9 @@ impl PluginEngine {
                     .get(fn_name.as_str())
                     .map_err(|_| format!("数据源缺少 {fn_name}"))?;
                 let jsarg = json_to_js(&ctx, &arg).map_err(|e| format!("参数转换失败: {e}"))?;
-                let res: JsValue = f.call((jsarg,)).map_err(|e| format!("{fn_name} 执行失败: {e}"))?;
+                let res: JsValue = f
+                    .call((jsarg,))
+                    .map_err(|e| format!("{fn_name} 执行失败: {e}"))?;
                 js_to_json(&res).map_err(|e| format!("结果转换失败: {e}"))
             })
             .await
@@ -128,7 +134,8 @@ impl PluginEngine {
         provider_id: &str,
         params: &Value,
     ) -> Result<Value, String> {
-        self.call_l2_fn(provider_id, "buildBookRequest", params).await
+        self.call_l2_fn(provider_id, "buildBookRequest", params)
+            .await
     }
 
     /// Level-2：parseBookResponse({status,body}) -> {asks,bids,...}。
@@ -137,7 +144,8 @@ impl PluginEngine {
         provider_id: &str,
         resp: &Value,
     ) -> Result<Value, String> {
-        self.call_l2_fn(provider_id, "parseBookResponse", resp).await
+        self.call_l2_fn(provider_id, "parseBookResponse", resp)
+            .await
     }
 
     /// 列出本插件已注册的 Level-2 provider id（供 UI 发现 / 能力协商）。
@@ -180,7 +188,9 @@ impl PluginEngine {
                     .get(fn_name.as_str())
                     .map_err(|_| format!("Level-2 数据源缺少 {fn_name}"))?;
                 let jsarg = json_to_js(&ctx, &arg).map_err(|e| format!("参数转换失败: {e}"))?;
-                let res: JsValue = f.call((jsarg,)).map_err(|e| format!("{fn_name} 执行失败: {e}"))?;
+                let res: JsValue = f
+                    .call((jsarg,))
+                    .map_err(|e| format!("{fn_name} 执行失败: {e}"))?;
                 js_to_json(&res).map_err(|e| format!("结果转换失败: {e}"))
             })
             .await

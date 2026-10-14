@@ -112,8 +112,7 @@ pub fn today_dashed() -> String {
 
 fn row_to_order(r: &rusqlite::Row) -> rusqlite::Result<ConditionalOrder> {
     let trigger_json: String = r.get("trigger_json")?;
-    let trigger: Vec<CoTrigger> =
-        serde_json::from_str(&trigger_json).unwrap_or_default();
+    let trigger: Vec<CoTrigger> = serde_json::from_str(&trigger_json).unwrap_or_default();
     Ok(ConditionalOrder {
         id: r.get("id")?,
         co_id: r.get("co_id")?,
@@ -175,8 +174,8 @@ pub fn insert(conn: &Connection, input: CreateInput) -> Result<String, String> {
     if !matches!(input.ttl.as_str(), "day" | "gtc" | "date") {
         return Err("有效期必须为 day/gtc/date".to_string());
     }
-    let trigger_json = serde_json::to_string(&input.trigger)
-        .map_err(|e| format!("序列化触发条件失败: {e}"))?;
+    let trigger_json =
+        serde_json::to_string(&input.trigger).map_err(|e| format!("序列化触发条件失败: {e}"))?;
     let now = now_millis();
     let co_id = gen_co_id(now);
     let trade_date = beijing_today();
@@ -186,9 +185,20 @@ pub fn insert(conn: &Connection, input: CreateInput) -> Result<String, String> {
             vol,ttl,expire_at,auto_confirm,status,ticket_id,note,created_at,updated_at)
          VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,'active','',?13,?14,?14)",
         params![
-            co_id, trade_date, input.code, input.name, side, trigger_json,
-            input.price_mode, input.limit_price, input.vol, input.ttl,
-            input.expire_at, input.auto_confirm as i64, input.note, now
+            co_id,
+            trade_date,
+            input.code,
+            input.name,
+            side,
+            trigger_json,
+            input.price_mode,
+            input.limit_price,
+            input.vol,
+            input.ttl,
+            input.expire_at,
+            input.auto_confirm as i64,
+            input.note,
+            now
         ],
     )
     .map_err(|e| format!("写入条件单失败: {e}"))?;
@@ -235,12 +245,13 @@ pub fn update(
     auto_confirm: Option<bool>,
     note: Option<String>,
 ) -> Result<(), String> {
-    let cur: String = conn.query_row(
-        "SELECT status FROM conditional_order WHERE id=?1",
-        params![id],
-        |r| r.get(0),
-    )
-    .map_err(|e| format!("读取条件单失败: {e}"))?;
+    let cur: String = conn
+        .query_row(
+            "SELECT status FROM conditional_order WHERE id=?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .map_err(|e| format!("读取条件单失败: {e}"))?;
     if cur != ACTIVE {
         return Err(format!("仅进行中条件单可修改，当前状态：{cur}"));
     }
@@ -282,11 +293,12 @@ pub fn update(
 
 /// 撤销（仅 active）。
 pub fn cancel(conn: &Connection, id: i64) -> Result<(), String> {
-    let n = conn.execute(
-        "UPDATE conditional_order SET status=?2,updated_at=?3 WHERE id=?1 AND status=?4",
-        params![id, CANCELLED, now_millis(), ACTIVE],
-    )
-    .map_err(|e| format!("撤销条件单失败: {e}"))?;
+    let n = conn
+        .execute(
+            "UPDATE conditional_order SET status=?2,updated_at=?3 WHERE id=?1 AND status=?4",
+            params![id, CANCELLED, now_millis(), ACTIVE],
+        )
+        .map_err(|e| format!("撤销条件单失败: {e}"))?;
     if n == 0 {
         return Err("条件单不存在或已不可撤销".to_string());
     }
@@ -409,7 +421,14 @@ pub fn co_update(
 ) -> Result<(), String> {
     let conn = maindb::open_readwrite(&ai.dir())?;
     let r = update(
-        &conn, id, vol, limit_price, ttl, expire_at, auto_confirm, note,
+        &conn,
+        id,
+        vol,
+        limit_price,
+        ttl,
+        expire_at,
+        auto_confirm,
+        note,
     );
     if r.is_ok() {
         checkpoint(&conn);
@@ -523,8 +542,17 @@ mod tests {
         let c = memdb();
         insert(&c, mk("600519", "BUY", 100)).unwrap();
         let o = list(&c, None, 200).remove(0);
-        update(&c, o.id, Some(400), Some(12.5), Some("gtc".to_string()),
-            None, Some(true), Some("备注".to_string())).unwrap();
+        update(
+            &c,
+            o.id,
+            Some(400),
+            Some(12.5),
+            Some("gtc".to_string()),
+            None,
+            Some(true),
+            Some("备注".to_string()),
+        )
+        .unwrap();
         let o2 = get_by_co_id(&c, &o.co_id).unwrap();
         assert_eq!(o2.vol, 400);
         assert_eq!(o2.limit_price, 12.5);

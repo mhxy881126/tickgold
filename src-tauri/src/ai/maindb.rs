@@ -41,7 +41,8 @@ mod tests {
 
     #[test]
     fn missing_db_returns_chinese_error() {
-        let dir = std::env::temp_dir().join(format!("tickgold-maindb-missing-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("tickgold-maindb-missing-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let err = open_readonly(&dir).unwrap_err();

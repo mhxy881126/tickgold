@@ -3,10 +3,10 @@
 use super::config::{load_config, AiConfig, SecretStore};
 use super::provider::{chat_stream, ChatMsg, StreamEv};
 use crate::market;
-use tauri::Emitter;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::Path;
+use tauri::Emitter;
 
 // ==================== 辅助函数 ====================
 
@@ -26,7 +26,12 @@ pub fn load_cfg(dir: &Path) -> Result<(AiConfig, Option<String>), String> {
 }
 
 /// 调用 LLM，收集流式 delta，返回完整文本。
-async fn call_llm_text(cfg: &AiConfig, key: &Option<String>, system: &str, user: &str) -> Result<String, String> {
+async fn call_llm_text(
+    cfg: &AiConfig,
+    key: &Option<String>,
+    system: &str,
+    user: &str,
+) -> Result<String, String> {
     let msgs = vec![
         ChatMsg {
             role: "system".to_string(),
@@ -52,7 +57,12 @@ async fn call_llm_text(cfg: &AiConfig, key: &Option<String>, system: &str, user:
 }
 
 /// 调用 LLM 并解析 JSON 结果。LLM 需返回纯 JSON（可含 ```json 围栏，自动剥离）。
-async fn call_llm_json(cfg: &AiConfig, key: &Option<String>, system: &str, user: &str) -> Result<Value, String> {
+async fn call_llm_json(
+    cfg: &AiConfig,
+    key: &Option<String>,
+    system: &str,
+    user: &str,
+) -> Result<Value, String> {
     let text = call_llm_text(cfg, key, system, user).await?;
     let text = text
         .trim()
@@ -60,7 +70,12 @@ async fn call_llm_json(cfg: &AiConfig, key: &Option<String>, system: &str, user:
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim();
-    serde_json::from_str(text).map_err(|e| format!("AI 返回 JSON 解析失败: {e}; raw={}", &text[..text.len().min(500)]))
+    serde_json::from_str(text).map_err(|e| {
+        format!(
+            "AI 返回 JSON 解析失败: {e}; raw={}",
+            &text[..text.len().min(500)]
+        )
+    })
 }
 
 /// 调用 LLM 流式输出，每收到 delta 调用 on_delta 回调，返回完整文本。
@@ -72,8 +87,18 @@ async fn call_llm_text_stream(
     mut on_delta: impl FnMut(String),
 ) -> Result<String, String> {
     let msgs = vec![
-        ChatMsg { role: "system".to_string(), content: system.to_string(), tool_calls: None, tool_call_id: None },
-        ChatMsg { role: "user".to_string(), content: user.to_string(), tool_calls: None, tool_call_id: None },
+        ChatMsg {
+            role: "system".to_string(),
+            content: system.to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+        },
+        ChatMsg {
+            role: "user".to_string(),
+            content: user.to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+        },
     ];
     let mut buf = String::new();
     let mut on = |ev: StreamEv| {
@@ -82,14 +107,16 @@ async fn call_llm_text_stream(
             on_delta(t);
         }
     };
-    chat_stream(cfg, key, &msgs, &[], &mut on).await.map_err(|e| format!("AI 调用失败: {e}"))?;
+    chat_stream(cfg, key, &msgs, &[], &mut on)
+        .await
+        .map_err(|e| format!("AI 调用失败: {e}"))?;
     Ok(buf)
 }
 
 // ==================== 行情数据缓存（10秒TTL，避免AI调用时重复拉取） ====================
-use std::sync::Mutex;
-use std::time::{Instant, Duration};
 use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 struct CacheEntry<T> {
     data: T,
@@ -109,12 +136,19 @@ const AI_CACHE_TTL: Duration = Duration::from_secs(180);
 fn get_cached<T: Clone>(cache: &Mutex<Option<CacheEntry<T>>>) -> Option<T> {
     let guard = cache.lock().ok()?;
     guard.as_ref().and_then(|e| {
-        if Instant::now() < e.expiry { Some(e.data.clone()) } else { None }
+        if Instant::now() < e.expiry {
+            Some(e.data.clone())
+        } else {
+            None
+        }
     })
 }
 fn set_cached<T: Clone>(cache: &Mutex<Option<CacheEntry<T>>>, data: T) {
     if let Ok(mut guard) = cache.lock() {
-        *guard = Some(CacheEntry { data, expiry: Instant::now() + CACHE_TTL });
+        *guard = Some(CacheEntry {
+            data,
+            expiry: Instant::now() + CACHE_TTL,
+        });
     }
 }
 
@@ -122,14 +156,24 @@ fn set_cached<T: Clone>(cache: &Mutex<Option<CacheEntry<T>>>, data: T) {
 fn get_ai_cache(key: &str) -> Option<String> {
     let guard = AI_RESULT_CACHE.lock().ok()?;
     guard.get(key).and_then(|e| {
-        if Instant::now() < e.expiry { Some(e.data.clone()) } else { None }
+        if Instant::now() < e.expiry {
+            Some(e.data.clone())
+        } else {
+            None
+        }
     })
 }
 
 /// 写入 AI 生成结果缓存
 fn set_ai_cache(key: &str, data: String) {
     if let Ok(mut guard) = AI_RESULT_CACHE.lock() {
-        guard.insert(key.to_string(), CacheEntry { data, expiry: Instant::now() + AI_CACHE_TTL });
+        guard.insert(
+            key.to_string(),
+            CacheEntry {
+                data,
+                expiry: Instant::now() + AI_CACHE_TTL,
+            },
+        );
     }
 }
 
@@ -137,7 +181,9 @@ fn set_ai_cache(key: &str, data: String) {
 
 /// 大盘指数摘要
 async fn index_summary() -> String {
-    if let Some(cached) = get_cached(&INDEX_CACHE) { return cached; }
+    if let Some(cached) = get_cached(&INDEX_CACHE) {
+        return cached;
+    }
     let result = match market::get_index_quotes().await {
         Ok(list) => {
             let parts: Vec<String> = list
@@ -154,12 +200,27 @@ async fn index_summary() -> String {
 
 /// 板块涨跌前5
 async fn sector_summary() -> String {
-    if let Some(cached) = get_cached(&SECTOR_CACHE) { return cached; }
+    if let Some(cached) = get_cached(&SECTOR_CACHE) {
+        return cached;
+    }
     let result = match market::get_sectors("industry".to_string()).await {
         Ok(mut list) => {
-            list.sort_by(|a, b| b.change_pct.partial_cmp(&a.change_pct).unwrap_or(std::cmp::Ordering::Equal));
-            let top: Vec<String> = list.iter().take(5).map(|s| format!("{} {:+.2}%", s.name, s.change_pct)).collect();
-            let bottom: Vec<String> = list.iter().rev().take(5).map(|s| format!("{} {:+.2}%", s.name, s.change_pct)).collect();
+            list.sort_by(|a, b| {
+                b.change_pct
+                    .partial_cmp(&a.change_pct)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            let top: Vec<String> = list
+                .iter()
+                .take(5)
+                .map(|s| format!("{} {:+.2}%", s.name, s.change_pct))
+                .collect();
+            let bottom: Vec<String> = list
+                .iter()
+                .rev()
+                .take(5)
+                .map(|s| format!("{} {:+.2}%", s.name, s.change_pct))
+                .collect();
             format!("领涨：{}；领跌：{}", top.join("、"), bottom.join("、"))
         }
         Err(_) => "板块数据暂不可用".to_string(),
@@ -170,13 +231,25 @@ async fn sector_summary() -> String {
 
 /// 涨停池摘要
 async fn zt_summary() -> String {
-    if let Some(cached) = get_cached(&ZT_CACHE) { return cached; }
+    if let Some(cached) = get_cached(&ZT_CACHE) {
+        return cached;
+    }
     let today = market::today_yyyymmdd();
     let result = match market::get_zt_pool(today).await {
         Ok(pool) => {
             let total = pool.list.len();
-            let multi: Vec<&str> = pool.list.iter().filter(|s| s.boards >= 2).map(|s| s.name.as_str()).collect();
-            format!("涨停 {} 家，连板 {} 家（{}）", total, multi.len(), multi.join("、"))
+            let multi: Vec<&str> = pool
+                .list
+                .iter()
+                .filter(|s| s.boards >= 2)
+                .map(|s| s.name.as_str())
+                .collect();
+            format!(
+                "涨停 {} 家，连板 {} 家（{}）",
+                total,
+                multi.len(),
+                multi.join("、")
+            )
         }
         Err(_) => "涨停池数据暂不可用".to_string(),
     };
@@ -188,7 +261,11 @@ async fn zt_summary() -> String {
 async fn news_summary(n: usize) -> String {
     match market::get_news_flash(1, n as i64).await {
         Ok(list) => {
-            let parts: Vec<String> = list.iter().take(n).map(|n| format!("[{}] {}", n.time, n.text)).collect();
+            let parts: Vec<String> = list
+                .iter()
+                .take(n)
+                .map(|n| format!("[{}] {}", n.time, n.text))
+                .collect();
             parts.join("\n")
         }
         Err(_) => "快讯数据暂不可用".to_string(),
@@ -209,7 +286,9 @@ pub struct IntradayCommentary {
 const SYSTEM_INTRADAY: &str = "你是 A 股盘中实时解读助手。基于给定的大盘指数、板块涨跌、涨停池和最新快讯，用简洁专业的语言解读当前市场状态。输出严格 JSON：{\"market_view\":\"一段话市场总览（100字内）\",\"key_drivers\":[\"驱动因素1\",\"驱动因素2\",\"驱动因素3\"],\"risk_notes\":[\"风险提示1\",\"风险提示2\"]}。只输出 JSON，不要其他文字。";
 
 #[tauri::command]
-pub async fn ai_intraday_commentary(state: tauri::State<'_, super::AiState>) -> Result<IntradayCommentary, String> {
+pub async fn ai_intraday_commentary(
+    state: tauri::State<'_, super::AiState>,
+) -> Result<IntradayCommentary, String> {
     let (cfg, key) = load_cfg(&state.dir())?;
     let (idx, sec, zt, news) = tokio::join!(
         index_summary(),
@@ -227,8 +306,22 @@ pub async fn ai_intraday_commentary(state: tauri::State<'_, super::AiState>) -> 
     Ok(IntradayCommentary {
         timestamp: super::now_millis(),
         market_view: v["market_view"].as_str().unwrap_or("").to_string(),
-        key_drivers: v["key_drivers"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default(),
-        risk_notes: v["risk_notes"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default(),
+        key_drivers: v["key_drivers"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        risk_notes: v["risk_notes"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default(),
         raw: v.to_string(),
     })
 }
@@ -262,7 +355,10 @@ pub async fn ai_explain_signal(
     let quote_info = match market::get_quotes(vec![code.clone()]).await {
         Ok(q) if !q.is_empty() => {
             let q = &q[0];
-            format!("现价 {:.2}，涨跌幅 {:+.2}%，成交量 {:.0}，换手率 {:.2}%，量比 {:.2}", q.price, q.pct, q.volume, q.turnover, q.volume_ratio)
+            format!(
+                "现价 {:.2}，涨跌幅 {:+.2}%，成交量 {:.0}，换手率 {:.2}%，量比 {:.2}",
+                q.price, q.pct, q.volume, q.turnover, q.volume_ratio
+            )
         }
         _ => "行情数据暂不可用".to_string(),
     };
@@ -311,7 +407,9 @@ pub async fn ai_suggest_alerts(
     let (cfg, key) = load_cfg(&state.dir())?;
 
     // 拉取自选股行情
-    let quotes = market::get_quotes(watchlist.clone()).await.unwrap_or_default();
+    let quotes = market::get_quotes(watchlist.clone())
+        .await
+        .unwrap_or_default();
     let quote_text: Vec<String> = quotes
         .iter()
         .map(|q| {
@@ -380,7 +478,15 @@ pub async fn ai_news_digest(state: tauri::State<'_, super::AiState>) -> Result<N
     let news = market::get_news_flash(1, 30).await.unwrap_or_default();
     let news_text: Vec<String> = news
         .iter()
-        .map(|n| format!("[{}] {} | tags:{} | url:{}", n.time, n.text, n.tags.join(","), n.url))
+        .map(|n| {
+            format!(
+                "[{}] {} | tags:{} | url:{}",
+                n.time,
+                n.text,
+                n.tags.join(","),
+                n.url
+            )
+        })
         .collect();
 
     let user = format!(
@@ -395,7 +501,10 @@ pub async fn ai_news_digest(state: tauri::State<'_, super::AiState>) -> Result<N
             v["ai_brief"].as_str().unwrap_or("").to_string(),
             v["items"].as_array().cloned().unwrap_or_default(),
         ),
-        None => (String::new(), v.as_array().cloned().ok_or("AI 返回格式无法解析")?),
+        None => (
+            String::new(),
+            v.as_array().cloned().ok_or("AI 返回格式无法解析")?,
+        ),
     };
     let items: Vec<NewsDigestItem> = arr
         .iter()
@@ -405,7 +514,11 @@ pub async fn ai_news_digest(state: tauri::State<'_, super::AiState>) -> Result<N
             category: item["category"].as_str().unwrap_or("macro").to_string(),
             related_codes: item["related_codes"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             time: item["time"].as_str().unwrap_or("").to_string(),
             url: item["url"].as_str().unwrap_or("").to_string(),
@@ -453,7 +566,9 @@ pub struct TomorrowMainline {
 const SYSTEM_MAINLINE: &str = "你是 A 股明日主线预测分析师。基于当日涨停池（连板梯队）、板块涨跌和最新快讯，预测明日 3-5 条市场主线。每条主线输出：{\"theme\":\"主线名称（15字内）\",\"logic\":\"核心逻辑（80字内）\",\"leaders\":[\"龙头标的1\",\"龙头标的2\"],\"catalysts\":[\"催化因素1\",\"催化因素2\"],\"risk\":\"风险提示（40字内）\",\"strength\":\"strong/medium/weak\"}。另需 market_review（今日市场一句话复盘，80字内）和 overall_risk（整体风险提示，60字内）。输出严格 JSON：{\"market_review\":\"...\",\"themes\":[...],\"overall_risk\":\"...\"}。只输出 JSON。";
 
 #[tauri::command]
-pub async fn ai_tomorrow_mainline(state: tauri::State<'_, super::AiState>) -> Result<TomorrowMainline, String> {
+pub async fn ai_tomorrow_mainline(
+    state: tauri::State<'_, super::AiState>,
+) -> Result<TomorrowMainline, String> {
     let (cfg, key) = load_cfg(&state.dir())?;
     let today = market::today_yyyymmdd();
 
@@ -471,7 +586,16 @@ pub async fn ai_tomorrow_mainline(state: tauri::State<'_, super::AiState>) -> Re
                 .list
                 .iter()
                 .take(30)
-                .map(|s| format!("{}({}) {}板 封单{:.0}万 行业:{}", s.name, s.code, s.boards, s.fund / 10000.0, s.industry))
+                .map(|s| {
+                    format!(
+                        "{}({}) {}板 封单{:.0}万 行业:{}",
+                        s.name,
+                        s.code,
+                        s.boards,
+                        s.fund / 10000.0,
+                        s.industry
+                    )
+                })
                 .collect();
             format!("涨停 {} 家：\n{}", pool.total, items.join("\n"))
         }
@@ -500,11 +624,19 @@ pub async fn ai_tomorrow_mainline(state: tauri::State<'_, super::AiState>) -> Re
             logic: t["logic"].as_str().unwrap_or("").to_string(),
             leaders: t["leaders"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             catalysts: t["catalysts"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             risk: t["risk"].as_str().unwrap_or("").to_string(),
             strength: t["strength"].as_str().unwrap_or("medium").to_string(),
@@ -531,7 +663,10 @@ pub async fn ai_news_for_stock(
     let news = news_summary(20).await;
 
     let system = "你是 A 股个股资讯分析师。从给定的快讯列表中筛选与指定个股相关的资讯，生成一段个股资讯摘要（150字内），包含利好/利空判断。如果没有相关资讯，说明暂无重大资讯。只输出摘要文字。";
-    let user = format!("【标的】{} ({})\n【快讯列表】\n{}\n\n请生成该个股的资讯摘要。", name, code, news);
+    let user = format!(
+        "【标的】{} ({})\n【快讯列表】\n{}\n\n请生成该个股的资讯摘要。",
+        name, code, news
+    );
 
     call_llm_text(&cfg, &key, system, &user).await
 }
@@ -553,25 +688,57 @@ pub async fn ai_intraday_commentary_stream(
 ) -> Result<(), String> {
     let (cfg, key) = match load_cfg(&state.dir()) {
         Ok(v) => v,
-        Err(e) => { emit_stream(&app_handle, &stream_id, &json!({"type":"error","message":e})); return Err(e); }
+        Err(e) => {
+            emit_stream(
+                &app_handle,
+                &stream_id,
+                &json!({"type":"error","message":e}),
+            );
+            return Err(e);
+        }
     };
-    let (idx, sec, zt, news) = tokio::join!(index_summary(), sector_summary(), zt_summary(), news_summary(8));
+    let (idx, sec, zt, news) = tokio::join!(
+        index_summary(),
+        sector_summary(),
+        zt_summary(),
+        news_summary(8)
+    );
     let user = format!("【大盘指数】{}\n【板块】{}\n【涨停池】{}\n【最新快讯】\n{}\n\n请基于以上数据，生成当前盘中市场解读。", idx, sec, zt, news);
 
     // 命中缓存则先推送上次结果（前端即时展示），再后台刷新
     if let Some(cached) = get_ai_cache("intraday") {
-        emit_stream(&app_handle, &stream_id, &json!({"type":"cached","full_text":cached}));
+        emit_stream(
+            &app_handle,
+            &stream_id,
+            &json!({"type":"cached","full_text":cached}),
+        );
     }
 
     let app = app_handle.clone();
     let sid = stream_id.clone();
     let result = call_llm_text_stream(&cfg, &key, SYSTEM_INTRADAY, &user, move |delta| {
         emit_stream(&app, &sid, &json!({"type":"delta","content":delta}));
-    }).await;
+    })
+    .await;
 
     match result {
-        Ok(full) => { set_ai_cache("intraday", full.clone()); emit_stream(&app_handle, &stream_id, &json!({"type":"done","full_text":full})); Ok(()) }
-        Err(e) => { emit_stream(&app_handle, &stream_id, &json!({"type":"error","message":e})); Err(e) }
+        Ok(full) => {
+            set_ai_cache("intraday", full.clone());
+            emit_stream(
+                &app_handle,
+                &stream_id,
+                &json!({"type":"done","full_text":full}),
+            );
+            Ok(())
+        }
+        Err(e) => {
+            emit_stream(
+                &app_handle,
+                &stream_id,
+                &json!({"type":"error","message":e}),
+            );
+            Err(e)
+        }
     }
 }
 
@@ -583,25 +750,63 @@ pub async fn ai_news_digest_stream(
 ) -> Result<(), String> {
     let (cfg, key) = match load_cfg(&state.dir()) {
         Ok(v) => v,
-        Err(e) => { emit_stream(&app_handle, &stream_id, &json!({"type":"error","message":e})); return Err(e); }
+        Err(e) => {
+            emit_stream(
+                &app_handle,
+                &stream_id,
+                &json!({"type":"error","message":e}),
+            );
+            return Err(e);
+        }
     };
     let news = market::get_news_flash(1, 20).await.unwrap_or_default();
-    let news_text: Vec<String> = news.iter().map(|n| format!("[{}] {} | tags:{} | url:{}", n.time, n.text, n.tags.join(","), n.url)).collect();
+    let news_text: Vec<String> = news
+        .iter()
+        .map(|n| {
+            format!(
+                "[{}] {} | tags:{} | url:{}",
+                n.time,
+                n.text,
+                n.tags.join(","),
+                n.url
+            )
+        })
+        .collect();
     let user = format!("【快讯列表】\n{}\n\n请对以上快讯去重、分类、摘要，研判情绪与重要度，并给出盘面一句话综述，按指定 JSON 对象格式输出。", news_text.join("\n"));
 
     if let Some(cached) = get_ai_cache("news_digest") {
-        emit_stream(&app_handle, &stream_id, &json!({"type":"cached","full_text":cached}));
+        emit_stream(
+            &app_handle,
+            &stream_id,
+            &json!({"type":"cached","full_text":cached}),
+        );
     }
 
     let app = app_handle.clone();
     let sid = stream_id.clone();
     let result = call_llm_text_stream(&cfg, &key, SYSTEM_NEWS, &user, move |delta| {
         emit_stream(&app, &sid, &json!({"type":"delta","content":delta}));
-    }).await;
+    })
+    .await;
 
     match result {
-        Ok(full) => { set_ai_cache("news_digest", full.clone()); emit_stream(&app_handle, &stream_id, &json!({"type":"done","full_text":full})); Ok(()) }
-        Err(e) => { emit_stream(&app_handle, &stream_id, &json!({"type":"error","message":e})); Err(e) }
+        Ok(full) => {
+            set_ai_cache("news_digest", full.clone());
+            emit_stream(
+                &app_handle,
+                &stream_id,
+                &json!({"type":"done","full_text":full}),
+            );
+            Ok(())
+        }
+        Err(e) => {
+            emit_stream(
+                &app_handle,
+                &stream_id,
+                &json!({"type":"error","message":e}),
+            );
+            Err(e)
+        }
     }
 }
 
@@ -613,7 +818,14 @@ pub async fn ai_tomorrow_mainline_stream(
 ) -> Result<(), String> {
     let (cfg, key) = match load_cfg(&state.dir()) {
         Ok(v) => v,
-        Err(e) => { emit_stream(&app_handle, &stream_id, &json!({"type":"error","message":e})); return Err(e); }
+        Err(e) => {
+            emit_stream(
+                &app_handle,
+                &stream_id,
+                &json!({"type":"error","message":e}),
+            );
+            return Err(e);
+        }
     };
     let today = market::today_yyyymmdd();
     let (zt_res, zb_res, sec, news) = tokio::join!(
@@ -623,27 +835,67 @@ pub async fn ai_tomorrow_mainline_stream(
         news_summary(15)
     );
     let zt_text = match zt_res {
-        Ok(pool) => { let items: Vec<String> = pool.list.iter().take(30).map(|s| format!("{}({}) {}板 封单{:.0}万 行业:{}", s.name, s.code, s.boards, s.fund/10000.0, s.industry)).collect(); format!("涨停 {} 家：\n{}", pool.total, items.join("\n")) }
+        Ok(pool) => {
+            let items: Vec<String> = pool
+                .list
+                .iter()
+                .take(30)
+                .map(|s| {
+                    format!(
+                        "{}({}) {}板 封单{:.0}万 行业:{}",
+                        s.name,
+                        s.code,
+                        s.boards,
+                        s.fund / 10000.0,
+                        s.industry
+                    )
+                })
+                .collect();
+            format!("涨停 {} 家：\n{}", pool.total, items.join("\n"))
+        }
         Err(_) => "涨停池数据暂不可用".to_string(),
     };
     let zb_text = match zb_res {
-        Ok(pool) => { let names: Vec<&str> = pool.list.iter().take(10).map(|s| s.name.as_str()).collect(); format!("炸板 {} 家：{}", pool.total, names.join("、")) }
+        Ok(pool) => {
+            let names: Vec<&str> = pool.list.iter().take(10).map(|s| s.name.as_str()).collect();
+            format!("炸板 {} 家：{}", pool.total, names.join("、"))
+        }
         Err(_) => "炸板池数据暂不可用".to_string(),
     };
     let user = format!("【涨停池】\n{}\n【炸板池】{}\n【板块】{}\n【最新快讯】\n{}\n\n请基于以上数据，推演明日市场主线。", zt_text, zb_text, sec, news);
 
     if let Some(cached) = get_ai_cache("tomorrow_mainline") {
-        emit_stream(&app_handle, &stream_id, &json!({"type":"cached","full_text":cached}));
+        emit_stream(
+            &app_handle,
+            &stream_id,
+            &json!({"type":"cached","full_text":cached}),
+        );
     }
 
     let app = app_handle.clone();
     let sid = stream_id.clone();
     let result = call_llm_text_stream(&cfg, &key, SYSTEM_MAINLINE, &user, move |delta| {
         emit_stream(&app, &sid, &json!({"type":"delta","content":delta}));
-    }).await;
+    })
+    .await;
 
     match result {
-        Ok(full) => { set_ai_cache("tomorrow_mainline", full.clone()); emit_stream(&app_handle, &stream_id, &json!({"type":"done","full_text":full})); Ok(()) }
-        Err(e) => { emit_stream(&app_handle, &stream_id, &json!({"type":"error","message":e})); Err(e) }
+        Ok(full) => {
+            set_ai_cache("tomorrow_mainline", full.clone());
+            emit_stream(
+                &app_handle,
+                &stream_id,
+                &json!({"type":"done","full_text":full}),
+            );
+            Ok(())
+        }
+        Err(e) => {
+            emit_stream(
+                &app_handle,
+                &stream_id,
+                &json!({"type":"error","message":e}),
+            );
+            Err(e)
+        }
     }
 }

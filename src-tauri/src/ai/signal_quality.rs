@@ -150,7 +150,11 @@ impl Agg {
             samples: self.samples,
             win_rate_pct,
             avg_ret_pct,
-            profit_factor: if profit_factor.is_infinite() { 999.0 } else { profit_factor },
+            profit_factor: if profit_factor.is_infinite() {
+                999.0
+            } else {
+                profit_factor
+            },
             sufficient: self.samples >= MIN_SAMPLES,
             level: level.to_string(),
         }
@@ -204,7 +208,8 @@ fn fetch_labeled(conn: &Connection, label: &str) -> Result<Vec<Row>, String> {
     let rows = stmt
         .query_map([label], |r| {
             let features_str: String = r.get(2).unwrap_or_default();
-            let features = serde_json::from_str::<Value>(&features_str).unwrap_or(Value::Object(Default::default()));
+            let features = serde_json::from_str::<Value>(&features_str)
+                .unwrap_or(Value::Object(Default::default()));
             Ok(Row {
                 strategy: r.get(0).unwrap_or_default(),
                 ts: r.get(1).unwrap_or_default(),
@@ -254,8 +259,16 @@ pub fn lookup(data_dir: &std::path::Path, q: &QualityQuery) -> Result<QualityVie
         }
     }
     Ok(agg.into_view(
-        if q.strategy.is_empty() { "ALL".to_string() } else { q.strategy.clone() },
-        if q.session.is_empty() { "ALL".to_string() } else { q.session.clone() },
+        if q.strategy.is_empty() {
+            "ALL".to_string()
+        } else {
+            q.strategy.clone()
+        },
+        if q.session.is_empty() {
+            "ALL".to_string()
+        } else {
+            q.session.clone()
+        },
     ))
 }
 
@@ -266,7 +279,10 @@ pub fn overview(data_dir: &std::path::Path) -> Result<Vec<QualityView>, String> 
     let mut buckets: HashMap<(String, String), Agg> = HashMap::new();
     for row in &rows {
         let key = (row.strategy.clone(), session_of(&row.ts).to_string());
-        buckets.entry(key).or_insert_with(Agg::new).push(&row.verdict, row.ret);
+        buckets
+            .entry(key)
+            .or_insert_with(Agg::new)
+            .push(&row.verdict, row.ret);
     }
     let mut out: Vec<QualityView> = buckets
         .into_iter()
@@ -286,7 +302,9 @@ pub fn signal_quality_lookup(
 }
 
 #[tauri::command]
-pub fn signal_quality_overview(state: State<'_, crate::ai::AiState>) -> Result<Vec<QualityView>, String> {
+pub fn signal_quality_overview(
+    state: State<'_, crate::ai::AiState>,
+) -> Result<Vec<QualityView>, String> {
     overview(&state.dir())
 }
 

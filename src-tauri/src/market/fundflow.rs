@@ -1,6 +1,6 @@
 // 资金流数据（v2.28）：个股四档资金（超大/大/中/小散）、大盘主力全景（两市分时+多日）、
 // 行业/概念资金排名。数据源东方财富，接口失败返回错误由调用方安全降级。
-use super::{secid_prefix};
+use super::secid_prefix;
 use serde::Serialize;
 use serde_json::Value;
 use std::time::Duration;
@@ -10,14 +10,14 @@ use std::time::Duration;
 #[serde(rename_all = "camelCase")]
 pub struct FundFlowDay {
     pub date: String,
-    pub main_net: f64,    // 主力净流入 = 超大+大单
-    pub super_net: f64,   // 超大单净流入
-    pub large_net: f64,   // 大单净流入
-    pub medium_net: f64,  // 中单净流入
-    pub small_net: f64,   // 小单净流入
-    pub main_pct: f64,    // 主力净流入占比 %
+    pub main_net: f64,   // 主力净流入 = 超大+大单
+    pub super_net: f64,  // 超大单净流入
+    pub large_net: f64,  // 大单净流入
+    pub medium_net: f64, // 中单净流入
+    pub small_net: f64,  // 小单净流入
+    pub main_pct: f64,   // 主力净流入占比 %
     pub close: f64,
-    pub pct: f64,         // 涨跌幅 %
+    pub pct: f64, // 涨跌幅 %
 }
 
 /// 个股多日四档资金流
@@ -33,9 +33,9 @@ pub struct StockFundFlow {
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MarketFundPanorama {
-    pub main_net_today: f64,      // 今日主力净流入合计（元，最新分时点）
+    pub main_net_today: f64,       // 今日主力净流入合计（元，最新分时点）
     pub minute_times: Vec<String>, // HH:MM
-    pub minute_main: Vec<f64>,    // 分时主力净流入累计（元）
+    pub minute_main: Vec<f64>,     // 分时主力净流入累计（元）
     pub trend: Vec<FundFlowDay>,   // 多日主力趋势（合计）
 }
 
@@ -45,8 +45,8 @@ pub struct MarketFundPanorama {
 pub struct FundRankRow {
     pub code: String,
     pub name: String,
-    pub pct: f64,        // 板块涨跌幅 %
-    pub main_net: f64,   // 主力净流入（元）
+    pub pct: f64,      // 板块涨跌幅 %
+    pub main_net: f64, // 主力净流入（元）
 }
 
 // ===== 底层取数 =====
@@ -106,8 +106,15 @@ pub async fn fund_flow(code: &str, days: i64) -> Result<StockFundFlow, String> {
     let secid = format!("{}.{}", secid_prefix(code), code);
     let v = his_json(&daykline_path(&secid, days)).await?;
     let d = &v["data"];
-    let name = d.get("name").and_then(|x| x.as_str()).unwrap_or("").to_string();
-    let klines = d.get("klines").and_then(|x| x.as_array()).ok_or("资金流为空")?;
+    let name = d
+        .get("name")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    let klines = d
+        .get("klines")
+        .and_then(|x| x.as_array())
+        .ok_or("资金流为空")?;
     let mut rows: Vec<FundFlowDay> = klines
         .iter()
         .filter_map(|x| x.as_str())
@@ -130,7 +137,10 @@ pub async fn fund_flow(code: &str, days: i64) -> Result<StockFundFlow, String> {
 /// 指数日级资金（多日，升序）
 async fn index_day(secid: &str, days: i64) -> Result<Vec<FundFlowDay>, String> {
     let v = his_json(&daykline_path(secid, days)).await?;
-    let klines = v["data"].get("klines").and_then(|x| x.as_array()).ok_or("指数资金为空")?;
+    let klines = v["data"]
+        .get("klines")
+        .and_then(|x| x.as_array())
+        .ok_or("指数资金为空")?;
     Ok(klines
         .iter()
         .filter_map(|x| x.as_str())
@@ -145,7 +155,10 @@ async fn index_minute(secid: &str) -> Result<Vec<(String, f64)>, String> {
          &fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56,f57"
     );
     let v = super::eastmoney::push2_json(&path).await?;
-    let klines = v["data"].get("klines").and_then(|x| x.as_array()).ok_or("指数分时资金为空")?;
+    let klines = v["data"]
+        .get("klines")
+        .and_then(|x| x.as_array())
+        .ok_or("指数分时资金为空")?;
     let mut out = Vec::new();
     for item in klines {
         let s = match item.as_str() {
@@ -204,7 +217,13 @@ pub async fn market_panorama(days: i64) -> Result<MarketFundPanorama, String> {
         let (a, b) = tokio::join!(sh, sz);
         match (a, b) {
             (Ok(a), Ok(b)) => merge_days(&a, &b),
-            (a, b) => return Err(format!("大盘资金趋势获取失败: {:?} / {:?}", a.err(), b.err())),
+            (a, b) => {
+                return Err(format!(
+                    "大盘资金趋势获取失败: {:?} / {:?}",
+                    a.err(),
+                    b.err()
+                ))
+            }
         }
     };
 
@@ -234,11 +253,12 @@ fn merge_days(a: &[FundFlowDay], b: &[FundFlowDay]) -> Vec<FundFlowDay> {
     let mut medium_m = main_m.clone();
     let mut small_m = main_m.clone();
     let mut pct_m: BTreeMap<String, (f64, f64)> = BTreeMap::new(); // (pct和, 计数)
-    let add = |m: &mut BTreeMap<String, f64>, rows: &[FundFlowDay], get: fn(&FundFlowDay) -> f64| {
-        for r in rows {
-            *m.entry(r.date.clone()).or_insert(0.0) += get(r);
-        }
-    };
+    let add =
+        |m: &mut BTreeMap<String, f64>, rows: &[FundFlowDay], get: fn(&FundFlowDay) -> f64| {
+            for r in rows {
+                *m.entry(r.date.clone()).or_insert(0.0) += get(r);
+            }
+        };
     add(&mut main_m, a, |r| r.main_net);
     add(&mut main_m, b, |r| r.main_net);
     add(&mut super_m, a, |r| r.super_net);
@@ -288,18 +308,33 @@ pub async fn fund_rank(kind: &str) -> Result<Vec<FundRankRow>, String> {
          &fid=f62&fs=m:90+t:{t}&fields=f12,f14,f3,f62"
     );
     let v = super::eastmoney::push2_json(&path).await?;
-    let diff = v["data"].get("diff").and_then(|x| x.as_array()).ok_or("板块资金排名为空")?;
+    let diff = v["data"]
+        .get("diff")
+        .and_then(|x| x.as_array())
+        .ok_or("板块资金排名为空")?;
     let get = |x: &Value, k: &str| x.get(k).and_then(|v| v.as_f64()).unwrap_or(0.0);
     let mut rows: Vec<FundRankRow> = diff
         .iter()
         .map(|x| FundRankRow {
-            code: x.get("f12").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            name: x.get("f14").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            code: x
+                .get("f12")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            name: x
+                .get("f14")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             pct: get(x, "f3"),
             main_net: get(x, "f62"),
         })
         .filter(|r| !r.code.is_empty())
         .collect();
-    rows.sort_by(|a, b| b.main_net.partial_cmp(&a.main_net).unwrap_or(std::cmp::Ordering::Equal));
+    rows.sort_by(|a, b| {
+        b.main_net
+            .partial_cmp(&a.main_net)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     Ok(rows)
 }

@@ -80,7 +80,10 @@ fn valid_date(s: &str) -> bool {
     y.len() == 4
         && m.len() == 2
         && d.len() == 2
-        && y.chars().chain(m.chars()).chain(d.chars()).all(|c| c.is_ascii_digit())
+        && y.chars()
+            .chain(m.chars())
+            .chain(d.chars())
+            .all(|c| c.is_ascii_digit())
 }
 fn arg_str(v: &serde_json::Value, key: &str) -> Option<String> {
     v.get(key)
@@ -379,9 +382,7 @@ fn list_themes(c: &rusqlite::Connection, args: &serde_json::Value) -> Result<Too
         items.push(r.map_err(|e| e.to_string())?);
     }
     Ok(ToolOut {
-        content: truncate(
-            serde_json::to_string_pretty(&json!({"themes": items})).unwrap(),
-        ),
+        content: truncate(serde_json::to_string_pretty(&json!({"themes": items})).unwrap()),
         refs: vec![FactRef::card("themelib", None, None)],
     })
 }
@@ -551,9 +552,7 @@ fn query_catalysts(c: &rusqlite::Connection, args: &serde_json::Value) -> Result
         items.push(v);
     }
     Ok(ToolOut {
-        content: truncate(
-            serde_json::to_string_pretty(&json!({"catalysts": items})).unwrap(),
-        ),
+        content: truncate(serde_json::to_string_pretty(&json!({"catalysts": items})).unwrap()),
         refs,
     })
 }
@@ -579,7 +578,16 @@ fn stock_profile(c: &rusqlite::Connection, args: &serde_json::Value) -> Result<T
             "SELECT trade_date,name,boards,first_seal,industry,concepts FROM limit_up_record
              WHERE code=?1 ORDER BY trade_date DESC LIMIT 1",
             [&code],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+            |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            },
         )
         .ok();
     let mut themes = vec![];
@@ -696,18 +704,12 @@ fn list_limit_ups(c: &rusqlite::Connection, args: &serde_json::Value) -> Result<
     })
 }
 
-async fn semantic_search(
-    ctx: &ToolCtx<'_>,
-    args: &serde_json::Value,
-) -> Result<ToolOut, String> {
+async fn semantic_search(ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
     let query = arg_str(args, "query").ok_or("semantic_search 需要 query")?;
     let k = arg_i64(args, "topK", 5).clamp(1, 10);
     let source_type = arg_str(args, "sourceType");
     let vecs = ctx.embedder.embed(vec![query.clone()]).await?;
-    let q = vecs
-        .into_iter()
-        .next()
-        .ok_or("嵌入服务返回空向量")?;
+    let q = vecs.into_iter().next().ok_or("嵌入服务返回空向量")?;
     let ai_path = ctx.data_dir.join("ai.db");
     let db: AiDb = vectordb::open(&ai_path)?;
     let hits = vectordb::search(&db.0, &q, k, source_type.as_deref())?;
@@ -728,9 +730,7 @@ async fn semantic_search(
         })
         .collect();
     Ok(ToolOut {
-        content: truncate(
-            serde_json::to_string_pretty(&json!({"matches": items})).unwrap(),
-        ),
+        content: truncate(serde_json::to_string_pretty(&json!({"matches": items})).unwrap()),
         refs: vec![],
     })
 }
@@ -798,8 +798,11 @@ pub fn dispatch<'a>(
 
 /// 查询实时行情
 async fn get_quote(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
-    let code = args.get("code").and_then(|v| v.as_str()).ok_or("缺少 code 参数")?;
-    
+    let code = args
+        .get("code")
+        .and_then(|v| v.as_str())
+        .ok_or("缺少 code 参数")?;
+
     // 调用行情 API
     match crate::market::get_quotes(vec![code.to_string()]).await {
         Ok(quotes) => {
@@ -816,7 +819,8 @@ async fn get_quote(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolO
                         "low": q.low,
                         "open": q.open,
                         "prev_close": q.prev_close,
-                    })).unwrap_or_default(),
+                    }))
+                    .unwrap_or_default(),
                     refs: vec![],
                 })
             } else {
@@ -829,8 +833,11 @@ async fn get_quote(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolO
 
 /// 查询基本面数据（市盈率、市净率、换手率）
 async fn get_fundamentals(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
-    let code = args.get("code").and_then(|v| v.as_str()).ok_or("缺少 code 参数")?;
-    
+    let code = args
+        .get("code")
+        .and_then(|v| v.as_str())
+        .ok_or("缺少 code 参数")?;
+
     // 直接调用腾讯的行情 API（因为腾讯提供 PE/PB/换手率）
     match crate::market::tencent::quotes(&[code.to_string()]).await {
         Ok(quotes) => {
@@ -845,7 +852,8 @@ async fn get_fundamentals(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Resul
                         "pb": q.pb,
                         "turnover": q.turnover,
                         "amplitude": q.amplitude,
-                    })).unwrap_or_default(),
+                    }))
+                    .unwrap_or_default(),
                     refs: vec![],
                 })
             } else {
@@ -858,27 +866,40 @@ async fn get_fundamentals(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Resul
 
 /// 查询日K线历史数据
 async fn get_kline(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
-    let code = args.get("code").and_then(|v| v.as_str()).ok_or("缺少 code 参数")?;
-    let count = args.get("count").and_then(|v| v.as_i64()).unwrap_or(20).clamp(5, 60);
-    
+    let code = args
+        .get("code")
+        .and_then(|v| v.as_str())
+        .ok_or("缺少 code 参数")?;
+    let count = args
+        .get("count")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(20)
+        .clamp(5, 60);
+
     // 调用 K 线 API（腾讯数据源）
     match crate::market::tencent::kline(code, 101, count).await {
         Ok(bars) => {
-            let bars_json: Vec<_> = bars.iter().map(|b| json!({
-                "timestamp": b.timestamp,
-                "open": b.open,
-                "close": b.close,
-                "high": b.high,
-                "low": b.low,
-                "volume": b.volume,
-            })).collect();
-            
+            let bars_json: Vec<_> = bars
+                .iter()
+                .map(|b| {
+                    json!({
+                        "timestamp": b.timestamp,
+                        "open": b.open,
+                        "close": b.close,
+                        "high": b.high,
+                        "low": b.low,
+                        "volume": b.volume,
+                    })
+                })
+                .collect();
+
             Ok(ToolOut {
                 content: serde_json::to_string_pretty(&json!({
                     "code": code,
                     "count": bars.len(),
                     "bars": bars_json,
-                })).unwrap_or_default(),
+                }))
+                .unwrap_or_default(),
                 refs: vec![],
             })
         }
@@ -888,35 +909,55 @@ async fn get_kline(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolO
 
 /// 查询技术指标（均线、MACD、RSI）
 async fn get_indicators(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
-    let code = args.get("code").and_then(|v| v.as_str()).ok_or("缺少 code 参数")?;
-    
+    let code = args
+        .get("code")
+        .and_then(|v| v.as_str())
+        .ok_or("缺少 code 参数")?;
+
     // 先获取 K 线数据（60 天）
-    let bars = crate::market::tencent::kline(code, 101, 60).await
+    let bars = crate::market::tencent::kline(code, 101, 60)
+        .await
         .map_err(|e| format!("K线查询失败: {e}"))?;
-    
+
     if bars.len() < 20 {
         return Err("K线数据不足，无法计算技术指标".to_string());
     }
-    
+
     let closes: Vec<f64> = bars.iter().map(|b| b.close).collect();
-    
+
     // 计算均线
-    let ma5 = if closes.len() >= 5 { closes.iter().rev().take(5).sum::<f64>() / 5.0 } else { 0.0 };
-    let ma10 = if closes.len() >= 10 { closes.iter().rev().take(10).sum::<f64>() / 10.0 } else { 0.0 };
-    let ma20 = if closes.len() >= 20 { closes.iter().rev().take(20).sum::<f64>() / 20.0 } else { 0.0 };
-    
+    let ma5 = if closes.len() >= 5 {
+        closes.iter().rev().take(5).sum::<f64>() / 5.0
+    } else {
+        0.0
+    };
+    let ma10 = if closes.len() >= 10 {
+        closes.iter().rev().take(10).sum::<f64>() / 10.0
+    } else {
+        0.0
+    };
+    let ma20 = if closes.len() >= 20 {
+        closes.iter().rev().take(20).sum::<f64>() / 20.0
+    } else {
+        0.0
+    };
+
     // 简化的 MACD（用 EMA12 - EMA26 近似）
     let ema12 = closes.iter().rev().take(12).sum::<f64>() / 12.0;
     let ema26 = closes.iter().rev().take(26).sum::<f64>() / 26.0;
     let macd = ema12 - ema26;
-    
+
     // 简化的 RSI 14日
     let mut gains = 0.0;
     let mut losses = 0.0;
     for i in 1..15 {
         if i < closes.len() {
             let diff = closes[closes.len() - i] - closes[closes.len() - i - 1];
-            if diff > 0.0 { gains += diff; } else { losses += -diff; }
+            if diff > 0.0 {
+                gains += diff;
+            } else {
+                losses += -diff;
+            }
         }
     }
     let rsi = if gains + losses > 0.0 {
@@ -924,11 +965,11 @@ async fn get_indicators(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<
     } else {
         50.0
     };
-    
+
     // 判断趋势
     let ma_bullish = ma5 > ma10 && ma10 > ma20;
     let ma_bearish = ma5 < ma10 && ma10 < ma20;
-    
+
     Ok(ToolOut {
         content: serde_json::to_string_pretty(&json!({
             "code": code,
@@ -937,30 +978,33 @@ async fn get_indicators(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<
             "ma20": ma20,
             "macd": macd,
             "rsi14": rsi,
-            "trend": if ma_bullish { "多头排列（上涨趋势）" } 
-                     else if ma_bearish { "空头排列（下跌趋势）" } 
+            "trend": if ma_bullish { "多头排列（上涨趋势）" }
+                     else if ma_bearish { "空头排列（下跌趋势）" }
                      else { "震荡" },
-        })).unwrap_or_default(),
+        }))
+        .unwrap_or_default(),
         refs: vec![],
     })
 }
 
 /// 查询财务报表
 async fn get_finance_tool(_ctx: &ToolCtx<'_>, args: &serde_json::Value) -> Result<ToolOut, String> {
-    let code = args.get("code").and_then(|v| v.as_str()).ok_or("缺少 code 参数")?;
-    
+    let code = args
+        .get("code")
+        .and_then(|v| v.as_str())
+        .ok_or("缺少 code 参数")?;
+
     // 调用财务报表 API（新浪 F10）
     match crate::market::f10::get_finance(code.to_string()).await {
-        Ok(report) => {
-            Ok(ToolOut {
-                content: serde_json::to_string_pretty(&json!({
-                    "code": code,
-                    "periods": report.periods,
-                    "groups": report.groups,
-                })).unwrap_or_default(),
-                refs: vec![],
-            })
-        }
+        Ok(report) => Ok(ToolOut {
+            content: serde_json::to_string_pretty(&json!({
+                "code": code,
+                "periods": report.periods,
+                "groups": report.groups,
+            }))
+            .unwrap_or_default(),
+            refs: vec![],
+        }),
         Err(e) => Err(format!("财务报表查询失败: {e}")),
     }
 }
@@ -982,7 +1026,13 @@ mod tests {
             Box::pin(async move {
                 Ok(texts
                     .into_iter()
-                    .map(|t| if t.contains("战法") { vec![1.0, 0.0] } else { vec![0.0, 1.0] })
+                    .map(|t| {
+                        if t.contains("战法") {
+                            vec![1.0, 0.0]
+                        } else {
+                            vec![0.0, 1.0]
+                        }
+                    })
                     .collect())
             })
         }
@@ -994,8 +1044,11 @@ mod tests {
         // "table already exists"；追加进程内原子序号保证唯一（最小偏离）。
         static SEED_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let seq = SEED_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let dir = std::env::temp_dir()
-            .join(format!("tickgold-ai-tools-{}-{}", crate::ai::now_millis(), seq));
+        let dir = std::env::temp_dir().join(format!(
+            "tickgold-ai-tools-{}-{}",
+            crate::ai::now_millis(),
+            seq
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let c = rusqlite::Connection::open(dir.join("stock-dock.db")).unwrap();
@@ -1102,9 +1155,13 @@ mod tests {
             data_dir: &dir,
             embedder: &MockEmbedder,
         };
-        let out = dispatch("semantic_search", json!({"query":"战法怎么用","topK":3}), &ctx)
-            .await
-            .unwrap();
+        let out = dispatch(
+            "semantic_search",
+            json!({"query":"战法怎么用","topK":3}),
+            &ctx,
+        )
+        .await
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out.content).unwrap();
         assert_eq!(v["matches"][0]["sourceRef"], "龙头战法.md");
     }

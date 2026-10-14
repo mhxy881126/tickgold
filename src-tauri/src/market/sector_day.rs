@@ -5,9 +5,9 @@ use super::eastmoney;
 use crate::ai::maindb;
 use rusqlite::params;
 use serde::Serialize;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
-use serde_json::Value;
 
 /// 板块日级快照行
 #[derive(Serialize, Clone, Debug)]
@@ -50,7 +50,10 @@ async fn fetch_rows(kind: &str) -> Result<Vec<SectorDayRow>, String> {
          &fields=f3,f6,f8,f12,f14,f62,f104,f105,f128,f136,f140"
     );
     let v = eastmoney::push2_json(&path).await?;
-    let diff = v["data"].get("diff").and_then(|x| x.as_array()).ok_or("板块快照为空")?;
+    let diff = v["data"]
+        .get("diff")
+        .and_then(|x| x.as_array())
+        .ok_or("板块快照为空")?;
     Ok(diff
         .iter()
         .filter(|x| !vs(x, "f12").is_empty())
@@ -120,8 +123,20 @@ pub async fn snapshot_day(dir: &Path, day: &str) -> Result<usize, String> {
             .map_err(|e| e.to_string())?;
         for r in &rows {
             stmt.execute(params![
-                r.day, r.kind, r.code, r.name, r.change_pct, r.net_amount, r.lead_code,
-                r.lead_name, r.lead_pct, r.up_count, r.down_count, r.limit_up, r.turnover, r.amount
+                r.day,
+                r.kind,
+                r.code,
+                r.name,
+                r.change_pct,
+                r.net_amount,
+                r.lead_code,
+                r.lead_name,
+                r.lead_pct,
+                r.up_count,
+                r.down_count,
+                r.limit_up,
+                r.turnover,
+                r.amount
             ])
             .map_err(|e| e.to_string())?;
         }
@@ -175,10 +190,8 @@ pub fn query(dir: &Path, kind: &str, days: i64) -> Result<Vec<SectorDayRow>, Str
 /// 已积累的板块快照交易日数量
 pub fn stats(dir: &Path) -> Result<i64, String> {
     let conn = maindb::open_readonly(dir)?;
-    conn.query_row(
-        "SELECT COUNT(DISTINCT day) FROM ts_sector_day",
-        [],
-        |row| row.get(0),
-    )
+    conn.query_row("SELECT COUNT(DISTINCT day) FROM ts_sector_day", [], |row| {
+        row.get(0)
+    })
     .map_err(|e| e.to_string())
 }

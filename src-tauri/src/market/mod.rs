@@ -1,24 +1,24 @@
 // 行情数据聚合层：东方财富 / 新浪 / 腾讯 三源容灾。
 // 调度策略：按优先级逐源尝试（单源超时、返回空或异常即切下一源），并带轻量熔断。
-pub mod eastmoney;
-pub mod sina;
-pub mod tencent;
-pub mod spider;
-pub mod limitup;
 pub mod alert;
-pub mod f10;
-pub mod cninfo;
 pub mod announce;
-pub mod irminteract;
 pub mod cache;
-pub mod history;
-pub mod fundflow;
-pub mod level2;
-pub mod sector_day;
-pub mod strategy_scan;
-pub mod ladder_stats;
-pub mod screen_sub;
+pub mod cninfo;
 pub mod depth_enhance;
+pub mod eastmoney;
+pub mod f10;
+pub mod fundflow;
+pub mod history;
+pub mod irminteract;
+pub mod ladder_stats;
+pub mod level2;
+pub mod limitup;
+pub mod screen_sub;
+pub mod sector_day;
+pub mod sina;
+pub mod spider;
+pub mod strategy_scan;
+pub mod tencent;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -52,8 +52,8 @@ pub struct Quote {
     pub circ_mv: f64,      // 流通市值（亿元）
     pub total_mv: f64,     // 总市值（亿元）
     // 盘口资金（v2.28，腾讯批量行情提供；东财/新浪缺省 0，由 get_quotes 统一补全）
-    pub inside_vol: f64,   // 内盘（主动卖成交，手）
-    pub outside_vol: f64,  // 外盘（主动买成交，手）
+    pub inside_vol: f64,  // 内盘（主动卖成交，手）
+    pub outside_vol: f64, // 外盘（主动买成交，手）
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -106,15 +106,15 @@ pub struct OrderBook {
     // 盘口深度汇总（v2.28）：五档挂单合计与委比/委差。
     // #[serde(default)] 兼容旧缓存/旧构造；通过 fill_depth 统一计算。
     #[serde(default)]
-    pub bid_total: f64,   // 五档买盘挂单合计（手）
+    pub bid_total: f64, // 五档买盘挂单合计（手）
     #[serde(default)]
-    pub ask_total: f64,   // 五档卖盘挂单合计（手）
+    pub ask_total: f64, // 五档卖盘挂单合计（手）
     #[serde(default)]
-    pub wei_bi: f64,      // 委比 % =(bid-ask)/(bid+ask)*100
+    pub wei_bi: f64, // 委比 % =(bid-ask)/(bid+ask)*100
     #[serde(default)]
-    pub wei_cha: f64,     // 委差（手）=bid-ask
+    pub wei_cha: f64, // 委差（手）=bid-ask
     #[serde(default)]
-    pub inside_vol: f64,  // 内盘（主动卖成交，手）
+    pub inside_vol: f64, // 内盘（主动卖成交，手）
     #[serde(default)]
     pub outside_vol: f64, // 外盘（主动买成交，手）
     // v2.32 品种专项：ETF 参考净值(IOPV)；可转债转股价值与转股溢价率%
@@ -146,10 +146,10 @@ impl OrderBook {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TradeTick {
-    pub time: String,  // HH:MM:SS
+    pub time: String, // HH:MM:SS
     pub price: f64,
-    pub vol: f64,      // 手
-    pub side: String,  // buy 主动买 / sell 主动卖 / neutral 中性
+    pub vol: f64,     // 手
+    pub side: String, // buy 主动买 / sell 主动卖 / neutral 中性
 }
 
 /// 板块（行业 / 概念）
@@ -198,14 +198,14 @@ pub struct ScreenFilter {
     pub mcap_max: Option<f64>,
     pub amp_min: Option<f64>, // 振幅 %
     pub amp_max: Option<f64>,
-    pub ma_bull: bool,    // 均线多头排列
-    pub macd_golden: bool, // MACD 金叉
-    pub volume_up: bool,  // 放量上涨
-    pub breakout: bool,   // 突破新高
-    pub above_ma20: bool, // 站上 20 日线
-    pub kdj_golden: bool,  // KDJ 低位金叉
+    pub ma_bull: bool,      // 均线多头排列
+    pub macd_golden: bool,  // MACD 金叉
+    pub volume_up: bool,    // 放量上涨
+    pub breakout: bool,     // 突破新高
+    pub above_ma20: bool,   // 站上 20 日线
+    pub kdj_golden: bool,   // KDJ 低位金叉
     pub rsi_oversold: bool, // RSI 超卖（RSI6<30）
-    pub boll_break: bool,  // 收盘突破 BOLL 上轨
+    pub boll_break: bool,   // 收盘突破 BOLL 上轨
     pub limit: i64,
 }
 impl Default for ScreenFilter {
@@ -313,7 +313,10 @@ pub fn cnc_symbol(code: &str) -> String {
 
 /// 是否场内 ETF/基金（沪 5 开头、深 15/16/18 开头）
 pub fn is_etf_code(code: &str) -> bool {
-    code.starts_with('5') || code.starts_with("15") || code.starts_with("16") || code.starts_with("18")
+    code.starts_with('5')
+        || code.starts_with("15")
+        || code.starts_with("16")
+        || code.starts_with("18")
 }
 /// 是否可转债（沪 11 开头、深 12 开头）
 pub fn is_conv_code(code: &str) -> bool {
@@ -375,15 +378,16 @@ fn valid_quotes(v: &[Quote]) -> bool {
 /// 内外盘补全：主源（东财/新浪）不提供内外盘时，用腾讯批量行情按 code 合并。
 /// 已有非零内外盘（腾讯即主源）则跳过，避免重复请求。
 async fn enrich_inside_outside(mut quotes: Vec<Quote>) -> Vec<Quote> {
-    if quotes.is_empty() || quotes.iter().any(|q| q.inside_vol > 0.0 || q.outside_vol > 0.0) {
+    if quotes.is_empty()
+        || quotes
+            .iter()
+            .any(|q| q.inside_vol > 0.0 || q.outside_vol > 0.0)
+    {
         return quotes;
     }
     let codes: Vec<String> = quotes.iter().map(|q| q.code.clone()).collect();
-    if let Ok(Ok(tq)) = tokio::time::timeout(
-        Duration::from_secs(QUOTE_TIMEOUT),
-        tencent::quotes(&codes),
-    )
-    .await
+    if let Ok(Ok(tq)) =
+        tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), tencent::quotes(&codes)).await
     {
         let map: HashMap<String, (f64, f64)> = tq
             .into_iter()
@@ -447,20 +451,18 @@ pub async fn get_quotes(codes: Vec<String>) -> Result<Vec<Quote>, String> {
         }
     }
 
-    let result = match tokio::time::timeout(
-        Duration::from_secs(QUOTE_TIMEOUT),
-        tencent::quotes(&codes),
-    )
-    .await
-    {
-        Ok(Ok(v)) if valid_quotes(&v) => {
-            record_ok("tencent");
-            Ok(v)
-        }
-        Ok(Ok(_)) => Err("腾讯: 返回空".to_string()),
-        Ok(Err(e)) => Err(format!("全部失败 → {last_err}; 腾讯: {e}")),
-        Err(_) => Err(format!("全部失败 → {last_err}; 腾讯: 超时")),
-    };
+    let result =
+        match tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), tencent::quotes(&codes))
+            .await
+        {
+            Ok(Ok(v)) if valid_quotes(&v) => {
+                record_ok("tencent");
+                Ok(v)
+            }
+            Ok(Ok(_)) => Err("腾讯: 返回空".to_string()),
+            Ok(Err(e)) => Err(format!("全部失败 → {last_err}; 腾讯: {e}")),
+            Err(_) => Err(format!("全部失败 → {last_err}; 腾讯: 超时")),
+        };
     if let Err(e) = &result {
         log::error!("批量行情全部源失败（{} 只）: {e}", codes.len());
     }
@@ -566,9 +568,12 @@ pub async fn get_orderbook(code: String) -> Result<OrderBook, String> {
             }
         }
     } else {
-        tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), tencent::orderbook(&code))
-            .await
-            .map_err(|_| "盘口: 超时".to_string())??
+        tokio::time::timeout(
+            Duration::from_secs(QUOTE_TIMEOUT),
+            tencent::orderbook(&code),
+        )
+        .await
+        .map_err(|_| "盘口: 超时".to_string())??
     };
     // 东财路径无内外盘：用腾讯批量行情补一次
     if book.inside_vol <= 0.0 && book.outside_vol <= 0.0 {
@@ -578,7 +583,10 @@ pub async fn get_orderbook(code: String) -> Result<OrderBook, String> {
         )
         .await
         {
-            if let Some(q) = tq.into_iter().find(|q| q.code == code || q.code == book.code) {
+            if let Some(q) = tq
+                .into_iter()
+                .find(|q| q.code == code || q.code == book.code)
+            {
                 book.inside_vol = q.inside_vol;
                 book.outside_vol = q.outside_vol;
             }
@@ -586,8 +594,11 @@ pub async fn get_orderbook(code: String) -> Result<OrderBook, String> {
     }
     // v2.32 品种专项指标（失败安全降级：不影响盘口主结果）
     if is_conv_code(&code) {
-        if let Ok(Ok(rows)) =
-            tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), eastmoney::conv_metrics()).await
+        if let Ok(Ok(rows)) = tokio::time::timeout(
+            Duration::from_secs(QUOTE_TIMEOUT),
+            eastmoney::conv_metrics(),
+        )
+        .await
         {
             if let Some(r) = rows.iter().find(|r| r.code == code || r.code == book.code) {
                 book.convert_value = r.convert_value;
@@ -623,10 +634,16 @@ pub async fn get_sectors(kind: String) -> Result<Vec<Sector>, String> {
 }
 
 /// 板块成分股
-pub async fn get_sector_stocks(category: String, kind: String) -> Result<Vec<serde_json::Value>, String> {
-    tokio::time::timeout(Duration::from_secs(10), sina::sector_stocks(&category, &kind))
-        .await
-        .map_err(|_| "板块成分: 超时".to_string())?
+pub async fn get_sector_stocks(
+    category: String,
+    kind: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        sina::sector_stocks(&category, &kind),
+    )
+    .await
+    .map_err(|_| "板块成分: 超时".to_string())?
 }
 
 /// 盘中快讯：新浪 7x24（page 从 1 开始）
@@ -668,16 +685,18 @@ pub async fn get_hist_minute_days(code: String, n: i64) -> Result<Vec<HistDayMin
 
 /// 热门股池（沪深300成分股精选，用于本地榜单）
 const HOT_CODES: &[&str] = &[
-    "600519","601318","600036","601166","600276","600030","601398","601288","601988","601939",
-    "000858","000333","002594","300750","600031","601899","600900","601012","600887","000001",
-    "000002","002415","000651","600030","601688","600999","601628","601318","601601","600036",
-    "300059","300015","300033","300124","002475","002230","000063","002304","600585","601888",
-    "600009","601111","600029","600104","601668","601800","601390","601186","600018","601006",
-    "600016","600015","601328","600000","601998","601169","601009","601229","600919","601838",
-    "000001","002142","600919","601077","600926","601128","601528","600908","601860","601009",
-    "600585","601919","600019","601005","600022","600569","600231","000898","000709","000932",
-    "601600","600362","601899","600547","600489","600711","000630","000878","002460","002466",
-    "300750","300014","002594","600884","601012","600438","601877","002129","600732","002056",
+    "600519", "601318", "600036", "601166", "600276", "600030", "601398", "601288", "601988",
+    "601939", "000858", "000333", "002594", "300750", "600031", "601899", "600900", "601012",
+    "600887", "000001", "000002", "002415", "000651", "600030", "601688", "600999", "601628",
+    "601318", "601601", "600036", "300059", "300015", "300033", "300124", "002475", "002230",
+    "000063", "002304", "600585", "601888", "600009", "601111", "600029", "600104", "601668",
+    "601800", "601390", "601186", "600018", "601006", "600016", "600015", "601328", "600000",
+    "601998", "601169", "601009", "601229", "600919", "601838", "000001", "002142", "600919",
+    "601077", "600926", "601128", "601528", "600908", "601860", "601009", "600585", "601919",
+    "600019", "601005", "600022", "600569", "600231", "000898", "000709", "000932", "601600",
+    "600362", "601899", "600547", "600489", "600711", "000630", "000878", "002460", "002466",
+    "300750", "300014", "002594", "600884", "601012", "600438", "601877", "002129", "600732",
+    "002056",
 ];
 
 /// 榜单（全市场沪深京 A 股，分页）：sort = gainers/losers/amount，page 从 1 开始
@@ -695,7 +714,12 @@ pub use eastmoney::RankRow;
 /// 增强榜单（东方财富，含换手/量比/5分钟涨速/主力净流入/大单净流入）。
 /// sort = gainers/losers/amount/speed/big/vr/turnover/main，page 从 1 开始。
 /// scope = a/bse/etf/conv。
-pub async fn get_rank_board(sort: String, page: i64, num: i64, scope: String) -> Result<Vec<RankRow>, String> {
+pub async fn get_rank_board(
+    sort: String,
+    page: i64,
+    num: i64,
+    scope: String,
+) -> Result<Vec<RankRow>, String> {
     // 东财多节点故障转移；整体失败/超时则降级新浪（push2 在部分网络被阻断时新浪仍可达）
     let em = tokio::time::timeout(
         Duration::from_secs(12),
@@ -742,7 +766,7 @@ pub fn today_yyyymmdd() -> String {
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
     let days = (secs + 8 * 3600).div_euclid(86400); // 北京时间当日 0 点起的天数
-    // Howard Hinnant civil-from-days
+                                                    // Howard Hinnant civil-from-days
     let z = days + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
     let doe = z - era * 146097;
@@ -835,8 +859,16 @@ pub async fn check_latest() -> Result<LatestInfo, String> {
             };
             Ok(LatestInfo {
                 version: ver.to_string(),
-                notes: v.get("notes").and_then(|x| x.as_str()).unwrap_or("").to_string(),
-                pub_date: v.get("pub_date").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                notes: v
+                    .get("notes")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                pub_date: v
+                    .get("pub_date")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string(),
             })
         });
     }
@@ -872,23 +904,22 @@ pub async fn get_index_quotes() -> Result<Vec<Quote>, String> {
 
 /// 搜索：东财 → 腾讯
 pub async fn search_stocks(keyword: String) -> Result<Vec<StockItem>, String> {
-    if !keyword.trim().is_empty()
-        && is_open("eastmoney_search") {
-            if let Ok(Ok(v)) = tokio::time::timeout(
-                Duration::from_secs(QUOTE_TIMEOUT),
-                eastmoney::search(&keyword),
-            )
-            .await
-            {
-                if !v.is_empty() {
-                    record_ok("eastmoney_search");
-                    return Ok(v);
-                }
-                record_fail("eastmoney_search");
-            } else {
-                record_fail("eastmoney_search");
+    if !keyword.trim().is_empty() && is_open("eastmoney_search") {
+        if let Ok(Ok(v)) = tokio::time::timeout(
+            Duration::from_secs(QUOTE_TIMEOUT),
+            eastmoney::search(&keyword),
+        )
+        .await
+        {
+            if !v.is_empty() {
+                record_ok("eastmoney_search");
+                return Ok(v);
             }
+            record_fail("eastmoney_search");
+        } else {
+            record_fail("eastmoney_search");
         }
+    }
     match tencent::search(&keyword).await {
         Ok(v) if !v.is_empty() => Ok(v),
         Ok(_) => Err("未找到匹配股票".to_string()),
@@ -1138,12 +1169,9 @@ pub async fn get_screener(f: ScreenFilter) -> Result<Vec<ScreenResult>, String> 
     codes.sort();
     codes.dedup();
 
-    let quotes = tokio::time::timeout(
-        Duration::from_secs(QUOTE_TIMEOUT),
-        tencent::quotes(&codes),
-    )
-    .await
-    .map_err(|_| "选股: 行情超时".to_string())??;
+    let quotes = tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), tencent::quotes(&codes))
+        .await
+        .map_err(|_| "选股: 行情超时".to_string())??;
 
     let candidates: Vec<Quote> = quotes.into_iter().filter(|q| basic_match(q, &f)).collect();
 
@@ -1173,7 +1201,11 @@ pub async fn get_screener(f: ScreenFilter) -> Result<Vec<ScreenResult>, String> 
         let sem = Arc::new(Semaphore::new(8));
         let mut set = JoinSet::new();
         for q in candidates {
-            let permit = sem.clone().acquire_owned().await.map_err(|e| e.to_string())?;
+            let permit = sem
+                .clone()
+                .acquire_owned()
+                .await
+                .map_err(|e| e.to_string())?;
             set.spawn(async move {
                 let _p = permit;
                 let r = tencent::kline(&q.code, 101, 70).await;

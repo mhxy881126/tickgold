@@ -87,7 +87,12 @@ fn market_review(focus: &Value) -> RuleReview {
         if sec_txt.is_empty() { "板块数据缺失。\n" } else { &sec_txt },
         mood_advice
     );
-    RuleReview { title, summary, content, evidence: focus.to_string() }
+    RuleReview {
+        title,
+        summary,
+        content,
+        evidence: focus.to_string(),
+    }
 }
 
 fn theme_review(focus: &Value) -> RuleReview {
@@ -127,7 +132,10 @@ fn theme_review(focus: &Value) -> RuleReview {
     };
 
     let title = format!("题材复盘 · {}（规则生成）", name);
-    let summary = format!("「{}」阶段：{} / {}，成员{}只；{}", name, stage, level, members, sustain);
+    let summary = format!(
+        "「{}」阶段：{} / {}，成员{}只；{}",
+        name, stage, level, members, sustain
+    );
     let content = format!(
         "【题材】{}　阶段：{}　强度：{}　成员：{}只\n\n【龙头梯队】\n{}\n【催化事件】{}\n{}\n【持续性判断】{}\n\n（规则引擎生成，不构成投资建议）",
         name, stage, level, members,
@@ -136,22 +144,38 @@ fn theme_review(focus: &Value) -> RuleReview {
         if cat_txt.is_empty() { "近期无新增催化记录。\n" } else { &cat_txt },
         sustain
     );
-    RuleReview { title, summary, content, evidence: focus.to_string() }
+    RuleReview {
+        title,
+        summary,
+        content,
+        evidence: focus.to_string(),
+    }
 }
 
 fn trade_review(focus: &Value) -> RuleReview {
-    let logs = focus["todayDecisionLogs"].as_array().cloned().unwrap_or_default();
+    let logs = focus["todayDecisionLogs"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     let positions = focus["positions"].as_array().cloned().unwrap_or_default();
     let plan_exists = focus["todayPlan"]["exists"].as_bool().unwrap_or(false);
 
-    let buys = logs.iter().filter(|l| gs(l, "label") == "BUY" || gs(l, "action") == "buy").count();
-    let sells = logs.iter().filter(|l| gs(l, "label") == "SELL" || gs(l, "action") == "sell").count();
+    let buys = logs
+        .iter()
+        .filter(|l| gs(l, "label") == "BUY" || gs(l, "action") == "buy")
+        .count();
+    let sells = logs
+        .iter()
+        .filter(|l| gs(l, "label") == "SELL" || gs(l, "action") == "sell")
+        .count();
 
     let mut pos_txt = String::new();
     for p in positions.iter().take(8) {
         pos_txt.push_str(&format!(
             "· {}({}) 持仓{}股\n",
-            gs(p, "name"), gs(p, "code"), gi(p, "vol")
+            gs(p, "name"),
+            gs(p, "code"),
+            gi(p, "vol")
         ));
     }
 
@@ -166,7 +190,14 @@ fn trade_review(focus: &Value) -> RuleReview {
     };
 
     let title = "交易复盘 · 计划与执行偏差（规则生成）".to_string();
-    let summary = format!("当日决策{}条：买入{}次 / 卖出{}次，持仓{}只；{}", logs.len(), buys, sells, positions.len(), deviation);
+    let summary = format!(
+        "当日决策{}条：买入{}次 / 卖出{}次，持仓{}只；{}",
+        logs.len(),
+        buys,
+        sells,
+        positions.len(),
+        deviation
+    );
     let content = format!(
         "【计划】{}\n【决策统计】共{}条，买入{}次，卖出{}次。\n\n【当前持仓】\n{}\n【偏差与改进】{}\n\n（规则引擎生成，不构成投资建议）",
         if plan_exists { "当日有作战计划" } else { "当日无作战计划" },
@@ -174,7 +205,12 @@ fn trade_review(focus: &Value) -> RuleReview {
         if pos_txt.is_empty() { "空仓。\n" } else { &pos_txt },
         deviation
     );
-    RuleReview { title, summary, content, evidence: focus.to_string() }
+    RuleReview {
+        title,
+        summary,
+        content,
+        evidence: focus.to_string(),
+    }
 }
 
 fn stock_review(focus: &Value) -> RuleReview {
@@ -194,11 +230,21 @@ fn stock_review(focus: &Value) -> RuleReview {
     if has_lu {
         head.push_str(&format!(
             "涨停结构：{}板，封单资金{:.0}万，炸板{}次，所属「{}」。\n",
-            boards, seal_fund, broken, if industry.is_empty() { "未知" } else { industry }
+            boards,
+            seal_fund,
+            broken,
+            if industry.is_empty() {
+                "未知"
+            } else {
+                industry
+            }
         ));
     }
     if has_pos {
-        head.push_str(&format!("当前持仓{}股，需结合现价对照成本评估盈亏。\n", vol));
+        head.push_str(&format!(
+            "当前持仓{}股，需结合现价对照成本评估盈亏。\n",
+            vol
+        ));
     }
 
     let advice = if has_lu && broken >= 2 {
@@ -218,10 +264,19 @@ fn stock_review(focus: &Value) -> RuleReview {
     let content = format!(
         "【个股】{}\n{}\n【操作建议】{}\n\n（规则引擎生成，不构成投资建议）",
         code,
-        if head.is_empty() { "个股行情 / 持仓数据缺失。\n" } else { &head },
+        if head.is_empty() {
+            "个股行情 / 持仓数据缺失。\n"
+        } else {
+            &head
+        },
         advice
     );
-    RuleReview { title, summary, content, evidence: focus.to_string() }
+    RuleReview {
+        title,
+        summary,
+        content,
+        evidence: focus.to_string(),
+    }
 }
 
 /// 按 scope 生成规则复盘。

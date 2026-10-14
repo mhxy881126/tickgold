@@ -35,7 +35,10 @@ pub fn check_http(perms: &[String], raw_url: &str) -> Result<(), String> {
     if is_blocked_host(&url) {
         return Err("禁止访问本机 / 内网 / 链路本地地址".to_string());
     }
-    for pat in perms.iter().filter(|p| p.starts_with("http://") || p.starts_with("https://")) {
+    for pat in perms
+        .iter()
+        .filter(|p| p.starts_with("http://") || p.starts_with("https://"))
+    {
         let purl = Url::parse(pat.trim_end_matches('*'))
             .map_err(|e| format!("权限条目非法：{pat}（{e}）"))?;
         let same_origin = purl.scheme() == url.scheme()
@@ -82,7 +85,11 @@ mod tests {
 
     #[test]
     fn http_blocks_private_and_localhost() {
-        let p = perms(&["http://127.0.0.1/*", "http://192.168.1.1/*", "http://localhost/*"]);
+        let p = perms(&[
+            "http://127.0.0.1/*",
+            "http://192.168.1.1/*",
+            "http://localhost/*",
+        ]);
         assert!(check_http(&p, "http://127.0.0.1/x").is_err());
         assert!(check_http(&p, "http://192.168.1.1/x").is_err());
         assert!(check_http(&p, "http://localhost/x").is_err());

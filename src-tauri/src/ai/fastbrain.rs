@@ -88,7 +88,9 @@ fn contributions_of(items: &[FactorItem<'_>]) -> Value {
         })
         .collect();
     rows.sort_by(|a, b| {
-        b["contribution"].as_f64().unwrap_or(0.0)
+        b["contribution"]
+            .as_f64()
+            .unwrap_or(0.0)
             .partial_cmp(&a["contribution"].as_f64().unwrap_or(0.0))
             .unwrap_or(std::cmp::Ordering::Equal)
     });
@@ -132,44 +134,168 @@ impl RuleBrain {
 
         let buy_items: Vec<FactorItem> = vec![
             ("pct", w("pct", 1.0), lin(fget(f, "pct"), -2.0, 7.0)),
-            ("speed5m", w("speed5m", 0.8), lin(fget(f, "speed5m"), -1.0, 2.0)),
-            ("volumeRatio", w("volumeRatio", 0.9), peak(fget(f, "volumeRatio"), 1.0, 2.5, 5.0)),
-            ("turnover", w("turnover", 0.7), peak(fget(f, "turnover"), 3.0, 9.0, 18.0)),
-            ("distToLimit", w("distToLimit", 1.0), lin_inv(fget(f, "distToLimit"), 0.0, 6.0)),
-            ("pullback", w("pullback", 0.8), lin(fget(f, "pullback"), -3.0, 0.0)),
-            ("blastCount", w("blastCount", 1.2), lin_inv(fget(f, "blastCount"), 0.0, 3.0)),
-            ("marketEmotion", w("marketEmotion", 1.0), lin(fget(f, "marketEmotion"), 30.0, 80.0)),
-            ("indexChg", w("indexChg", 0.8), lin(fget(f, "indexChg"), -1.0, 1.5)),
-            ("themeRank", w("themeRank", 0.9), lin_inv(fget(f, "themeRank"), 1.0, 8.0)),
-            ("catalystFreshness", w("catalystFreshness", 0.7), lin(fget(f, "catalystFreshness"), 0.2, 0.9)),
-            ("mainNetInflowYi", w("mainNetInflowYi", 0.9), lin(fget(f, "mainNetInflowYi"), -1.0, 3.0)),
+            (
+                "speed5m",
+                w("speed5m", 0.8),
+                lin(fget(f, "speed5m"), -1.0, 2.0),
+            ),
+            (
+                "volumeRatio",
+                w("volumeRatio", 0.9),
+                peak(fget(f, "volumeRatio"), 1.0, 2.5, 5.0),
+            ),
+            (
+                "turnover",
+                w("turnover", 0.7),
+                peak(fget(f, "turnover"), 3.0, 9.0, 18.0),
+            ),
+            (
+                "distToLimit",
+                w("distToLimit", 1.0),
+                lin_inv(fget(f, "distToLimit"), 0.0, 6.0),
+            ),
+            (
+                "pullback",
+                w("pullback", 0.8),
+                lin(fget(f, "pullback"), -3.0, 0.0),
+            ),
+            (
+                "blastCount",
+                w("blastCount", 1.2),
+                lin_inv(fget(f, "blastCount"), 0.0, 3.0),
+            ),
+            (
+                "marketEmotion",
+                w("marketEmotion", 1.0),
+                lin(fget(f, "marketEmotion"), 30.0, 80.0),
+            ),
+            (
+                "indexChg",
+                w("indexChg", 0.8),
+                lin(fget(f, "indexChg"), -1.0, 1.5),
+            ),
+            (
+                "themeRank",
+                w("themeRank", 0.9),
+                lin_inv(fget(f, "themeRank"), 1.0, 8.0),
+            ),
+            (
+                "catalystFreshness",
+                w("catalystFreshness", 0.7),
+                lin(fget(f, "catalystFreshness"), 0.2, 0.9),
+            ),
+            (
+                "mainNetInflowYi",
+                w("mainNetInflowYi", 0.9),
+                lin(fget(f, "mainNetInflowYi"), -1.0, 3.0),
+            ),
             // MACD 金叉：DIF>DEA（hist>0）看多
-            ("macdHist", w("macdHist", 0.8), lin(fget(f, "macdHist"), -0.5, 0.5)),
+            (
+                "macdHist",
+                w("macdHist", 0.8),
+                lin(fget(f, "macdHist"), -0.5, 0.5),
+            ),
             // RSI 40~65 健康区间
-            ("rsi14", w("rsi14", 0.7), peak(fget(f, "rsi14"), 30.0, 55.0, 75.0)),
+            (
+                "rsi14",
+                w("rsi14", 0.7),
+                peak(fget(f, "rsi14"), 30.0, 55.0, 75.0),
+            ),
             // ===== K线深度分析（买入加分项）=====
-            ("maBullish", w("maBullish", 1.0), lin(fget(f, "maBullish"), 0.0, 1.0)),
-            ("maBearish", w("maBearish", 0.8), lin_inv(fget(f, "maBearish"), 0.0, 1.0)),
-            ("distToSupportPct", w("distToSupportPct", 0.7), lin_inv(fget(f, "distToSupportPct"), 0.0, 10.0)),
-            ("distToResistancePct", w("distToResistancePct", 0.6), lin(fget(f, "distToResistancePct"), 0.0, 10.0)),
-            ("klineIsHammer", w("klineIsHammer", 0.9), lin(fget(f, "klineIsHammer"), 0.0, 1.0)),
-            ("klineIsBullishEngulfing", w("klineIsBullishEngulfing", 1.0), lin(fget(f, "klineIsBullishEngulfing"), 0.0, 1.0)),
-            ("klineIsBearishEngulfing", w("klineIsBearishEngulfing", 0.9), lin_inv(fget(f, "klineIsBearishEngulfing"), 0.0, 1.0)),
-            ("volRatio20", w("volRatio20", 0.7), peak(fget(f, "volRatio20"), 0.8, 1.5, 3.0)),
+            (
+                "maBullish",
+                w("maBullish", 1.0),
+                lin(fget(f, "maBullish"), 0.0, 1.0),
+            ),
+            (
+                "maBearish",
+                w("maBearish", 0.8),
+                lin_inv(fget(f, "maBearish"), 0.0, 1.0),
+            ),
+            (
+                "distToSupportPct",
+                w("distToSupportPct", 0.7),
+                lin_inv(fget(f, "distToSupportPct"), 0.0, 10.0),
+            ),
+            (
+                "distToResistancePct",
+                w("distToResistancePct", 0.6),
+                lin(fget(f, "distToResistancePct"), 0.0, 10.0),
+            ),
+            (
+                "klineIsHammer",
+                w("klineIsHammer", 0.9),
+                lin(fget(f, "klineIsHammer"), 0.0, 1.0),
+            ),
+            (
+                "klineIsBullishEngulfing",
+                w("klineIsBullishEngulfing", 1.0),
+                lin(fget(f, "klineIsBullishEngulfing"), 0.0, 1.0),
+            ),
+            (
+                "klineIsBearishEngulfing",
+                w("klineIsBearishEngulfing", 0.9),
+                lin_inv(fget(f, "klineIsBearishEngulfing"), 0.0, 1.0),
+            ),
+            (
+                "volRatio20",
+                w("volRatio20", 0.7),
+                peak(fget(f, "volRatio20"), 0.8, 1.5, 3.0),
+            ),
         ];
 
         let sell_items: Vec<FactorItem> = vec![
             ("pct", w("pct", 1.2), lin_inv(fget(f, "pct"), -7.0, 3.0)),
-            ("speed5m", w("speed5m", 1.0), lin_inv(fget(f, "speed5m"), -2.0, 1.0)),
-            ("pullback", w("pullback", 1.1), lin_inv(fget(f, "pullback"), -6.0, 0.0)),
-            ("brokenLimit", w("brokenLimit", 1.3), lin(fget(f, "brokenLimit"), 0.0, 1.0)),
-            ("marketEmotion", w("marketEmotion", 0.8), lin_inv(fget(f, "marketEmotion"), 20.0, 70.0)),
-            ("indexChg", w("indexChg", 0.7), lin_inv(fget(f, "indexChg"), -2.0, 1.0)),
-            ("rsi14", w("rsi14", 0.6), lin_inv(fget(f, "rsi14"), 50.0, 80.0)),
-            ("maBearish", w("maBearish", 1.0), lin(fget(f, "maBearish"), 0.0, 1.0)),
-            ("klineIsBearishEngulfing", w("klineIsBearishEngulfing", 1.1), lin(fget(f, "klineIsBearishEngulfing"), 0.0, 1.0)),
-            ("klineIsBullishEngulfing", w("klineIsBullishEngulfing", 0.8), lin_inv(fget(f, "klineIsBullishEngulfing"), 0.0, 1.0)),
-            ("distToSupportPct", w("distToSupportPct", 0.6), lin(fget(f, "distToSupportPct"), 0.0, 15.0)),
+            (
+                "speed5m",
+                w("speed5m", 1.0),
+                lin_inv(fget(f, "speed5m"), -2.0, 1.0),
+            ),
+            (
+                "pullback",
+                w("pullback", 1.1),
+                lin_inv(fget(f, "pullback"), -6.0, 0.0),
+            ),
+            (
+                "brokenLimit",
+                w("brokenLimit", 1.3),
+                lin(fget(f, "brokenLimit"), 0.0, 1.0),
+            ),
+            (
+                "marketEmotion",
+                w("marketEmotion", 0.8),
+                lin_inv(fget(f, "marketEmotion"), 20.0, 70.0),
+            ),
+            (
+                "indexChg",
+                w("indexChg", 0.7),
+                lin_inv(fget(f, "indexChg"), -2.0, 1.0),
+            ),
+            (
+                "rsi14",
+                w("rsi14", 0.6),
+                lin_inv(fget(f, "rsi14"), 50.0, 80.0),
+            ),
+            (
+                "maBearish",
+                w("maBearish", 1.0),
+                lin(fget(f, "maBearish"), 0.0, 1.0),
+            ),
+            (
+                "klineIsBearishEngulfing",
+                w("klineIsBearishEngulfing", 1.1),
+                lin(fget(f, "klineIsBearishEngulfing"), 0.0, 1.0),
+            ),
+            (
+                "klineIsBullishEngulfing",
+                w("klineIsBullishEngulfing", 0.8),
+                lin_inv(fget(f, "klineIsBullishEngulfing"), 0.0, 1.0),
+            ),
+            (
+                "distToSupportPct",
+                w("distToSupportPct", 0.6),
+                lin(fget(f, "distToSupportPct"), 0.0, 15.0),
+            ),
         ];
 
         let probs: Value = if side == "sell" || holding > 0.0 {
@@ -190,8 +316,11 @@ impl RuleBrain {
         };
 
         let (label, confidence) = argmax(&probs);
-        let used_items: &[FactorItem] =
-            if side == "sell" || holding > 0.0 { &sell_items } else { &buy_items };
+        let used_items: &[FactorItem] = if side == "sell" || holding > 0.0 {
+            &sell_items
+        } else {
+            &buy_items
+        };
         FastDecision {
             label,
             confidence,
@@ -270,9 +399,10 @@ impl LayaClient {
             .map_err(|e| format!("Laya 返回解析失败: {e}"))?;
         let label = v["label"].as_str().unwrap_or("HOLD").to_string();
         // sidecar 概率字段兼容 prob / probs
-        let probs = v["prob"].as_object().map(|_| v["prob"].clone()).unwrap_or_else(|| {
-            v["probs"].clone()
-        });
+        let probs = v["prob"]
+            .as_object()
+            .map(|_| v["prob"].clone())
+            .unwrap_or_else(|| v["probs"].clone());
         let confidence = v["confidence"]
             .as_f64()
             .unwrap_or_else(|| probs[&label].as_f64().unwrap_or(0.0));
@@ -349,10 +479,17 @@ impl CloudLlmClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(format!("云端LLM HTTP {}: {}", status, text.chars().take(200).collect::<String>()));
+            return Err(format!(
+                "云端LLM HTTP {}: {}",
+                status,
+                text.chars().take(200).collect::<String>()
+            ));
         }
 
-        let v: Value = resp.json().await.map_err(|e| format!("LLM返回解析失败: {e}"))?;
+        let v: Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("LLM返回解析失败: {e}"))?;
         let content = v["choices"][0]["message"]["content"]
             .as_str()
             .unwrap_or("")
@@ -364,7 +501,11 @@ impl CloudLlmClient {
 
         // 尝试解析 JSON
         let parsed: Value = serde_json::from_str(content).map_err(|e| {
-            format!("LLM输出非JSON: {} | raw: {}", e, content.chars().take(100).collect::<String>())
+            format!(
+                "LLM输出非JSON: {} | raw: {}",
+                e,
+                content.chars().take(100).collect::<String>()
+            )
         })?;
 
         let label = parsed["label"].as_str().unwrap_or("HOLD").to_uppercase();
@@ -373,10 +514,18 @@ impl CloudLlmClient {
 
         // 构造 probs
         let probs = match label.as_str() {
-            "BUY" => json!({ "BUY": round3(confidence), "NO_BUY": round3(1.0-confidence), "HOLD": 0.0, "SELL": 0.0 }),
-            "SELL" => json!({ "SELL": round3(confidence), "HOLD": round3(1.0-confidence), "BUY": 0.0, "NO_BUY": 0.0 }),
-            "NO_BUY" => json!({ "NO_BUY": round3(confidence), "BUY": round3(1.0-confidence), "HOLD": 0.0, "SELL": 0.0 }),
-            _ => json!({ "HOLD": round3(confidence), "BUY": round3((1.0-confidence)*0.5), "SELL": round3((1.0-confidence)*0.5), "NO_BUY": 0.0 }),
+            "BUY" => {
+                json!({ "BUY": round3(confidence), "NO_BUY": round3(1.0-confidence), "HOLD": 0.0, "SELL": 0.0 })
+            }
+            "SELL" => {
+                json!({ "SELL": round3(confidence), "HOLD": round3(1.0-confidence), "BUY": 0.0, "NO_BUY": 0.0 })
+            }
+            "NO_BUY" => {
+                json!({ "NO_BUY": round3(confidence), "BUY": round3(1.0-confidence), "HOLD": 0.0, "SELL": 0.0 })
+            }
+            _ => {
+                json!({ "HOLD": round3(confidence), "BUY": round3((1.0-confidence)*0.5), "SELL": round3((1.0-confidence)*0.5), "NO_BUY": 0.0 })
+            }
         };
 
         Ok(FastDecision {
@@ -393,7 +542,14 @@ impl CloudLlmClient {
 
 /// 快脑统一入口：mode="laya" 时先健康检查再调用，任一失败自动降级规则；其余直接规则。
 #[allow(clippy::too_many_arguments)]
-pub async fn fast_decide(pack: Value, mode: &str, laya_url: &str, cloud: Option<(String, String, String)>, indicators: Option<&std::collections::HashMap<String, bool>>, weights: Option<&std::collections::HashMap<String, f64>>) -> FastDecision {
+pub async fn fast_decide(
+    pack: Value,
+    mode: &str,
+    laya_url: &str,
+    cloud: Option<(String, String, String)>,
+    indicators: Option<&std::collections::HashMap<String, bool>>,
+    weights: Option<&std::collections::HashMap<String, f64>>,
+) -> FastDecision {
     // 云端大模型模式
     if mode == "cloud_llm" {
         if let Some((base_url, api_key, model)) = cloud {
@@ -414,7 +570,8 @@ pub async fn fast_decide(pack: Value, mode: &str, laya_url: &str, cloud: Option<
         let client = LayaClient::new(laya_url);
         let health = tokio::time::timeout(Duration::from_millis(800), client.health()).await;
         if matches!(health, Ok(Ok(_))) {
-            let decided = tokio::time::timeout(Duration::from_millis(1600), client.decide(&pack)).await;
+            let decided =
+                tokio::time::timeout(Duration::from_millis(1600), client.decide(&pack)).await;
             match decided {
                 Ok(Ok(d)) => return d,
                 Ok(Err(e)) => log::warn!("{e}，降级规则快脑"),
@@ -445,7 +602,11 @@ mod tests {
         });
         let d = RuleBrain::decide_with(&pack("buy", f), None, None);
         assert_eq!(d.label, "BUY");
-        assert!(d.confidence >= 0.7, "强买入特征 confidence 应较高, got {}", d.confidence);
+        assert!(
+            d.confidence >= 0.7,
+            "强买入特征 confidence 应较高, got {}",
+            d.confidence
+        );
         assert_eq!(d.mode, "rule");
     }
 

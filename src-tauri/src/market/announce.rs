@@ -19,13 +19,20 @@ pub struct AnnounceItem {
 
 #[derive(Deserialize, Default, Debug)]
 struct RawAnnouncement {
-    #[serde(rename = "announcementId")] announcement_id: Option<String>,
-    #[serde(rename = "secCode")] sec_code: Option<String>,
-    #[serde(rename = "secName")] sec_name: Option<String>,
-    #[serde(rename = "announcementTitle")] title: Option<String>,
-    #[serde(rename = "announcementTime")] announcement_time: Option<i64>,
-    #[serde(rename = "adjunctUrl")] adjunct_url: Option<String>,
-    #[serde(rename = "announcementTypeName")] category: Option<String>,
+    #[serde(rename = "announcementId")]
+    announcement_id: Option<String>,
+    #[serde(rename = "secCode")]
+    sec_code: Option<String>,
+    #[serde(rename = "secName")]
+    sec_name: Option<String>,
+    #[serde(rename = "announcementTitle")]
+    title: Option<String>,
+    #[serde(rename = "announcementTime")]
+    announcement_time: Option<i64>,
+    #[serde(rename = "adjunctUrl")]
+    adjunct_url: Option<String>,
+    #[serde(rename = "announcementTypeName")]
+    category: Option<String>,
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -89,9 +96,15 @@ async fn announcements_page(
         http()
             .post("https://www.cninfo.com.cn/new/hisAnnouncement/query")
             .header("Accept", "application/json, text/javascript, */*; q=0.01")
-            .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+            .header(
+                "Content-Type",
+                "application/x-www-form-urlencoded; charset=UTF-8",
+            )
             .header("Origin", "https://www.cninfo.com.cn")
-            .header("Referer", "https://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search")
+            .header(
+                "Referer",
+                "https://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search",
+            )
             .header("X-Requested-With", "XMLHttpRequest")
             .body(body)
             .send(),
@@ -172,7 +185,9 @@ mod tests {
         assert_eq!(out.len(), 1, "缺 id 的行应跳过");
         assert_eq!(out[0].code, "300001");
         assert_eq!(out[0].title, "关于签订重大合同的公告");
-        assert!(out[0].url.starts_with("https://static.cninfo.com.cn/finalpage/"));
+        assert!(out[0]
+            .url
+            .starts_with("https://static.cninfo.com.cn/finalpage/"));
         assert_eq!(out[0].category, "重大合同");
     }
 
@@ -194,6 +209,9 @@ mod tests {
         // 第一页 a,b；第二页 b(重复),c
         merge_unique(&mut acc, &mut seen, vec![mk("a"), mk("b")]);
         merge_unique(&mut acc, &mut seen, vec![mk("b"), mk("c")]);
-        assert_eq!(acc.iter().map(|x| x.id.clone()).collect::<Vec<_>>(), vec!["a", "b", "c"]);
+        assert_eq!(
+            acc.iter().map(|x| x.id.clone()).collect::<Vec<_>>(),
+            vec!["a", "b", "c"]
+        );
     }
 }

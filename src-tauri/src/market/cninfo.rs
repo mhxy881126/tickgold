@@ -16,15 +16,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub struct IpoItem {
     pub code: String,
     pub name: String,
-    pub apply_date: String,      // 申购日 F002D
-    pub list_date: String,       // 上市日 F006D
-    pub pay_date: String,        // 中签缴款日 F037D
+    pub apply_date: String,       // 申购日 F002D
+    pub list_date: String,        // 上市日 F006D
+    pub pay_date: String,         // 中签缴款日 F037D
     pub issue_price: Option<f64>, // F008N
-    pub pe: Option<f64>,         // F013N 发行市盈率
-    pub lot_rate: Option<f64>,   // F006N 中签率（小数）
+    pub pe: Option<f64>,          // F013N 发行市盈率
+    pub lot_rate: Option<f64>,    // F006N 中签率（小数）
     pub apply_limit: Option<f64>, // F042N 网上申购上限（万股）
-    pub total_qty: Option<f64>,  // F003N 总发行数量（万股）
-    pub online_qty: Option<f64>, // F043N 上网发行数量（万股）
+    pub total_qty: Option<f64>,   // F003N 总发行数量（万股）
+    pub online_qty: Option<f64>,  // F043N 上网发行数量（万股）
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -33,9 +33,9 @@ pub struct RestrictedItem {
     pub code: String,
     pub name: String,
     pub lift_date: String,
-    pub lift_qty: Option<f64>,  // 解禁数量（万股）
+    pub lift_qty: Option<f64>,   // 解禁数量（万股）
     pub lift_value: Option<f64>, // 解禁流通市值（亿元）
-    pub batch: Option<i64>,     // 上市批次
+    pub batch: Option<i64>,      // 上市批次
     pub notice_date: String,
 }
 
@@ -59,17 +59,28 @@ fn mcode() -> String {
 // ===== 巨潮新股发行 =====
 #[derive(Deserialize, Default, Debug)]
 struct RawIpo {
-    #[serde(rename = "SECCODE")] sec_code: Option<String>,
-    #[serde(rename = "SECNAME")] sec_name: Option<String>,
-    #[serde(rename = "F002D")] f002d: Option<String>,
-    #[serde(rename = "F006D")] f006d: Option<String>,
-    #[serde(rename = "F037D")] f037d: Option<String>,
-    #[serde(rename = "F008N")] f008n: Option<f64>,
-    #[serde(rename = "F013N")] f013n: Option<f64>,
-    #[serde(rename = "F006N")] f006n: Option<f64>,
-    #[serde(rename = "F042N")] f042n: Option<f64>,
-    #[serde(rename = "F003N")] f003n: Option<f64>,
-    #[serde(rename = "F043N")] f043n: Option<f64>,
+    #[serde(rename = "SECCODE")]
+    sec_code: Option<String>,
+    #[serde(rename = "SECNAME")]
+    sec_name: Option<String>,
+    #[serde(rename = "F002D")]
+    f002d: Option<String>,
+    #[serde(rename = "F006D")]
+    f006d: Option<String>,
+    #[serde(rename = "F037D")]
+    f037d: Option<String>,
+    #[serde(rename = "F008N")]
+    f008n: Option<f64>,
+    #[serde(rename = "F013N")]
+    f013n: Option<f64>,
+    #[serde(rename = "F006N")]
+    f006n: Option<f64>,
+    #[serde(rename = "F042N")]
+    f042n: Option<f64>,
+    #[serde(rename = "F003N")]
+    f003n: Option<f64>,
+    #[serde(rename = "F043N")]
+    f043n: Option<f64>,
 }
 #[derive(Deserialize, Debug)]
 struct IpoResp {
@@ -80,7 +91,8 @@ pub async fn get_ipo_list() -> Result<Vec<IpoItem>, String> {
     let url = "https://webapi.cninfo.com.cn/api/sysapi/p_sysapi1097?timetype=36&market=ALL";
     let resp = tokio::time::timeout(
         Duration::from_secs(20),
-        http().post(url)
+        http()
+            .post(url)
             .header("Accept", "*/*")
             .header("Accept-Enckey", mcode())
             .header("Origin", "https://webapi.cninfo.com.cn")
@@ -138,7 +150,8 @@ pub async fn get_restricted_queue(code: String) -> Result<Vec<RestrictedItem>, S
     );
     let resp = tokio::time::timeout(
         Duration::from_secs(20),
-        http().get(&url)
+        http()
+            .get(&url)
             .header("Referer", "https://vip.stock.finance.sina.com.cn/")
             .send(),
     )

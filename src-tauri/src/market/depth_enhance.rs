@@ -53,9 +53,7 @@ async fn fetch_details(code: &str) -> Result<Vec<Vec<String>>, String> {
          &pos=-200000&col=200000&np=1&fltt=1&invt=2"
     );
     let v = push2_json(&path).await?;
-    let arr = v["data"]["details"]
-        .as_array()
-        .ok_or("分笔明细为空")?;
+    let arr = v["data"]["details"].as_array().ok_or("分笔明细为空")?;
     Ok(arr
         .iter()
         .filter_map(|it| {
@@ -176,7 +174,9 @@ pub async fn record_seal_snapshot(pool: &[ZtStock]) {
         }
         let push = match e.1.last() {
             None => true,
-            Some((last_ms, last_fund)) => (now - last_ms) >= 60_000 || (*last_fund - s.fund).abs() > 1.0,
+            Some((last_ms, last_fund)) => {
+                (now - last_ms) >= 60_000 || (*last_fund - s.fund).abs() > 1.0
+            }
         };
         if push {
             e.1.push((now, s.fund));

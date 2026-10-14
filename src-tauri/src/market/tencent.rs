@@ -1,28 +1,26 @@
 // 腾讯数据源：实时行情（GBK，qt.gtimg.cn）、K线（UTF-8，web.ifzq.gtimg.cn）、搜索（GBK，smartbox）
-use super::{
-    cnc_symbol, http, now_millis, KBar, OrderBook, OrderLevel, Quote, StockItem,
-};
+use super::{cnc_symbol, http, now_millis, KBar, OrderBook, OrderLevel, Quote, StockItem};
 use serde_json::Value;
 
 // ===== 实时行情 =====
 pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
     let symbols: Vec<String> = codes.iter().map(|c| cnc_symbol(c)).collect();
     let url = format!("https://qt.gtimg.cn/q={}", symbols.join(","));
-    let resp = http()
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    let resp = http().get(&url).send().await.map_err(|e| e.to_string())?;
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
     let (txt, _, _) = encoding_rs::GBK.decode(&bytes);
     let now = now_millis();
     let mut out = Vec::new();
 
     for line in txt.lines() {
-        let Some((_, right)) = line.split_once('=') else { continue };
+        let Some((_, right)) = line.split_once('=') else {
+            continue;
+        };
         let payload = right.trim().trim_end_matches(';').trim_matches('"');
         let f: Vec<&str> = payload.split('~').collect();
-        if f.len() < 50 { continue };
+        if f.len() < 50 {
+            continue;
+        };
         let p = |i: usize| f[i].parse::<f64>().unwrap_or(0.0);
         let name = f[1].to_string();
         let code = f[2].to_string();
@@ -34,7 +32,11 @@ pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
         let low = p(34);
         let amount = p(37) * 1e4; // 万元 -> 元
         let change = price - prev_close;
-        let pct = if prev_close != 0.0 { change / prev_close * 100.0 } else { 0.0 };
+        let pct = if prev_close != 0.0 {
+            change / prev_close * 100.0
+        } else {
+            0.0
+        };
 
         out.push(Quote {
             code,
@@ -84,10 +86,16 @@ pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
     let p = |i: usize| f[i].parse::<f64>().unwrap_or(0.0);
     // 腾讯 f[9..19] 卖1-5价量，f[19..29] 买1-5价量
     let asks: Vec<OrderLevel> = (0..5)
-        .map(|i| OrderLevel { price: p(9 + i * 2), vol: p(10 + i * 2) })
+        .map(|i| OrderLevel {
+            price: p(9 + i * 2),
+            vol: p(10 + i * 2),
+        })
         .collect();
     let bids: Vec<OrderLevel> = (0..5)
-        .map(|i| OrderLevel { price: p(19 + i * 2), vol: p(20 + i * 2) })
+        .map(|i| OrderLevel {
+            price: p(19 + i * 2),
+            vol: p(20 + i * 2),
+        })
         .collect();
     let mut book = OrderBook {
         name: f[1].to_string(),
@@ -121,7 +129,12 @@ pub async fn iopv(code: &str) -> Result<f64, String> {
     let Some((_, right)) = line.split_once('=') else {
         return Ok(0.0);
     };
-    let f: Vec<&str> = right.trim().trim_end_matches(';').trim_matches('"').split('~').collect();
+    let f: Vec<&str> = right
+        .trim()
+        .trim_end_matches(';')
+        .trim_matches('"')
+        .split('~')
+        .collect();
     Ok(f.get(79).and_then(|x| x.parse::<f64>().ok()).unwrap_or(0.0))
 }
 
@@ -152,9 +165,7 @@ pub async fn kline(code: &str, period: i64, count: i64) -> Result<Vec<KBar>, Str
             .json()
             .await
             .map_err(|e| e.to_string())?;
-        let rows = v["data"][sym][mk]
-            .as_array()
-            .ok_or("分钟K解析为空")?;
+        let rows = v["data"][sym][mk].as_array().ok_or("分钟K解析为空")?;
         return Ok(parse_rows(rows, period));
     }
 
@@ -196,9 +207,7 @@ pub async fn hist_minute(code: &str, date: &str) -> Result<Vec<KBar>, String> {
         .json()
         .await
         .map_err(|e| e.to_string())?;
-    let days = v["data"][sym]["data"]
-        .as_array()
-        .ok_or("历史分时为空")?;
+    let days = v["data"][sym]["data"].as_array().ok_or("历史分时为空")?;
     let target = if date.is_empty() {
         &days[0]
     } else {
@@ -224,13 +233,13 @@ pub async fn hist_minute_days(code: &str, n: usize) -> Result<Vec<super::HistDay
         .json()
         .await
         .map_err(|e| e.to_string())?;
-    let days = v["data"][sym]["data"]
-        .as_array()
-        .ok_or("历史分时为空")?;
+    let days = v["data"][sym]["data"].as_array().ok_or("历史分时为空")?;
     let mut out = Vec::new();
     for target in days.iter().take(n.max(1)) {
         let date_str = target["date"].as_str().unwrap_or("");
-        let Some(arr) = target["data"].as_array() else { continue };
+        let Some(arr) = target["data"].as_array() else {
+            continue;
+        };
         match parse_minute_rows(date_str, arr) {
             Ok(bars) => out.push(super::HistDayMinute {
                 date: date_str.to_string(),
@@ -347,7 +356,9 @@ fn parse_minute_rows(date_str: &str, arr: &[Value]) -> Result<Vec<KBar>, String>
     for item in arr {
         let s = item.as_str().ok_or("分时项格式错")?;
         let parts: Vec<&str> = s.split_whitespace().collect();
-        if parts.len() < 3 { continue; }
+        if parts.len() < 3 {
+            continue;
+        }
         let hhmm = parts[0];
         // 只保留连续竞价时段：上午 09:30-11:30、下午 13:00-15:00。
         // 腾讯会额外返回盘后 15:06-15:30 的静态 bar（25 根），不剔除会使总数变 267、
@@ -402,11 +413,7 @@ pub async fn search(keyword: &str) -> Result<Vec<StockItem>, String> {
         "https://smartbox.gtimg.cn/s3/?t=all&q={}",
         urlencode(keyword)
     );
-    let resp = http()
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    let resp = http().get(&url).send().await.map_err(|e| e.to_string())?;
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
     // smartbox 返回 ASCII，中文以 \uXXXX 转义
     let txt = String::from_utf8_lossy(&bytes);
@@ -420,7 +427,9 @@ pub async fn search(keyword: &str) -> Result<Vec<StockItem>, String> {
     // 多条记录以 ';' 分隔：sh~600519~\u8d35...~gzmt~GP-A
     for rec in payload.split(';') {
         let f: Vec<&str> = rec.split('~').collect();
-        if f.len() < 3 { continue };
+        if f.len() < 3 {
+            continue;
+        };
         let prefix = f[0];
         let code = f[1];
         let name = unescape_unicode(f[2]);
@@ -474,4 +483,3 @@ fn urlencode(s: &str) -> String {
     }
     out
 }
-

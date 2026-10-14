@@ -8,21 +8,21 @@ pub mod config;
 pub mod decision;
 pub mod evolution;
 pub mod fastbrain;
-pub mod intraday;
 pub mod ingest;
+pub mod intraday;
 pub mod maindb;
 pub mod plan;
 pub mod provider;
-pub mod review;
 pub mod report;
+pub mod review;
 pub mod rule_review;
 pub mod signal_quality;
 pub mod tools;
 pub mod vectordb;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::collections::HashSet;
 
 /// 全局 AI 状态：app_data_dir（主库与 ai.db 同目录）。
 /// Mutex 内部可变性：setup 时写入，命令经 dir() 克隆读取。

@@ -110,9 +110,7 @@ pub fn list(conn: &Connection) -> Result<Vec<Subscription>, String> {
     let mut stmt = conn
         .prepare(&format!("{SELECT_COLS} ORDER BY id DESC"))
         .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], row_to_sub)
-        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], row_to_sub).map_err(|e| e.to_string())?;
     Ok(rows.flatten().collect())
 }
 
@@ -144,7 +142,14 @@ fn upsert(conn: &Connection, input: &SubscriptionInput) -> Result<i64, String> {
         conn.execute(
             "INSERT INTO screen_subscription(name,tactic,filter_json,run_time,enabled,created_at)
              VALUES(?1,?2,?3,?4,?5,?6)",
-            rusqlite::params![name, input.tactic, input.filter_json, run_time, input.enabled as i64, now_millis()],
+            rusqlite::params![
+                name,
+                input.tactic,
+                input.filter_json,
+                run_time,
+                input.enabled as i64,
+                now_millis()
+            ],
         )
         .map_err(|e| e.to_string())?;
         Ok(conn.last_insert_rowid())
@@ -157,8 +162,8 @@ async fn execute_one(
     sub: &Subscription,
 ) -> Result<(i64, Vec<TacticHit>), String> {
     // filter_json 承载 {limit,theme}；tactic 为逗号分隔。
-    let mut filter: serde_json::Value =
-        serde_json::from_str(&sub.filter_json).unwrap_or(serde_json::Value::Object(Default::default()));
+    let mut filter: serde_json::Value = serde_json::from_str(&sub.filter_json)
+        .unwrap_or(serde_json::Value::Object(Default::default()));
     let tactics: Vec<String> = sub
         .tactic
         .split(',')
@@ -169,8 +174,7 @@ async fn execute_one(
     if let Some(o) = obj {
         o.insert("tactics".into(), serde_json::json!(tactics));
     }
-    let req: StrategyScanReq =
-        serde_json::from_value(filter).map_err(|e| e.to_string())?;
+    let req: StrategyScanReq = serde_json::from_value(filter).map_err(|e| e.to_string())?;
     let hits = scan(&req).await?;
     let codes: Vec<&str> = hits.iter().take(50).map(|h| h.code.as_str()).collect();
     let codes_json = serde_json::to_string(&codes).unwrap_or_else(|_| "[]".into());
@@ -196,7 +200,9 @@ async fn execute_one(
 pub async fn run_due(app: &AppHandle, data_dir: &std::path::Path) {
     let (_h, _m, today, hhmm) = beijing_now();
     let due: Vec<Subscription> = {
-        let Ok(conn) = maindb::open_readonly(data_dir) else { return };
+        let Ok(conn) = maindb::open_readonly(data_dir) else {
+            return;
+        };
         let Ok(all) = list(&conn) else { return };
         all.into_iter()
             .filter(|s| {
@@ -220,7 +226,9 @@ pub async fn run_due(app: &AppHandle, data_dir: &std::path::Path) {
             Ok((run_id, hits)) => {
                 log::info!(
                     "选股订阅[{}] {} 执行完成：{} 条命中",
-                    sub.id, sub.name, hits.len()
+                    sub.id,
+                    sub.name,
+                    hits.len()
                 );
                 let top: Vec<serde_json::Value> = hits
                     .iter()
@@ -275,13 +283,13 @@ pub fn screen_sub_upsert(
 }
 
 #[tauri::command]
-pub fn screen_sub_delete(
-    state: State<'_, crate::ai::AiState>,
-    id: i64,
-) -> Result<(), String> {
+pub fn screen_sub_delete(state: State<'_, crate::ai::AiState>, id: i64) -> Result<(), String> {
     let conn = maindb::open_readwrite(&state.dir())?;
-    conn.execute("DELETE FROM screen_subscription_run WHERE subscription_id=?1", [id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM screen_subscription_run WHERE subscription_id=?1",
+        [id],
+    )
+    .map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM screen_subscription WHERE id=?1", [id])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -326,7 +334,8 @@ pub async fn screen_sub_run_now(
         let mut stmt = conn
             .prepare(&format!("{SELECT_COLS} WHERE id=?1"))
             .map_err(|e| e.to_string())?;
-        stmt.query_row([id], row_to_sub).map_err(|e| e.to_string())?
+        stmt.query_row([id], row_to_sub)
+            .map_err(|e| e.to_string())?
     };
     let (run_id, hits) = execute_one(&data_dir, &sub).await?;
     Ok(if hits.is_empty() { -run_id } else { run_id })

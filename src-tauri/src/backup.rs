@@ -30,10 +30,7 @@ pub(crate) async fn backup_read_config(app: AppHandle, id: String) -> Result<Str
 }
 
 #[tauri::command]
-pub(crate) async fn backup_full_restore(
-    app: AppHandle,
-    id: String,
-) -> Result<Vec<String>, String> {
+pub(crate) async fn backup_full_restore(app: AppHandle, id: String) -> Result<Vec<String>, String> {
     restore(app, id).await
 }
 
@@ -104,14 +101,22 @@ fn describe_set(dir: &Path) -> Option<BackupSetInfo> {
     for name in [MAIN_DB, AI_DB, CONFIG_JSON] {
         let p = dir.join(name);
         if let Ok(md) = std::fs::metadata(&p) {
-            files.push(BackupFileInfo { name: name.to_string(), size: md.len() });
+            files.push(BackupFileInfo {
+                name: name.to_string(),
+                size: md.len(),
+            });
             total += md.len();
         }
     }
     if files.is_empty() {
         return None;
     }
-    Some(BackupSetInfo { id, created_ms, files, total_bytes: total })
+    Some(BackupSetInfo {
+        id,
+        created_ms,
+        files,
+        total_bytes: total,
+    })
 }
 
 /// 创建备份集：复制两个数据库（config.json 随后由前端通过 backup_write_config 写入）。
@@ -165,7 +170,9 @@ pub fn list(app: AppHandle) -> Result<Vec<BackupSetInfo>, String> {
 }
 
 async fn prune_old_sets(base: &Path) {
-    let Ok(mut rd) = tokio::fs::read_dir(base).await else { return };
+    let Ok(mut rd) = tokio::fs::read_dir(base).await else {
+        return;
+    };
     let mut items: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
     while let Ok(Some(ent)) = rd.next_entry().await {
         let p = ent.path();
@@ -184,11 +191,7 @@ async fn prune_old_sets(base: &Path) {
 }
 
 /// 向备份集写入 / 读取配置快照（前端 localStorage 导出的 JSON）。
-pub async fn write_config(
-    app: AppHandle,
-    id: String,
-    content: String,
-) -> Result<(), String> {
+pub async fn write_config(app: AppHandle, id: String, content: String) -> Result<(), String> {
     let set_dir = backups_dir(&app)?.join(&id);
     if !set_dir.is_dir() {
         return Err("备份集不存在".to_string());
@@ -247,8 +250,7 @@ pub async fn restore(app: AppHandle, id: String) -> Result<Vec<String>, String> 
 
     // 2) 生成退出后替换 + 重启脚本
     let pid = std::process::id();
-    let exe = std::env::current_exe()
-        .map_err(|e| e.to_string())?;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let ts = now_millis();
     let script_path = std::env::temp_dir().join(format!("tg-restore-{pid}.bat"));
 

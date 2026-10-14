@@ -17,11 +17,13 @@ pub fn can_transition(from: &str, to: &str) -> bool {
     if from == to {
         return true;
     }
-    matches!((from, to),
+    matches!(
+        (from, to),
         (SUBMITTING, SUBMITTED)
-        | (SUBMITTING, ERROR | REJECTED | CANCELLED)
-        | (SUBMITTED, PART_FILLED | FILLED | CANCELLED | ERROR)
-        | (PART_FILLED, FILLED | CANCELLED | ERROR))
+            | (SUBMITTING, ERROR | REJECTED | CANCELLED)
+            | (SUBMITTED, PART_FILLED | FILLED | CANCELLED | ERROR)
+            | (PART_FILLED, FILLED | CANCELLED | ERROR)
+    )
 }
 
 /// 返回前端的委托信息。

@@ -174,7 +174,9 @@ async fn fetch_eastmoney(
         let mut out = Vec::with_capacity(lines.len());
         for line in lines {
             let Some(s) = line.as_str() else { continue };
-            let Some(bar) = parse_kline_row(s, period, adj) else { continue };
+            let Some(bar) = parse_kline_row(s, period, adj) else {
+                continue;
+            };
             out.push(bar);
         }
         if out.is_empty() {
@@ -351,7 +353,10 @@ async fn backfill_one(
 
 fn with_adj(bars: &[HistBar], adj: &str) -> Vec<HistBar> {
     bars.iter()
-        .map(|b| HistBar { adj: adj.to_string(), ..b.clone() })
+        .map(|b| HistBar {
+            adj: adj.to_string(),
+            ..b.clone()
+        })
         .collect()
 }
 
@@ -599,8 +604,8 @@ mod tests {
 
     #[test]
     fn parses_kline_row() {
-        let b = parse_kline_row("2026-01-02,10.5,10.8,11.0,10.4,12345,1.3e8,5.1", 101, "qfq")
-            .unwrap();
+        let b =
+            parse_kline_row("2026-01-02,10.5,10.8,11.0,10.4,12345,1.3e8,5.1", 101, "qfq").unwrap();
         assert_eq!(b.date, "2026-01-02");
         assert_eq!(b.open, 10.5);
         assert_eq!(b.close, 10.8);
@@ -611,24 +616,35 @@ mod tests {
     #[test]
     fn upsert_is_idempotent_and_updates() {
         let mut c = temp_db();
-        let bar = parse_kline_row("2026-01-02,10.5,10.8,11.0,10.4,12345,1e8,1", 101, "qfq").unwrap();
-        assert_eq!(upsert_bars(&mut c, "600519", std::slice::from_ref(&bar)).unwrap(), 1);
-        assert_eq!(upsert_bars(&mut c, "600519", std::slice::from_ref(&bar)).unwrap(), 1);
+        let bar =
+            parse_kline_row("2026-01-02,10.5,10.8,11.0,10.4,12345,1e8,1", 101, "qfq").unwrap();
+        assert_eq!(
+            upsert_bars(&mut c, "600519", std::slice::from_ref(&bar)).unwrap(),
+            1
+        );
+        assert_eq!(
+            upsert_bars(&mut c, "600519", std::slice::from_ref(&bar)).unwrap(),
+            1
+        );
         let n: i64 = c
-            .query_row("SELECT COUNT(*) FROM hist_kline WHERE code='600519'", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT COUNT(*) FROM hist_kline WHERE code='600519'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(n, 1);
 
         // 修改 close 后再次 upsert，应被覆盖
-        let bar2 = parse_kline_row("2026-01-02,10.5,11.2,11.0,10.4,12345,1e8,1", 101, "qfq")
-            .unwrap();
+        let bar2 =
+            parse_kline_row("2026-01-02,10.5,11.2,11.0,10.4,12345,1e8,1", 101, "qfq").unwrap();
         upsert_bars(&mut c, "600519", &[bar2]).unwrap();
         let close: f64 = c
-            .query_row("SELECT close FROM hist_kline WHERE code='600519'", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT close FROM hist_kline WHERE code='600519'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(close, 11.2);
     }
@@ -640,9 +656,11 @@ mod tests {
         let n = parse_kline_row("2026-01-02,12,12,12,12,1,1,1", 101, "none").unwrap();
         upsert_bars(&mut c, "600519", &[q, n]).unwrap();
         let n: i64 = c
-            .query_row("SELECT COUNT(*) FROM hist_kline WHERE code='600519'", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT COUNT(*) FROM hist_kline WHERE code='600519'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(n, 2);
     }
@@ -678,7 +696,14 @@ mod tests {
 
     #[test]
     fn days_roundtrip_across_years() {
-        for c in [19700101i64, 19991231, 20000229, 20160301, 20260930, 20350715] {
+        for c in [
+            19700101i64,
+            19991231,
+            20000229,
+            20160301,
+            20260930,
+            20350715,
+        ] {
             assert_eq!(civil_compact(days_from_compact(c)), c, "roundtrip {c}");
         }
         assert_eq!(days_from_compact(19700101), 0);
@@ -727,7 +752,11 @@ mod tests {
         )
         .unwrap();
         let n: i64 = c
-            .query_row("SELECT COUNT(*) FROM hist_kline WHERE code='600519'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM hist_kline WHERE code='600519'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(n, 3);
     }
@@ -746,7 +775,7 @@ mod tests {
         assert_eq!(klt_of(102), 102);
         assert_eq!(klt_of(103), 103);
         assert_eq!(klt_of(999), 101); // 未知回落日 K
-        // fqt 口径映射与东财约定一致
+                                      // fqt 口径映射与东财约定一致
         let fqt = |adj: &str| match adj {
             "hfq" => 2,
             "none" => 0,

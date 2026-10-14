@@ -2,8 +2,8 @@
 // 命令数量护栏见 src-tauri/INVENTORY.md；增删命令必须同步清单与 generate_handler!。
 // 错误新代码优先用 crate::error::AppError；存量 String 错误按域逐步迁移。
 use crate::ai;
-use crate::market;
 use crate::logging;
+use crate::market;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -14,7 +14,11 @@ pub(crate) async fn get_quotes(codes: Vec<String>) -> Result<Vec<market::Quote>,
 }
 
 #[tauri::command]
-pub(crate) async fn get_kline(code: String, period: i64, count: i64) -> Result<Vec<market::KBar>, String> {
+pub(crate) async fn get_kline(
+    code: String,
+    period: i64,
+    count: i64,
+) -> Result<Vec<market::KBar>, String> {
     market::get_kline(code, period, count).await
 }
 
@@ -24,7 +28,10 @@ pub(crate) async fn get_minute(code: String) -> Result<Vec<market::KBar>, String
 }
 
 #[tauri::command]
-pub(crate) async fn get_hist_minute(code: String, date: String) -> Result<Vec<market::KBar>, String> {
+pub(crate) async fn get_hist_minute(
+    code: String,
+    date: String,
+) -> Result<Vec<market::KBar>, String> {
     market::get_hist_minute(code, date).await
 }
 
@@ -60,7 +67,10 @@ pub(crate) async fn get_sectors(kind: String) -> Result<Vec<market::Sector>, Str
 }
 
 #[tauri::command]
-pub(crate) async fn get_sector_stocks(category: String, kind: String) -> Result<Vec<serde_json::Value>, String> {
+pub(crate) async fn get_sector_stocks(
+    category: String,
+    kind: String,
+) -> Result<Vec<serde_json::Value>, String> {
     market::get_sector_stocks(category, kind).await
 }
 
@@ -152,9 +162,7 @@ pub(crate) async fn sector_day_query(
 
 /// 已积累的板块快照交易日数量
 #[tauri::command]
-pub(crate) async fn sector_day_stats(
-    ai: State<'_, crate::ai::AiState>,
-) -> Result<i64, String> {
+pub(crate) async fn sector_day_stats(ai: State<'_, crate::ai::AiState>) -> Result<i64, String> {
     market::sector_day::stats(&ai.dir())
 }
 
@@ -189,7 +197,9 @@ pub(crate) async fn get_ipo_list() -> Result<Vec<market::cninfo::IpoItem>, Strin
 }
 
 #[tauri::command]
-pub(crate) async fn get_restricted_queue(code: String) -> Result<Vec<market::cninfo::RestrictedItem>, String> {
+pub(crate) async fn get_restricted_queue(
+    code: String,
+) -> Result<Vec<market::cninfo::RestrictedItem>, String> {
     market::cninfo::get_restricted_queue(code).await
 }
 
@@ -210,7 +220,10 @@ pub(crate) async fn get_auction() -> Result<market::eastmoney::AuctionData, Stri
 }
 
 #[tauri::command]
-pub(crate) async fn get_auction_page(page: i64, asc: i32) -> Result<Vec<market::eastmoney::AuctionStock>, String> {
+pub(crate) async fn get_auction_page(
+    page: i64,
+    asc: i32,
+) -> Result<Vec<market::eastmoney::AuctionStock>, String> {
     market::sina::auction_page(page, asc).await
 }
 
@@ -225,7 +238,9 @@ pub(crate) async fn get_zb_pool(date: String) -> Result<market::eastmoney::ZtPoo
 }
 
 #[tauri::command]
-pub(crate) async fn get_announcements(date: String) -> Result<Vec<market::announce::AnnounceItem>, String> {
+pub(crate) async fn get_announcements(
+    date: String,
+) -> Result<Vec<market::announce::AnnounceItem>, String> {
     market::announce::announcements(date, 100).await
 }
 
@@ -237,7 +252,9 @@ pub(crate) async fn get_irm_latest() -> Vec<market::irminteract::IrmItem> {
 
 // ===== v1.9 AI 慢脑命令 =====
 #[tauri::command]
-pub(crate) fn ai_get_config(state: tauri::State<ai::AiState>) -> Result<ai::config::AiConfig, String> {
+pub(crate) fn ai_get_config(
+    state: tauri::State<ai::AiState>,
+) -> Result<ai::config::AiConfig, String> {
     let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
     ai::config::load_config(&db.0)
 }
@@ -261,10 +278,7 @@ pub(crate) fn cloud_secret() -> ai::config::KeyringSecret {
 
 #[tauri::command]
 pub(crate) fn ai_get_cloud_key_set() -> bool {
-    matches!(
-        ai::config::SecretStore::get(&cloud_secret()),
-        Ok(Some(_))
-    )
+    matches!(ai::config::SecretStore::get(&cloud_secret()), Ok(Some(_)))
 }
 
 #[tauri::command]
@@ -342,7 +356,10 @@ pub(crate) struct AiMsgOut {
 }
 
 #[tauri::command]
-pub(crate) fn ai_delete_session(state: tauri::State<ai::AiState>, session_id: i64) -> Result<(), String> {
+pub(crate) fn ai_delete_session(
+    state: tauri::State<ai::AiState>,
+    session_id: i64,
+) -> Result<(), String> {
     let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
     ai::vectordb::delete_session(&db.0, session_id)
 }
@@ -389,7 +406,9 @@ pub(crate) fn ai_chat_abort(
 }
 
 #[tauri::command]
-pub(crate) fn ai_kb_stats(state: tauri::State<ai::AiState>) -> Result<ai::vectordb::KbStats, String> {
+pub(crate) fn ai_kb_stats(
+    state: tauri::State<ai::AiState>,
+) -> Result<ai::vectordb::KbStats, String> {
     let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
     ai::vectordb::stats(&db.0)
 }
@@ -493,11 +512,9 @@ pub(crate) async fn ai_build_decision_pack(
     date: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let dir = state.dir();
-    tauri::async_runtime::spawn_blocking(move || {
-        ai::decision::build_pack(&dir, date.as_deref())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || ai::decision::build_pack(&dir, date.as_deref()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 // v2.32 盯盘复盘报告数据包（聚合四大块，盘后读本地库）
@@ -507,11 +524,9 @@ pub(crate) async fn ai_build_review_report(
     date: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let dir = state.dir();
-    tauri::async_runtime::spawn_blocking(move || {
-        ai::report::build_report(&dir, date.as_deref())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || ai::report::build_report(&dir, date.as_deref()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -533,7 +548,10 @@ pub(crate) fn ai_list_reviews(
 }
 
 #[tauri::command]
-pub(crate) fn ai_get_review(state: tauri::State<ai::AiState>, id: i64) -> Result<serde_json::Value, String> {
+pub(crate) fn ai_get_review(
+    state: tauri::State<ai::AiState>,
+    id: i64,
+) -> Result<serde_json::Value, String> {
     ai::review::get_review(&state.dir(), id)
 }
 
@@ -544,21 +562,37 @@ pub(crate) async fn ai_generate_plan(
     review_date: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let (cfg, key, dir) = load_brain(&state)?;
-    ai::plan::generate_plan(&dir, &cfg, &key, profile_key.as_deref(), review_date.as_deref()).await
+    ai::plan::generate_plan(
+        &dir,
+        &cfg,
+        &key,
+        profile_key.as_deref(),
+        review_date.as_deref(),
+    )
+    .await
 }
 
 #[tauri::command]
-pub(crate) fn ai_get_latest_plan(state: tauri::State<ai::AiState>) -> Result<serde_json::Value, String> {
+pub(crate) fn ai_get_latest_plan(
+    state: tauri::State<ai::AiState>,
+) -> Result<serde_json::Value, String> {
     ai::plan::get_latest_plan(&state.dir())
 }
 
 #[tauri::command]
-pub(crate) fn ai_get_plan(state: tauri::State<ai::AiState>, id: i64) -> Result<serde_json::Value, String> {
+pub(crate) fn ai_get_plan(
+    state: tauri::State<ai::AiState>,
+    id: i64,
+) -> Result<serde_json::Value, String> {
     ai::plan::get_plan(&state.dir(), id)
 }
 
 #[tauri::command]
-pub(crate) fn ai_set_plan_status(state: tauri::State<ai::AiState>, id: i64, status: String) -> Result<(), String> {
+pub(crate) fn ai_set_plan_status(
+    state: tauri::State<ai::AiState>,
+    id: i64,
+    status: String,
+) -> Result<(), String> {
     ai::plan::set_plan_status(&state.dir(), id, &status)
 }
 
@@ -648,7 +682,9 @@ pub(crate) async fn autoexec_start(
 }
 
 #[tauri::command]
-pub(crate) fn autoexec_stop(ctl: tauri::State<'_, Arc<ai::autoexec::AutoExecCtl>>) -> Result<(), String> {
+pub(crate) fn autoexec_stop(
+    ctl: tauri::State<'_, Arc<ai::autoexec::AutoExecCtl>>,
+) -> Result<(), String> {
     ctl.running.store(false, Ordering::Release);
     let mut cfg = ctl.config.lock().unwrap().clone();
     cfg.enabled = false;
@@ -773,7 +809,9 @@ pub(crate) fn spider_set_thresholds(
 }
 
 #[tauri::command]
-pub(crate) fn stop_spider(ctl: tauri::State<'_, Arc<market::spider::SpiderCtl>>) -> Result<String, String> {
+pub(crate) fn stop_spider(
+    ctl: tauri::State<'_, Arc<market::spider::SpiderCtl>>,
+) -> Result<String, String> {
     ctl.running.store(false, Ordering::Release);
     log::info!("短线精灵引擎已停止");
     Ok("stopped".to_string())
@@ -797,7 +835,9 @@ pub(crate) async fn start_radar(
 }
 
 #[tauri::command]
-pub(crate) fn stop_radar(ctl: tauri::State<'_, Arc<market::limitup::LimitRadar>>) -> Result<String, String> {
+pub(crate) fn stop_radar(
+    ctl: tauri::State<'_, Arc<market::limitup::LimitRadar>>,
+) -> Result<String, String> {
     ctl.running.store(false, Ordering::Release);
     log::info!("涨停雷达引擎已停止");
     Ok("stopped".to_string())
@@ -952,7 +992,10 @@ pub(crate) fn diag_log(msg: &str) {
 
 // ===== 数据导出：rfd 原生保存对话框选路径，再写入文件（无需 dialog/fs 插件）=====
 #[tauri::command]
-pub(crate) async fn save_export_file(default_name: String, content: String) -> Result<bool, String> {
+pub(crate) async fn save_export_file(
+    default_name: String,
+    content: String,
+) -> Result<bool, String> {
     let file = rfd::AsyncFileDialog::new()
         .set_file_name(&default_name)
         .save_file()
@@ -1000,7 +1043,9 @@ pub(crate) fn is_backup(p: &std::path::Path) -> bool {
 
 /// 仅保留最近 KEEP_BACKUPS 个备份（按修改时间，新→旧）
 pub(crate) async fn prune_backups(bdir: &std::path::Path) {
-    let Ok(mut rd) = tokio::fs::read_dir(bdir).await else { return };
+    let Ok(mut rd) = tokio::fs::read_dir(bdir).await else {
+        return;
+    };
     let mut items: Vec<(std::time::SystemTime, std::path::PathBuf)> = Vec::new();
     while let Ok(Some(ent)) = rd.next_entry().await {
         let p = ent.path();

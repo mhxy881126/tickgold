@@ -97,10 +97,16 @@ pub async fn run_review(
     let date = pack["date"].as_str().unwrap_or_default().to_string();
 
     // 待生成清单：(scope, subject, focus_json)
-    let mut jobs: Vec<(String, String, Value)> = vec![("market".into(), String::new(), pack.clone())];
-    
+    let mut jobs: Vec<(String, String, Value)> =
+        vec![("market".into(), String::new(), pack.clone())];
+
     // 新增：交易复盘（对比当日计划 vs 实际交易）
-    if pack["todayPlan"]["exists"].as_bool().unwrap_or(false) || pack["todayDecisionLogs"].as_array().map(|a| !a.is_empty()).unwrap_or(false) {
+    if pack["todayPlan"]["exists"].as_bool().unwrap_or(false)
+        || pack["todayDecisionLogs"]
+            .as_array()
+            .map(|a| !a.is_empty())
+            .unwrap_or(false)
+    {
         jobs.push((
             "trade".into(),
             "当日交易复盘".into(),
@@ -113,7 +119,13 @@ pub async fn run_review(
             }),
         ));
     }
-    for t in pack["activeThemes"].as_array().cloned().unwrap_or_default().iter().take(5) {
+    for t in pack["activeThemes"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .take(5)
+    {
         let name = t["name"].as_str().unwrap_or("").to_string();
         jobs.push((
             "theme".into(),
@@ -123,7 +135,11 @@ pub async fn run_review(
     }
     // 个股：连板股 + 持仓并集去重，最多 8 只
     let mut codes: Vec<String> = vec![];
-    for s in pack["multiBoardStocks"].as_array().cloned().unwrap_or_default() {
+    for s in pack["multiBoardStocks"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+    {
         codes.push(s["code"].as_str().unwrap_or("").to_string());
     }
     for s in pack["positions"].as_array().cloned().unwrap_or_default() {
@@ -132,11 +148,20 @@ pub async fn run_review(
             codes.push(c);
         }
     }
-    let multi = pack["multiBoardStocks"].as_array().cloned().unwrap_or_default();
+    let multi = pack["multiBoardStocks"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     let posis = pack["positions"].as_array().cloned().unwrap_or_default();
     for code in codes.iter().take(8) {
-        let mb = multi.iter().find(|s| s["code"].as_str() == Some(code.as_str())).cloned();
-        let pos = posis.iter().find(|s| s["code"].as_str() == Some(code.as_str())).cloned();
+        let mb = multi
+            .iter()
+            .find(|s| s["code"].as_str() == Some(code.as_str()))
+            .cloned();
+        let pos = posis
+            .iter()
+            .find(|s| s["code"].as_str() == Some(code.as_str()))
+            .cloned();
         jobs.push((
             "stock".into(),
             code.clone(),
@@ -149,14 +174,12 @@ pub async fn run_review(
     let mut out: Vec<ReviewSummary> = vec![];
     let mut market_failed = false;
     for (scope, subject, focus) in jobs {
-        if let Ok((id, title, summary)) = wdb
-            .query_row(
-                "SELECT id,title,summary FROM ai_review
+        if let Ok((id, title, summary)) = wdb.query_row(
+            "SELECT id,title,summary FROM ai_review
                  WHERE trade_date=?1 AND scope=?2 AND subject=?3",
-                rusqlite::params![date, scope, subject],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )
-        {
+            rusqlite::params![date, scope, subject],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        ) {
             if !force {
                 out.push(ReviewSummary {
                     id,
@@ -323,7 +346,9 @@ mod tests {
 
     #[test]
     fn parse_plain_json() {
-        let v = parse_review_json(r##"{"title":"市场缩量","summary":"情绪回落","content":"# 点一","evidence":[]}"##);
+        let v = parse_review_json(
+            r##"{"title":"市场缩量","summary":"情绪回落","content":"# 点一","evidence":[]}"##,
+        );
         assert_eq!(v["title"], "市场缩量");
         assert_eq!(v["summary"], "情绪回落");
         assert!(v["content"].as_str().unwrap().contains("点一"));
@@ -350,8 +375,11 @@ mod tests {
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir()
-            .join(format!("tickgold-review-sql-{}-{}", crate::ai::now_millis(), seq));
+        let dir = std::env::temp_dir().join(format!(
+            "tickgold-review-sql-{}-{}",
+            crate::ai::now_millis(),
+            seq
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let c = rusqlite::Connection::open(dir.join("stock-dock.db")).unwrap();
@@ -375,9 +403,12 @@ mod tests {
         };
         insert("初版");
         insert("重跑版");
-        let count: i64 = c.query_row("SELECT count(*) FROM ai_review", [], |r| r.get(0)).unwrap();
-        let title: String =
-            c.query_row("SELECT title FROM ai_review", [], |r| r.get(0)).unwrap();
+        let count: i64 = c
+            .query_row("SELECT count(*) FROM ai_review", [], |r| r.get(0))
+            .unwrap();
+        let title: String = c
+            .query_row("SELECT title FROM ai_review", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(count, 1, "同 UNIQUE 键必须只保留一行");
         assert_eq!(title, "重跑版");
         let _ = std::fs::remove_dir_all(&dir);

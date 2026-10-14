@@ -7,8 +7,12 @@ use std::thread;
 
 /// 启动本地代理，返回监听端口。
 pub fn start_proxy() -> Result<u16, String> {
-    let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| format!("代理端口绑定失败: {e}"))?;
-    let port = listener.local_addr().map_err(|e| format!("获取代理端口失败: {e}"))?.port();
+    let listener =
+        TcpListener::bind("127.0.0.1:0").map_err(|e| format!("代理端口绑定失败: {e}"))?;
+    let port = listener
+        .local_addr()
+        .map_err(|e| format!("获取代理端口失败: {e}"))?
+        .port();
 
     thread::Builder::new()
         .name("tg-http-proxy".to_string())
@@ -33,8 +37,12 @@ pub fn start_proxy() -> Result<u16, String> {
 }
 
 fn handle_client(mut client: TcpStream) -> Result<(), String> {
-    client.set_read_timeout(Some(std::time::Duration::from_secs(30))).ok();
-    client.set_write_timeout(Some(std::time::Duration::from_secs(30))).ok();
+    client
+        .set_read_timeout(Some(std::time::Duration::from_secs(30)))
+        .ok();
+    client
+        .set_write_timeout(Some(std::time::Duration::from_secs(30)))
+        .ok();
 
     // 读取请求行 + 头部
     let mut buf = [0u8; 8192];
@@ -60,8 +68,12 @@ fn handle_client(mut client: TcpStream) -> Result<(), String> {
         };
         match TcpStream::connect(&addr) {
             Ok(mut remote) => {
-                remote.set_read_timeout(Some(std::time::Duration::from_secs(120))).ok();
-                remote.set_write_timeout(Some(std::time::Duration::from_secs(120))).ok();
+                remote
+                    .set_read_timeout(Some(std::time::Duration::from_secs(120)))
+                    .ok();
+                remote
+                    .set_write_timeout(Some(std::time::Duration::from_secs(120)))
+                    .ok();
                 let _ = client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n");
                 // 双向转发
                 let mut client_clone = client.try_clone().map_err(|e| e.to_string())?;
@@ -74,7 +86,11 @@ fn handle_client(mut client: TcpStream) -> Result<(), String> {
                 Ok(())
             }
             Err(e) => {
-                let _ = client.write_all("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n".to_string().as_bytes());
+                let _ = client.write_all(
+                    "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n"
+                        .to_string()
+                        .as_bytes(),
+                );
                 Err(format!("连接 {addr} 失败: {e}"))
             }
         }
@@ -114,7 +130,10 @@ fn handle_client(mut client: TcpStream) -> Result<(), String> {
                 for line in request_text.lines().skip(1) {
                     if let Some((k, v)) = line.split_once(':') {
                         let kl = k.to_lowercase();
-                        if !matches!(kl.as_str(), "host" | "proxy-connection" | "content-length" | "connection") {
+                        if !matches!(
+                            kl.as_str(),
+                            "host" | "proxy-connection" | "content-length" | "connection"
+                        ) {
                             req_builder = req_builder.header(k.trim(), v.trim());
                         }
                     }
@@ -130,10 +149,17 @@ fn handle_client(mut client: TcpStream) -> Result<(), String> {
                 match req_builder.send() {
                     Ok(resp) => {
                         let status = resp.status();
-                        let mut resp_text = format!("HTTP/1.1 {} {}\r\n", status.as_u16(), status.canonical_reason().unwrap_or(""));
+                        let mut resp_text = format!(
+                            "HTTP/1.1 {} {}\r\n",
+                            status.as_u16(),
+                            status.canonical_reason().unwrap_or("")
+                        );
                         for (k, v) in resp.headers() {
                             let kl = k.as_str().to_lowercase();
-                            if !matches!(kl.as_str(), "transfer-encoding" | "connection" | "content-encoding") {
+                            if !matches!(
+                                kl.as_str(),
+                                "transfer-encoding" | "connection" | "content-encoding"
+                            ) {
                                 if let Ok(vv) = v.to_str() {
                                     resp_text.push_str(&format!("{}: {}\r\n", k.as_str(), vv));
                                 }
@@ -146,13 +172,21 @@ fn handle_client(mut client: TcpStream) -> Result<(), String> {
                         Ok(())
                     }
                     Err(e) => {
-                        let _ = client.write_all("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n".to_string().as_bytes());
+                        let _ = client.write_all(
+                            "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n"
+                                .to_string()
+                                .as_bytes(),
+                        );
                         Err(format!("上游请求失败: {e}"))
                     }
                 }
             }
             Err(e) => {
-                let _ = client.write_all("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n".to_string().as_bytes());
+                let _ = client.write_all(
+                    "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n"
+                        .to_string()
+                        .as_bytes(),
+                );
                 Err(format!("HTTP 客户端构建失败: {e}"))
             }
         }

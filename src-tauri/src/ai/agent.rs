@@ -163,20 +163,17 @@ impl<'a> TurnAgent<'a> {
             let app = self.app;
             let sid = session_id;
             // chat_stream 内部累积工具碎片并返回组装结果；空 Vec=终轮
-            let calls: Vec<ToolCall> = provider::chat_stream(
-                self.cfg,
-                &self.api_key,
-                &msgs,
-                &tool_specs,
-                &mut |ev| {
+            let calls: Vec<ToolCall> =
+                provider::chat_stream(self.cfg, &self.api_key, &msgs, &tool_specs, &mut |ev| {
                     if let StreamEv::Delta(s) = ev {
                         answer.push_str(&s);
-                        let _ =
-                            app.emit("ai://token", serde_json::json!({"sessionId": sid, "text": s}));
+                        let _ = app.emit(
+                            "ai://token",
+                            serde_json::json!({"sessionId": sid, "text": s}),
+                        );
                     }
-                },
-            )
-            .await?;
+                })
+                .await?;
             if calls.is_empty() {
                 break; // 无工具调用 = 终轮回答
             }

@@ -95,8 +95,8 @@ impl SseState {
         if data.is_empty() || data == "[DONE]" {
             return Ok(());
         }
-        let v: serde_json::Value =
-            serde_json::from_str(data).map_err(|e| format!("SSE JSON 解析失败: {e}; raw={data}"))?;
+        let v: serde_json::Value = serde_json::from_str(data)
+            .map_err(|e| format!("SSE JSON 解析失败: {e}; raw={data}"))?;
         let Some(delta) = v.pointer("/choices/0/delta") else {
             return Ok(()); // 非内容帧（如 role-only 首帧）忽略
         };
@@ -195,7 +195,9 @@ fn build_client(no_proxy: bool) -> Result<reqwest::Client, String> {
 
 /// 字符串 URL 是否回环地址（解析失败按非回环处理）。
 fn is_loopback_str(url: &str) -> bool {
-    url::Url::parse(url).map(|u| is_loopback_url(&u)).unwrap_or(false)
+    url::Url::parse(url)
+        .map(|u| is_loopback_url(&u))
+        .unwrap_or(false)
 }
 
 /// 该目标 URL 应使用的代理策略：回环仅直连；远程先系统代理、再直连兜底。
@@ -306,15 +308,15 @@ fn build_api_messages(msgs: &[ChatMsg]) -> Vec<serde_json::Value> {
                 }
                 // 普通消息（system/user/assistant 文本/tool 结果）：content 恒为字符串。
                 None => {
-                    v.insert("content".into(), serde_json::Value::String(m.content.clone()));
+                    v.insert(
+                        "content".into(),
+                        serde_json::Value::String(m.content.clone()),
+                    );
                 }
             }
             // role:"tool" 消息必须带与其前 assistant tool_calls 中相同的 id。
             if let Some(id) = &m.tool_call_id {
-                v.insert(
-                    "tool_call_id".into(),
-                    serde_json::Value::String(id.clone()),
-                );
+                v.insert("tool_call_id".into(), serde_json::Value::String(id.clone()));
             }
             serde_json::Value::Object(v)
         })
@@ -393,15 +395,15 @@ pub async fn chat_stream(
     while let Some(pos) = buf.iter().position(|b| *b == b'\n') {
         let line: Vec<u8> = buf.drain(..=pos).collect();
         if line.starts_with(b"data:") {
-            let rest = std::str::from_utf8(&line[5..])
-                .map_err(|e| format!("SSE UTF-8 解析失败: {e}"))?;
+            let rest =
+                std::str::from_utf8(&line[5..]).map_err(|e| format!("SSE UTF-8 解析失败: {e}"))?;
             state.feed(rest.trim(), on)?;
         }
     }
     // 容忍服务端最后一帧不带尾换行：残余本身是一帧 data: 时解码一次。
     if buf.starts_with(b"data:") {
-        let rest = std::str::from_utf8(&buf[5..])
-            .map_err(|e| format!("SSE UTF-8 解析失败: {e}"))?;
+        let rest =
+            std::str::from_utf8(&buf[5..]).map_err(|e| format!("SSE UTF-8 解析失败: {e}"))?;
         let rest = rest.trim();
         if !rest.is_empty() {
             state.feed(rest, on)?;
@@ -416,10 +418,7 @@ pub struct ModelInfo {
     pub models: Vec<String>,
 }
 
-pub async fn list_models(
-    cfg: &AiConfig,
-    api_key: &Option<String>,
-) -> Result<ModelInfo, String> {
+pub async fn list_models(cfg: &AiConfig, api_key: &Option<String>) -> Result<ModelInfo, String> {
     // 多候选端点：
     // - 标准 OpenAI 兼容：{base}/models（base 通常以 /v1 结尾）
     // - 用户漏填 /v1：补试 {base}/v1/models
@@ -593,12 +592,20 @@ mod tests {
         let mut got = String::new();
         st.feed(
             r#"{"choices":[{"delta":{"role":"assistant","content":"今日"}}]}"#,
-            &mut |e| if let StreamEv::Delta(s) = e { got.push_str(&s) },
+            &mut |e| {
+                if let StreamEv::Delta(s) = e {
+                    got.push_str(&s)
+                }
+            },
         )
         .unwrap();
         st.feed(
             r#"{"choices":[{"delta":{"content":"涨停 72 家"}}]}"#,
-            &mut |e| if let StreamEv::Delta(s) = e { got.push_str(&s) },
+            &mut |e| {
+                if let StreamEv::Delta(s) = e {
+                    got.push_str(&s)
+                }
+            },
         )
         .unwrap();
         st.feed("[DONE]", &mut |_| {}).unwrap();
@@ -670,7 +677,10 @@ mod tests {
         // assistant：content === null（不是空串），tool_calls 形状完整
         let a = &arr[0];
         assert_eq!(a["role"], "assistant");
-        assert!(a["content"].is_null(), "工具回合 assistant content 必须为 null");
+        assert!(
+            a["content"].is_null(),
+            "工具回合 assistant content 必须为 null"
+        );
         assert_eq!(a["tool_calls"].as_array().unwrap().len(), 1);
         let tc = &a["tool_calls"][0];
         assert_eq!(tc["id"], "call_9");
@@ -695,8 +705,7 @@ mod tests {
         let u = &arr[2];
         assert_eq!(u["role"], "user");
         assert_eq!(u["content"], "继续");
-        let keys: std::collections::BTreeSet<&String> =
-            u.as_object().unwrap().keys().collect();
+        let keys: std::collections::BTreeSet<&String> = u.as_object().unwrap().keys().collect();
         assert_eq!(
             keys,
             [&"role".to_string(), &"content".to_string()]
@@ -733,9 +742,7 @@ mod tests {
     /// 手写最小 HTTP mock（无外部依赖）：返回固定 SSE 文本，验证端到端流读取。
     #[tokio::test]
     async fn chat_stream_end_to_end_against_mock_http() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let sse = concat!(
             "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"你好\"}}]}\n\n",
@@ -778,9 +785,7 @@ mod tests {
     /// 手写最小 HTTP mock（仅 127.0.0.1 回环，不触外网）。
     /// shard=Some(n) 时把响应体按每 n 字节 write+flush 分片（片间 sleep 1ms）。
     async fn spawn_loopback_mock(content_type: &str, body: String, shard: Option<usize>) -> u16 {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let content_type = content_type.to_string();
         tokio::spawn(async move {
@@ -861,13 +866,9 @@ mod tests {
         .to_string();
         let port = spawn_loopback_mock("application/json", body, None).await;
         let cfg = test_cfg(port);
-        let out = embed(
-            &cfg,
-            &None,
-            &["a".to_string(), "b".to_string()],
-        )
-        .await
-        .unwrap();
+        let out = embed(&cfg, &None, &["a".to_string(), "b".to_string()])
+            .await
+            .unwrap();
         assert_eq!(out.len(), 2);
         // a（index 0）→ [0.75, 1.0]；b（index 1）→ [0.25, 0.5]
         assert_eq!(out[0], vec![0.75_f32, 1.0_f32]);
@@ -887,13 +888,9 @@ mod tests {
         .to_string();
         let port = spawn_loopback_mock("application/json", body, None).await;
         let cfg = test_cfg(port);
-        let err = embed(
-            &cfg,
-            &None,
-            &["a".to_string(), "b".to_string()],
-        )
-        .await
-        .unwrap_err();
+        let err = embed(&cfg, &None, &["a".to_string(), "b".to_string()])
+            .await
+            .unwrap_err();
         assert!(
             err.contains("嵌入返回条数 1 与请求 2 不符"),
             "条数不符错误信息不匹配: {err}"
@@ -953,10 +950,14 @@ mod tests {
             use tokio::io::{AsyncReadExt, AsyncWriteExt};
             // list_models 会顺序尝试多个候选端点，需要接受多次连接
             loop {
-                let Ok((mut sock, _)) = listener.accept().await else { break };
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    break;
+                };
                 let mut req = vec![0u8; 4096];
                 let n = sock.read(&mut req).await.unwrap_or(0);
-                if n == 0 { continue; }
+                if n == 0 {
+                    continue;
+                }
                 let head = String::from_utf8_lossy(&req[..n]);
                 let req_line = head.lines().next().unwrap_or("");
                 let path = req_line.split_whitespace().nth(1).unwrap_or("/");
@@ -967,7 +968,8 @@ mod tests {
                         body
                     )
                 } else {
-                    "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                    "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        .to_string()
                 };
                 let _ = sock.write_all(resp.as_bytes()).await;
                 let _ = sock.flush().await;
@@ -979,7 +981,8 @@ mod tests {
     /// 用户漏填 /v1：/models 返回 404 时必须自动回退到 /v1/models 拉到列表。
     #[tokio::test]
     async fn list_models_falls_back_to_v1_suffix() {
-        let body = serde_json::json!({"data":[{"id":"deepseek-chat"},{"id":"deepseek-reasoner"}]}).to_string();
+        let body = serde_json::json!({"data":[{"id":"deepseek-chat"},{"id":"deepseek-reasoner"}]})
+            .to_string();
         let port = spawn_routing_mock("/v1/models", body).await;
         let cfg = AiConfig {
             provider: "cloud".into(),

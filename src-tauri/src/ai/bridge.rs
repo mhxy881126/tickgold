@@ -70,9 +70,22 @@ pub fn create_ticket(conn: &Connection, input: SignalInput) -> Option<String> {
                 confidence,ref_price,price,vol,amount,reason,status,updated_at)
              VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'pending',?16)",
             rusqlite::params![
-                sig_id, input.trade_date, now, input.code, input.name, input.side, input.source,
-                input.model_version, input.strategy, input.confidence, input.ref_price,
-                input.ref_price, input.vol, amount, input.reason, now
+                sig_id,
+                input.trade_date,
+                now,
+                input.code,
+                input.name,
+                input.side,
+                input.source,
+                input.model_version,
+                input.strategy,
+                input.confidence,
+                input.ref_price,
+                input.ref_price,
+                input.vol,
+                amount,
+                input.reason,
+                now
             ],
         )
         .is_ok();
@@ -159,8 +172,7 @@ pub fn list_tickets(conn: &Connection, status: Option<String>, limit: Option<i64
                 confidence,ref_price,price,vol,amount,reason,status,action_kind,broker,\
                 order_text,decided_by,decided_at FROM signal_ticket",
     );
-    let sfilter: Option<String> =
-        status.filter(|v| !v.is_empty() && v.to_lowercase() != "all");
+    let sfilter: Option<String> = status.filter(|v| !v.is_empty() && v.to_lowercase() != "all");
     if sfilter.is_some() {
         sql.push_str(" WHERE status=?1");
     }
@@ -258,7 +270,12 @@ pub fn confirm(conn: &Connection, id: i64, opts: ConfirmOpts) -> Result<Value, S
     let amount = price * vol as f64;
     let order_text = build_order_text_tpl(
         &opts.order_template.clone().unwrap_or_default(),
-        &side, &code, &name, price, vol, &broker,
+        &side,
+        &code,
+        &name,
+        price,
+        vol,
+        &broker,
     );
     let now = now_millis();
     conn.execute(
@@ -266,7 +283,16 @@ pub fn confirm(conn: &Connection, id: i64, opts: ConfirmOpts) -> Result<Value, S
                 action_kind=?4,broker=?5,order_text=?6,decided_by=?7,decided_at=?8,updated_at=?9 \
          WHERE id=?10",
         rusqlite::params![
-            price, vol, amount, action_kind, broker, order_text, actor, now, now, id
+            price,
+            vol,
+            amount,
+            action_kind,
+            broker,
+            order_text,
+            actor,
+            now,
+            now,
+            id
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -524,7 +550,6 @@ pub fn signal_expire(
     Ok(n)
 }
 #[allow(clippy::too_many_arguments)]
-
 #[tauri::command]
 pub fn signal_create_manual(
     state: State<'_, crate::ai::AiState>,

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AiConfig {
-    pub provider: String,          // "ollama" | "cloud"
+    pub provider: String, // "ollama" | "cloud"
     pub base_url: String,
     pub chat_model: String,
     pub embed_model: String,
@@ -118,8 +118,8 @@ mod tests {
 
     fn db() -> crate::ai::vectordb::AiDb {
         let seq = CFG_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let p = std::env::temp_dir()
-            .join(format!("tickgold-ai-test-cfg-{}-{}.db", now_millis(), seq));
+        let p =
+            std::env::temp_dir().join(format!("tickgold-ai-test-cfg-{}-{}.db", now_millis(), seq));
         open(&p).unwrap()
     }
 
@@ -146,10 +146,9 @@ mod tests {
         assert_eq!(back.provider, "cloud");
         assert_eq!(back.base_url, "https://api.deepseek.com/v1");
         // 存储为 camelCase JSON
-        let raw: String = db
-            .0
-            .query_row("SELECT json FROM ai_config WHERE id=1", [], |r| r.get(0))
-            .unwrap();
+        let raw: String =
+            db.0.query_row("SELECT json FROM ai_config WHERE id=1", [], |r| r.get(0))
+                .unwrap();
         assert!(raw.contains("baseUrl"));
         assert!(!raw.contains("base_url"));
     }

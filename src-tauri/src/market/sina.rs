@@ -18,13 +18,19 @@ pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
     let mut out = Vec::new();
 
     for line in txt.lines() {
-        let Some((left, right)) = line.split_once('=') else { continue };
+        let Some((left, right)) = line.split_once('=') else {
+            continue;
+        };
         let sym = left.trim().trim_start_matches("var hq_str_");
-        if sym.len() < 3 { continue };
+        if sym.len() < 3 {
+            continue;
+        };
         let code = sym[2..].to_string();
         let payload = right.trim().trim_end_matches(';').trim_matches('"');
         let f: Vec<&str> = payload.split(',').collect();
-        if f.len() < 10 { continue };
+        if f.len() < 10 {
+            continue;
+        };
 
         let p = |i: usize| f[i].parse::<f64>().unwrap_or(0.0);
         let name = f[0].to_string();
@@ -36,7 +42,11 @@ pub async fn quotes(codes: &[String]) -> Result<Vec<Quote>, String> {
         let vol_shares = p(8);
         let amount = p(9);
         let change = price - prev_close;
-        let pct = if prev_close != 0.0 { change / prev_close * 100.0 } else { 0.0 };
+        let pct = if prev_close != 0.0 {
+            change / prev_close * 100.0
+        } else {
+            0.0
+        };
 
         out.push(Quote {
             code,
@@ -94,7 +104,9 @@ pub async fn sectors(kind: &str) -> Result<Vec<Sector>, String> {
         .map_err(|e| e.to_string())?;
 
     let g = |x: &Value, k: &str| {
-        x[k].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0)
+        x[k].as_str()
+            .and_then(|s| s.parse::<f64>().ok())
+            .unwrap_or(0.0)
     };
     let out: Vec<Sector> = arr
         .iter()
@@ -169,7 +181,8 @@ pub async fn kline(code: &str, period: i64, count: i64) -> Result<Vec<KBar>, Str
 }
 
 /// 新浪日期串 -> ms 时间戳（沿用近似换算，足够横轴使用）
-fn parse_date(s: &str, period: i64) -> i64 {    use std::time::{Duration, UNIX_EPOCH};
+fn parse_date(s: &str, period: i64) -> i64 {
+    use std::time::{Duration, UNIX_EPOCH};
     let (date_part, time_part) = match s.split_once(' ') {
         Some((d, t)) => (d, t),
         None => (s, "00:00"),
@@ -216,7 +229,9 @@ pub async fn rank_page(sort: &str, page: i64, num: i64) -> Result<Vec<Quote>, St
     let now = now_millis();
     // 新浪数值字段均为字符串
     let f = |v: &Value, k: &str| {
-        v[k].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0)
+        v[k].as_str()
+            .and_then(|s| s.parse::<f64>().ok())
+            .unwrap_or(0.0)
     };
     let out: Vec<Quote> = arr
         .iter()
@@ -276,10 +291,14 @@ pub async fn auction() -> Result<AuctionData, String> {
     for (page, is_high) in [(high_raw, true), (low_raw, false)] {
         for v in &page {
             let code = v["code"].as_str().unwrap_or("").to_string();
-            if !seen.insert(code.clone()) { continue; }
+            if !seen.insert(code.clone()) {
+                continue;
+            }
             let prev_close = f(v, "settlement");
             let open = f(v, "open");
-            if prev_close <= 0.0 || open <= 0.0 { continue; }
+            if prev_close <= 0.0 || open <= 0.0 {
+                continue;
+            }
             let s = AuctionStock {
                 code,
                 name: v["name"].as_str().unwrap_or("").to_string(),
@@ -290,8 +309,11 @@ pub async fn auction() -> Result<AuctionData, String> {
                 price: f(v, "trade"),
                 pct: f(v, "changepercent"),
             };
-            if is_high && s.gap > 0.0 { high.push(s); }
-            else if !is_high && s.gap < 0.0 { low.push(s); }
+            if is_high && s.gap > 0.0 {
+                high.push(s);
+            } else if !is_high && s.gap < 0.0 {
+                low.push(s);
+            }
         }
     }
     high.sort_by(|a, b| b.gap.partial_cmp(&a.gap).unwrap());
@@ -334,11 +356,14 @@ pub async fn auction_page(page: i64, asc: i32) -> Result<Vec<AuctionStock>, Stri
     for v in &raw {
         let prev_close = f(v, "settlement");
         let open = f(v, "open");
-        if prev_close <= 0.0 || open <= 0.0 { continue; }
+        if prev_close <= 0.0 || open <= 0.0 {
+            continue;
+        }
         out.push(AuctionStock {
             code: v["code"].as_str().unwrap_or("").to_string(),
             name: v["name"].as_str().unwrap_or("").to_string(),
-            open, prev_close,
+            open,
+            prev_close,
             gap: (open - prev_close) / prev_close * 100.0,
             amount: f(v, "amount"),
             price: f(v, "trade"),
@@ -352,7 +377,12 @@ pub async fn auction_page(page: i64, asc: i32) -> Result<Vec<AuctionStock>, Stri
 // 新浪可提供 最新价/涨跌幅/成交额/换手率；量比(f10)、5分钟涨速(f22)、
 // 主力/大单净流入(f62/f72) 无对应字段，置 0。
 // speed/big/vr/main 四类专用排序新浪不支持，回退按涨跌幅排序（基础列仍有数据）。
-pub async fn rank_board(sort: &str, page: i64, num: i64, scope: &str) -> Result<Vec<RankRow>, String> {
+pub async fn rank_board(
+    sort: &str,
+    page: i64,
+    num: i64,
+    scope: &str,
+) -> Result<Vec<RankRow>, String> {
     if scope != "a" {
         return Err("新浪回退源暂不支持该品种榜单".into());
     }

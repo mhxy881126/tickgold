@@ -73,7 +73,9 @@ pub struct LimitRadar {
 }
 impl LimitRadar {
     pub fn new() -> Self {
-        LimitRadar { running: AtomicBool::new(false) }
+        LimitRadar {
+            running: AtomicBool::new(false),
+        }
     }
 }
 
@@ -120,7 +122,20 @@ fn date_str_from_millis(ms: i64) -> String {
             break;
         }
     }
-    let mdays = [31, if is_leap(y) { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mdays = [
+        31,
+        if is_leap(y) { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut m = 0usize;
     while days >= mdays[m] {
         days -= mdays[m];
@@ -151,9 +166,21 @@ async fn fetch_pools() -> (
         ms -= 86400 * 1000;
     }
     (
-        super::eastmoney::ZtPool { date: String::new(), total: 0, list: Vec::new() },
-        super::eastmoney::ZtPool { date: String::new(), total: 0, list: Vec::new() },
-        super::eastmoney::ZtPool { date: String::new(), total: 0, list: Vec::new() },
+        super::eastmoney::ZtPool {
+            date: String::new(),
+            total: 0,
+            list: Vec::new(),
+        },
+        super::eastmoney::ZtPool {
+            date: String::new(),
+            total: 0,
+            list: Vec::new(),
+        },
+        super::eastmoney::ZtPool {
+            date: String::new(),
+            total: 0,
+            list: Vec::new(),
+        },
     )
 }
 
@@ -180,7 +207,11 @@ fn build_limit_core(zt: &super::eastmoney::ZtPool, zb: &super::eastmoney::ZtPool
             boards: s.boards,
         })
         .collect();
-    lu_stocks.sort_by(|a, b| b.boards.cmp(&a.boards).then(b.pct.partial_cmp(&a.pct).unwrap()));
+    lu_stocks.sort_by(|a, b| {
+        b.boards
+            .cmp(&a.boards)
+            .then(b.pct.partial_cmp(&a.pct).unwrap())
+    });
 
     let mut broken: Vec<StockBrief> = zb
         .list
@@ -192,7 +223,11 @@ fn build_limit_core(zt: &super::eastmoney::ZtPool, zb: &super::eastmoney::ZtPool
             pct: s.pct,
         })
         .collect();
-    broken.sort_by(|a, b| b.pct.partial_cmp(&a.pct).unwrap_or(std::cmp::Ordering::Equal));
+    broken.sort_by(|a, b| {
+        b.pct
+            .partial_cmp(&a.pct)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let mut groups: BTreeMap<u32, Vec<LimitStock>> = BTreeMap::new();
     for s in &lu_stocks {
@@ -203,7 +238,11 @@ fn build_limit_core(zt: &super::eastmoney::ZtPool, zb: &super::eastmoney::ZtPool
     let ladder: Vec<LadderGroup> = groups
         .into_iter()
         .rev()
-        .map(|(boards, items)| LadderGroup { boards, count: items.len(), items })
+        .map(|(boards, items)| LadderGroup {
+            boards,
+            count: items.len(),
+            items,
+        })
         .collect();
 
     let n_lu = lu_stocks.len();
@@ -215,10 +254,24 @@ fn build_limit_core(zt: &super::eastmoney::ZtPool, zb: &super::eastmoney::ZtPool
     };
     let max_boards = lu_stocks.first().map(|s| s.boards).unwrap_or(0);
 
-    LimitCore { lu_stocks, broken, ladder, n_lu, n_br, max_boards, broken_rate }
+    LimitCore {
+        lu_stocks,
+        broken,
+        ladder,
+        n_lu,
+        n_br,
+        max_boards,
+        broken_rate,
+    }
 }
 
-fn sentiment_from(core: &LimitCore, n_ld: usize, total: usize, up: usize, down: usize) -> (f64, String) {
+fn sentiment_from(
+    core: &LimitCore,
+    n_ld: usize,
+    total: usize,
+    up: usize,
+    down: usize,
+) -> (f64, String) {
     let s_limit = ((core.n_lu as f64) - (n_ld as f64)) * 0.6;
     let s_limit = s_limit.clamp(-25.0, 25.0);
     let breadth_score = if total > 0 {
@@ -255,7 +308,11 @@ fn dt_to_brief(dt: &super::eastmoney::ZtPool) -> Vec<StockBrief> {
             pct: s.pct,
         })
         .collect();
-    v.sort_by(|a, b| a.pct.partial_cmp(&b.pct).unwrap_or(std::cmp::Ordering::Equal));
+    v.sort_by(|a, b| {
+        a.pct
+            .partial_cmp(&b.pct)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     v
 }
 
@@ -360,7 +417,11 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<LimitRadar>) {
         // 阶段1：快速数据（涨停/炸板/连板，<1秒）
         let _ = app.emit(
             "radar:status",
-            RadarStatus { scanning: true, trading, time: now_millis() },
+            RadarStatus {
+                scanning: true,
+                trading,
+                time: now_millis(),
+            },
         );
         let (fast, zt, zb, dt) = scan_fast(trading).await;
         // v2.32：顺带采样封单额，供盘口“封单趋势”曲线。
@@ -371,7 +432,11 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<LimitRadar>) {
         let _ = app.emit("radar:data", full);
         let _ = app.emit(
             "radar:status",
-            RadarStatus { scanning: false, trading, time: now_millis() },
+            RadarStatus {
+                scanning: false,
+                trading,
+                time: now_millis(),
+            },
         );
         // 交易时段约 1 分钟一轮，非交易时段 5 分钟一轮
         let wait = if trading { 55 } else { 300 };

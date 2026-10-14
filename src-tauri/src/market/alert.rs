@@ -1,8 +1,8 @@
 // 预警引擎：前端管理规则（SQLite CRUD），start_alert_engine 把规则快照下发到后端；
 // 后端定时批量拉行情，判断价格上穿 / 跌破（边沿触发）、涨跌幅阈值、量比 / 涨速、
 // 涨跌停封板 / 炸板、换手率 / 成交额，冷却去重后 emit("alert:triggered")。
-use super::{now_millis, Quote};
 use super::spider::{is_trading_time, limit_prices};
+use super::{now_millis, Quote};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -53,7 +53,7 @@ pub struct AlertEvent {
     pub code: String,
     pub name: String,
     pub kind: String, // price_up / price_down / pct_up / pct_down / vr_up / speed_up /
-                      // speed_down / turnover_up / amount_up / limit_seal_up / limit_seal_dn / limit_broken
+    // speed_down / turnover_up / amount_up / limit_seal_up / limit_seal_dn / limit_broken
     pub label: String,
     pub message: String,
     pub price: f64,
@@ -147,17 +147,12 @@ fn eval_leaf(
                 .and_then(|p| p.get("windowSec"))
                 .and_then(|s| s.as_i64())
                 .unwrap_or(300);
-            let base = engine
-                .price_hist
-                .lock()
-                .unwrap()
-                .get(code)
-                .and_then(|h| {
-                    h.iter()
-                        .filter(|(ts, _)| *ts <= now - win * 1000)
-                        .map(|(_, p)| *p)
-                        .next_back()
-                });
+            let base = engine.price_hist.lock().unwrap().get(code).and_then(|h| {
+                h.iter()
+                    .filter(|(ts, _)| *ts <= now - win * 1000)
+                    .map(|(_, p)| *p)
+                    .next_back()
+            });
             if let Some(old) = base {
                 if old > 0.0 {
                     let spd = (q.price - old) / old * 100.0;
@@ -459,7 +454,9 @@ async fn check_once(app: &AppHandle, engine: &AlertEngine) {
 
     // 本地条件单触发：trigger 内 leaves 全部满足（AND）才触发
     for co in &co_orders {
-        let Some(q) = qmap.get(&co.code) else { continue };
+        let Some(q) = qmap.get(&co.code) else {
+            continue;
+        };
         let mut matched: Vec<String> = Vec::new();
         let all = co.trigger.iter().all(|leaf| {
             if eval_leaf(leaf, q, &co.code, engine, now, &limit_edges) {

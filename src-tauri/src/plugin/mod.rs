@@ -110,7 +110,14 @@ fn discover(conn: &rusqlite::Connection, root: &Path, builtin: bool) -> Result<u
         let text = std::fs::read_to_string(&mf).map_err(|e| e.to_string())?;
         let m = manifest::parse_manifest(&text)?;
         let hash = fnv_hex(text.as_bytes());
-        store::upsert(conn, &m, d.to_string_lossy().as_ref(), builtin, &hash, false)?;
+        store::upsert(
+            conn,
+            &m,
+            d.to_string_lossy().as_ref(),
+            builtin,
+            &hash,
+            false,
+        )?;
         n += 1;
     }
     Ok(n)
@@ -142,19 +149,25 @@ async fn do_enable(app: &AppHandle, mgr: &PluginManager, plugin_id: &str) -> Res
         return Err("非内置插件需先在设置开启「开发者模式」（beta）".to_string());
     }
     let src_root = PathBuf::from(&row.source_path);
-    let mf_text = std::fs::read_to_string(src_root.join("plugin.json")).map_err(|e| e.to_string())?;
+    let mf_text =
+        std::fs::read_to_string(src_root.join("plugin.json")).map_err(|e| e.to_string())?;
     let m = manifest::parse_manifest(&mf_text)?;
     if let Some(main_rel) = m.main {
-        let main_src = std::fs::read_to_string(src_root.join(main_rel)).map_err(|e| e.to_string())?;
+        let main_src =
+            std::fs::read_to_string(src_root.join(main_rel)).map_err(|e| e.to_string())?;
         let engine = PluginEngine::start(main_src)
             .await
             .map_err(|e| format!("插件启用失败：{e}"))?;
-        mgr.engine_map().insert(plugin_id.to_string(), Arc::new(engine));
+        mgr.engine_map()
+            .insert(plugin_id.to_string(), Arc::new(engine));
     }
     store::set_state(&conn, plugin_id, true, "ready", "")?;
     store::audit(&conn, plugin_id, "enable", "", "");
     checkpoint(&conn);
-    let _ = app.emit("plugin:event", json!({ "pluginId": plugin_id, "enabled": true }));
+    let _ = app.emit(
+        "plugin:event",
+        json!({ "pluginId": plugin_id, "enabled": true }),
+    );
     Ok(())
 }
 
@@ -170,7 +183,10 @@ async fn do_disable(app: &AppHandle, mgr: &PluginManager, plugin_id: &str) -> Re
     store::set_state(&conn, plugin_id, false, "disabled", "")?;
     store::audit(&conn, plugin_id, "disable", "", "");
     checkpoint(&conn);
-    let _ = app.emit("plugin:event", json!({ "pluginId": plugin_id, "enabled": false }));
+    let _ = app.emit(
+        "plugin:event",
+        json!({ "pluginId": plugin_id, "enabled": false }),
+    );
     Ok(())
 }
 
@@ -200,7 +216,9 @@ pub fn plugin_install(from_path: String, mgr: State<'_, PluginManager>) -> Resul
     let dir = mgr.dir_locked().clone();
     let src = PathBuf::from(&from_path);
     if from_path.to_ascii_lowercase().ends_with(".tgplugin") {
-        return Err("beta 暂不支持 .tgplugin 压缩包，请先解压为含 plugin.json 的文件夹".to_string());
+        return Err(
+            "beta 暂不支持 .tgplugin 压缩包，请先解压为含 plugin.json 的文件夹".to_string(),
+        );
     }
     if !src.is_dir() {
         return Err("安装源不是文件夹".to_string());
@@ -212,7 +230,14 @@ pub fn plugin_install(from_path: String, mgr: State<'_, PluginManager>) -> Resul
     copy_dir(&src, &dest)?;
     let conn = maindb::open_readwrite(&dir)?;
     let hash = fnv_hex(mf_text.as_bytes());
-    store::upsert(&conn, &m, dest.to_string_lossy().as_ref(), false, &hash, false)?;
+    store::upsert(
+        &conn,
+        &m,
+        dest.to_string_lossy().as_ref(),
+        false,
+        &hash,
+        false,
+    )?;
     store::audit(&conn, &m.id, "install", "", &from_path);
     checkpoint(&conn);
     Ok(m.id)
@@ -260,7 +285,10 @@ pub async fn plugin_uninstall(
     store::delete(&conn, &plugin_id)?;
     store::audit(&conn, &plugin_id, "uninstall", "", "");
     checkpoint(&conn);
-    let _ = app.emit("plugin:event", json!({ "pluginId": plugin_id, "removed": true }));
+    let _ = app.emit(
+        "plugin:event",
+        json!({ "pluginId": plugin_id, "removed": true }),
+    );
     Ok(())
 }
 
@@ -333,8 +361,15 @@ async fn ds_http_extra(
     desc: &Value,
     extra_header: Option<(&str, &str)>,
 ) -> Result<(u16, String), String> {
-    let url = desc.get("url").and_then(|x| x.as_str()).ok_or("buildRequest 未返回 url")?;
-    let method = desc.get("method").and_then(|x| x.as_str()).unwrap_or("GET").to_uppercase();
+    let url = desc
+        .get("url")
+        .and_then(|x| x.as_str())
+        .ok_or("buildRequest 未返回 url")?;
+    let method = desc
+        .get("method")
+        .and_then(|x| x.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
@@ -360,7 +395,10 @@ async fn ds_http_extra(
     if let Some((k, v)) = extra_header {
         req = req.header(k, v);
     }
-    let resp = req.send().await.map_err(|e| format!("数据源请求失败：{e}"))?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("数据源请求失败：{e}"))?;
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
     if bytes.len() > host::MAX_HTTP_BYTES {
@@ -403,9 +441,7 @@ pub fn plugin_l2_clear_key(plugin_id: String) -> Result<(), String> {
 /// 发现可用的 Level-2 数据源：已启用、声明 level2:read 且 main.js 已注册 provider。
 /// 返回 { pluginId, name, providers[], keySet }，供盘口卡选择 / 降级。
 #[tauri::command]
-pub async fn plugin_l2_providers(
-    mgr: State<'_, PluginManager>,
-) -> Result<Vec<Value>, String> {
+pub async fn plugin_l2_providers(mgr: State<'_, PluginManager>) -> Result<Vec<Value>, String> {
     let dir = mgr.dir_locked().clone();
     let conn = maindb::open_readonly(&dir)?;
     let rows = store::list(&conn);
@@ -457,34 +493,64 @@ pub async fn plugin_rpc(
             if !permission::has_scope(&perms, "kline:read") {
                 return Err("缺少权限：kline:read".to_string());
             }
-            let ind_id = params.get("indicator").and_then(|x| x.as_str()).unwrap_or("").to_string();
-            let code = params.get("code").and_then(|x| x.as_str()).unwrap_or("").to_string();
+            let ind_id = params
+                .get("indicator")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            let code = params
+                .get("code")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
             let period = params.get("period").and_then(|x| x.as_i64()).unwrap_or(5);
             let count = params.get("count").and_then(|x| x.as_i64()).unwrap_or(60);
             let kline = crate::market::get_kline(code.clone(), period, count).await?;
             let ctx = json!({ "code": code, "kline": kline });
-            engine_arc(mgr.inner(), &plugin_id)?.compute(&ind_id, &ctx).await
+            engine_arc(mgr.inner(), &plugin_id)?
+                .compute(&ind_id, &ctx)
+                .await
         }
         "datasource.fetch" => {
-            let ds_id = params.get("datasource").and_then(|x| x.as_str()).unwrap_or("").to_string();
+            let ds_id = params
+                .get("datasource")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
             let inner = params.get("params").cloned().unwrap_or(Value::Null);
             let e = engine_arc(mgr.inner(), &plugin_id)?;
             let desc = e.build_request(&ds_id, &inner).await?;
-            let url = desc.get("url").and_then(|x| x.as_str()).unwrap_or("").to_string();
+            let url = desc
+                .get("url")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
             permission::check_http(&perms, &url)?;
             let (status, body) = ds_http(&desc).await?;
-            e.parse_response(&ds_id, &json!({ "status": status, "body": body })).await
+            e.parse_response(&ds_id, &json!({ "status": status, "body": body }))
+                .await
         }
         "level2.book" => {
             // 需要 level2:read scope。
             if !permission::has_scope(&perms, crate::market::level2::SCOPE_LEVEL2_READ) {
-                return Err(format!("缺少权限：{}", crate::market::level2::SCOPE_LEVEL2_READ));
+                return Err(format!(
+                    "缺少权限：{}",
+                    crate::market::level2::SCOPE_LEVEL2_READ
+                ));
             }
-            let code = params.get("code").and_then(Value::as_str).unwrap_or("").to_string();
+            let code = params
+                .get("code")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
             if code.is_empty() {
                 return Err("code 不能为空".to_string());
             }
-            let provider = params.get("provider").and_then(Value::as_str).unwrap_or("l2").to_string();
+            let provider = params
+                .get("provider")
+                .and_then(Value::as_str)
+                .unwrap_or("l2")
+                .to_string();
             let e = engine_arc(mgr.inner(), &plugin_id)?;
 
             // 先取免费源 OrderBook 作为基础行情（现价/开高低/量额）。失败则不继续。
@@ -493,15 +559,18 @@ pub async fn plugin_rpc(
             // JS 只产出请求描述，不接触 Key。
             let req_params = json!({ "code": code });
             let desc = e.l2_build_book_request(&provider, &req_params).await?;
-            let url = desc.get("url").and_then(Value::as_str).unwrap_or("").to_string();
+            let url = desc
+                .get("url")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
             permission::check_http(&perms, &url)?;
 
             // Key 由 Rust 从系统凭据箱取出并注入 Authorization 头；未配置则报错引导。
             let key = l2_secret(&plugin_id)
                 .get()?
                 .ok_or("尚未配置该数据源的 API Key，请先在设置中录入")?;
-            let (status, body) =
-                ds_http_extra(&desc, Some((AUTH_HEADER, key.as_str()))).await?;
+            let (status, body) = ds_http_extra(&desc, Some((AUTH_HEADER, key.as_str()))).await?;
             let parsed = e
                 .l2_parse_book_response(&provider, &json!({ "status": status, "body": body }))
                 .await?;

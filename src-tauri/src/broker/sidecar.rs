@@ -22,8 +22,12 @@ pub async fn send_to(stdin: &Arc<Mutex<ChildStdin>>, value: Value) -> Result<(),
     s.write_all(line.as_bytes())
         .await
         .map_err(|e| format!("写入 sidecar 失败: {e}"))?;
-    s.write_all(b"\n").await.map_err(|e| format!("写入 sidecar 失败: {e}"))?;
-    s.flush().await.map_err(|e| format!("刷新 sidecar 失败: {e}"))
+    s.write_all(b"\n")
+        .await
+        .map_err(|e| format!("写入 sidecar 失败: {e}"))?;
+    s.flush()
+        .await
+        .map_err(|e| format!("刷新 sidecar 失败: {e}"))
 }
 
 /// sidecar 句柄：子进程与 stdin 均为 Arc，便于在 std 管理锁外进行异步操作。
@@ -31,7 +35,6 @@ pub struct SidecarHandle {
     pub child: Arc<Mutex<Child>>,
     pub stdin: Arc<Mutex<ChildStdin>>,
 }
-
 
 /// 启动 sidecar，发送 connect，并拉起后台回报读取任务。
 pub async fn spawn(
@@ -83,7 +86,11 @@ pub async fn spawn(
     // connect 请求
     send_to(
         &stdin,
-        request("connect", "connect", json!({ "qmt": qmt_path, "account": account })),
+        request(
+            "connect",
+            "connect",
+            json!({ "qmt": qmt_path, "account": account }),
+        ),
     )
     .await?;
 

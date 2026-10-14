@@ -56,7 +56,11 @@ fn parse_irm(json_str: &str) -> Vec<IrmItem> {
         None => return Vec::new(),
     };
     let pick = |r: &Value, key: &str| -> String {
-        r.get(key).and_then(|x| x.as_str()).unwrap_or("").trim().to_string()
+        r.get(key)
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string()
     };
     let mut out = Vec::new();
     for r in rows {
@@ -69,7 +73,11 @@ fn parse_irm(json_str: &str) -> Vec<IrmItem> {
         // 时间：已回复取回复时间，未回复取提问时间
         let answer_time = ms_value(&r.get("attachedPubDate").cloned().unwrap_or(Value::Null));
         let ask_time = ms_value(&r.get("pubDate").cloned().unwrap_or(Value::Null));
-        let time = if answer_time > 0 { answer_time } else { ask_time };
+        let time = if answer_time > 0 {
+            answer_time
+        } else {
+            ask_time
+        };
         out.push(IrmItem {
             platform: "irm".to_string(),
             code,
@@ -156,7 +164,9 @@ mod tests {
         assert!(r0.answer.contains("42,501"));
         // 字符串毫秒；已回复取 attachedPubDate
         assert_eq!(r0.time, 1790773505000);
-        assert!(r0.url.contains("questionDetail?questionId=2370834430923747328"));
+        assert!(r0
+            .url
+            .contains("questionDetail?questionId=2370834430923747328"));
 
         // 未回复（attachedPubDate=null、answer 空）回退提问时间
         let r1 = &out[1];
@@ -168,7 +178,10 @@ mod tests {
     #[test]
     fn ms_value_accepts_string_and_number() {
         assert_eq!(ms_value(&serde_json::json!("1790773505000")), 1790773505000);
-        assert_eq!(ms_value(&serde_json::json!(1790773505000_i64)), 1790773505000);
+        assert_eq!(
+            ms_value(&serde_json::json!(1790773505000_i64)),
+            1790773505000
+        );
         assert_eq!(ms_value(&serde_json::json!(null)), 0);
         assert_eq!(ms_value(&serde_json::json!("")), 0);
         assert_eq!(ms_value(&serde_json::json!("abc")), 0);
@@ -183,6 +196,8 @@ mod tests {
 
     #[test]
     fn sse_source_marked_dormant() {
-        const { assert!(SSE_SOURCE_DORMANT); };
+        const {
+            assert!(SSE_SOURCE_DORMANT);
+        };
     }
 }

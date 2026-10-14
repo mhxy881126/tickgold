@@ -187,7 +187,9 @@ fn pick_adj(conn: &Connection, code: &str) -> AppResult<String> {
             return Ok(adj.to_string());
         }
     }
-    Err(AppError::NotFound(format!("{code} 无本地历史K线，请先回填")))
+    Err(AppError::NotFound(format!(
+        "{code} 无本地历史K线，请先回填"
+    )))
 }
 
 fn load_bars(conn: &Connection, code: &str, from: &str, to: &str) -> AppResult<(String, Vec<Bar>)> {
@@ -218,9 +220,9 @@ fn load_names(conn: &Connection, codes: &[String]) -> HashMap<String, String> {
     if let Ok(mut stmt) =
         conn.prepare("SELECT code,name FROM stocks WHERE name IS NOT NULL AND name<>''")
     {
-        if let Ok(rows) = stmt.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-        }) {
+        if let Ok(rows) =
+            stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        {
             for r in rows.flatten() {
                 map.insert(r.0, r.1);
             }
@@ -307,7 +309,8 @@ impl Engine {
             } else {
                 None
             };
-            let slip = 1.0 + self.req.slippage_pct / 100.0 * if o.side == Side::Buy { 1.0 } else { -1.0 };
+            let slip =
+                1.0 + self.req.slippage_pct / 100.0 * if o.side == Side::Buy { 1.0 } else { -1.0 };
             let price = (bar.open * slip).max(0.01);
             let day_volume = bar.volume; // 复制后即结束对 bar 的不可变借用
 
@@ -379,7 +382,13 @@ impl Engine {
                     // 先取不可变数据。
                     let (pos_vol, avail, cost, pname, entry_idx) = {
                         let p = &self.positions[pi];
-                        (p.vol, p.avail_vol, p.cost_amount, p.name.clone(), p.entry_idx)
+                        (
+                            p.vol,
+                            p.avail_vol,
+                            p.cost_amount,
+                            p.name.clone(),
+                            p.entry_idx,
+                        )
                     };
                     let vol = o.vol.min(avail).min(pos_vol);
                     if vol <= 0 {
@@ -482,11 +491,16 @@ impl Engine {
             .bench_series
             .iter()
             .find(|b| b.date == date)
-            .map(|b| (b.close - prev_close_of(&self.bench_series, date)) / prev_close_of(&self.bench_series, date) * 100.0)
+            .map(|b| {
+                (b.close - prev_close_of(&self.bench_series, date))
+                    / prev_close_of(&self.bench_series, date)
+                    * 100.0
+            })
             .unwrap_or_else(|| mean_pct(&self.series, date));
         let breadth = market_breadth(&self.series, date);
         let emotion = ((50.0 + index_chg * 15.0 + (breadth - 0.5) * 70.0).clamp(5.0, 95.0) * 100.0)
-            .round() / 100.0;
+            .round()
+            / 100.0;
 
         let holding_pct = self
             .positions
@@ -533,8 +547,12 @@ impl Engine {
         // 1) 持仓股卖出判断
         let held: Vec<String> = self.positions.iter().map(|p| p.code.clone()).collect();
         for code in held {
-            let Some((idx, _)) = self.bar_on(&code, date) else { continue };
-            let Some(feats) = self.build_features(&code, idx, date) else { continue };
+            let Some((idx, _)) = self.bar_on(&code, date) else {
+                continue;
+            };
+            let Some(feats) = self.build_features(&code, idx, date) else {
+                continue;
+            };
             let pack = serde_json::json!({"side":"sell","features":feats});
             let d = RuleBrain::decide_with(&pack, None, self.req.weights.as_ref());
             if d.label == "SELL" && d.confidence >= self.req.sell_threshold {
@@ -571,16 +589,24 @@ impl Engine {
             if held_or_queued.contains(code.as_str()) {
                 continue;
             }
-            let Some((idx, _)) = self.bar_on(code, date) else { continue };
+            let Some((idx, _)) = self.bar_on(code, date) else {
+                continue;
+            };
             // 热身不足（<60 根）跳过，保证技术因子有效。
             if idx < 60 {
                 continue;
             }
-            let Some(feats) = self.build_features(code, idx, date) else { continue };
+            let Some(feats) = self.build_features(code, idx, date) else {
+                continue;
+            };
             let pack = serde_json::json!({"side":"buy","features":feats});
             let d = RuleBrain::decide_with(&pack, None, self.req.weights.as_ref());
             if d.label == "BUY" && d.confidence >= self.req.buy_threshold {
-                candidates.push((code.clone(), self.names.get(code).cloned().unwrap_or_default(), d.confidence));
+                candidates.push((
+                    code.clone(),
+                    self.names.get(code).cloned().unwrap_or_default(),
+                    d.confidence,
+                ));
             }
         }
         // 置信度高者优先占用槽位。
@@ -603,7 +629,11 @@ impl Engine {
             .iter()
             .map(|p| p.equinity_peak())
             .fold(equity, f64::max);
-        let drawdown = if peak > 0.0 { (peak - equity) / peak * 100.0 } else { 0.0 };
+        let drawdown = if peak > 0.0 {
+            (peak - equity) / peak * 100.0
+        } else {
+            0.0
+        };
         let bench = self.bench_nav(date);
         self.equity_curve.push(EquityPoint {
             date: date.to_string(),
@@ -623,9 +653,7 @@ impl Engine {
             .iter()
             .find(|b| b.date == date)
             .map(|b| b.close / first)
-            .unwrap_or_else(|| {
-                self.equity_curve.last().map(|p| p.benchmark).unwrap_or(1.0)
-            })
+            .unwrap_or_else(|| self.equity_curve.last().map(|p| p.benchmark).unwrap_or(1.0))
     }
 
     fn run(mut self) -> BacktestResult {
@@ -691,7 +719,11 @@ fn mean_pct(series: &HashMap<String, Vec<Bar>>, date: &str) -> f64 {
             }
         }
     }
-    if n > 0.0 { s / n } else { 0.0 }
+    if n > 0.0 {
+        s / n
+    } else {
+        0.0
+    }
 }
 
 /// 当日上涨家数占比。
@@ -707,7 +739,11 @@ fn market_breadth(series: &HashMap<String, Vec<Bar>>, date: &str) -> f64 {
             }
         }
     }
-    if n > 0.0 { up / n } else { 0.5 }
+    if n > 0.0 {
+        up / n
+    } else {
+        0.5
+    }
 }
 
 // ==================== 绩效统计（纯函数） ====================
@@ -741,10 +777,7 @@ pub fn compute_stats(curve: &[EquityPoint], trades: &[Trade], init_cash: f64) ->
     }
     let sharpe = if daily_rets.len() > 2 {
         let mean = daily_rets.iter().sum::<f64>() / daily_rets.len() as f64;
-        let var = daily_rets
-            .iter()
-            .map(|r| (r - mean).powi(2))
-            .sum::<f64>()
+        let var = daily_rets.iter().map(|r| (r - mean).powi(2)).sum::<f64>()
             / (daily_rets.len() - 1) as f64;
         if var > 1e-12 {
             mean / var.sqrt() * 252.0_f64.sqrt()
@@ -765,7 +798,11 @@ pub fn compute_stats(curve: &[EquityPoint], trades: &[Trade], init_cash: f64) ->
     } else {
         0.0
     };
-    let profit_factor = if gross_loss > 1e-9 { gross_win / gross_loss } else { 0.0 };
+    let profit_factor = if gross_loss > 1e-9 {
+        gross_win / gross_loss
+    } else {
+        0.0
+    };
     let avg_pnl = if !sells.is_empty() {
         sells.iter().map(|t| t.pnl).sum::<f64>() / sells.len() as f64
     } else {
@@ -810,7 +847,11 @@ pub fn monthly_returns(curve: &[EquityPoint]) -> Vec<MonthlyReturn> {
         .iter()
         .map(|g| MonthlyReturn {
             month: g.0.clone(),
-            return_pct: round2(if g.1 > 0.0 { (g.2 - g.1) / g.1 * 100.0 } else { 0.0 }),
+            return_pct: round2(if g.1 > 0.0 {
+                (g.2 - g.1) / g.1 * 100.0
+            } else {
+                0.0
+            }),
         })
         .collect()
 }
@@ -871,7 +912,7 @@ fn build_engine(conn: &Connection, req: BacktestReq) -> AppResult<Engine> {
         series,
         index,
         axis,
-        cash: 0.0,            // 在 run 前由命令设置为 init_cash
+        cash: 0.0, // 在 run 前由命令设置为 init_cash
         positions: Vec::new(),
         pending: Vec::new(),
         trades: Vec::new(),
@@ -914,10 +955,7 @@ pub struct RunMeta {
 
 /// 保存回测结果，返回 id。
 #[tauri::command]
-pub fn backtest_save(
-    ai: State<'_, crate::ai::AiState>,
-    result: BacktestResult,
-) -> AppResult<i64> {
+pub fn backtest_save(ai: State<'_, crate::ai::AiState>, result: BacktestResult) -> AppResult<i64> {
     let conn = maindb::open_readwrite(&ai.dir())?;
     let payload = serde_json::to_string(&result)?;
     conn.execute(
@@ -1071,9 +1109,14 @@ fn enumerate_combos(req: &OptimizeReq) -> Vec<(f64, Option<(String, f64)>)> {
     out
 }
 
-fn run_with_params(conn: &Connection, base: &BacktestReq, start: &str, end: &str,
-    threshold: f64, weight: Option<&(String, f64)>) -> AppResult<BacktestResult>
-{
+fn run_with_params(
+    conn: &Connection,
+    base: &BacktestReq,
+    start: &str,
+    end: &str,
+    threshold: f64,
+    weight: Option<&(String, f64)>,
+) -> AppResult<BacktestResult> {
     let mut r = base.clone();
     r.start = start.to_string();
     r.end = end.to_string();
@@ -1115,14 +1158,32 @@ pub async fn backtest_optimize(
             let mut best: Option<BestCombo> = None;
             for (threshold, weight) in &combos {
                 let r = run_with_params(&conn, &req.base, tr_s, tr_e, *threshold, weight.as_ref())?;
-                if best.as_ref().map(|(s, ..)| r.stats.sharpe > *s).unwrap_or(true) {
-                    best = Some((r.stats.sharpe, r.stats.total_return_pct, *threshold, weight.clone()));
+                if best
+                    .as_ref()
+                    .map(|(s, ..)| r.stats.sharpe > *s)
+                    .unwrap_or(true)
+                {
+                    best = Some((
+                        r.stats.sharpe,
+                        r.stats.total_return_pct,
+                        *threshold,
+                        weight.clone(),
+                    ));
                 }
             }
-            let Some((is_sharpe, is_ret, best_threshold, weight)) = best else { break };
+            let Some((is_sharpe, is_ret, best_threshold, weight)) = best else {
+                break;
+            };
 
             // 测试窗用选中参数（同一 threshold + weight）。
-            let test = run_with_params(&conn, &req.base, te_s, te_e, best_threshold, weight.as_ref())?;
+            let test = run_with_params(
+                &conn,
+                &req.base,
+                te_s,
+                te_e,
+                best_threshold,
+                weight.as_ref(),
+            )?;
             windows.push(WindowRow {
                 train_start: tr_s.clone(),
                 train_end: tr_e.clone(),
@@ -1214,9 +1275,7 @@ pub fn tuning_proposal_create(
 }
 
 #[tauri::command]
-pub fn tuning_proposal_list(
-    ai: State<'_, crate::ai::AiState>,
-) -> AppResult<Vec<ProposalView>> {
+pub fn tuning_proposal_list(ai: State<'_, crate::ai::AiState>) -> AppResult<Vec<ProposalView>> {
     let conn = maindb::open_readonly(&ai.dir())?;
     let mut stmt = conn.prepare(
         "SELECT id,backtest_id,payload_json,baseline_json,status,decided_at,created_at \
@@ -1272,10 +1331,7 @@ pub fn tuning_proposal_approve(
 
 /// 人工拒绝：提案作废，不写入任何配置。
 #[tauri::command]
-pub fn tuning_proposal_reject(
-    ai: State<'_, crate::ai::AiState>,
-    id: i64,
-) -> AppResult<()> {
+pub fn tuning_proposal_reject(ai: State<'_, crate::ai::AiState>, id: i64) -> AppResult<()> {
     let conn = maindb::open_readwrite(&ai.dir())?;
     conn.execute(
         "UPDATE tuning_proposal SET status='rejected', decided_at=?1 WHERE id=?2 AND status='pending'",
@@ -1342,7 +1398,11 @@ mod tests {
         let curve = curve_from(&[1_000_000.0, 1_100_000.0], "2026-01-02");
         let s = compute_stats(&curve, &[], 1_000_000.0);
         assert_eq!(s.total_return_pct, 10.0);
-        assert!(s.annual_return_pct > 1000.0, "2 日涨 10% 年化应极大, got {}", s.annual_return_pct);
+        assert!(
+            s.annual_return_pct > 1000.0,
+            "2 日涨 10% 年化应极大, got {}",
+            s.annual_return_pct
+        );
     }
 
     #[test]
@@ -1350,14 +1410,30 @@ mod tests {
         let curve = curve_from(&[1_000_000.0, 1_000_000.0], "2026-01-02");
         let trades = vec![
             Trade {
-                code: "A".into(), name: "A".into(), side: "sell".into(), date: "2026-01-03".into(),
-                price: 11.0, vol: 100, amount: 1100.0, fee: 1.0, pnl: 100.0,
-                holding_days: 2, confidence: 0.8,
+                code: "A".into(),
+                name: "A".into(),
+                side: "sell".into(),
+                date: "2026-01-03".into(),
+                price: 11.0,
+                vol: 100,
+                amount: 1100.0,
+                fee: 1.0,
+                pnl: 100.0,
+                holding_days: 2,
+                confidence: 0.8,
             },
             Trade {
-                code: "B".into(), name: "B".into(), side: "sell".into(), date: "2026-01-03".into(),
-                price: 9.0, vol: 100, amount: 900.0, fee: 1.0, pnl: -50.0,
-                holding_days: 2, confidence: 0.8,
+                code: "B".into(),
+                name: "B".into(),
+                side: "sell".into(),
+                date: "2026-01-03".into(),
+                price: 9.0,
+                vol: 100,
+                amount: 900.0,
+                fee: 1.0,
+                pnl: -50.0,
+                holding_days: 2,
+                confidence: 0.8,
             },
         ];
         let s = compute_stats(&curve, &trades, 1_000_000.0);
@@ -1387,7 +1463,12 @@ mod tests {
             ("2026-02-02", 110.0),
             ("2026-02-27", 99.0),
         ] {
-            curve.push(EquityPoint { date: date.into(), equity: eq, drawdown: 0.0, benchmark: 1.0 });
+            curve.push(EquityPoint {
+                date: date.into(),
+                equity: eq,
+                drawdown: 0.0,
+                benchmark: 1.0,
+            });
         }
         let m = monthly_returns(&curve);
         assert_eq!(m.len(), 2);
@@ -1419,7 +1500,9 @@ mod tests {
         // 2 thresholds × (1 baseline + 2 factor values) = 6
         assert_eq!(combos.len(), 6);
         assert!(combos.iter().any(|(_, w)| w.is_none()));
-        assert!(combos.iter().any(|(_, w)| w.as_ref().is_some_and(|p| p.0 == "pct")));
+        assert!(combos
+            .iter()
+            .any(|(_, w)| w.as_ref().is_some_and(|p| p.0 == "pct")));
     }
 
     #[test]
@@ -1440,7 +1523,12 @@ mod tests {
         let c = Connection::open_in_memory().unwrap();
         let r = build_engine(
             &c,
-            BacktestReq { codes: vec![], start: "2026-01-01".into(), end: "2026-06-01".into(), ..Default::default() },
+            BacktestReq {
+                codes: vec![],
+                start: "2026-01-01".into(),
+                end: "2026-06-01".into(),
+                ..Default::default()
+            },
         );
         assert!(r.is_err());
     }
@@ -1457,7 +1545,11 @@ mod tests {
              CREATE TABLE stocks(id INTEGER PRIMARY KEY, code TEXT UNIQUE, name TEXT);",
         )
         .unwrap();
-        c.execute("INSERT INTO stocks(code,name) VALUES('600000','合成股')", []).unwrap();
+        c.execute(
+            "INSERT INTO stocks(code,name) VALUES('600000','合成股')",
+            [],
+        )
+        .unwrap();
         // 80 根锯齿周期日 K：5 涨 3 跌循环 + 缓慢趋势，回撤把 RSI 拉回 40..55，
         // RuleBrain 可在回撤结束/重拾上涨日产生 BUY。
         let mut prev_close = 10.0f64;
@@ -1491,7 +1583,10 @@ mod tests {
         engine.cash = engine.req.init_cash;
         let result = engine.run();
         // 单调上涨：应出现买入且最终因从未给出 SELL 而持有至结束；净值随上涨为正
-        assert!(result.trades.iter().any(|t| t.side == "buy"), "应有买入成交");
+        assert!(
+            result.trades.iter().any(|t| t.side == "buy"),
+            "应有买入成交"
+        );
         assert!(result.stats.total_return_pct >= 0.0);
         assert!(result.equity_curve.len() > 10);
     }
