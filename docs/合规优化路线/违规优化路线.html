@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TickGold 合规优化路线（个人开发者版）</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230B0F14'/%3E%3Cpath d='M14 40h6v12h-6zM26 24h6v28h-6zM38 30h6v22h-6zM50 16h6v36h-6z' fill='%23D4A94F'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121820; --panel2:#0f141b; --line:#1e2733;
+    --txt:#dbe4ee; --sub:#8b98a8; --dim:#5c6b7c;
+    --gold:#d4a94f; --gold2:#f0c86a;
+    --red:#e5534b; --orange:#e8893c; --amber:#d9b23c; --green:#46a758;
+    --blue:#4f8fe0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font-family:"Noto Sans SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif;line-height:1.65;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 20px 64px}
+  /* ===== Header ===== */
+  header.hero{background:linear-gradient(160deg,#131a24 0%,#0f141b 60%,#0b0f14 100%);border:1px solid var(--line);border-radius:16px;padding:32px 28px;margin-bottom:24px;position:relative;overflow:hidden}
+  header.hero::after{content:"";position:absolute;right:-80px;top:-80px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(212,169,79,.14),transparent 70%);pointer-events:none}
+  .kicker{display:inline-flex;align-items:center;gap:8px;color:var(--gold);font-size:13px;letter-spacing:.12em;font-weight:600;margin-bottom:12px}
+  .kicker svg{width:16px;height:16px;fill:var(--gold)}
+  h1{font-size:clamp(22px,3.4vw,30px);font-weight:800;letter-spacing:.01em;margin-bottom:10px}
+  h1 em{font-style:normal;color:var(--gold2)}
+  .hero p.lead{color:var(--sub);font-size:15px;max-width:760px;margin-bottom:20px}
+  .hero .stat-row{display:flex;flex-wrap:wrap;gap:12px}
+  .stat{flex:1 1 140px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:120px}
+  .stat b{display:block;font-size:24px;font-weight:800;line-height:1.2}
+  .stat.red b{color:var(--red)} .stat.orange b{color:var(--orange)} .stat.amber b{color:var(--amber)} .stat.green b{color:var(--green)}
+  .stat span{font-size:12px;color:var(--dim)}
+  /* ===== 进度条 ===== */
+  .progress-block{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:24px}
+  .progress-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;gap:6px}
+  .progress-head .pt{font-weight:700;font-size:16px}
+  .progress-head .pv{color:var(--gold2);font-weight:800;font-size:18px}
+  .bar{height:12px;background:#1a232e;border-radius:99px;overflow:hidden}
+  .bar i{display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--gold),var(--gold2));border-radius:99px;transition:width .35s ease}
+  .bar-note{margin-top:8px;font-size:12.5px;color:var(--dim)}
+  /* ===== 区块 ===== */
+  section{margin-bottom:28px}
+  h2{font-size:19px;font-weight:800;margin-bottom:6px;display:flex;align-items:center;gap:10px}
+  h2 .tag{font-size:12px;font-weight:600;padding:2px 9px;border-radius:99px;letter-spacing:.04em}
+  .tag.p0{background:rgba(229,75,75,.14);color:var(--red);border:1px solid rgba(229,75,75,.35)}
+  .tag.p1{background:rgba(232,137,60,.13);color:var(--orange);border:1px solid rgba(232,137,60,.35)}
+  .tag.p2{background:rgba(217,178,60,.12);color:var(--amber);border:1px solid rgba(217,178,60,.35)}
+  .tag.ok{background:rgba(70,167,88,.13);color:var(--green);border:1px solid rgba(70,167,88,.35)}
+  .sec-sub{color:var(--dim);font-size:13.5px;margin-bottom:14px}
+  /* ===== 违规卡片 ===== */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:12px;transition:border-color .2s,background .2s}
+  .card.done{background:var(--panel2);border-color:rgba(70,167,88,.4);opacity:.85}
+  .card.done .c-title{text-decoration:line-through;color:var(--dim)}
+  .c-top{display:flex;gap:12px;align-items:flex-start}
+  .c-check{flex:0 0 26px;height:26px;margin-top:1px}
+  .c-check input{display:none}
+  .c-check label{display:flex;width:26px;height:26px;border:2px solid var(--line);border-radius:8px;cursor:pointer;align-items:center;justify-content:center;transition:all .2s;background:#161f2a}
+  .c-check label svg{width:14px;height:14px;fill:none;stroke:var(--green);stroke-width:3;opacity:0;transform:scale(.6);transition:all .2s}
+  .c-check input:checked + label{border-color:var(--green);background:rgba(70,167,88,.12)}
+  .c-check input:checked + label svg{opacity:1;transform:scale(1)}
+  .c-body{flex:1;min-width:0}
+  .c-title{font-weight:700;font-size:15.5px;margin-bottom:2px}
+  .c-loc{font-family:Consolas,"Cascadia Mono",monospace;font-size:12.5px;color:var(--blue);margin-bottom:8px;word-break:break-all}
+  .c-desc{font-size:13.5px;color:var(--sub);margin-bottom:8px}
+  .c-fix{background:rgba(255,255,255,.03);border-left:3px solid var(--gold);border-radius:0 8px 8px 0;padding:8px 12px;font-size:13px;color:var(--txt)}
+  .c-fix b{color:var(--gold2);font-weight:600}
+  .c-done{margin-top:8px;padding:8px 10px;border:1px solid rgba(29,190,125,.45);border-radius:8px;background:rgba(29,190,125,.08);color:#b9f3dc;font-size:13px;line-height:1.7}
+  .c-done b{color:#5ff0b0}
+  .c-law{margin-top:8px;font-size:12px;color:var(--dim)}
+  .c-law b{color:var(--sub)}
+  /* ===== 时间轴 ===== */
+  .timeline{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px}
+  .tl-grid{display:grid;grid-template-columns:1fr;row-gap:0}
+  .tl-node{display:grid;grid-template-columns:96px 36px 1fr;column-gap:14px}
+  .tl-time{text-align:right;padding-top:2px;font-family:Consolas,monospace;font-size:12.5px;color:var(--gold);font-weight:600;white-space:nowrap}
+  .tl-axis{position:relative;display:flex;justify-content:center;min-height:0}
+  .tl-axis::before{content:"";position:absolute;top:0;bottom:0;left:50%;width:2px;background:var(--line)}
+  .tl-dot{width:12px;height:12px;border-radius:50%;background:var(--gold);margin-top:6px;z-index:1;box-shadow:0 0 0 4px rgba(212,169,79,.15);display:block}
+  .tl-node:first-child .tl-axis::before{top:10px}
+  .tl-node:last-child .tl-axis::before{bottom:auto;height:10px}
+  .tl-body{padding:0 0 28px}
+  .tl-node:last-child .tl-body{padding-bottom:0}
+  .tl-body h3{font-size:15px;font-weight:700;margin-bottom:4px}
+  .tl-body h3 .ph{color:var(--dim);font-weight:600;font-size:12.5px;margin-right:6px}
+  .tl-body p{font-size:13px;color:var(--sub);margin-bottom:6px}
+  .tl-body ul{list-style:none;padding:0}
+  .tl-body li{font-size:13px;color:var(--txt);padding:3px 0 3px 14px;position:relative}
+  .tl-body li::before{content:"\2022";position:absolute;left:0;top:3px;color:var(--gold);font-size:11px;line-height:1}
+  .tl-body li.done{color:var(--dim);text-decoration:line-through}
+  /* ===== 合规基线 ===== */
+  .ok-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+  .ok-item{background:rgba(70,167,88,.06);border:1px solid rgba(70,167,88,.3);border-radius:10px;padding:12px 14px;font-size:13.5px;color:var(--txt)}
+  .ok-item b{color:var(--green);display:block;margin-bottom:3px;font-size:14px}
+  /* ===== 法规 ===== */
+  .law-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .law-box ol{margin-left:18px;font-size:13.5px;color:var(--sub)}
+  .law-box li{margin-bottom:6px}
+  .law-box a{color:var(--blue);text-decoration:none;word-break:break-all}
+  .law-box a:hover{text-decoration:underline}
+  footer{margin-top:32px;padding-top:18px;border-top:1px solid var(--line);font-size:12px;color:var(--dim);text-align:center}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--sub);margin-top:6px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:10px;height:10px;border-radius:50%;display:inline-block}
+  @media (max-width:640px){
+    .tl-node{grid-template-columns:1fr;column-gap:0}
+    .tl-time{text-align:left;padding:0 0 2px}
+    .tl-axis{display:none}
+    .tl-body{padding-left:0}
+    .hero .stat-row{gap:8px}
+    .stat{flex:1 1 100px;padding:10px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ===== 头部 ===== -->
+  <header class="hero">
+    <div class="kicker">
+      <svg viewBox="0 0 24 24"><path d="M3 13h2v7h4v-7h2v-2H7V4H3v7H1v2h2zm10-9h7v2h-5v3h5v2h-5v3h5v2h-5v4h-2V4z"/></svg>
+      TickGold · 合规自查与整改
+    </div>
+    <h1>违规优化路线 <em>· 个人开发者版</em></h1>
+    <p class="lead">面向个人开发者：把项目中涉嫌触碰「荐股软件 / 证券投资咨询 / 程序化交易」监管红线的功能逐项标注，按 P0→P2 分级、分四步整改。勾选完成项可跟踪进度（仅本机临时保存）。</p>
+    <div class="stat-row">
+      <div class="stat red"><b id="st-p0">0</b><span>P0 立即整改</span></div>
+      <div class="stat orange"><b id="st-p1">0</b><span>P1 短期整改</span></div>
+      <div class="stat amber"><b id="st-p2">0</b><span>P2 中期整改</span></div>
+      <div class="stat green"><b id="st-ok">7</b><span>已合规资产</span></div>
+    </div>
+  </header>
+
+  <!-- ===== 总进度 ===== -->
+  <div class="progress-block">
+    <div class="progress-head">
+      <span class="pt">整改总进度</span>
+      <span class="pv" id="pv">0 / 14</span>
+    </div>
+    <div class="bar"><i id="bar"></i></div>
+    <div class="bar-note" id="bar-note">尚未开始。建议按阶段 0 → 4 顺序执行，每完成一项勾选一次。</div>
+  </div>
+
+  <!-- ===== P0 ===== -->
+  <section id="p0">
+    <h2><span class="tag p0">P0 · 立即整改</span> AI 输出「建议化」——触碰荐股软件红线</h2>
+    <p class="sec-sub">依据：《证券法》第120/160条、《证券、期货投资咨询管理暂行办法》、《关于加强对利用"荐股软件"从事证券投资咨询业务监管的暂行规定》第二条——向投资者有偿提供个股投资分析/预测/建议属证券投资咨询业务，须持牌；AI 不豁免资质。</p>
+
+    <div class="card" data-sev="p0">
+      <div class="c-top">
+        <div class="c-check"><input type="checkbox" id="i1"><label for="i1"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-body">
+          <div class="c-title">快脑输出 BUY / SELL 四分类 + 概率（操作建议）</div>
+          <div class="c-loc">src-tauri/src/ai/fastbrain.rs（RuleBrain + LLM 双模）</div>
+          <div class="c-desc">系统提示词写「你是A股短线交易助手…给出操作建议」，输出 BUY/SELL/HOLD/NO_BUY 标签与置信度；前端以信号卡、灵动岛直接展示「买入/卖出」信号。</div>
+          <div class="c-fix"><b>改法：</b>prompt 改为「依据结构化数据做特征归纳，不做方向性结论」；标签语义改为中性观察态（如 watch_up / watch_down / hold / calm），前端文案同步去掉「买入/卖出」字样，改为「上涨/下跌特征概率」，信号桥文案不再用「BUY/SELL 信号」。</div>
+          <div class="c-law"><b>监管依据：</b>《荐股软件监管暂行规定》第二条；证监会风险提示「有偿提供个股投资分析、预测或建议即非法荐股」。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-sev="p0">
+      <div class="c-top">
+        <div class="c-check"><input type="checkbox" id="i2"><label for="i2"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-body">
+          <div class="c-title">AI 预警推荐：以「推荐/策略师」身份输出个股预警规则</div>
+          <div class="c-loc">src-tauri/src/ai/commentary.rs（SYSTEM_ALERT）</div>
+          <div class="c-desc">prompt「你是 A 股预警策略师…推荐应该设置的预警规则…推荐理由」，对具体个股给出操作导向建议。</div>
+          <div class="c-fix"><b>改法：</b>身份改为「行情特征整理助手」；「推荐」改「提示可监测的规则模板」；「推荐理由」改「监测要点（仅描述波动/量能事实）」；取消优先级 high/medium/low 的「重要度」暗示。</div>
+          <div class="c-law"><b>监管依据：</b>同 P0-1；预警推送对个股的定向操作提示属变相荐股（证监会「付费打赏变相荐股」案例）。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-sev="p0">
+      <div class="c-top">
+        <div class="c-check"><input type="checkbox" id="i3"><label for="i3"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-body">
+          <div class="c-title">作战计划：字段含「操作建议 / 仓位提示 / 满足条件即行动」</div>
+          <div class="c-loc">src-tauri/src/ai/plan.rs（gen_plan）</div>
+          <div class="c-desc">计划 JSON 含 action:「操作建议」、positionHint:「仓位提示」、trigger=「满足条件即行动」，虽带「不构成投资建议」铁律，但字段语义即个股操作建议 + 仓位建议。</div>
+          <div class="c-fix"><b>改法：</b>字段重命名：action→「关注要点」、positionHint→「风险提示」、trigger→「需人工确认的观察条件」；prompt 铁律强化「仅输出事实与风险提示，不输出买卖/仓位指令」。</div>
+          <div class="c-law"><b>监管依据：</b>《证券、期货投资咨询管理暂行办法》第3条；个股操作/仓位建议属投资咨询。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-sev="p0">
+      <div class="c-top">
+        <div class="c-check"><input type="checkbox" id="i4"><label for="i4"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-body">
+          <div class="c-title">慢脑人设：资深短线交易专家 / 买卖信号 / 操作思路</div>
+          <div class="c-loc">src-tauri/src/ai/agent.rs（SYSTEM_PROMPT）</div>
+          <div class="c-desc">「资深 A 股短线交易专家」「个股诊断：买卖信号」「策略建议：给出操作思路」——虽有铁律与免责（这部分保留），但人设与能力描述带「建议」性质。</div>
+          <div class="c-fix"><b>改法：</b>人设改为「行情数据整理与事实核查助手」；「买卖信号」→「行情特征（量价/资金/涨停结构）」；「给出操作思路」→「梳理可用信息，不提供买卖建议」；保留「不预测涨跌、末尾免责」铁律。</div>
+          <div class="c-law"><b>监管依据：</b>证券投资咨询资质要求；网信办+证监会 AI 荐股整治口径。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== P1 ===== -->
+  <section id="p1">
+    <h2><span class="tag p1">P1 · 短期整改</span> 自动交易链路——程序化交易监管</h2>
+    <p class="sec-sub">依据：《证券市场程序化交易管理规定（试行）》（证监会公告〔2024〕8号，2024-10-08 施行）——通过程序自动生成/下达交易指令即程序化交易，须向交易所报告、接受实时监控与异常交易防控。</p>
+
+    <div class="card" data-sev="p1">
+      <div class="c-top">
+        <div class="c-check"><input type="checkbox" id="i5" checked><label for="i5"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-body">
+          <div class="c-title">QMT 实盘 sidecar 具备真实下单能力</div>
+          <div class="c-loc">src-tauri/resources/broker/sidecar_qmt.py（order_stock / STOCK_BUY / STOCK_SELL）</div>
+          <div class="c-desc">已默认锁定（live_enabled=false、live_max_order_amount=0，代码注释「实盘锁定」），但代码能力完整，一旦放开即进入程序化交易监管范围。</div>
+          <div class="c-fix"><b>改法：</b>保持默认锁定不变；放开前必须：① 提示用户阅读《程序化交易管理规定》并自行向交易所履行报告义务；② 增加「实盘开通需人工二次确认 + 风险告知书」；③ 保留当前最小限额（live_max_order_amount 非 0 才能开）。<div class="c-done">✅ 已完成：broker_enable_live 三前置校验（QMT-only / 限额>0 / ack 确认）+ 前端实盘风险告知书含程序化交易报告义务提醒。</div></div>
+          <div class="c-law"><b>监管依据：</b>《程序化交易管理规定（试行）》第二条、第四条；沪深北交易所《程序化交易管理实施细则》。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-sev="p1">
+      <div class="c-top">
+        <div class="c-check"><input type="checkbox" id="i6" checked><label for="i6"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-body">
+          <div class="c-title">autoexec「全自动模式」：所有信号直接下单</div>
+          <div class="c-loc">src-tauri/src/ai/autoexec.rs（full_auto_mode / trade_mode=full）</div>
+          <div class="c-desc">注释称模拟盘全自动、实盘只 emit 信号，但 full_auto_mode 字段语义是「不人工确认直接下单」，若未来接到实盘即自动程序化交易。</div>
+          <div class="c-fix"><b>改法：</b>代码级硬隔离：full_auto_mode 与 live_enabled 互斥（full 模式下 live_enabled 强制 false，提交时校验）；前端 UI 明确标注「全自动仅限模拟盘」。<div class="c-done">✅ 已完成：autoexec_start / autoexec_set_config 均校验「全自动与实盘互斥」，实盘开启时拒绝启动/保存；设置面板与爬虫面板标注「全自动仅限模拟盘」。</div></div>
+          <div class="c-law"><b>监管依据：</b>《程序化交易管理规定（试行）》；自动下单须报告。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-sev="p1">
+      <div class="c-top">
+        <div class="c-check"><input type="checkbox" id="i7" checked><label for="i7"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-body">
+          <div class="c-title">信号桥：AI 信号一键生成下单指令/唤起券商</div>
+          <div class="c-loc">src/components/SignalBridge.vue（信号桥 + 下单指令模板）</div>
+          <div class="c-desc">「双脑 BUY/SELL 信号落待确认单…生成下单指令（复制/导出/唤起券商软件）」——把 AI 信号直接转成下单指令，强化「荐股软件→交易」闭环属性。</div>
+          <div class="c-fix"><b>改法：</b>默认不生成下单指令模板；信号卡只展示「关注提示」，下单指令改为用户手动创建（不自动预填代码/方向）；文案去「信号」改「关注提醒」。<div class="c-done">✅ 已完成：确认时默认生成「关注提示」（build_attention_text，不含买卖方向/数量预填）；仅用户配置自定义指令模板后才渲染下单指令；确认按钮与文案同步中性化。</div></div>
+          <div class="c-law"><b>监管依据：</b>荐股软件红线 + 程序化交易（指令由 AI 信号触发）。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-sev="p1">
+      <div class="c-top">
+        <div class="c-check"><input type="checkbox" id="i8" checked><label for="i8"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-body">
+          <div class="c-title">capabilities 仍保留 sql:allow-execute（SQL 直执行）</div>
+          <div class="c-loc">src-tauri/capabilities/default.json</div>
+          <div class="c-desc">已移除 shell/global-shortcut（好），但「sql:allow-execute」允许前端任意 SQL 写库——若未来接外部内容/插件市场，是注入与越权风险面。</div>
+          <div class="c-fix"><b>改法：</b>评估收敛为白名单命令（只暴露封装的业务 command），移除前端直连 sql:execute；至少限定 sql 插件只读 select。<div class="c-done">✅ 评估完成（保留 allow-execute）：数据库访问已全部收敛于 db/database.ts 单例封装、SQL 全部参数化（无拼接注入点）、库路径 Rust 侧硬编码本地 sqlite:stock-dock.db（无远程/不可信连接串）；移除会破坏 98 处本地写库（预警/日历/模拟交易/策略库）。<b>前置条件：</b>未来接入插件市场/外部数据源/远程库前必须改为 Rust 白名单命令并移除 sql:allow-execute。<br>✅ 纵深加固：tauri.conf.json 已补严格 CSP（生产 csp + 开发 devCsp，script-src 'self'、connect-src 仅 ipc 与本地，禁止远程脚本注入）。</div></div>
+          <div class="c-law"><b>监管依据：</b>非直接监管红线，属安全纵深；插件/外部数据接入时是关键防线。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== P2 ===== -->
+  <section id="p2">
+    <h2><span class="tag p2">P2 · 中期整改</span> 对外呈现与宣传口径</h2>
+    <p class="sec-sub">依据：证监会「警惕股市黑嘴」风险提示；收益/胜率承诺式宣传是非法荐股与误导营销的典型特征。</p>
+
+    <div class="card" data-sev="p2">
+      <div class="c-top">
+        <div class="c-check"><input type="checkbox" id="i9"><label for="i9"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-body">
+          <div class="c-title">README / 产品文案突出「历史胜率 / 期望收益 / 跟庄统计」</div>
+          <div class="c-loc">README.md（席位胜率、期望收益、盈亏比等）；EvolutionStats / Performance / DragonTiger 组件</div>
+          <div class="c-desc">大量「胜率」「期望收益」「跟庄」表述——自用无碍，一旦对外宣传即构成收益诱导。</div>
+          <div class="c-fix"><b>改法：</b>对外文档改为「历史样本统计」「样本内回测结果，不代表未来收益」；去掉「跟庄」「抓妖」等营销词；组件内统计标注「仅历史样本，非收益承诺」。</div>
+          <div class="c-law"><b>监管依据：</b>证监会风险提示（付费/收益承诺式荐股整治）。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-sev="p2">
+      <div class="c-top">
+        <div class="c-check"><input type="checkbox" id="i10"><label for="i10"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-body">
+          <div class="c-title">「明日主线 / AI 预测」类方向性输出</div>
+          <div class="c-loc">src/components/cards/TomorrowMainline.vue；commentary.rs 主线/解读模块</div>
+          <div class="c-desc">「明日主线」「AI 预测」虽带免责，但预测式标题对 C 端用户构成诱导。</div>
+          <div class="c-fix"><b>改法：</b>标题改「今日题材热度梳理」「基于今日数据的题材关联归纳」；正文只列事实（涨停家数、板块涨幅、连板梯队），不预测明日。</div>
+          <div class="c-law"><b>监管依据：</b>禁止确定性预测/承诺（证监会风险提示）。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-sev="p2">
+      <div class="c-top">
+        <div class="c-check"><input type="checkbox" id="i11"><label for="i11"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-body">
+          <div class="c-title">数据源合规声明：免费接口仅限个人用途</div>
+          <div class="c-loc">docs/数据源说明.md（已声明「个人学习与盯盘用途，勿商业转售」）+ Level-2 插件试点</div>
+          <div class="c-desc">免费接口条款不覆盖商业化转售；L2 数据（十档/逐笔）需持牌或授权，插件「自带 Key 用户自担合规」需在 UI 显式声明。</div>
+          <div class="c-fix"><b>改法：</b>保留并强化个人用途声明；商业化前必须：① 与数据源洽谈授权或改用持牌数据供应商；② L2 接入页强制展示「数据来源合规声明 + 用户自担」；③ 严禁接入/分发盗版 L2 数据。</div>
+          <div class="c-law"><b>监管依据：</b>行情数据版权与授权；Level-2 数据持牌要求。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-sev="p2">
+      <div class="c-top">
+        <div class="c-check"><input type="checkbox" id="i12"><label for="i12"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-body">
+          <div class="c-title">免责声明覆盖不完整（部分入口缺失）</div>
+          <div class="c-loc">src/components/：SignalBridge、EvolutionStats、DecisionLog、StrategyScan、DragonTiger、ConditionalOrders 等</div>
+          <div class="c-desc">已 15 处「不构成投资建议」（AiReview/AiAssistant/BattlePlan/TomorrowMainline/NewsDigest/SignalAttribution/IntradayCommentary/RiskDashboard/AlertSuggestion/Performance/Sieve/StrategyProfiles/ThemeLibrary 等），但交易/信号侧部分组件未覆盖。</div>
+          <div class="c-fix"><b>改法：</b>抽出全局免责组件（ComplianceFooter.vue）统一挂载：信号桥、决策日志、进化统计、战法选股、龙虎榜、条件单、复盘报告导出、回测卡片，统一文案「仅供参考，不构成投资建议，不承诺收益」。</div>
+          <div class="c-law"><b>监管依据：</b>风险披露完整性；投顾业务风险揭示要求。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 合规基线 ===== -->
+  <section id="ok">
+    <h2><span class="tag ok">已合规资产</span> 已做对的部分（保留，不要回退）</h2>
+    <p class="sec-sub">这些是扫描确认已经落在监管安全线内的设计，整改时不要破坏。</p>
+    <div class="ok-grid">
+      <div class="ok-item"><b>默认实盘锁定</b>broker/config.rs：live_enabled=false、live_max_order_amount=0（0=锁定，须显式放开）</div>
+      <div class="ok-item"><b>信号桥不自动成交</b>「不自动成交，全程状态留痕」，信号须人工确认</div>
+      <div class="ok-item"><b>权限已收敛</b>capabilities 已移除 shell / global-shortcut（v3.0.0-rc 最小权限）</div>
+      <div class="ok-item"><b>免责铁律</b>慢脑 prompt：不预测涨跌、不承诺、末尾固定附「不构成投资建议」</div>
+      <div class="ok-item"><b>数据源声明</b>docs/数据源说明.md：公开免费接口 + 个人用途 + 勿商业转售</div>
+      <div class="ok-item"><b>前端 15 处免责</b>主要 AI 卡均带「仅供参考，不构成投资建议」</div>
+      <div class="ok-item"><b>合规底线文档化</b>路线文档（v2.26→v3.1）明确「不做投顾/代客理财/收益承诺/确定性预测」</div>
+    </div>
+  </section>
+
+  <!-- ===== 时间轴 ===== -->
+  <section id="roadmap">
+    <h2>分步整改路线</h2>
+    <p class="sec-sub">按「先代码侧去建议化 → 再交易链路隔离 → 后对外口径合规 → 最后变现前置」的顺序推进。</p>
+    <div class="timeline">
+      <div class="tl-grid">
+
+        <div class="tl-node">
+          <div class="tl-time">阶段 0 · 当天</div>
+          <div class="tl-axis"><span class="tl-dot"></span></div>
+          <div class="tl-body">
+            <h3><span class="ph">基线</span>备份与记录</h3>
+            <ul>
+              <li>git 提交当前状态（如已提交 v3.0.0-rc.0 基线）</li>
+              <li>按本文清单逐项截图留档（整改前后对照）</li>
+              <li>给测试用例补「文案断言」（防将来回退）</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="tl-node">
+          <div class="tl-time">阶段 1 · 1-3 天</div>
+          <div class="tl-axis"><span class="tl-dot"></span></div>
+          <div class="tl-body">
+            <h3><span class="ph">P0</span>AI 输出去「建议化」</h3>
+            <ul>
+              <li>fastbrain.rs：prompt + 标签语义中性化（BUY/SELL → 观察态）</li>
+              <li>commentary.rs：预警推荐 → 监测规则提示</li>
+              <li>plan.rs：操作建议/仓位提示 → 关注要点/风险提示</li>
+              <li>agent.rs：人设改为事实核查助手</li>
+              <li>前端信号卡 / 灵动岛文案同步</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="tl-node">
+          <div class="tl-time">阶段 2 · 3-7 天</div>
+          <div class="tl-axis"><span class="tl-dot"></span></div>
+          <div class="tl-body">
+            <h3><span class="ph">P1</span>交易链路隔离</h3>
+            <ul>
+              <li>full_auto_mode 与实盘互斥（代码级校验）</li>
+              <li>实盘开通加风险告知 + 二次确认 + 程序化交易报告提醒</li>
+              <li>信号桥默认不预填下单指令</li>
+              <li>capabilities 收敛 sql:execute（或限定只读）</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="tl-node">
+          <div class="tl-time">阶段 3 · 1-2 周</div>
+          <div class="tl-axis"><span class="tl-dot"></span></div>
+          <div class="tl-body">
+            <h3><span class="ph">P2</span>对外口径合规</h3>
+            <ul>
+              <li>全局免责组件统一挂载</li>
+              <li>README/用户手册合规声明章节 + 收益表述改写</li>
+              <li>「明日主线/预测」改「今日题材梳理」</li>
+              <li>L2 接入页数据合规声明</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="tl-node">
+          <div class="tl-time">阶段 4 · 变现前</div>
+          <div class="tl-axis"><span class="tl-dot"></span></div>
+          <div class="tl-body">
+            <h3><span class="ph">前置</span>商业化检查清单</h3>
+            <ul>
+              <li>对外产品定位「工具订阅」，无任何对外荐股/投顾功能</li>
+              <li>数据源授权或持牌数据供应商</li>
+              <li>如需投顾能力：持牌或与持牌机构合作（导流模式）</li>
+              <li>上线前：法务/合规复核 + 完整免责 + 用户协议</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 法规索引 ===== -->
+  <section id="law">
+    <h2>监管依据索引</h2>
+    <p class="sec-sub">整改依据全部来自公开监管文件，可追溯。</p>
+    <div class="law-box">
+      <ol>
+        <li>《中华人民共和国证券法》第 120 条、第 160 条——证券投资咨询业务须经证监会许可</li>
+        <li>《证券、期货投资咨询管理暂行办法》第 3 条、第 12 条——机构持牌 + 个人从业资格注册</li>
+        <li>《关于加强对利用"荐股软件"从事证券投资咨询业务监管的暂行规定》第二条——销售/提供荐股软件并获利属投资咨询业务，须持牌</li>
+        <li>《证券市场程序化交易管理规定（试行）》（证监会公告〔2024〕8 号）——程序化交易定义、报告、实时监控、异常交易防控</li>
+        <li>证监会「警惕股市黑嘴 远离非法荐股」风险提示——有偿个股分析/预测/建议即非法荐股，含付费打赏变相荐股案例</li>
+        <li>网信办 + 证监会 AI 荐股协同整治口径——AI 只是工具，不豁免资质；严禁 AI 直接面向公众生成个股建议</li>
+      </ol>
+    </div>
+  </section>
+
+  <footer>
+    TickGold · 合规优化路线（个人开发者版）· 生成于 2026-10-14 · 本文件为内部整改清单，不构成法律意见；涉及具体合规决策建议咨询执业律师或持牌机构法务。
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  var items = Array.prototype.slice.call(document.querySelectorAll('.card'));
+  var st = {p0:0,p1:0,p2:0,total:0,done:0};
+  var doneP0=0,doneP1=0,doneP2=0;
+  items.forEach(function(c){
+    var sev = c.getAttribute('data-sev');
+    if(sev==='p0'){st.p0++;} else if(sev==='p1'){st.p1++;} else {st.p2++;}
+    st.total++;
+  });
+  document.getElementById('st-p0').textContent = st.p0;
+  document.getElementById('st-p1').textContent = st.p1;
+  document.getElementById('st-p2').textContent = st.p2;
+  var pv = document.getElementById('pv');
+  var bar = document.getElementById('bar');
+  var note = document.getElementById('bar-note');
+  function refresh(){
+    doneP0=doneP1=doneP2=0;
+    items.forEach(function(c){
+      if(c.classList.contains('done')){
+        var sev=c.getAttribute('data-sev');
+        if(sev==='p0')doneP0++; else if(sev==='p1')doneP1++; else doneP2++;
+      }
+    });
+    var d = doneP0+doneP1+doneP2;
+    pv.textContent = d + ' / ' + st.total;
+    bar.style.width = (st.total? Math.round(d*100/st.total):0) + '%';
+    var msg='';
+    if(d===0) msg='尚未开始。建议按阶段 0 → 4 顺序执行，每完成一项勾选一次。';
+    else if(d===st.total) msg='全部完成。请按阶段 4 清单完成变现前置合规检查，再考虑对外发布。';
+    else msg='进行中：P0 已完成 ' + doneP0 + '/' + st.p0 + '，P1 ' + doneP1 + '/' + st.p1 + '，P2 ' + doneP2 + '/' + st.p2 + '。';
+    note.textContent = msg;
+  }
+  // 勾选状态：localStorage（file:// 下可用则持久，不可用仅内存）
+  try{
+    var saved = JSON.parse(localStorage.getItem('tickgold_comp_roadmap')||'[]');
+    saved.forEach(function(id){ var el=document.getElementById(id); if(el) el.checked=true; });
+    items.forEach(function(c){
+      var cb=c.querySelector('input[type=checkbox]');
+      if(cb && cb.checked) c.classList.add('done');
+    });
+  }catch(e){}
+  items.forEach(function(c){
+    var cb=c.querySelector('input[type=checkbox]');
+    cb.addEventListener('change',function(){
+      if(cb.checked){ c.classList.add('done'); } else { c.classList.remove('done'); }
+      try{
+        var arr=[];
+        items.forEach(function(x){ var xb=x.querySelector('input[type=checkbox]'); if(xb&&xb.checked) arr.push(xb.id); });
+        localStorage.setItem('tickgold_comp_roadmap', JSON.stringify(arr));
+      }catch(e){}
+      refresh();
+    });
+  });
+  refresh();
+})();
+</script>
+</body>
+</html>

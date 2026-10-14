@@ -1,0 +1,332 @@
+{
+  "src": "D:\\Doubao-pek\\股票盯盘系统·灵动岛版\\docs\\合规优化路线\\违规优化路线.html",
+  "url": "file:///D:/Doubao-pek/%E8%82%A1%E7%A5%A8%E7%9B%AF%E7%9B%98%E7%B3%BB%E7%BB%9F%C2%B7%E7%81%B5%E5%8A%A8%E5%B2%9B%E7%89%88/docs/%E5%90%88%E8%A7%84%E4%BC%98%E5%8C%96%E8%B7%AF%E7%BA%BF/%E8%BF%9D%E8%A7%84%E4%BC%98%E5%8C%96%E8%B7%AF%E7%BA%BF.html",
+  "outdir": "D:\\Doubao-pek\\股票盯盘系统·灵动岛版\\docs\\合规优化路线\\_shots",
+  "include": [
+    "lint",
+    "screenshots",
+    "structure"
+  ],
+  "shots": {
+    "desktop": {
+      "screenshot": "D:\\Doubao-pek\\股票盯盘系统·灵动岛版\\docs\\合规优化路线\\_shots\\违规优化路线_desktop.jpg",
+      "screenshotBytes": 389267,
+      "truncated": false,
+      "structure": {
+        "title": "TickGold 合规优化路线（个人开发者版）",
+        "firstH1": "违规优化路线 · 个人开发者版",
+        "viewport": {
+          "w": 1440,
+          "h": 900
+        },
+        "fullpage": {
+          "w": 1455,
+          "h": 5449
+        },
+        "counts": {
+          "section": 6,
+          "h1": 1,
+          "h2": 6,
+          "img": 0,
+          "canvas": 0,
+          "svg": 13,
+          "links": 0,
+          "buttons": 0
+        }
+      },
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "horizontalOverflow": [],
+      "resourceErrors": [],
+      "emojiUsageWarning": [
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 已完成：broker_enable_live 三前置校验（QMT-only / 限额>0 / ack 确认）+ 前端"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 已完成：autoexec_start / autoexec_set_config 均校验「全自动与实盘互斥」，实盘开"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 已完成：确认时默认生成「关注提示」（build_attention_text，不含买卖方向/数量预填）；仅用户配置自"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 评估完成（保留 allow-execute）：数据库访问已全部收敛于 db/database.ts 单例封装、SQL"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 纵深加固：tauri.conf.json 已补严格 CSP（生产 csp + 开发 devCsp，script-sr"
+        }
+      ],
+      "emojiUsageHint": "warning · 含义：页面正文里检出 emoji 字符（U+1F300–U+1FAFF 或 U+2600–U+27BF 平面）。SKILL.md 视觉设计段明确禁用 emoji——不作图标、不作装饰、不放进数据。 | 修法：换成内联 SVG 图标（<svg viewBox=\"0 0 24 24\">）建立风格连贯的图标语言。 | 豁免：(1) **用户品牌资产明确包含 emoji**（罕见，但如即时通讯、社交媒体主题的产物合理）；(2) 主题本身就是关于 emoji 的（emoji 历史 / 表情包研究 / Unicode 演进）；(3) 引用某条真实文本原文（如推文截图的文字版），emoji 是内容而非装饰——保留原文可接受，但仍应权衡；(4) 装饰性 dingbat（如 U+2713 勾选符 ✓、U+2192 箭头 →、U+2605 星 ★）落入 U+2600–U+27BF 平面被误报的，如确认是符号非 emoji 可忽略。",
+      "reportSource": "cdp"
+    },
+    "mobile": {
+      "slices": [
+        "D:\\Doubao-pek\\股票盯盘系统·灵动岛版\\docs\\合规优化路线\\_shots\\违规优化路线_mobile_p1of3.jpg",
+        "D:\\Doubao-pek\\股票盯盘系统·灵动岛版\\docs\\合规优化路线\\_shots\\违规优化路线_mobile_p2of3.jpg",
+        "D:\\Doubao-pek\\股票盯盘系统·灵动岛版\\docs\\合规优化路线\\_shots\\违规优化路线_mobile_p3of3.jpg"
+      ],
+      "sliceHint": "按顺序 Read slices 里的各分片。",
+      "truncated": false,
+      "structure": {
+        "title": "TickGold 合规优化路线（个人开发者版）",
+        "firstH1": "违规优化路线 · 个人开发者版",
+        "viewport": {
+          "w": 390,
+          "h": 844
+        },
+        "fullpage": {
+          "w": 1275,
+          "h": 9464
+        },
+        "counts": {
+          "section": 6,
+          "h1": 1,
+          "h2": 6,
+          "img": 0,
+          "canvas": 0,
+          "svg": 13,
+          "links": 0,
+          "buttons": 0
+        }
+      },
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "horizontalOverflow": [],
+      "resourceErrors": [],
+      "emojiUsageWarning": [
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 已完成：broker_enable_live 三前置校验（QMT-only / 限额>0 / ack 确认）+ 前端"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 已完成：autoexec_start / autoexec_set_config 均校验「全自动与实盘互斥」，实盘开"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 已完成：确认时默认生成「关注提示」（build_attention_text，不含买卖方向/数量预填）；仅用户配置自"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 评估完成（保留 allow-execute）：数据库访问已全部收敛于 db/database.ts 单例封装、SQL"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 纵深加固：tauri.conf.json 已补严格 CSP（生产 csp + 开发 devCsp，script-sr"
+        }
+      ],
+      "emojiUsageHint": "warning · 含义：页面正文里检出 emoji 字符（U+1F300–U+1FAFF 或 U+2600–U+27BF 平面）。SKILL.md 视觉设计段明确禁用 emoji——不作图标、不作装饰、不放进数据。 | 修法：换成内联 SVG 图标（<svg viewBox=\"0 0 24 24\">）建立风格连贯的图标语言。 | 豁免：(1) **用户品牌资产明确包含 emoji**（罕见，但如即时通讯、社交媒体主题的产物合理）；(2) 主题本身就是关于 emoji 的（emoji 历史 / 表情包研究 / Unicode 演进）；(3) 引用某条真实文本原文（如推文截图的文字版），emoji 是内容而非装饰——保留原文可接受，但仍应权衡；(4) 装饰性 dingbat（如 U+2713 勾选符 ✓、U+2192 箭头 →、U+2605 星 ★）落入 U+2600–U+27BF 平面被误报的，如确认是符号非 emoji 可忽略。",
+      "reportSource": "cdp"
+    }
+  },
+  "engine": "chrome_cli",
+  "chromiumExec": "C:\\Users\\Administrator/AppData/Local/ms-playwright\\chromium_headless_shell-1243\\chrome-headless-shell-win64\\chrome-headless-shell.exe",
+  "engineDegraded": true,
+  "engineDegradedReason": "playwright 未装",
+  "elapsedSec": 7.23,
+  "schemaVersion": 2,
+  "status": "warning",
+  "engineInfo": {
+    "name": "chrome_cli",
+    "degraded": true,
+    "degradedReasons": [
+      "playwright 未装"
+    ]
+  },
+  "input": {
+    "original": "D:\\Doubao-pek\\股票盯盘系统·灵动岛版\\docs\\合规优化路线\\违规优化路线.html",
+    "resolvedPath": "D:\\Doubao-pek\\股票盯盘系统·灵动岛版\\docs\\合规优化路线\\违规优化路线.html",
+    "baseUrl": "file:///D:/Doubao-pek/%E8%82%A1%E7%A5%A8%E7%9B%AF%E7%9B%98%E7%B3%BB%E7%BB%9F%C2%B7%E7%81%B5%E5%8A%A8%E5%B2%9B%E7%89%88/docs/%E5%90%88%E8%A7%84%E4%BC%98%E5%8C%96%E8%B7%AF%E7%BA%BF/%E8%BF%9D%E8%A7%84%E4%BC%98%E5%8C%96%E8%B7%AF%E7%BA%BF.html",
+    "protocol": "file",
+    "cwd": "D:\\Doubao-pek\\股票盯盘系统·灵动岛版",
+    "mediaMode": {
+      "reducedMotion": true
+    }
+  },
+  "artifacts": {
+    "screenshots": [
+      {
+        "viewport": "desktop",
+        "path": "D:\\Doubao-pek\\股票盯盘系统·灵动岛版\\docs\\合规优化路线\\_shots\\违规优化路线_desktop.jpg",
+        "size": 389267,
+        "visualCoverage": {
+          "complete": true,
+          "reason": null
+        }
+      },
+      {
+        "viewport": "mobile",
+        "tiles": [
+          "D:\\Doubao-pek\\股票盯盘系统·灵动岛版\\docs\\合规优化路线\\_shots\\违规优化路线_mobile_p1of3.jpg",
+          "D:\\Doubao-pek\\股票盯盘系统·灵动岛版\\docs\\合规优化路线\\_shots\\违规优化路线_mobile_p2of3.jpg",
+          "D:\\Doubao-pek\\股票盯盘系统·灵动岛版\\docs\\合规优化路线\\_shots\\违规优化路线_mobile_p3of3.jpg"
+        ],
+        "visualCoverage": {
+          "complete": true,
+          "reason": null
+        }
+      }
+    ]
+  },
+  "summary": {
+    "blocker": 0,
+    "error": 0,
+    "warning": 10,
+    "info": 0
+  },
+  "findings": [
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "desktop",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 已完成：broker_enable_live 三前置校验（QMT-only / 限额>0 / ack 确认）+ 前端"
+      },
+      "dedupeKey": "emojiUsageWarning|desktop|div|0"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "desktop",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 已完成：autoexec_start / autoexec_set_config 均校验「全自动与实盘互斥」，实盘开"
+      },
+      "dedupeKey": "emojiUsageWarning|desktop|div|1"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "desktop",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 已完成：确认时默认生成「关注提示」（build_attention_text，不含买卖方向/数量预填）；仅用户配置自"
+      },
+      "dedupeKey": "emojiUsageWarning|desktop|div|2"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "desktop",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 评估完成（保留 allow-execute）：数据库访问已全部收敛于 db/database.ts 单例封装、SQL"
+      },
+      "dedupeKey": "emojiUsageWarning|desktop|div|3"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "desktop",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 纵深加固：tauri.conf.json 已补严格 CSP（生产 csp + 开发 devCsp，script-sr"
+      },
+      "dedupeKey": "emojiUsageWarning|desktop|div|4"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "mobile",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 已完成：broker_enable_live 三前置校验（QMT-only / 限额>0 / ack 确认）+ 前端"
+      },
+      "dedupeKey": "emojiUsageWarning|mobile|div|0"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "mobile",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 已完成：autoexec_start / autoexec_set_config 均校验「全自动与实盘互斥」，实盘开"
+      },
+      "dedupeKey": "emojiUsageWarning|mobile|div|1"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "mobile",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 已完成：确认时默认生成「关注提示」（build_attention_text，不含买卖方向/数量预填）；仅用户配置自"
+      },
+      "dedupeKey": "emojiUsageWarning|mobile|div|2"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "mobile",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 评估完成（保留 allow-execute）：数据库访问已全部收敛于 db/database.ts 单例封装、SQL"
+      },
+      "dedupeKey": "emojiUsageWarning|mobile|div|3"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "mobile",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 纵深加固：tauri.conf.json 已补严格 CSP（生产 csp + 开发 devCsp，script-sr"
+      },
+      "dedupeKey": "emojiUsageWarning|mobile|div|4"
+    }
+  ],
+  "prioritizedActions": [
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "viewport": "desktop",
+      "selector": "div"
+    }
+  ],
+  "reportPath": "D:\\Doubao-pek\\股票盯盘系统·灵动岛版\\docs\\合规优化路线\\_shots\\report.json"
+}
