@@ -207,6 +207,15 @@ jobs:
 
           # ---- 在公开仓库创建/复用唯一 Release → 清旧资产 → 上传 → 解除草稿 ----
           # RC 通道复用滚动 tag=rc 的 Release（每次构建覆盖同名资产与清单）。
+          # 首次发布时公开仓没有 rc 这个 git tag：draft=true 且 tag 不存在会被
+          # GitHub 建成 untagged 草稿，后续按 ID 查资产会 404。故先确保 tag ref 存在。
+          if [ "$CHANNEL" = "rc" ] && ! gh api "repos/$PUBLIC_REPO/git/ref/tags/$PUB_TAG" >/dev/null 2>&1; then
+            DEFAULT_BRANCH=$(gh api "repos/$PUBLIC_REPO" --jq '.default_branch')
+            BASE_SHA=$(gh api "repos/$PUBLIC_REPO/commits/$DEFAULT_BRANCH" --jq '.sha')
+            gh api -X POST "repos/$PUBLIC_REPO/git/refs" \
+              -f ref="refs/tags/$PUB_TAG" -f sha="$BASE_SHA" >/dev/null
+            echo "created tag $PUB_TAG on $DEFAULT_BRANCH ($BASE_SHA)"
+          fi
           EXISTING=$(gh api "repos/$PUBLIC_REPO/releases" --paginate \
             --jq ".[] | select(.tag_name==\"$PUB_TAG\") | .id" | head -n1)
           if [ -n "$EXISTING" ]; then
@@ -223,7 +232,8 @@ jobs:
             gh api "repos/$PUBLIC_REPO/releases/assets/$AID" -X DELETE >/dev/null 2>&1 || true
           done
           # 二进制安装包 + 签名 + 更新清单（不含任何源码）
-          gh release upload "$TAG" rel/* --repo "$PUBLIC_REPO" --clobber
+          # RC 通道资产挂在滚动 rc Release，必须用 PUB_TAG 而非触发 TAG
+          gh release upload "$PUB_TAG" rel/* --repo "$PUBLIC_REPO" --clobber
           # 资产就位后解除草稿（RC 通道保持 prerelease=true）
           gh api -X PATCH "repos/$PUBLIC_REPO/releases/$RID" \
             -F draft=false -F prerelease="$PRERELEASE" -f name="TickGold $TAG" \
