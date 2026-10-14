@@ -386,12 +386,40 @@ pub fn broker_enable_live(
     ai: State<'_, crate::ai::AiState>,
     mgr: State<'_, BrokerManager>,
     enable: bool,
+    ack: Option<bool>,
 ) -> Result<(), String> {
     let mut cfg = mgr.config.lock().unwrap().clone();
+    if enable {
+        // P1-1 程序化交易合规护栏：实盘开通三前置条件（见 docs/合规优化路线）
+        // ① 仅 QMT 适配器可开实盘（mock 为内置模拟，不存在真实委托）
+        if cfg.kind != "qmt" {
+            return Err(
+                "实盘仅支持 QMT 适配器：请先在「券商通道」选择 QMT 实盘后再开启".to_string(),
+            );
+        }
+        // ② 实盘单笔金额上限必须显式设置（0 = 实盘锁定，保留最小限额才允许放开）
+        if cfg.live_max_order_amount <= 0.0 {
+            return Err(
+                "实盘锁定中：请先设置「实盘单笔金额上限」（>0 元）后才能开启实盘".to_string(),
+            );
+        }
+        // ③ 必须已阅读实盘风险告知书并确认（前端二次确认弹窗）
+        if !ack.unwrap_or(false) {
+            return Err(
+                "请先阅读实盘风险告知书并确认（含程序化交易报告义务提醒）".to_string(),
+            );
+        }
+    }
     cfg.live_enabled = enable;
     config::save(&ai.dir(), &cfg)?;
     *mgr.config.lock().unwrap() = cfg;
-    log::warn!("券商实盘开关被设置为：{enable}");
+    if enable {
+        log::warn!(
+            "实盘开关已开启（QMT）。提示：按《证券市场程序化交易管理规定（试行）》，程序化交易须向交易所履行报告义务，请自行完成报告"
+        );
+    } else {
+        log::info!("实盘开关已关闭");
+    }
     Ok(())
 }
 

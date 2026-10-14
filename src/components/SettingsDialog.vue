@@ -996,10 +996,12 @@ async function bDisconnect() {
 }
 async function toggleLive(v: boolean) {
   if (v) {
+    // P1-1 实盘风险告知书 + 程序化交易报告义务（二次确认）
     const ok = await confirmDialog({
-      title: "开启实盘",
-      message: "开启实盘后，已确认信号可能被提交为真实委托并产生真实资金变动。确认开启实盘？",
-      confirmText: "开启",
+      title: "实盘风险告知书",
+      message:
+        "开启实盘前请逐条确认：\n\n① 实盘委托将产生真实资金变动，风险自担；\n② 本软件的自动/半自动交易属于程序化交易，按《证券市场程序化交易管理规定（试行）》，你须自行向交易所履行程序化交易报告义务；\n③ 建议先在模拟盘充分验证策略后再启用实盘；\n④ 单笔金额上限已设置（>0 元）方可开启。\n\n确认已阅读并接受上述条款？",
+      confirmText: "已阅读并确认",
       danger: true,
     });
     if (!ok) {
@@ -1008,9 +1010,9 @@ async function toggleLive(v: boolean) {
     }
   }
   try {
-    await brokerEnableLive(v);
+    await brokerEnableLive(v, v); // ack=true 仅在开启时生效；关闭无需确认
     await refreshBStatus();
-    bFlash(v ? "实盘已开启，请谨慎操作" : "实盘已关闭");
+    bFlash(v ? "实盘已开启（QMT），请谨慎操作" : "实盘已关闭");
   } catch (e) {
     bFlash(String(e));
   }
@@ -1750,7 +1752,7 @@ async function clearL2Key(r: PluginRow) {
                 </div>
 
                 <div v-if="fbCfg.brainMode === 'cloud_llm'" class="section-sub" style="margin-top:8px; color: var(--accent-2)">
-                  💡 使用上方配置的云端大模型（DeepSeek/GPT等）自动判断买卖信号，API Key 在 AI模型 里设置
+                  💡 使用上方配置的云端大模型（DeepSeek/GPT等）归纳行情特征（仅做特征归纳，不构成投资建议），API Key 在 AI模型 里设置
                 </div>
 
                 <!-- 交易模式选择 -->
@@ -1759,13 +1761,13 @@ async function clearL2Key(r: PluginRow) {
                     <span>🤖 交易模式</span>
                   </div>
                   <div class="section-sub">
-                    选择机器人如何处理买卖信号
+                    选择机器人如何处理行情特征信号
                   </div>
                   <div class="bridge-grid" style="margin-top:10px">
                     <label class="ai-field">
                       <select v-model="fbCfg.tradeMode">
                         <option value="semi">半自动（只有高置信度自动下单）</option>
-                        <option value="full">全自动（所有信号都自动下单）</option>
+                        <option value="full">全自动（仅限模拟盘，所有信号直接下单）</option>
                         <option value="manual">人工确认（所有信号都需要人工确认）</option>
                       </select>
                     </label>

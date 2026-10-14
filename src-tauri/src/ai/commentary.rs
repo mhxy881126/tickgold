@@ -397,7 +397,7 @@ pub struct AlertSuggestion {
     pub priority: String,
 }
 
-const SYSTEM_ALERT: &str = "你是 A 股预警策略师。基于用户自选股的实时行情和近期波动，推荐应该设置的预警规则。可用字段：price（价格）、pct（涨跌幅%）、volume_ratio（量比）、turnover（换手率%）、speed5m（5分钟涨速%）、amount（成交额）。运算符：>=、<=、>、<、crossUp、crossDown。输出严格 JSON 数组，每条：{\"code\":\"股票代码\",\"name\":\"股票名称\",\"field\":\"字段名\",\"op\":\"运算符\",\"value\":阈值数字,\"reason\":\"推荐理由（60字内）\",\"priority\":\"high/medium/low\"}。返回 3-5 条推荐。只输出 JSON 数组。";
+const SYSTEM_ALERT: &str = "你是行情特征整理助手。基于用户自选股的实时行情和近期波动，整理可配置的价格/涨跌/量能监测规则模板，只归纳波动特征与行情事实，不输出任何买卖建议或操作指导。可用字段：price（价格）、pct（涨跌幅%）、volume_ratio（量比）、turnover（换手率%）、speed5m（5分钟涨速%）、amount（成交额）。运算符：>=、<=、>、<、crossUp、crossDown。输出严格 JSON 数组，每条：{\"code\":\"股票代码\",\"name\":\"股票名称\",\"field\":\"字段名\",\"op\":\"运算符\",\"value\":阈值数字,\"reason\":\"监测要点（60字内，仅描述波动/量能等事实）\",\"priority\":\"high/medium/low（仅表示波动显著程度）\"}。返回 3-5 条规则模板。只输出 JSON 数组。";
 
 #[tauri::command]
 pub async fn ai_suggest_alerts(
@@ -421,7 +421,7 @@ pub async fn ai_suggest_alerts(
         .collect();
 
     let user = format!(
-        "【自选股行情】\n{}\n\n请基于以上自选股的实时行情和波动特征，推荐 3-5 条应该设置的预警规则。优先推荐高波动、临近关键价位、量能异常的标的。",
+        "【自选股行情】\n{}\n\n请基于以上自选股的实时行情和波动特征，整理 3-5 条可配置的监测规则模板，仅标注波动显著程度，不做任何买卖建议。",
         quote_text.join("\n")
     );
 
@@ -563,7 +563,7 @@ pub struct TomorrowMainline {
     pub overall_risk: String,
 }
 
-const SYSTEM_MAINLINE: &str = "你是 A 股明日主线预测分析师。基于当日涨停池（连板梯队）、板块涨跌和最新快讯，预测明日 3-5 条市场主线。每条主线输出：{\"theme\":\"主线名称（15字内）\",\"logic\":\"核心逻辑（80字内）\",\"leaders\":[\"龙头标的1\",\"龙头标的2\"],\"catalysts\":[\"催化因素1\",\"催化因素2\"],\"risk\":\"风险提示（40字内）\",\"strength\":\"strong/medium/weak\"}。另需 market_review（今日市场一句话复盘，80字内）和 overall_risk（整体风险提示，60字内）。输出严格 JSON：{\"market_review\":\"...\",\"themes\":[...],\"overall_risk\":\"...\"}。只输出 JSON。";
+const SYSTEM_MAINLINE: &str = "你是行情结构梳理助手。基于当日涨停池（连板梯队）、板块涨跌和最新快讯，梳理次日值得跟踪的方向线索（非涨跌预测，不构成投资建议）。每条方向输出：{\"theme\":\"方向名称（15字内）\",\"logic\":\"观察逻辑（80字内，基于已发生事实）\",\"leaders\":[\"活跃标的1\",\"活跃标的2\"],\"catalysts\":[\"已披露催化因素1\",\"已披露催化因素2\"],\"risk\":\"风险提示（40字内）\",\"strength\":\"strong/medium/weak（仅表示今日活跃度）\"}。另需 market_review（今日市场一句话复盘，80字内）和 overall_risk（整体风险提示，60字内）。输出严格 JSON：{\"market_review\":\"...\",\"themes\":[...],\"overall_risk\":\"...\"}。只输出 JSON。";
 
 #[tauri::command]
 pub async fn ai_tomorrow_mainline(
@@ -610,7 +610,7 @@ pub async fn ai_tomorrow_mainline(
     };
 
     let user = format!(
-        "【涨停池】\n{}\n【炸板池】{}\n【板块】{}\n【最新快讯】\n{}\n\n请基于以上数据，预测明日市场主线。",
+        "【涨停池】\n{}\n【炸板池】{}\n【板块】{}\n【最新快讯】\n{}\n\n请基于以上数据，梳理次日值得跟踪的方向线索（非涨跌预测）。",
         zt_text, zb_text, sec, news
     );
 
@@ -862,7 +862,7 @@ pub async fn ai_tomorrow_mainline_stream(
         }
         Err(_) => "炸板池数据暂不可用".to_string(),
     };
-    let user = format!("【涨停池】\n{}\n【炸板池】{}\n【板块】{}\n【最新快讯】\n{}\n\n请基于以上数据，推演明日市场主线。", zt_text, zb_text, sec, news);
+    let user = format!("【涨停池】\n{}\n【炸板池】{}\n【板块】{}\n【最新快讯】\n{}\n\n请基于以上数据，梳理次日值得跟踪的方向线索（非涨跌预测）。", zt_text, zb_text, sec, news);
 
     if let Some(cached) = get_ai_cache("tomorrow_mainline") {
         emit_stream(

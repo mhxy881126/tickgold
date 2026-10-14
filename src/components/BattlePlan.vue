@@ -191,10 +191,10 @@ onMounted(() => {
                   <b>条件</b><span>{{ i.condition }}</span>
                 </div>
                 <div v-if="i.action" class="bp-line">
-                  <b>操作</b><span>{{ i.action }}</span>
+                  <b>要点</b><span>{{ i.action }}</span>
                 </div>
                 <div v-if="i.positionHint" class="bp-line">
-                  <b>仓位</b><span>{{ i.positionHint }}</span>
+                  <b>风险</b><span>{{ i.positionHint }}</span>
                 </div>
                 <div class="bp-card-foot">
                   <button class="bp-link" @click="startEditInstr(i)">编辑</button>
@@ -231,7 +231,7 @@ onMounted(() => {
               <template v-else>
                 <div class="bp-edit-label">触发条件</div>
                 <textarea v-model="condDraft" class="bp-area" rows="2"></textarea>
-                <div class="bp-edit-label">操作建议</div>
+                <div class="bp-edit-label">关注要点</div>
                 <textarea v-model="actionDraft" class="bp-area" rows="2"></textarea>
                 <div class="bp-row-actions">
                   <button class="bp-mini bp-primary" @click="saveInstr">保存</button>

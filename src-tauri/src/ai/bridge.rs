@@ -110,6 +110,14 @@ pub fn create_ticket(conn: &Connection, input: SignalInput) -> Option<String> {
 
 // ===== 下单指令模板 =====
 
+/// P1-3 默认关注提示：不预填买卖方向 / 数量，只提示行情特征与参考价（用户自行决定是否下单）。
+/// 未配置自定义下单指令模板时，确认只生成关注提示，避免软件自动输出带买卖方向的交易指令。
+pub fn build_attention_text(code: &str, name: &str, price: f64) -> String {
+    format!(
+        "关注提示：{code} {name} 触发监测（参考价 {price:.2}）。未配置下单指令模板，请自行在券商软件中手动下单，不构成投资建议。"
+    )
+}
+
 #[cfg(test)]
 pub fn build_order_text(
     side: &str,
@@ -268,15 +276,14 @@ pub fn confirm(conn: &Connection, id: i64, opts: ConfirmOpts) -> Result<Value, S
         return Err("数量无效，请先填写数量（100 的整数倍）".to_string());
     }
     let amount = price * vol as f64;
-    let order_text = build_order_text_tpl(
-        &opts.order_template.clone().unwrap_or_default(),
-        &side,
-        &code,
-        &name,
-        price,
-        vol,
-        &broker,
-    );
+    // P1-3 默认不生成下单指令：仅当用户配置了自定义指令模板时才渲染含方向的指令；
+    // 否则只生成关注提示（不含买卖方向/数量预填），由用户自行决定是否手动下单。
+    let tpl = opts.order_template.clone().unwrap_or_default();
+    let order_text = if tpl.trim().is_empty() {
+        build_attention_text(&code, &name, price)
+    } else {
+        build_order_text_tpl(&tpl, &side, &code, &name, price, vol, &broker)
+    };
     let now = now_millis();
     conn.execute(
         "UPDATE signal_ticket SET status='confirmed',price=?1,vol=?2,amount=?3,\

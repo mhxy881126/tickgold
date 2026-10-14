@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 信号人工确认桥：双脑 BUY/SELL 信号落「待确认单」，人工改价改量、选券商，
+// 信号人工确认桥：行情特征信号落「待确认单」，人工改价改量、选券商，
 // 生成下单指令（复制/导出/唤起券商软件）。不自动成交，全程状态留痕。
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { confirmDialog } from "../composables/useDialog";
@@ -119,7 +119,7 @@ async function onConfirm(t: SignalTicketInfo) {
         await navigator.clipboard.writeText(r.orderText);
         flash("指令已复制到剪贴板");
       } catch {
-        flash("已生成指令，请手动选择文本复制");
+        flash("已确认：默认生成关注提示；如需下单指令请先在设置中配置指令模板");
       }
     } else {
       flash("已生成下单指令");
@@ -402,7 +402,7 @@ onUnmounted(() => {
     <div class="sb-intro">
       <div class="sb-intro-title">🌉 信号确认桥</div>
       <div class="sb-intro-desc">
-        机器人发出的买卖信号，先落到这里，你确认后再下单。<b>不自动成交</b>，安全第一。
+        行情特征信号先落到这里，由你确认方向与价格后再下单。<b>不自动成交</b>，交易决策始终由你作出。
       </div>
     </div>
 
@@ -462,7 +462,7 @@ onUnmounted(() => {
         <template v-if="tab === 'pending'">
           <div class="empty-icon">🔔</div>
           <div class="empty-title">暂无待确认信号</div>
-          <div class="empty-desc">信号确认桥：快脑发出的买卖信号会先落到这里，你确认后再下单，不自动成交。</div>
+          <div class="empty-desc">信号确认桥：行情特征信号会先落到这里，由你确认方向与价格后再下单，不自动成交。</div>
           <div class="empty-steps">
             <div class="step">
               <span class="step-num">1</span>
@@ -592,7 +592,7 @@ onUnmounted(() => {
               :disabled="busy === t.id"
               @click="onConfirm(t)"
             >
-              {{ busy === t.id ? "处理中…" : "确认并生成指令" }}
+              {{ busy === t.id ? "处理中…" : "确认" }}
             </button>
             <button
               class="act ghost"

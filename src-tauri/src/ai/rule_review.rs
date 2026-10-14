@@ -162,11 +162,17 @@ fn trade_review(focus: &Value) -> RuleReview {
 
     let buys = logs
         .iter()
-        .filter(|l| gs(l, "label") == "BUY" || gs(l, "action") == "buy")
+        .filter(|l| {
+            let lb = crate::ai::fastbrain::normalize_label(gs(l, "label"));
+            lb == crate::ai::fastbrain::LABEL_WATCH_UP || gs(l, "action") == "buy"
+        })
         .count();
     let sells = logs
         .iter()
-        .filter(|l| gs(l, "label") == "SELL" || gs(l, "action") == "sell")
+        .filter(|l| {
+            let lb = crate::ai::fastbrain::normalize_label(gs(l, "label"));
+            lb == crate::ai::fastbrain::LABEL_WATCH_DOWN || gs(l, "action") == "sell"
+        })
         .count();
 
     let mut pos_txt = String::new();
@@ -309,7 +315,7 @@ pub fn rule_plan(pack: &Value, plan_date: &str) -> Value {
 
     let mut ins: Vec<Value> = vec![];
 
-    // ① 存量持仓：止损止盈 trigger（最高优先级）
+    // ① 存量持仓：止损止盈观察条件（最高优先级，仅风险提示）
     if let Some(arr) = pack["positions"].as_array() {
         for p in arr {
             let code = gs(p, "code");
@@ -319,9 +325,9 @@ pub fn rule_plan(pack: &Value, plan_date: &str) -> Value {
             }
             ins.push(json!({
                 "tier": "trigger", "code": code, "name": name, "theme": "",
-                "condition": "跌破止损线（-7%）或断板走弱即离场；冲高 +8~10% 分批止盈",
-                "action": "按止损止盈纪律执行，不与弱势仓位拖延",
-                "positionHint": "存量持仓",
+                "condition": "跌破止损线（-7%）或断板走弱需警惕；冲高 +8~10% 可考虑分批止盈",
+                "action": "仅提示止损止盈风险，是否行动由用户自行决定",
+                "positionHint": "存量持仓，不新增仓位",
                 "alertRule": {"upPrice": null, "downPrice": null, "upPct": 8, "downPct": -7, "riseSpeed": null}
             }));
         }
@@ -341,12 +347,12 @@ pub fn rule_plan(pack: &Value, plan_date: &str) -> Value {
                 "tier": if high { "candidate" } else { "watch" },
                 "code": code, "name": gs(s, "name"), "theme": industry,
                 "condition": if high {
-                    "次日竞价强势 / 放量换手回封确认后再参与，断板或低开走弱放弃"
+                    "观察次日竞价与放量换手是否确认，断板或低开走弱即放弃"
                 } else {
                     "观察能否晋级，不追高、不接无量一字"
                 },
-                "action": if high { "满足确认条件小仓试错 / 打板" } else { "仅观察" },
-                "positionHint": if high { "10-15%" } else { "0（观察）" },
+                "action": if high { "仅提示候选观察，是否参与由用户自行决定" } else { "仅观察" },
+                "positionHint": "不设仓位指令",
                 "alertRule": {"upPrice": null, "downPrice": null, "upPct": 5, "downPct": -5, "riseSpeed": null}
             }));
         }
@@ -361,9 +367,9 @@ pub fn rule_plan(pack: &Value, plan_date: &str) -> Value {
             }
             ins.push(json!({
                 "tier": "watch", "code": "", "name": name, "theme": name,
-                "condition": "关注题材龙头竞价强弱与新增催化，发酵则跟踪，分歧则回避",
+                "condition": "关注题材活跃标的竞价强弱与新增催化，发酵则跟踪，分歧则回避",
                 "action": "仅观察，不直接出手",
-                "positionHint": "0（观察）",
+                "positionHint": "仅观察，不设仓位",
                 "alertRule": {"upPrice": null, "downPrice": null, "upPct": null, "downPct": null, "riseSpeed": null}
             }));
         }

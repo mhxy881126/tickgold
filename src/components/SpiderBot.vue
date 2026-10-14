@@ -406,7 +406,7 @@ onUnmounted(() => { stopMockScanLoop(); });
         <span class="mdot"></span>半自动<span class="mstate">{{ semiAuto ? "ON" : "OFF" }}</span>
       </button>
       <button class="btn btn-mode" :class="{ 'on-full': autoTrade }" :disabled="!running" @click="setFull(!autoTrade)">
-        <span class="mdot"></span>全自动<span class="mstate">{{ autoTrade ? "ON" : "OFF" }}</span>
+        <span class="mdot"></span>全自动·模拟盘<span class="mstate">{{ autoTrade ? "ON" : "OFF" }}</span>
       </button>
       <button class="btn btn-danger" :disabled="!running" @click="emergencyStop">🛑 急停</button>
     </div>

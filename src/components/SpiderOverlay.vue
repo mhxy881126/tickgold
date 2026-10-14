@@ -270,7 +270,7 @@ defineExpose({ start, stop, running: engine.running });
         <button
           class="sb-mode-btn"
           :class="{ on: engine.autoTrade.value }"
-          :title="'全自动: ' + (engine.autoTrade.value ? 'ON' : 'OFF')"
+          :title="'全自动(仅限模拟盘): ' + (engine.autoTrade.value ? 'ON' : 'OFF')"
           @click="setFull(!engine.autoTrade.value)"
         >
           全自动
@@ -342,7 +342,7 @@ defineExpose({ start, stop, running: engine.running });
 
       <div class="sb-settings-section">
         <div class="sb-settings-subtitle">🤖 自动交易授权</div>
-        <div class="sb-settings-hint">勾选的数据源产生的信号，在全自动模式下会直接交易</div>
+        <div class="sb-settings-hint">勾选的数据源产生的信号，在全自动模式下会直接交易（全自动仅限模拟盘，实盘模式下不可用）</div>
         <div class="sb-settings-grid">
           <label class="sb-setting-item">
             <input type="checkbox" v-model="engine.autoTradeSources.value.watch" />

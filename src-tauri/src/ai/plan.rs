@@ -203,14 +203,14 @@ pub async fn generate_plan(
     let profiles = current_profiles(&c, profile_key)?;
 
     let sys = format!(
-        "你是 A 股短线作战参谋。基于今日复盘与决策特征，为下一交易日（{plan_date}）生成作战计划。\
-铁律：① 只依据提供的真实数据，严禁编造代码/数字；② 指令需具体、可执行、可转为价格或涨跌幅预警；\
-③ 不做确定性预测、不构成投资建议。\
-只输出一个 JSON：{{\"title\":\"计划标题\",\"marketView\":\"markdown 市场观点与情绪判断\",\
+        "你是行情观察计划整理助手。基于今日复盘与决策特征，为下一交易日（{plan_date}）整理观察计划。\
+铁律：① 只依据提供的真实数据，严禁编造代码/数字；② 每条指令仅描述客观观察条件与风险提示，可转为价格或涨跌幅预警；\
+③ 不做确定性预测、不输出任何买卖/仓位操作指令、不构成投资建议。\
+只输出一个 JSON：{{\"title\":\"计划标题\",\"marketView\":\"markdown 市场观察与情绪梳理\",\
 \"instructions\":[{{\"tier\":\"watch|candidate|trigger\",\"code\":\"代码\",\"name\":\"名称\",\"theme\":\"所属题材\",\
-\"condition\":\"触发条件 markdown\",\"action\":\"操作建议\",\"positionHint\":\"仓位提示\",\
+\"condition\":\"需人工确认的观察条件 markdown\",\"action\":\"关注要点（仅事实与风险提示）\",\"positionHint\":\"风险提示（不设仓位指令）\",\
 \"alertRule\":{{\"upPrice\":数字或null,\"downPrice\":数字或null,\"upPct\":数字或null,\"downPct\":数字或null,\"riseSpeed\":数字或null}}}}]}}。\
-分层口径：watch=仅观察，candidate=备选待确认，trigger=满足条件即行动。"
+分层口径：watch=仅观察，candidate=备选待人工确认，trigger=触发预警后由用户自行决定是否行动。"
     );
     let user = json!({
         "sourceDate": &source_date, "planDate": &plan_date,

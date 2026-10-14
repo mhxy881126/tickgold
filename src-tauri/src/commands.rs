@@ -665,8 +665,17 @@ pub(crate) async fn autoexec_start(
     app: tauri::AppHandle,
     ai_state: tauri::State<'_, ai::AiState>,
     ctl: tauri::State<'_, Arc<ai::autoexec::AutoExecCtl>>,
+    mgr: tauri::State<'_, crate::broker::BrokerManager>,
     cfg: ai::autoexec::AutoExecConfig,
 ) -> Result<(), String> {
+    // P1-2 程序化交易硬隔离：全自动模式与实盘互斥（防未来实盘链路下程序化自动下单）
+    let live = mgr.config.lock().unwrap().live_enabled;
+    if (cfg.trade_mode == "full" || cfg.full_auto_mode) && live {
+        return Err(
+            "全自动模式与实盘互斥：请先在「券商通道」关闭实盘开关，再启动全自动（全自动仅限模拟盘）"
+                .to_string(),
+        );
+    }
     *ctl.config.lock().unwrap() = cfg.clone();
     if ctl.running.load(Ordering::Acquire) {
         return Ok(());
@@ -696,8 +705,17 @@ pub(crate) fn autoexec_stop(
 #[tauri::command]
 pub(crate) fn autoexec_set_config(
     ctl: tauri::State<'_, Arc<ai::autoexec::AutoExecCtl>>,
+    mgr: tauri::State<'_, crate::broker::BrokerManager>,
     cfg: ai::autoexec::AutoExecConfig,
 ) -> Result<(), String> {
+    // P1-2 程序化交易硬隔离：全自动模式与实盘互斥
+    let live = mgr.config.lock().unwrap().live_enabled;
+    if (cfg.trade_mode == "full" || cfg.full_auto_mode) && live {
+        return Err(
+            "全自动模式与实盘互斥：请先在「券商通道」关闭实盘开关，再启用全自动（全自动仅限模拟盘）"
+                .to_string(),
+        );
+    }
     let cur = ctl.config.lock().unwrap().clone();
     let mut c = cfg;
     c.enabled = cur.enabled; // 运行开关仅由 启用/停用/急停 控制，保存参数不改启停

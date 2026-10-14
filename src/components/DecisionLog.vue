@@ -15,7 +15,7 @@
         <span class="dl-ts">{{ latest.ts }}</span>
       </template>
       <template v-else>
-        <span class="dl-idle">快脑待命中 · 盘中出现信号将在此实时显示</span>
+        <span class="dl-idle">快脑待命中 · 盘中出现特征信号将在此实时显示</span>
       </template>
       <button class="dl-refresh" @click="load">刷新</button>
     </div>
@@ -26,7 +26,7 @@
       <div v-else-if="!logs.length" class="dl-empty">
         <div class="empty-icon">🧠</div>
         <div class="empty-title">暂无决策记录</div>
-        <div class="empty-desc">快脑在交易时段自动扫描自选股和持仓，生成买卖决策。</div>
+        <div class="empty-desc">快脑在交易时段自动扫描自选股和持仓，归纳行情特征信号。</div>
         <div class="empty-steps">
           <div class="step">
             <span class="step-num">1</span>
@@ -151,21 +151,31 @@ const loading = ref(false);
 const expanded = ref<number | null>(null);
 const latest = ref<DecisionLogInfo | null>(null);
 const brainOn = ref(false);
-const probKeys = ["BUY", "NO_BUY", "HOLD", "SELL"];
+const probKeys = ["watch_up", "calm", "hold", "watch_down"];
 let timer: number | null = null;
 let unlisten: (() => void) | null = null;
 
 const LB_COLOR: Record<string, string> = {
+  watch_up: "#FF3232",
+  watch_down: "#54FCFC",
+  hold: "#9aa4b8",
+  calm: "#1DBE7D",
+  // 兼容历史 DB 中旧标签
   BUY: "#FF3232",
   SELL: "#54FCFC",
   HOLD: "#9aa4b8",
   NO_BUY: "#1DBE7D",
 };
 const LB_TXT: Record<string, string> = {
-  BUY: "买入",
-  SELL: "卖出",
-  HOLD: "持有",
-  NO_BUY: "不买",
+  watch_up: "上涨特征",
+  watch_down: "下跌特征",
+  hold: "持平",
+  calm: "无明显特征",
+  // 兼容历史 DB 中旧标签
+  BUY: "上涨特征",
+  SELL: "下跌特征",
+  HOLD: "持平",
+  NO_BUY: "无明显特征",
 };
 const ACTION_TXT: Record<string, string> = {
   executed: "已执行",
@@ -221,7 +231,7 @@ async function ensureQuality(row: DecisionLogInfo) {
     row.quality = await signalQualityLookup({
       strategy: row.strategy || "",
       session: "",
-      side: row.label === "SELL" ? "sell" : "buy",
+      side: row.label === "SELL" || row.label === "watch_down" ? "sell" : "buy",
     });
   } catch {
     row.quality = null;

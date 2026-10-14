@@ -90,7 +90,7 @@ export function aiExplainSignal(
   return invoke<SignalAttribution>("ai_explain_signal", { code, name, kind });
 }
 
-/** 智能预警推荐：基于自选股行情，AI 推荐 3-5 条预警规则 */
+/** 监测规则模板：基于自选股行情，AI 归纳 3-5 条可配置的价格/涨跌/量能监测规则 */
 export function aiSuggestAlerts(watchlist: string[]): Promise<AlertSuggestion[]> {
   return invoke<AlertSuggestion[]>("ai_suggest_alerts", { watchlist });
 }
@@ -100,7 +100,7 @@ export function aiNewsDigest(): Promise<NewsDigest> {
   return invoke<NewsDigest>("ai_news_digest");
 }
 
-/** 明日主线：基于涨停池/板块/快讯，AI 预测明日 3-5 条市场主线 */
+/** 明日主线：基于涨停池/板块/快讯，AI 梳理次日值得跟踪的方向线索（非涨跌预测） */
 export function aiTomorrowMainline(): Promise<TomorrowMainline> {
   return invoke<TomorrowMainline>("ai_tomorrow_mainline");
 }

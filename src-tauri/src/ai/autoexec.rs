@@ -569,7 +569,7 @@ fn emit_signal(
             session: crate::ai::signal_quality::session_of(&now_hms()).to_string(),
             theme: String::new(),
             factors: None,
-            side: if d.label == "SELL" {
+            side: if d.label == crate::ai::fastbrain::LABEL_WATCH_DOWN {
                 "sell".to_string()
             } else {
                 "buy".to_string()
@@ -761,9 +761,9 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                         ctx: &ctx,
                     });
                     let d = FastDecision {
-                        label: "SELL".to_string(),
+                        label: crate::ai::fastbrain::LABEL_WATCH_DOWN.to_string(),
                         confidence: 1.0,
-                        probs: json!({"SELL":1.0}),
+                        probs: json!({"watch_down":1.0}),
                         mode: "rule".to_string(),
                         model_version: format!("hardstop{}", cfg.hard_stop_pct),
                         infer_ms: 0.0,
@@ -864,7 +864,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
             .await;
 
             match d.label.as_str() {
-                "BUY" if pos.is_none() => {
+                crate::ai::fastbrain::LABEL_WATCH_UP if pos.is_none() => {
                     // risk_ok 为本轮统一计算的账户级闸门结果（日亏/回撤/连亏）。
 
                     // 根据交易模式决定行为
@@ -1001,7 +1001,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                         }
                     }
                 }
-                "SELL" if pos.is_some() => {
+                crate::ai::fastbrain::LABEL_WATCH_DOWN if pos.is_some() => {
                     if let Some(p) = pos {
                         // 快脑卖出传实时涨跌停；跌停价卖出会被拦并提示人工处理。
                         let (lup, ldn) = spider::limit_prices(&item.code, &item.name, q.prev_close);

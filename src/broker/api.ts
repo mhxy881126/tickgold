@@ -108,8 +108,8 @@ export function brokerSetConfig(patch: BrokerConfigPatch) {
   });
 }
 
-export function brokerEnableLive(enable: boolean) {
-  return invoke<void>("broker_enable_live", { enable });
+export function brokerEnableLive(enable: boolean, ack: boolean) {
+  return invoke<void>("broker_enable_live", { enable, ack });
 }
 
 export function brokerConnect() {

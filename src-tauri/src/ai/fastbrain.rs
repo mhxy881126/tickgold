@@ -1,4 +1,7 @@
-// 快脑 System 1：盘中对「结构化决策包」输出 BUY / NO_BUY / HOLD / SELL + 概率，不生成文本。
+// 快脑 System 1：盘中对「结构化决策包」输出观察态标签（watch_up / watch_down / hold / calm）+ 概率，不生成文本。
+// 合规说明（v3.1）：标签仅为行情特征归纳——watch_up=上涨特征显著、watch_down=下跌特征显著、
+// hold=特征持平、calm=无明显特征——不代表任何买入/卖出操作建议。前端一律以「特征概率」口径展示，
+// 不出现「买入/卖出」指令性文案；内部交易引擎（autoexec/backtest）仅依据标签判断特征方向。
 // 双模：
 //   ① RuleBrain 内置纯规则多因子评分（零依赖、可解释、可单测，默认）；
 //   ② LayaClient 本地 HTTP sidecar（非自回归分类器，约 33–150ms），健康检查 / 调用失败自动降级规则。
@@ -7,6 +10,22 @@ use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 
 pub const RULE_MODEL_VERSION: &str = "rule-tickgold-v1";
+
+/// 观察态标签常量（对外统一口径，不再使用 BUY/SELL 指令性标签）。
+pub const LABEL_WATCH_UP: &str = "watch_up"; // 上涨特征显著（原 BUY 语义仅保留于内部方向判断）
+pub const LABEL_WATCH_DOWN: &str = "watch_down"; // 下跌特征显著（原 SELL 语义）
+pub const LABEL_HOLD: &str = "hold"; // 特征持平
+pub const LABEL_CALM: &str = "calm"; // 无明显特征（原 NO_BUY 语义）
+
+/// 把旧版/外部通道的指令性标签归一化为中性观察态标签（兼容历史数据与 Laya/LLM 通道）。
+pub fn normalize_label(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "buy" | "watch_up" => LABEL_WATCH_UP.to_string(),
+        "sell" | "watch_down" => LABEL_WATCH_DOWN.to_string(),
+        "no_buy" | "calm" => LABEL_CALM.to_string(),
+        _ => LABEL_HOLD.to_string(),
+    }
+}
 
 /// 快脑一次决策结果（probs 为四类概率 JSON）。
 #[derive(Clone, Debug)]
@@ -303,16 +322,16 @@ impl RuleBrain {
             let p_sell = sigmoid(score * 6.0 - 0.3);
             let p_hold = (1.0 - p_sell) * 0.85;
             let p_buy = (1.0 - p_sell) * 0.15;
-            json!({ "SELL": round3(p_sell), "HOLD": round3(p_hold),
-                "BUY": round3(p_buy), "NO_BUY": 0.0 })
+            json!({ "watch_down": round3(p_sell), "hold": round3(p_hold),
+                "watch_up": round3(p_buy), "calm": 0.0 })
         } else {
             let score = blend(&buy_items);
             let p_buy = sigmoid(score * 6.0 - 0.5);
             let rest = 1.0 - p_buy;
             let p_nobuy = rest * 0.6;
             let p_hold = rest * 0.4;
-            json!({ "BUY": round3(p_buy), "NO_BUY": round3(p_nobuy),
-                "HOLD": round3(p_hold), "SELL": 0.0 })
+            json!({ "watch_up": round3(p_buy), "calm": round3(p_nobuy),
+                "hold": round3(p_hold), "watch_down": 0.0 })
         };
 
         let (label, confidence) = argmax(&probs);
@@ -339,8 +358,8 @@ fn round3(v: f64) -> f64 {
 
 /// 取概率最大的标签与其概率。
 fn argmax(probs: &Value) -> (String, f64) {
-    let order = ["BUY", "NO_BUY", "HOLD", "SELL"];
-    let mut label = "HOLD".to_string();
+    let order = [LABEL_WATCH_UP, LABEL_CALM, LABEL_HOLD, LABEL_WATCH_DOWN];
+    let mut label = LABEL_HOLD.to_string();
     let mut best = -1.0;
     for k in order {
         let p = probs[k].as_f64().unwrap_or(0.0);
@@ -397,8 +416,9 @@ impl LayaClient {
             .json()
             .await
             .map_err(|e| format!("Laya 返回解析失败: {e}"))?;
-        let label = v["label"].as_str().unwrap_or("HOLD").to_string();
-        // sidecar 概率字段兼容 prob / probs
+        // 统一为中性观察态标签（兼容 sidecar 返回的历史 BUY/SELL 语义）。
+        let label = normalize_label(v["label"].as_str().unwrap_or(LABEL_HOLD));
+        // sidecar 概率字段兼容 prob / probs（key 同步归一化为观察态）。
         let probs = v["prob"]
             .as_object()
             .map(|_| v["prob"].clone())
@@ -447,12 +467,12 @@ impl CloudLlmClient {
         let side = pack["side"].as_str().unwrap_or("buy");
 
         let prompt = format!(
-            "你是A股短线交易助手。根据以下实时行情数据，给出操作建议。\n\
+            "你是行情特征归纳助手。根据以下实时结构化行情数据，只做特征归纳，不做方向性结论，不输出任何买入/卖出操作建议。\n\
              当前场景：{}（{}）\n\
              数据：{}\n\n\
              只返回JSON，不要其他内容：\n\
-             {{\"label\":\"BUY或SELL或HOLD或NO_BUY\",\"confidence\":0.0到1.0,\"reason\":\"一句话理由\"}}",
-            if side == "sell" || fget(f, "currentHoldingPct") > 0.0 { "持仓股卖出判断" } else { "新买入判断" },
+             {{\"label\":\"watch_up或watch_down或hold或calm\",\"confidence\":0.0到1.0,\"reason\":\"仅描述量价/资金等事实特征\"}}",
+            if side == "sell" || fget(f, "currentHoldingPct") > 0.0 { "持仓股风险特征判断" } else { "新标的特征判断" },
             side,
             f
         );
@@ -460,7 +480,7 @@ impl CloudLlmClient {
         let body = json!({
             "model": self.model,
             "messages": [
-                {"role": "system", "content": "你是严谨的A股量化交易助手，只输出JSON。"},
+                {"role": "system", "content": "你是严谨的行情特征归纳助手，只输出JSON，不提供投资建议。"},
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.2,
@@ -508,23 +528,24 @@ impl CloudLlmClient {
             )
         })?;
 
-        let label = parsed["label"].as_str().unwrap_or("HOLD").to_uppercase();
+        // 归一化为中性观察态标签（兼容 LLM 返回旧 BUY/SELL 语义的情况）。
+        let label = normalize_label(parsed["label"].as_str().unwrap_or(LABEL_HOLD));
         let confidence = parsed["confidence"].as_f64().unwrap_or(0.5).clamp(0.0, 1.0);
         let _reason = parsed["reason"].as_str().unwrap_or("").to_string();
 
-        // 构造 probs
+        // 构造 probs（key 为观察态）
         let probs = match label.as_str() {
-            "BUY" => {
-                json!({ "BUY": round3(confidence), "NO_BUY": round3(1.0-confidence), "HOLD": 0.0, "SELL": 0.0 })
+            LABEL_WATCH_UP => {
+                json!({ "watch_up": round3(confidence), "calm": round3(1.0-confidence), "hold": 0.0, "watch_down": 0.0 })
             }
-            "SELL" => {
-                json!({ "SELL": round3(confidence), "HOLD": round3(1.0-confidence), "BUY": 0.0, "NO_BUY": 0.0 })
+            LABEL_WATCH_DOWN => {
+                json!({ "watch_down": round3(confidence), "hold": round3(1.0-confidence), "watch_up": 0.0, "calm": 0.0 })
             }
-            "NO_BUY" => {
-                json!({ "NO_BUY": round3(confidence), "BUY": round3(1.0-confidence), "HOLD": 0.0, "SELL": 0.0 })
+            LABEL_CALM => {
+                json!({ "calm": round3(confidence), "watch_up": round3(1.0-confidence), "hold": 0.0, "watch_down": 0.0 })
             }
             _ => {
-                json!({ "HOLD": round3(confidence), "BUY": round3((1.0-confidence)*0.5), "SELL": round3((1.0-confidence)*0.5), "NO_BUY": 0.0 })
+                json!({ "hold": round3(confidence), "watch_up": round3((1.0-confidence)*0.5), "watch_down": round3((1.0-confidence)*0.5), "calm": 0.0 })
             }
         };
 
@@ -593,7 +614,7 @@ mod tests {
     }
 
     #[test]
-    fn strong_buy_features_yield_buy() {
+    fn strong_buy_features_yield_watch_up() {
         let f = json!({
             "pct": 5.2, "speed5m": 1.2, "volumeRatio": 2.4, "turnover": 8.0,
             "distToLimit": 1.5, "pullback": -0.4, "blastCount": 0,
@@ -601,17 +622,17 @@ mod tests {
             "catalystFreshness": 0.85, "mainNetInflowYi": 2.1, "currentHoldingPct": 0
         });
         let d = RuleBrain::decide_with(&pack("buy", f), None, None);
-        assert_eq!(d.label, "BUY");
+        assert_eq!(d.label, LABEL_WATCH_UP);
         assert!(
             d.confidence >= 0.7,
-            "强买入特征 confidence 应较高, got {}",
+            "强上涨特征 confidence 应较高, got {}",
             d.confidence
         );
         assert_eq!(d.mode, "rule");
     }
 
     #[test]
-    fn weak_with_blast_yields_no_buy() {
+    fn weak_with_blast_yields_calm() {
         let f = json!({
             "pct": -1.5, "speed5m": -0.8, "volumeRatio": 6.5, "turnover": 22.0,
             "distToLimit": 7.0, "pullback": -3.5, "blastCount": 2,
@@ -619,19 +640,19 @@ mod tests {
             "catalystFreshness": 0.1, "mainNetInflowYi": -1.5, "currentHoldingPct": 0
         });
         let d = RuleBrain::decide_with(&pack("buy", f), None, None);
-        assert_ne!(d.label, "BUY", "弱 + 炸板不应给 BUY");
-        assert!(d.probs["BUY"].as_f64().unwrap() < 0.2);
+        assert_ne!(d.label, LABEL_WATCH_UP, "弱 + 炸板不应给上涨特征");
+        assert!(d.probs[LABEL_WATCH_UP].as_f64().unwrap() < 0.2);
     }
 
     #[test]
-    fn held_stock_crashing_or_broken_yields_sell() {
+    fn held_stock_crashing_or_broken_yields_watch_down() {
         let f = json!({
             "pct": -6.2, "speed5m": -1.6, "pullback": -5.5, "brokenLimit": 1,
             "marketEmotion": 22, "indexChg": -1.5, "currentHoldingPct": 18
         });
         let d = RuleBrain::decide_with(&pack("sell", f), None, None);
-        assert_eq!(d.label, "SELL");
-        assert!(d.probs["SELL"].as_f64().unwrap() > 0.7);
+        assert_eq!(d.label, LABEL_WATCH_DOWN);
+        assert!(d.probs[LABEL_WATCH_DOWN].as_f64().unwrap() > 0.7);
     }
 
     #[test]
@@ -641,6 +662,6 @@ mod tests {
             "marketEmotion": 60, "indexChg": 0.3, "currentHoldingPct": 10
         });
         let d = RuleBrain::decide_with(&pack("sell", f), None, None);
-        assert_eq!(d.label, "HOLD", "健康持仓不应卖出");
+        assert_eq!(d.label, LABEL_HOLD, "健康持仓不应给出下跌特征");
     }
 }

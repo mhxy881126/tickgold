@@ -26,7 +26,7 @@ pub struct QualityQuery {
     /// 历史样本该因子数值落在 ±20%（绝对下限 0.15）内视为同型。
     #[serde(default)]
     pub factors: Option<HashMap<String, f64>>,
-    /// 方向：buy（decision_log.label='BUY'，默认）/ sell（'SELL'）。
+    /// 方向：buy（决策标签 watch_up，兼容旧 BUY；默认）/ sell（watch_down，兼容旧 SELL）。
     #[serde(default)]
     pub side: String,
 }
@@ -199,14 +199,26 @@ fn theme_matches(features: &Value, theme: &str) -> bool {
     features.to_string().to_lowercase().contains(&needle)
 }
 
-fn fetch_labeled(conn: &Connection, label: &str) -> Result<Vec<Row>, String> {
-    let sql = "SELECT dl.strategy,dl.ts,dl.features,tl.verdict,\
+/// 方向 → 兼容新旧标签的查询集合（新观察态 + 旧指令态）。
+fn labels_of_side(side: &str) -> &'static [&'static str] {
+    if side == "sell" {
+        &[crate::ai::fastbrain::LABEL_WATCH_DOWN, "SELL"]
+    } else {
+        &[crate::ai::fastbrain::LABEL_WATCH_UP, "BUY"]
+    }
+}
+
+fn fetch_labeled(conn: &Connection, labels: &[&str]) -> Result<Vec<Row>, String> {
+    let placeholders = std::iter::repeat_n("?", labels.len()).collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT dl.strategy,dl.ts,dl.features,tl.verdict,\
          COALESCE(NULLIF(tl.ret5d,0),NULLIF(tl.ret3d,0),NULLIF(tl.ret2d,0),NULLIF(tl.ret1d,0)) \
        FROM trade_label tl JOIN decision_log dl ON dl.id=tl.decision_id \
-       WHERE dl.label=?1";
-    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+       WHERE dl.label IN ({placeholders})"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map([label], |r| {
+        .query_map(rusqlite::params_from_iter(labels.iter().copied()), |r| {
             let features_str: String = r.get(2).unwrap_or_default();
             let features = serde_json::from_str::<Value>(&features_str)
                 .unwrap_or(Value::Object(Default::default()));
@@ -240,18 +252,10 @@ fn matches_query(row: &Row, q: &QualityQuery) -> bool {
     true
 }
 
-fn label_of_side(side: &str) -> &'static str {
-    if side == "sell" {
-        "SELL"
-    } else {
-        "BUY"
-    }
-}
-
 /// 单次同型命中率查询。
 pub fn lookup(data_dir: &std::path::Path, q: &QualityQuery) -> Result<QualityView, String> {
     let conn = maindb::open_readonly(data_dir)?;
-    let rows = fetch_labeled(&conn, label_of_side(&q.side))?;
+    let rows = fetch_labeled(&conn, labels_of_side(&q.side))?;
     let mut agg = Agg::new();
     for row in &rows {
         if matches_query(row, q) {
@@ -275,7 +279,7 @@ pub fn lookup(data_dir: &std::path::Path, q: &QualityQuery) -> Result<QualityVie
 /// 总览：按 打法 × 时段 全部分桶（含样本数为 0 以上的桶，按样本数降序，上限 60）。
 pub fn overview(data_dir: &std::path::Path) -> Result<Vec<QualityView>, String> {
     let conn = maindb::open_readonly(data_dir)?;
-    let rows = fetch_labeled(&conn, "BUY")?;
+    let rows = fetch_labeled(&conn, labels_of_side("buy"))?;
     let mut buckets: HashMap<(String, String), Agg> = HashMap::new();
     for row in &rows {
         let key = (row.strategy.clone(), session_of(&row.ts).to_string());

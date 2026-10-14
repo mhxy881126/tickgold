@@ -555,7 +555,9 @@ impl Engine {
             };
             let pack = serde_json::json!({"side":"sell","features":feats});
             let d = RuleBrain::decide_with(&pack, None, self.req.weights.as_ref());
-            if d.label == "SELL" && d.confidence >= self.req.sell_threshold {
+            if d.label == crate::ai::fastbrain::LABEL_WATCH_DOWN
+                && d.confidence >= self.req.sell_threshold
+            {
                 let (name, vol) = self
                     .positions
                     .iter()
@@ -601,7 +603,9 @@ impl Engine {
             };
             let pack = serde_json::json!({"side":"buy","features":feats});
             let d = RuleBrain::decide_with(&pack, None, self.req.weights.as_ref());
-            if d.label == "BUY" && d.confidence >= self.req.buy_threshold {
+            if d.label == crate::ai::fastbrain::LABEL_WATCH_UP
+                && d.confidence >= self.req.buy_threshold
+            {
                 candidates.push((
                     code.clone(),
                     self.names.get(code).cloned().unwrap_or_default(),

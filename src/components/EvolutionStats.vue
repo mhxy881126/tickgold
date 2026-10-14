@@ -98,7 +98,7 @@
             <span class="step-num">1</span>
             <div class="step-body">
               <div class="step-title">先有决策记录</div>
-              <div class="step-sub">开启快脑自动执行，产生买卖决策</div>
+              <div class="step-sub">开启快脑自动执行，产生行情特征信号</div>
             </div>
           </div>
           <div class="step">
@@ -250,7 +250,11 @@ const filters = [
   { v: "neutral", t: "中性" },
 ];
 
-const SIG: Record<string, string> = { BUY: "买入", SELL: "卖出", HOLD: "持有", NO_BUY: "不买" };
+const SIG: Record<string, string> = {
+  watch_up: "上涨特征", watch_down: "下跌特征", hold: "持平", calm: "无明显特征",
+  // 兼容历史标签
+  BUY: "上涨特征", SELL: "下跌特征", HOLD: "持平", NO_BUY: "无明显特征",
+};
 const MISS: Record<string, string> = {
   false_positive: "误买",
   sell_too_early: "卖飞",
@@ -801,11 +805,13 @@ onMounted(async () => {
   padding: 0 5px;
   font-size: 9px;
 }
-.ev-sig[data-l="BUY"] {
+.ev-sig[data-l="BUY"],
+.ev-sig[data-l="watch_up"] {
   color: #ff3232;
   border-color: #ff3232;
 }
-.ev-sig[data-l="SELL"] {
+.ev-sig[data-l="SELL"],
+.ev-sig[data-l="watch_down"] {
   color: #54fcfc;
   border-color: #54fcfc;
 }

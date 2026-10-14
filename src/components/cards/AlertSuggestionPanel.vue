@@ -79,15 +79,15 @@ function applyRule(s: AlertSuggestion) {
 <template>
   <div class="alert-panel">
     <div class="panel-header">
-      <span class="panel-title">AI 预警推荐</span>
+      <span class="panel-title">AI 监测规则模板</span>
       <button class="generate-btn" :disabled="loading" @click="generate">
-        {{ loading ? "推荐中…" : suggestions.length ? "重新推荐" : "生成推荐" }}
+        {{ loading ? "分析中…" : suggestions.length ? "重新生成" : "生成模板" }}
       </button>
     </div>
 
     <div v-if="loading" class="loading-state">
       <div class="spinner"></div>
-      <span>AI 正在分析自选股行情，推荐预警规则…</span>
+      <span>AI 正在分析自选股行情，生成可配置的监测规则模板…</span>
     </div>
 
     <div v-else-if="error" class="error-state">
@@ -123,10 +123,10 @@ function applyRule(s: AlertSuggestion) {
 
     <div v-else class="empty-state">
       <div class="empty-icon">🎯</div>
-      <div class="empty-text">点击"生成推荐"，AI 将基于自选股行情推荐预警规则</div>
+      <div class="empty-text">点击"生成模板"，AI 将基于自选股行情归纳监测规则（不构成投资建议）</div>
     </div>
 
-    <div class="disclaimer">AI 推荐，仅供参考，不构成投资建议</div>
+    <div class="disclaimer">AI 仅归纳监测规则模板，仅供参考，不构成投资建议</div>
   </div>
 </template>
 

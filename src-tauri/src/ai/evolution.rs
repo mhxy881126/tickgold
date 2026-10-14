@@ -103,8 +103,9 @@ pub fn evaluate(label: &str, entry: f64, after: &[KBar], cfg: &EvolutionConfig) 
 
     let verdict;
     let miss_type;
-    match label {
-        "BUY" => {
+    // 历史 decision_log 可能存有旧版 BUY/SELL 标签，先归一化为中性观察态再判定方向。
+    match crate::ai::fastbrain::normalize_label(label).as_str() {
+        crate::ai::fastbrain::LABEL_WATCH_UP => {
             if hit_target && !hit_stop {
                 (verdict, miss_type) = ("good".to_string(), "none".to_string());
             } else if hit_stop && !hit_target {
@@ -117,7 +118,7 @@ pub fn evaluate(label: &str, entry: f64, after: &[KBar], cfg: &EvolutionConfig) 
                 (verdict, miss_type) = ("neutral".to_string(), "none".to_string());
             }
         }
-        "SELL" => {
+        crate::ai::fastbrain::LABEL_WATCH_DOWN => {
             // 基准价=卖出价：卖后下跌为正确避险（good），卖后上涨为卖飞（bad/sell_too_early）。
             if max_pain <= cfg.stop_pct {
                 (verdict, miss_type) = ("good".to_string(), "none".to_string());
@@ -695,17 +696,20 @@ mod tests {
     fn buy_hit_target_is_good() {
         let cfg = EvolutionConfig::default();
         let after = vec![bar(11.2, 11.3, 9.9)];
-        let o = evaluate("BUY", 10.0, &after, &cfg);
+        // 兼容旧 BUY 语义：normalize_label 归一化后仍按上涨特征判定
+        let o = evaluate("watch_up", 10.0, &after, &cfg);
         assert_eq!(o.verdict, "good");
         assert!(o.hit_target);
         assert_eq!(o.miss_type, "none");
+        let o2 = evaluate("BUY", 10.0, &after, &cfg);
+        assert_eq!(o2.verdict, "good");
     }
 
     #[test]
     fn buy_hit_stop_is_false_positive() {
         let cfg = EvolutionConfig::default();
         let after = vec![bar(9.1, 10.0, 9.0)];
-        let o = evaluate("BUY", 10.0, &after, &cfg);
+        let o = evaluate("watch_up", 10.0, &after, &cfg);
         assert_eq!(o.verdict, "bad");
         assert!(o.hit_stop);
         assert_eq!(o.miss_type, "false_positive");
@@ -716,8 +720,10 @@ mod tests {
         let cfg = EvolutionConfig::default();
         // 卖价 10，随后跌到 9.2（-8%，触及 stop）
         let after = vec![bar(9.2, 10.0, 9.2)];
-        let o = evaluate("SELL", 10.0, &after, &cfg);
+        let o = evaluate("watch_down", 10.0, &after, &cfg);
         assert_eq!(o.verdict, "good");
+        let o2 = evaluate("SELL", 10.0, &after, &cfg);
+        assert_eq!(o2.verdict, "good");
     }
 
     #[test]
@@ -725,7 +731,7 @@ mod tests {
         let cfg = EvolutionConfig::default();
         // 卖价 10，随后涨到 11.2（+12%，达 target）
         let after = vec![bar(11.2, 11.2, 9.9)];
-        let o = evaluate("SELL", 10.0, &after, &cfg);
+        let o = evaluate("watch_down", 10.0, &after, &cfg);
         assert_eq!(o.verdict, "bad");
         assert_eq!(o.miss_type, "sell_too_early");
     }
@@ -734,7 +740,7 @@ mod tests {
     fn neutral_band() {
         let cfg = EvolutionConfig::default();
         let after = vec![bar(10.05, 10.2, 9.95)];
-        let o = evaluate("BUY", 10.0, &after, &cfg);
+        let o = evaluate("watch_up", 10.0, &after, &cfg);
         assert_eq!(o.verdict, "neutral");
     }
 
