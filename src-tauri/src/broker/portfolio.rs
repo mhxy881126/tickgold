@@ -35,7 +35,11 @@ impl Side {
 /// 计算成交费用。side=Buy/Sell，amount=成交金额（价×量）。
 pub fn calc_fee(side: Side, amount: f64) -> f64 {
     let commission = (amount * COMMISSION_RATE).max(5.0);
-    let stamp = if side == Side::Sell { amount * STAMP_RATE } else { 0.0 };
+    let stamp = if side == Side::Sell {
+        amount * STAMP_RATE
+    } else {
+        0.0
+    };
     let transfer = amount * TRANSFER_RATE;
     commission + stamp + transfer
 }
@@ -116,9 +120,7 @@ pub fn load_cash(conn: &Connection) -> Result<Option<(f64, f64)>, String> {
 /// 读取全部持仓。
 pub fn load_positions(conn: &Connection) -> Result<Vec<PositionView>, String> {
     let mut stmt = conn
-        .prepare(
-            "SELECT code,name,vol,avail_vol,cost_amount FROM paper_position ORDER BY code",
-        )
+        .prepare("SELECT code,name,vol,avail_vol,cost_amount FROM paper_position ORDER BY code")
         .map_err(|e| format!("读取持仓失败: {e}"))?;
     let rows = stmt
         .query_map([], |r| {
@@ -217,16 +219,12 @@ fn order_id_for(req: &FillReq, now: i64) -> String {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn buy_tx(
-    tx: &Transaction,
-    req: &FillReq,
-    amount: f64,
-    fee: f64,
-    now: i64,
-) -> Result<(), String> {
+fn buy_tx(tx: &Transaction, req: &FillReq, amount: f64, fee: f64, now: i64) -> Result<(), String> {
     let total = amount + fee;
     let cash: f64 = tx
-        .query_row("SELECT cash FROM paper_account WHERE id=1", [], |r| r.get(0))
+        .query_row("SELECT cash FROM paper_account WHERE id=1", [], |r| {
+            r.get(0)
+        })
         .map_err(|e| format!("读取资金失败: {e}"))?;
     if cash < total - 1e-6 {
         return Err("可用资金不足".to_string());
@@ -251,13 +249,7 @@ fn buy_tx(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn sell_tx(
-    tx: &Transaction,
-    req: &FillReq,
-    amount: f64,
-    fee: f64,
-    now: i64,
-) -> Result<(), String> {
+fn sell_tx(tx: &Transaction, req: &FillReq, amount: f64, fee: f64, now: i64) -> Result<(), String> {
     let (vol, avail, cost_amount, pos_name): (i64, i64, f64, String) = tx
         .query_row(
             "SELECT vol,avail_vol,cost_amount,name FROM paper_position WHERE code=?1",
@@ -271,10 +263,17 @@ fn sell_tx(
     let new_vol = vol - req.vol;
     let cost_reduce = cost_amount * (req.vol as f64 / vol as f64);
     let proceeds = amount - fee;
-    let name = if req.name.is_empty() { &pos_name } else { req.name };
+    let name = if req.name.is_empty() {
+        &pos_name
+    } else {
+        req.name
+    };
     if new_vol <= 0 {
-        tx.execute("DELETE FROM paper_position WHERE code=?1", rusqlite::params![req.code])
-            .map_err(|e| format!("删除持仓失败: {e}"))?;
+        tx.execute(
+            "DELETE FROM paper_position WHERE code=?1",
+            rusqlite::params![req.code],
+        )
+        .map_err(|e| format!("删除持仓失败: {e}"))?;
     } else {
         tx.execute(
             "UPDATE paper_position SET vol=?1, cost_amount=cost_amount-?2, updated_at=?3
@@ -443,7 +442,11 @@ pub fn build_snapshot(
         market_value,
         total_assets,
         total_pnl,
-        total_pnl_pct: if init_cash > 0.0 { total_pnl / init_cash * 100.0 } else { 0.0 },
+        total_pnl_pct: if init_cash > 0.0 {
+            total_pnl / init_cash * 100.0
+        } else {
+            0.0
+        },
         float_pnl,
         day_pnl,
         positions,
@@ -462,6 +465,32 @@ pub struct PositionRisk {
     pub pct: f64,
     pub float_pnl: f64,
     pub float_pnl_pct: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SectorExposure {
+    pub theme: String,
+    pub market_value: f64,
+    /// 占总权益 %。
+    pub pct: f64,
+    /// 该板块持仓票数（一票多题材时各板块分别计数）。
+    pub count: i64,
+}
+
+/// 仪表盘外部输入（账本之外：急停状态 / 市场情绪 / 日内峰值 / 阈值）。
+#[derive(Clone, Debug, Default)]
+pub struct RiskExtras {
+    /// 当日交易日（YYYY-MM-DD），止损计数 / 日亏口径用。
+    pub today: String,
+    pub kill_switch: bool,
+    pub market_emotion: f64,
+    pub index_chg: f64,
+    /// 日内最高权益（meta key risk_peak_equity_<date>）；无则以当前权益为峰。
+    pub day_peak: Option<f64>,
+    pub limits: crate::broker::risk::AccountRiskParams,
+    pub max_total_limit: f64,
+    pub max_single_limit: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -486,6 +515,22 @@ pub struct RiskSnapshot {
     pub drawdown_pct: f64,
     /// 历史最高权益。
     pub peak_equity: f64,
+    /// 当日回撤 %（相对日内权益峰值）。
+    pub day_drawdown_pct: f64,
+    /// 板块暴露（best-effort：一票多题材全额计入各板块，合计可能超过总仓位）。
+    pub sector_exposure: Vec<SectorExposure>,
+    pub market_emotion: f64,
+    pub index_chg: f64,
+    /// low / mid / high。
+    pub systemic_risk_level: String,
+    /// 当日硬止损触发次数。
+    pub stop_trigger_count: i64,
+    /// 当日已实现盈亏占初始资金 %（负数为亏）。
+    pub daily_loss_pct: f64,
+    /// 连续亏损笔数。
+    pub consecutive_losses: i32,
+    pub warnings: Vec<crate::broker::risk::RiskWarning>,
+    pub kill_switch: bool,
     pub positions: Vec<PositionRisk>,
 }
 
@@ -495,6 +540,7 @@ pub fn build_risk_snapshot(
     conn: &Connection,
     price_of: &[(String, f64, f64)],
     peak_equity: Option<f64>,
+    extras: &RiskExtras,
 ) -> Result<RiskSnapshot, String> {
     let s = build_snapshot(conn, price_of)?;
     let find = |code: &str| price_of.iter().find(|(c, _, _)| c == code);
@@ -513,9 +559,17 @@ pub fn build_risk_snapshot(
             code: p.code.clone(),
             name: p.name.clone(),
             market_value: mv,
-            pct: if equity > 0.0 { mv / equity * 100.0 } else { 0.0 },
+            pct: if equity > 0.0 {
+                mv / equity * 100.0
+            } else {
+                0.0
+            },
             float_pnl: fp,
-            float_pnl_pct: if p.cost_amount > 0.0 { fp / p.cost_amount * 100.0 } else { 0.0 },
+            float_pnl_pct: if p.cost_amount > 0.0 {
+                fp / p.cost_amount * 100.0
+            } else {
+                0.0
+            },
         });
     }
     positions.sort_by(|a, b| b.market_value.partial_cmp(&a.market_value).unwrap());
@@ -525,23 +579,168 @@ pub fn build_risk_snapshot(
         .map(|p| (p.pct, p.code.clone()))
         .unwrap_or((0.0, String::new()));
 
-    let peak = peak_equity.filter(|v| *v > 0.0 && *v >= equity).unwrap_or(equity);
+    let peak = peak_equity
+        .filter(|v| *v > 0.0 && *v >= equity)
+        .unwrap_or(equity);
+
+    // 当日回撤：相对日内权益峰值（无日内峰值则取当前权益，回撤 0）。
+    let day_peak = extras
+        .day_peak
+        .filter(|v| *v > 0.0 && *v >= equity)
+        .unwrap_or(equity);
+    let day_drawdown_pct = if day_peak > 0.0 {
+        (day_peak - equity) / day_peak * 100.0
+    } else {
+        0.0
+    };
+
+    // 板块暴露：theme_stock（在席）JOIN theme，一票多题材全额计入各板块。
+    let sector_exposure = aggregate_sector_exposure(conn, &positions, equity);
+
+    // 当日硬止损次数（decision_log 缺表/异常时 best-effort 返回 0）。
+    let stop_trigger_count = count_hardstop(conn, &extras.today);
+
+    // 日亏 %（已实现，基数为初始资金）与连续亏损笔数。
+    let init_cash = s.init_cash;
+    let day_realized = realized_pnl_of_day(conn, &extras.today).unwrap_or(0.0);
+    let daily_loss_pct = if init_cash > 0.0 {
+        day_realized / init_cash * 100.0
+    } else {
+        0.0
+    };
+    let recent = recent_realized(conn, 10).unwrap_or_default();
+    let mut consecutive_losses = 0;
+    for v in &recent {
+        if *v < 0.0 {
+            consecutive_losses += 1;
+        } else {
+            break;
+        }
+    }
+
+    let systemic_risk_level =
+        crate::broker::risk::systemic_level(extras.market_emotion, extras.index_chg).to_string();
+
+    let warnings = crate::broker::risk::evaluate_warnings(
+        &crate::broker::risk::WarningInput {
+            kill_switch: extras.kill_switch,
+            position_pct: if equity > 0.0 {
+                s.market_value / equity * 100.0
+            } else {
+                0.0
+            },
+            max_single_pct,
+            drawdown_pct: if peak > 0.0 {
+                (peak - equity) / peak * 100.0
+            } else {
+                0.0
+            },
+            daily_loss_pct,
+            consecutive_losses,
+            systemic_level: systemic_risk_level.clone(),
+        },
+        &extras.limits,
+        extras.max_total_limit,
+        extras.max_single_limit,
+    );
+
     Ok(RiskSnapshot {
         equity,
         cash: s.cash,
         market_value: s.market_value,
-        position_pct: if equity > 0.0 { s.market_value / equity * 100.0 } else { 0.0 },
+        position_pct: if equity > 0.0 {
+            s.market_value / equity * 100.0
+        } else {
+            0.0
+        },
         max_single_pct,
         max_single_code,
         total_pnl: s.total_pnl,
         total_pnl_pct: s.total_pnl_pct,
         float_pnl: s.float_pnl,
         day_pnl: s.day_pnl,
-        day_pnl_pct: if equity > 0.0 { s.day_pnl / equity * 100.0 } else { 0.0 },
-        drawdown_pct: if peak > 0.0 { (peak - equity) / peak * 100.0 } else { 0.0 },
+        day_pnl_pct: if equity > 0.0 {
+            s.day_pnl / equity * 100.0
+        } else {
+            0.0
+        },
+        drawdown_pct: if peak > 0.0 {
+            (peak - equity) / peak * 100.0
+        } else {
+            0.0
+        },
         peak_equity: peak,
+        day_drawdown_pct,
+        sector_exposure,
+        market_emotion: extras.market_emotion,
+        index_chg: extras.index_chg,
+        systemic_risk_level,
+        stop_trigger_count,
+        daily_loss_pct,
+        consecutive_losses,
+        warnings,
+        kill_switch: extras.kill_switch,
         positions,
     })
+}
+
+/// 板块暴露聚合：仅统计当前持仓，theme_stock 在席（left_date 为空）映射到板块名；
+/// 一票多题材时在各板块全额计入；无在席映射归入"未分类"。按市值倒序。
+fn aggregate_sector_exposure(
+    conn: &Connection,
+    positions: &[PositionRisk],
+    equity: f64,
+) -> Vec<SectorExposure> {
+    use std::collections::HashMap;
+    let mut mv_by_theme: HashMap<String, (f64, i64)> = HashMap::new();
+    for p in positions {
+        // 取该票所有在席题材；无映射归"未分类"。
+        let mut themes: Vec<String> = Vec::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT t.name FROM theme_stock ts JOIN theme t ON ts.theme_id=t.id
+             WHERE ts.code=?1 AND ts.left_date IS NULL",
+        ) {
+            if let Ok(rows) = stmt.query_map(rusqlite::params![p.code], |r| r.get::<_, String>(0)) {
+                for name in rows.flatten() {
+                    themes.push(name);
+                }
+            }
+        }
+        if themes.is_empty() {
+            themes.push("未分类".to_string());
+        }
+        for theme in themes {
+            let e = mv_by_theme.entry(theme).or_insert((0.0, 0));
+            e.0 += p.market_value;
+            e.1 += 1;
+        }
+    }
+    let mut out: Vec<SectorExposure> = mv_by_theme
+        .into_iter()
+        .map(|(theme, (market_value, count))| SectorExposure {
+            theme,
+            market_value,
+            pct: if equity > 0.0 {
+                market_value / equity * 100.0
+            } else {
+                0.0
+            },
+            count,
+        })
+        .collect();
+    out.sort_by(|a, b| b.market_value.partial_cmp(&a.market_value).unwrap());
+    out
+}
+
+/// 当日硬止损触发次数（model_version 以 hardstop 开头）；缺表等异常返回 0。
+fn count_hardstop(conn: &Connection, today: &str) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM decision_log
+         WHERE trade_date=?1 AND model_version LIKE 'hardstop%'",
+        rusqlite::params![today],
+        |r| r.get(0),
+    )
+    .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -654,5 +853,109 @@ mod tests {
         assert!(s.float_pnl > 9_000.0);
         // day = (110-105)*1000 = 5000
         assert!((s.day_pnl - 5_000.0).abs() < 1e-6);
+    }
+
+    /// 风险仪表盘专用库：补 theme / theme_stock / decision_log。
+    fn memdb_risk() -> Connection {
+        let c = memdb();
+        c.execute_batch(
+            "CREATE TABLE theme(id INTEGER PRIMARY KEY,name TEXT UNIQUE);
+             CREATE TABLE theme_stock(id INTEGER PRIMARY KEY,theme_id INTEGER,code TEXT,
+                joined_date TEXT NOT NULL,left_date TEXT);
+             CREATE TABLE decision_log(id INTEGER PRIMARY KEY,trade_date TEXT NOT NULL,
+                model_version TEXT DEFAULT '', created_at INTEGER NOT NULL);",
+        )
+        .unwrap();
+        c
+    }
+
+    fn extras_default() -> RiskExtras {
+        RiskExtras {
+            today: "2026-10-14".to_string(),
+            market_emotion: 50.0,
+            index_chg: 0.0,
+            limits: crate::broker::risk::AccountRiskParams::default(),
+            max_total_limit: 80.0,
+            max_single_limit: 20.0,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn risk_snapshot_day_drawdown_and_unclassified_sector() {
+        let mut c = memdb_risk();
+        ensure_account(&c, 1_000_000.0).unwrap();
+        apply_fill(&mut c, &req("600519", Side::Buy, 100.0, 1000)).unwrap();
+        // 无题材映射 → "未分类"
+        let prices = vec![("600519".to_string(), 100.0, 100.0)];
+        let s = build_risk_snapshot(&c, &prices, None, &extras_default()).unwrap();
+        assert_eq!(s.sector_exposure.len(), 1);
+        assert_eq!(s.sector_exposure[0].theme, "未分类");
+        assert_eq!(s.sector_exposure[0].count, 1);
+        assert!(s.sector_exposure[0].pct > 9.0);
+        // 无日内峰值时当日回撤为 0
+        assert_eq!(s.day_drawdown_pct, 0.0);
+        // 日内峰值高于现价 → 当日回撤
+        let mut ex = extras_default();
+        ex.day_peak = Some(1_100_000.0);
+        let s2 = build_risk_snapshot(&c, &prices, None, &ex).unwrap();
+        // 现价权益≈1,000,000，峰 1,100,000 → 回撤 ≈9.09%
+        assert!(
+            s2.day_drawdown_pct > 8.0 && s2.day_drawdown_pct < 10.0,
+            "{:.4}",
+            s2.day_drawdown_pct
+        );
+    }
+
+    #[test]
+    fn risk_snapshot_sector_grouping_and_hardstop_count() {
+        let mut c = memdb_risk();
+        ensure_account(&c, 1_000_000.0).unwrap();
+        // 600519、000001 各买 10 万（价 100 × 1000）
+        apply_fill(&mut c, &req("600519", Side::Buy, 100.0, 1000)).unwrap();
+        let r2 = req("000001", Side::Buy, 100.0, 1000);
+        apply_fill(&mut c, &r2).unwrap();
+        // 题材：白酒=600519；000001 无映射 → 未分类
+        c.execute("INSERT INTO theme(id,name) VALUES(1,'白酒')", [])
+            .unwrap();
+        c.execute(
+            "INSERT INTO theme_stock(theme_id,code,joined_date,left_date) VALUES(1,'600519','2026-10-01',NULL)",
+            [],
+        )
+        .unwrap();
+        // 当日 2 条硬止损 + 1 条普通决策
+        c.execute(
+            "INSERT INTO decision_log(trade_date,model_version,created_at) VALUES
+             ('2026-10-14','hardstop-7',1),('2026-10-14','hardstop-7',2),
+             ('2026-10-14','rule-v1',3)",
+            [],
+        )
+        .unwrap();
+        let prices = vec![
+            ("600519".to_string(), 100.0, 100.0),
+            ("000001".to_string(), 100.0, 100.0),
+        ];
+        let s = build_risk_snapshot(&c, &prices, None, &extras_default()).unwrap();
+        assert_eq!(s.stop_trigger_count, 2);
+        let names: Vec<&str> = s.sector_exposure.iter().map(|e| e.theme.as_str()).collect();
+        assert!(names.contains(&"白酒"));
+        assert!(names.contains(&"未分类"));
+        // kill switch 关闭、情绪默认 50 → 无告警
+        assert!(s.warnings.is_empty(), "{:?}", s.warnings);
+        assert!(!s.kill_switch);
+    }
+
+    #[test]
+    fn risk_snapshot_kill_switch_warning() {
+        let c = memdb_risk();
+        ensure_account(&c, 1_000_000.0).unwrap();
+        let mut ex = extras_default();
+        ex.kill_switch = true;
+        let s = build_risk_snapshot(&c, &[], None, &ex).unwrap();
+        assert!(s
+            .warnings
+            .iter()
+            .any(|w| w.level == "danger" && w.code == "killSwitch"));
+        assert!(s.kill_switch);
     }
 }

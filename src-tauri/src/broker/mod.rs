@@ -25,6 +25,12 @@ pub struct BrokerManager {
     pub connected: AtomicBool,
     // QMT sidecar 最近一次 asset 回报缓存（含 floatPnl/dayPnl 等扩展字段）
     pub asset_cache: Mutex<serde_json::Value>,
+    /// 市场上下文缓存（情绪, 上证涨跌%, 刷新时刻），TTL 60s；autoexec 与仪表盘共用。
+    pub market_ctx: Mutex<(f64, f64, std::time::Instant)>,
+    /// QMT 持仓缓存（key=裸码）：全量回报替换、增量回报 upsert。
+    pub position_cache: Mutex<std::collections::HashMap<String, risk::QmtPosition>>,
+    /// 持仓是否已完成首次全量同步（空仓账户缓存亦为空，须以此区分"尚未同步"）。
+    pub position_synced: AtomicBool,
 }
 
 impl BrokerManager {
@@ -36,6 +42,13 @@ impl BrokerManager {
             kill_switch: AtomicBool::new(false),
             connected: AtomicBool::new(false),
             asset_cache: Mutex::new(serde_json::json!({})),
+            market_ctx: Mutex::new((
+                50.0,
+                0.0,
+                std::time::Instant::now() - std::time::Duration::from_secs(120),
+            )),
+            position_cache: Mutex::new(std::collections::HashMap::new()),
+            position_synced: AtomicBool::new(false),
         }
     }
 
@@ -74,9 +87,21 @@ fn progress(
     audit_detail: &str,
 ) -> Result<(), String> {
     protocol::update(
-        conn, sig_id, status, filled_vol, avg_price, broker_order_id, error_msg,
+        conn,
+        sig_id,
+        status,
+        filled_vol,
+        avg_price,
+        broker_order_id,
+        error_msg,
     )?;
-    audit(conn, sig_id, &format!("broker_{status}"), audit_detail, "broker");
+    audit(
+        conn,
+        sig_id,
+        &format!("broker_{status}"),
+        audit_detail,
+        "broker",
+    );
     checkpoint(conn);
     let _ = app.emit(
         "broker:event",
@@ -128,17 +153,70 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
         "connected" => {
             if let Some(m) = try_manager(app) {
                 m.connected.store(true, Ordering::SeqCst);
+                // python connected 后不主动推全量：立即拉一次资产 + 持仓。
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Some(mgr) = app.try_state::<BrokerManager>() {
+                        let stdin = mgr
+                            .sidecar
+                            .lock()
+                            .unwrap()
+                            .as_ref()
+                            .map(|h| h.stdin.clone());
+                        if let Some(stdin) = stdin {
+                            let _ = sidecar::send_to(
+                                &stdin,
+                                sidecar::request(
+                                    "connected-query-asset",
+                                    "query_asset",
+                                    serde_json::json!({}),
+                                ),
+                            )
+                            .await;
+                            let _ = sidecar::send_to(
+                                &stdin,
+                                sidecar::request(
+                                    "connected-query-position",
+                                    "query_position",
+                                    serde_json::json!({}),
+                                ),
+                            )
+                            .await;
+                        }
+                    }
+                });
             }
         }
         "disconnected" => {
             if let Some(m) = try_manager(app) {
                 m.connected.store(false, Ordering::SeqCst);
+                // 断开后缓存作废，重连由 connected 分支重新全量查询
+                m.position_synced.store(false, Ordering::SeqCst);
+                *m.asset_cache.lock().unwrap() = serde_json::json!({});
             }
         }
         "asset" => {
             // 缓存最近一次资产回报，broker_query_asset（QMT）直接读缓存
             if let Some(m) = try_manager(app) {
                 *m.asset_cache.lock().unwrap() = v.clone();
+            }
+        }
+        "position" => {
+            // 全量回报替换缓存；单只增量 upsert（vol=0 移除）。
+            if let Some(m) = try_manager(app) {
+                let (items, full) = risk::parse_position_event(v);
+                let mut cache = m.position_cache.lock().unwrap();
+                if full {
+                    cache.clear();
+                    m.position_synced.store(true, Ordering::SeqCst);
+                }
+                for (code, p) in items {
+                    if p.vol <= 0 {
+                        cache.remove(&code);
+                    } else {
+                        cache.insert(code, p);
+                    }
+                }
             }
         }
         "order" | "error" => {
@@ -155,7 +233,17 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
             };
             if event == "error" {
                 let msg = v["message"].as_str().unwrap_or("");
-                let _ = progress(&conn, app, &sig_id, protocol::ERROR, None, None, None, Some(msg), msg);
+                let _ = progress(
+                    &conn,
+                    app,
+                    &sig_id,
+                    protocol::ERROR,
+                    None,
+                    None,
+                    None,
+                    Some(msg),
+                    msg,
+                );
                 return;
             }
             let st = match v["status"].as_str().unwrap_or("") {
@@ -190,8 +278,17 @@ fn auto_done_ticket(conn: &Connection, app: &AppHandle, sig_id: &str) {
         rusqlite::params![now, sig_id],
     );
     if r.is_ok() {
-        audit(conn, sig_id, "auto_done", "券商成交满量，自动标记完成", "broker");
-        let _ = app.emit("signal:updated", serde_json::json!({ "sigId": sig_id, "status": "done" }));
+        audit(
+            conn,
+            sig_id,
+            "auto_done",
+            "券商成交满量，自动标记完成",
+            "broker",
+        );
+        let _ = app.emit(
+            "signal:updated",
+            serde_json::json!({ "sigId": sig_id, "status": "done" }),
+        );
     }
 }
 
@@ -230,18 +327,55 @@ pub fn broker_set_config(
     fee_pct: Option<f64>,
     mock_allow_anytime: Option<bool>,
     mock_init_cash: Option<f64>,
+    // v3.0.0-rc 账户级风控阈值 / 实盘限额
+    daily_loss_limit_pct: Option<f64>,
+    max_drawdown_limit_pct: Option<f64>,
+    consecutive_loss_limit: Option<i32>,
+    live_max_order_amount: Option<f64>,
 ) -> Result<(), String> {
     let mut cfg = mgr.config.lock().unwrap().clone();
-    if let Some(v) = kind { cfg.kind = v; }
-    if let Some(v) = python_path { cfg.python_path = v; }
-    if let Some(v) = qmt_path { cfg.qmt_path = v; }
-    if let Some(v) = account_id { cfg.account_id = v; }
-    if let Some(v) = max_single_pct { cfg.max_single_pct = v; }
-    if let Some(v) = max_total_pct { cfg.max_total_pct = v; }
-    if let Some(v) = no_open_after { cfg.no_open_after = v; }
-    if let Some(v) = fee_pct { cfg.fee_pct = v; }
-    if let Some(v) = mock_allow_anytime { cfg.mock_allow_anytime = v; }
-    if let Some(v) = mock_init_cash { cfg.mock_init_cash = v; }
+    if let Some(v) = kind {
+        cfg.kind = v;
+    }
+    if let Some(v) = python_path {
+        cfg.python_path = v;
+    }
+    if let Some(v) = qmt_path {
+        cfg.qmt_path = v;
+    }
+    if let Some(v) = account_id {
+        cfg.account_id = v;
+    }
+    if let Some(v) = max_single_pct {
+        cfg.max_single_pct = v;
+    }
+    if let Some(v) = max_total_pct {
+        cfg.max_total_pct = v;
+    }
+    if let Some(v) = no_open_after {
+        cfg.no_open_after = v;
+    }
+    if let Some(v) = fee_pct {
+        cfg.fee_pct = v;
+    }
+    if let Some(v) = mock_allow_anytime {
+        cfg.mock_allow_anytime = v;
+    }
+    if let Some(v) = mock_init_cash {
+        cfg.mock_init_cash = v;
+    }
+    if let Some(v) = daily_loss_limit_pct {
+        cfg.daily_loss_limit_pct = v;
+    }
+    if let Some(v) = max_drawdown_limit_pct {
+        cfg.max_drawdown_limit_pct = v;
+    }
+    if let Some(v) = consecutive_loss_limit {
+        cfg.consecutive_loss_limit = v;
+    }
+    if let Some(v) = live_max_order_amount {
+        cfg.live_max_order_amount = v;
+    }
     config::save(&ai.dir(), &cfg)?;
     *mgr.config.lock().unwrap() = cfg;
     Ok(())
@@ -297,7 +431,12 @@ pub async fn broker_connect(
 
 #[tauri::command]
 pub async fn broker_disconnect(mgr: State<'_, BrokerManager>) -> Result<(), String> {
-    let child = mgr.sidecar.lock().unwrap().as_ref().map(|h| h.child.clone());
+    let child = mgr
+        .sidecar
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|h| h.child.clone());
     if let Some(c) = child {
         let _ = c.lock().await.kill().await;
     }
@@ -324,7 +463,7 @@ pub async fn broker_submit(
     submit_with_sig(&app, &sig_id).await
 }
 
-/// 前端模拟交易买入：ensure account + settle + portfolio 落账（统一账本）。
+/// 前端模拟交易买入：ensure + settle → 统一闸门 gate → portfolio 落账（统一账本）。
 #[tauri::command]
 pub async fn portfolio_buy(
     ai: State<'_, crate::ai::AiState>,
@@ -335,13 +474,50 @@ pub async fn portfolio_buy(
 ) -> Result<portfolio::FillResult, String> {
     let dir = ai.dir();
     let init_cash = init_cash_or_default(&dir)?;
+    let cfg = config::load(&dir);
+    let today = conditional::today_dashed();
     let mut conn = maindb::open_readwrite(&dir)?;
     portfolio::ensure_account(&conn, init_cash)?;
-    portfolio::settle(&conn, &conditional::today_dashed())?;
+    portfolio::settle(&conn, &today)?;
+
+    // 全通道唯一闸门（账户级 + 订单级）
+    let order = risk::RiskOrder {
+        code: code.clone(),
+        side: "BUY".into(),
+        price,
+        vol,
+    };
+    let account = build_ledger_account(&conn).await?;
+    let equity = account.total_asset();
+    let ai_in = build_account_risk_input(&conn, equity, read_peak(&conn), &today);
+    let market = market_snapshot_of(&code, &name).await;
+    let (weekday, min_of_day) = risk::beijing_now_weekday_min();
+    let phase = risk::phase_of(weekday, min_of_day);
+    let allow_anytime = cfg.kind == "mock" && cfg.mock_allow_anytime;
+    if let Err(reason) = risk::gate(
+        &order,
+        &account,
+        market,
+        &risk::RiskParams::from_config(&cfg),
+        &ai_in,
+        &risk::AccountRiskParams::from_config(&cfg),
+        phase,
+        min_of_day,
+        allow_anytime,
+    ) {
+        log_gate_reject(&conn, "manual", &format!("manual:{code}"), &reason);
+        return Err(reason);
+    }
+
     let oid = format!("PO{}{}", now_millis(), code);
     let req = portfolio::FillReq {
-        code: &code, name: &name, side: portfolio::Side::Buy,
-        price, vol, sig_id: &oid, trade_date: &conditional::today_dashed(),
+        code: &code,
+        name: &name,
+        side: portfolio::Side::Buy,
+        price,
+        vol,
+        sig_id: &oid,
+        trade_date: &today,
         limit_prices: None,
     };
     portfolio::apply_fill(&mut conn, &req)
@@ -356,12 +532,48 @@ pub async fn portfolio_sell(
     vol: i64,
 ) -> Result<portfolio::FillResult, String> {
     let dir = ai.dir();
+    let cfg = config::load(&dir);
+    let today = conditional::today_dashed();
     let mut conn = maindb::open_readwrite(&dir)?;
-    portfolio::settle(&conn, &conditional::today_dashed())?;
+    portfolio::settle(&conn, &today)?;
+
+    // 闸门：SELL 跳过账户级熔断（保证止损离场），只做时段/价格/持仓校验
+    let order = risk::RiskOrder {
+        code: code.clone(),
+        side: "SELL".into(),
+        price,
+        vol,
+    };
+    let account = build_ledger_account(&conn).await?;
+    let market = market_snapshot_of(&code, "").await;
+    let (weekday, min_of_day) = risk::beijing_now_weekday_min();
+    let phase = risk::phase_of(weekday, min_of_day);
+    let allow_anytime = cfg.kind == "mock" && cfg.mock_allow_anytime;
+    let ai_in = risk::AccountRiskInput::default();
+    if let Err(reason) = risk::gate(
+        &order,
+        &account,
+        market,
+        &risk::RiskParams::from_config(&cfg),
+        &ai_in,
+        &risk::AccountRiskParams::from_config(&cfg),
+        phase,
+        min_of_day,
+        allow_anytime,
+    ) {
+        log_gate_reject(&conn, "manual", &format!("manual:{code}"), &reason);
+        return Err(reason);
+    }
+
     let oid = format!("PO{}{}", now_millis(), code);
     let req = portfolio::FillReq {
-        code: &code, name: "", side: portfolio::Side::Sell,
-        price, vol, sig_id: &oid, trade_date: &conditional::today_dashed(),
+        code: &code,
+        name: "",
+        side: portfolio::Side::Sell,
+        price,
+        vol,
+        sig_id: &oid,
+        trade_date: &today,
         limit_prices: None,
     };
     portfolio::apply_fill(&mut conn, &req)
@@ -373,35 +585,160 @@ fn init_cash_or_default(dir: &Path) -> Result<f64, String> {
     Ok(if cash > 0.0 { cash } else { 1_000_000.0 })
 }
 
-/// 风险仪表盘读数：一本账口径，权益 / 仓位 / 集中度 / 当日盈亏 / 回撤，峰值落 meta。
+// ===== v3.0.0-rc 闸门共用 helper（手动/submit 同源构造，禁止各处复制）=====
+
+/// 基于统一账本构造账户风控快照（持仓按实时价估值，无价按成本价）。
+/// 同步收集后返回不持有 &Connection 的 future（否则 future 非 Send 无法 spawn）。
+fn build_ledger_account(
+    conn: &Connection,
+) -> impl std::future::Future<Output = Result<risk::AccountSnapshot, String>> {
+    let (cash, items): (f64, Vec<(String, i64, i64, f64)>) = {
+        let positions = portfolio::load_positions(conn).unwrap_or_default();
+        let cash: f64 = conn
+            .query_row("SELECT cash FROM paper_account WHERE id=1", [], |r| {
+                r.get(0)
+            })
+            .unwrap_or(0.0);
+        let items = positions
+            .iter()
+            .map(|p| (p.code.clone(), p.vol, p.avail_vol, p.cost_amount))
+            .collect();
+        (cash, items)
+    };
+    async move {
+        let codes: Vec<String> = items.iter().map(|(c, ..)| c.clone()).collect();
+        let qs = market::get_quotes(codes).await.unwrap_or_default();
+        let qmap: std::collections::HashMap<String, market::Quote> =
+            qs.into_iter().map(|q| (q.code.clone(), q)).collect();
+        let mut mv = 0.0;
+        let mut map = std::collections::HashMap::new();
+        for (code, vol, avail, cost_amount) in &items {
+            let px = match qmap.get(code) {
+                Some(q) if q.price > 0.0 => q.price,
+                _ => *cost_amount / *vol as f64,
+            };
+            mv += px * *vol as f64;
+            map.insert(
+                code.clone(),
+                risk::Position {
+                    vol: *vol,
+                    avail: *avail,
+                },
+            );
+        }
+        Ok(risk::AccountSnapshot {
+            cash,
+            market_value: mv,
+            positions: map,
+        })
+    }
+}
+
+/// 读取历史最高权益（meta，无记录返回 None）。
+pub(crate) fn read_peak(conn: &Connection) -> Option<f64> {
+    conn.query_row(
+        "SELECT value FROM meta WHERE key='risk_peak_equity'",
+        [],
+        |r| {
+            let s: String = r.get(0)?;
+            s.parse::<f64>()
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
+        },
+    )
+    .ok()
+}
+
+/// 构造账户级闸门输入（日亏/连亏读统一账本，峰值取 meta）。
+pub(crate) fn build_account_risk_input(
+    conn: &Connection,
+    equity: f64,
+    peak: Option<f64>,
+    today: &str,
+) -> risk::AccountRiskInput {
+    let base: f64 = conn
+        .query_row("SELECT init_cash FROM paper_account WHERE id=1", [], |r| {
+            r.get(0)
+        })
+        .unwrap_or(0.0);
+    let day_pnl = portfolio::realized_pnl_of_day(conn, today).unwrap_or(0.0);
+    let recent = portfolio::recent_realized(conn, 10).unwrap_or_default();
+    risk::AccountRiskInput {
+        day_realized_pnl: day_pnl,
+        base_equity: base,
+        equity,
+        peak_equity: peak.filter(|v| *v >= equity).unwrap_or(equity),
+        recent_realized: recent,
+    }
+}
+
+/// 取单只标的实时报价构造涨跌停快照（失败返回 None，跳过涨跌停校验）。
+async fn market_snapshot_of(code: &str, name: &str) -> Option<risk::MarketSnapshot> {
+    let qs = market::get_quotes(vec![code.to_string()])
+        .await
+        .unwrap_or_default();
+    qs.into_iter().next().map(|q| {
+        let (up, dn) = market::spider::limit_prices(code, name, q.prev_close);
+        risk::MarketSnapshot {
+            limit_up: Some(up),
+            limit_down: Some(dn),
+        }
+    })
+}
+
+/// 闸门拒绝即写审计（action=risk_rejected），再由调用方上抛错误。
+fn log_gate_reject(conn: &Connection, channel: &str, sig: &str, reason: &str) {
+    audit(conn, sig, "risk_rejected", reason, channel);
+}
+
+/// 风险仪表盘读数：一本账口径，权益 / 仓位 / 集中度 / 当日盈亏 / 回撤 / 板块 / 情绪，峰值落 meta。
 #[tauri::command]
 pub async fn risk_snapshot(
     ai: State<'_, crate::ai::AiState>,
+    mgr: State<'_, BrokerManager>,
 ) -> Result<portfolio::RiskSnapshot, String> {
     let dir = ai.dir();
+    let cfg = config::load(&dir);
+    let today = conditional::today_dashed();
+
+    // 市场上下文：读 60s TTL 缓存，过期才刷新（刷新 await 时不持有任何 guard / conn）。
+    let fresh = mgr.market_ctx.lock().unwrap().2.elapsed() <= std::time::Duration::from_secs(60);
+    if !fresh {
+        let c = crate::ai::intraday::refresh_market_ctx().await;
+        *mgr.market_ctx.lock().unwrap() =
+            (c.market_emotion, c.index_chg, std::time::Instant::now());
+    }
+    let (market_emotion, index_chg) = {
+        let cached = mgr.market_ctx.lock().unwrap();
+        (cached.0, cached.1)
+    };
+
     let init_cash = init_cash_or_default(&dir)?;
     let conn = maindb::open_readwrite(&dir)?;
     portfolio::ensure_account(&conn, init_cash)?;
-    portfolio::settle(&conn, &conditional::today_dashed())?;
+    portfolio::settle(&conn, &today)?;
     let positions = portfolio::load_positions(&conn)?;
     let codes: Vec<String> = positions.iter().map(|p| p.code.clone()).collect();
     let qs = market::get_quotes(codes).await.unwrap_or_default();
-    let price_of: Vec<(String, f64, f64)> =
-        qs.iter().map(|q| (q.code.clone(), q.price, q.prev_close)).collect();
+    let price_of: Vec<(String, f64, f64)> = qs
+        .iter()
+        .map(|q| (q.code.clone(), q.price, q.prev_close))
+        .collect();
 
-    // 历史最高权益持久化在 meta；无记录以 None 传入（峰值=当前权益）。
-    let peak: Option<f64> = conn
-        .query_row(
-            "SELECT value FROM meta WHERE key='risk_peak_equity'",
-            [],
-            |r| {
-                let s: String = r.get(0)?;
-                s.parse::<f64>().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
-            },
-        )
-        .ok();
-    let snap = portfolio::build_risk_snapshot(&conn, &price_of, peak)?;
-    // 创新高则写回。
+    // 历史最高权益（累计 / 日内）持久化在 meta；无记录以 None 传入（峰值=当前权益）。
+    let peak = read_peak(&conn);
+    let day_peak = read_day_peak(&conn, &today);
+    let extras = portfolio::RiskExtras {
+        today: today.clone(),
+        kill_switch: mgr.kill_switch.load(Ordering::SeqCst),
+        market_emotion,
+        index_chg,
+        day_peak,
+        limits: risk::AccountRiskParams::from_config(&cfg),
+        max_total_limit: cfg.max_total_pct,
+        max_single_limit: cfg.max_single_pct,
+    };
+    let snap = portfolio::build_risk_snapshot(&conn, &price_of, peak, &extras)?;
+    // 累计峰值创新高则写回。
     if peak.map(|v| snap.equity > v).unwrap_or(true) {
         conn.execute(
             "INSERT INTO meta(key,value) VALUES('risk_peak_equity',?1)
@@ -410,7 +747,35 @@ pub async fn risk_snapshot(
         )
         .map_err(|e| format!("写入权益峰值失败: {e}"))?;
     }
+    // 日内峰值创新高则写回（key 带日期，无迁移、跨日自然另起）。
+    if day_peak.map(|v| snap.equity > v).unwrap_or(true) {
+        conn.execute(
+            "INSERT INTO meta(key,value) VALUES(?1,?2)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            rusqlite::params![day_peak_key(&today), format!("{:.4}", snap.equity)],
+        )
+        .map_err(|e| format!("写入日内峰值失败: {e}"))?;
+    }
     Ok(snap)
+}
+
+/// 日内峰值 meta key。
+fn day_peak_key(today: &str) -> String {
+    format!("risk_peak_equity_{today}")
+}
+
+/// 读取日内权益峰值（meta key risk_peak_equity_<date>）。
+fn read_day_peak(conn: &Connection, today: &str) -> Option<f64> {
+    conn.query_row(
+        "SELECT value FROM meta WHERE key=?1",
+        rusqlite::params![day_peak_key(today)],
+        |r| {
+            let s: String = r.get(0)?;
+            s.parse::<f64>()
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
+        },
+    )
+    .ok()
 }
 
 /// 委托提交核心：人工命令与条件单自动执行共用同一套风控 / 写单 / 成交推进，不重复实现。
@@ -451,46 +816,111 @@ pub(crate) async fn submit_with_sig(
         return Err(format!("仅可发送已确认单据，当前状态：{tstatus}"));
     }
 
-    // 风控：账户快照统一读 portfolio 账本；行情快照取实时报价构造涨跌停价。
-    let order = risk::RiskOrder { code: code.clone(), side: side.clone(), price, vol };
+    // 风控：账户快照统一读 portfolio 账本（共用 helper）；行情快照取实时报价构造涨跌停价。
+    let order = risk::RiskOrder {
+        code: code.clone(),
+        side: side.clone(),
+        price,
+        vol,
+    };
     let (account, market) = match cfg.kind.as_str() {
         "mock" => {
-            let positions = portfolio::load_positions(&conn)?;
-            // 一次拉全部持仓的报价，构造市值/持仓映射；无价按成本价估值。
-            let codes: Vec<String> = positions.iter().map(|p| p.code.clone()).collect();
-            let qs = market::get_quotes(codes).await.unwrap_or_default();
-            let qmap: std::collections::HashMap<String, market::Quote> =
-                qs.into_iter().map(|q| (q.code.clone(), q)).collect();
-            let mut mv = 0.0;
-            let mut map = std::collections::HashMap::new();
-            for p in &positions {
-                let px = match qmap.get(&p.code) {
-                    Some(q) if q.price > 0.0 => q.price,
-                    _ => p.cost_amount / p.vol as f64,
-                };
-                mv += px * p.vol as f64;
-                map.insert(p.code.clone(), risk::Position { vol: p.vol, avail: p.avail_vol });
-            }
-            let cash: f64 = conn
-                .query_row("SELECT cash FROM paper_account WHERE id=1", [], |r| r.get(0))
-                .unwrap_or(0.0);
+            let account = build_ledger_account(&conn).await?;
             // 委托标的的涨跌停行情快照（昨收取实时报价）。
-            let mk = qmap.get(&code).map(|q| {
-                let (up, dn) = market::spider::limit_prices(&code, &_name, q.prev_close);
-                risk::MarketSnapshot { limit_up: Some(up), limit_down: Some(dn) }
-            });
-            (risk::AccountSnapshot { cash, market_value: mv, positions: map }, mk)
+            let mk = market_snapshot_of(&code, &_name).await;
+            (account, mk)
         }
-        // qmt 账户快照由 sidecar 回报缓存；未同步则拒绝。
-        _ => {
-            return Err("QMT 账户数据尚未同步，请稍后重试（真实联调在后续步骤）".to_string());
+        "qmt" => {
+            // 实盘第一级：必须由用户在设置中显式开启实盘开关。
+            if !cfg.live_enabled {
+                return Err("实盘交易未启用：请先在券商设置中开启实盘开关".to_string());
+            }
+            // 账户快照取 sidecar 最近一次回报缓存；guard 在任何 await 前 drop（future 须 Send）。
+            let (cash, market_value, pos_cache, pos_synced) = {
+                let asset = mgr.asset_cache.lock().unwrap().clone();
+                let cash = asset["cash"].as_f64();
+                let market_value = asset["marketValue"].as_f64();
+                let pos_cache = mgr.position_cache.lock().unwrap().clone();
+                (
+                    cash,
+                    market_value,
+                    pos_cache,
+                    mgr.position_synced.load(Ordering::SeqCst),
+                )
+            };
+            let (Some(cash), Some(market_value)) = (cash, market_value) else {
+                return Err("QMT 资产数据尚未同步，请连接通道后稍后重试".to_string());
+            };
+            if !pos_synced {
+                // 全量回报（哪怕空仓账户的空数组）到达前一律拒绝，保持安全。
+                return Err("QMT 持仓数据尚未同步，请连接通道后稍后重试".to_string());
+            }
+            let positions = pos_cache
+                .iter()
+                .map(|(k, p)| {
+                    (
+                        k.clone(),
+                        risk::Position {
+                            vol: p.vol,
+                            avail: p.avail,
+                        },
+                    )
+                })
+                .collect();
+            let account = risk::AccountSnapshot {
+                cash,
+                market_value,
+                positions,
+            };
+            let mk = market_snapshot_of(&code, &_name).await;
+            (account, mk)
         }
+        other => return Err(format!("暂不支持的券商通道：{other}")),
     };
     let params = risk::RiskParams::from_config(&cfg);
+    let account_params = risk::AccountRiskParams::from_config(&cfg);
+    let equity = account.total_asset();
+    let ai_in = build_account_risk_input(
+        &conn,
+        equity,
+        read_peak(&conn),
+        &conditional::today_dashed(),
+    );
     let (weekday, min_of_day) = risk::beijing_now_weekday_min();
     let phase = risk::phase_of(weekday, min_of_day);
     let allow_anytime = cfg.kind == "mock" && cfg.mock_allow_anytime;
-    risk::check(&order, &account, market, &params, phase, min_of_day, allow_anytime)?;
+    if let Err(reason) = risk::gate(
+        &order,
+        &account,
+        market,
+        &params,
+        &ai_in,
+        &account_params,
+        phase,
+        min_of_day,
+        allow_anytime,
+    ) {
+        log_gate_reject(&conn, &cfg.kind, sig_id, &reason);
+        return Err(reason);
+    }
+
+    // 实盘第一级最小限额：默认 0 = 锁定，须用户显式设置；单笔金额超限拒绝。
+    if cfg.kind == "qmt" {
+        if cfg.live_max_order_amount <= 0.0 {
+            let reason = "实盘已锁定：请先在券商设置中设置单笔金额上限".to_string();
+            log_gate_reject(&conn, &cfg.kind, sig_id, &reason);
+            return Err(reason);
+        }
+        let amount = price * vol as f64;
+        if amount > cfg.live_max_order_amount {
+            let reason = format!(
+                "单笔金额 {amount:.0} 元超过实盘上限 {:.0} 元",
+                cfg.live_max_order_amount
+            );
+            log_gate_reject(&conn, &cfg.kind, sig_id, &reason);
+            return Err(reason);
+        }
+    }
 
     // 写委托
     let account_id = cfg.account_id.clone();
@@ -504,7 +934,10 @@ pub(crate) async fn submit_with_sig(
         "broker",
     );
     checkpoint(&conn);
-    let _ = app.emit("broker:event", serde_json::json!({ "sigId": sig_id, "status": "submitting" }));
+    let _ = app.emit(
+        "broker:event",
+        serde_json::json!({ "sigId": sig_id, "status": "submitting" }),
+    );
 
     match kind.as_str() {
         "mock" => {
@@ -530,7 +963,12 @@ pub(crate) async fn submit_with_sig(
                     "vol": vol,
                 }),
             );
-            let stdin = mgr.sidecar.lock().unwrap().as_ref().map(|h| h.stdin.clone());
+            let stdin = mgr
+                .sidecar
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|h| h.stdin.clone());
             match stdin {
                 Some(s) => sidecar::send_to(&s, req).await?,
                 None => return Err("QMT sidecar 未运行".to_string()),
@@ -549,24 +987,20 @@ pub fn register_co_listener(app: &AppHandle) {
     let h = app.clone();
     app.listen("co:triggered", move |event| {
         let app = h.clone();
-        let ev: crate::market::alert::CoTriggerEvent =
-            match serde_json::from_str(event.payload()) {
-                Ok(e) => e,
-                Err(e) => {
-                    log::error!("co:triggered 载荷解析失败: {e}");
-                    return;
-                }
-            };
+        let ev: crate::market::alert::CoTriggerEvent = match serde_json::from_str(event.payload()) {
+            Ok(e) => e,
+            Err(e) => {
+                log::error!("co:triggered 载荷解析失败: {e}");
+                return;
+            }
+        };
         tauri::async_runtime::spawn(async move {
             let co_id = ev.co_id.clone();
             match handle_co_triggered(&app, ev).await {
                 Ok(()) => {}
                 Err(e) => {
                     log::warn!("条件单 {co_id} 落单处理失败: {e}");
-                    let _ = app.emit(
-                        "co:error",
-                        serde_json::json!({ "coId": co_id, "error": e }),
-                    );
+                    let _ = app.emit("co:error", serde_json::json!({ "coId": co_id, "error": e }));
                 }
             }
         });
@@ -654,6 +1088,7 @@ async fn handle_co_triggered(
 }
 
 /// mock 成交推进脚本：submitted → part_filled(half) → filled。
+/// 急停（kill_switch）或单据已被撤销时立即停止，不得再推进成交/落账。
 async fn mock_run(
     app: &AppHandle,
     dir: &Path,
@@ -663,40 +1098,106 @@ async fn mock_run(
     price: f64,
     vol: i64,
 ) {
+    let halted = || {
+        let mgr = app.state::<BrokerManager>();
+        mgr.kill_switch.load(Ordering::SeqCst)
+    };
+    let cancelled = |dir: &Path| {
+        let conn = match maindb::open_readwrite(dir) {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
+        matches!(
+            conn.query_row(
+                "SELECT status FROM broker_order WHERE sig_id=?1",
+                rusqlite::params![sig_id],
+                |r| r.get::<_, String>(0),
+            )
+            .as_deref(),
+            Ok(protocol::CANCELLED)
+        )
+    };
     tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+    if halted() || cancelled(dir) {
+        return;
+    }
     {
-        let conn = match maindb::open_readwrite(dir) { Ok(c) => c, Err(_) => return };
+        let conn = match maindb::open_readwrite(dir) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
         let bid = format!("MOCK{:07}", now_millis().rem_euclid(10_000_000));
-        let _ = progress(&conn, app, sig_id, protocol::SUBMITTED, None, None, Some(&bid), None, "模拟已报");
+        let _ = progress(
+            &conn,
+            app,
+            sig_id,
+            protocol::SUBMITTED,
+            None,
+            None,
+            Some(&bid),
+            None,
+            "模拟已报",
+        );
     }
     tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+    if halted() || cancelled(dir) {
+        return;
+    }
     let half = (vol / 200) * 100; // 取整到手的半数
     let half = if half > 0 { half } else { vol };
     {
         // 部分成交落统一账本（事务写 paper_account/position/order）
-        let mut conn = match maindb::open_readwrite(dir) { Ok(c) => c, Err(_) => return };
+        let mut conn = match maindb::open_readwrite(dir) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
         let fside = portfolio::Side::parse(side).unwrap_or(portfolio::Side::Buy);
         let req = portfolio::FillReq {
-            code, name: "", side: fside, price, vol: half,
-            sig_id: &format!("{sig_id}-p1"), trade_date: &conditional::today_dashed(),
+            code,
+            name: "",
+            side: fside,
+            price,
+            vol: half,
+            sig_id: &format!("{sig_id}-p1"),
+            trade_date: &conditional::today_dashed(),
             limit_prices: None,
         };
         if let Err(e) = portfolio::apply_fill(&mut conn, &req) {
             log::warn!("模拟部分成交落账失败：{e}");
             return;
         }
-        let _ = progress(&conn, app, sig_id, protocol::PART_FILLED, Some(half), Some(price), None, None,
-            &format!("模拟部分成交 {half}"));
+        let _ = progress(
+            &conn,
+            app,
+            sig_id,
+            protocol::PART_FILLED,
+            Some(half),
+            Some(price),
+            None,
+            None,
+            &format!("模拟部分成交 {half}"),
+        );
     }
     tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+    if halted() || cancelled(dir) {
+        return;
+    }
     let rest = vol - half;
     {
-        let mut conn = match maindb::open_readwrite(dir) { Ok(c) => c, Err(_) => return };
+        let mut conn = match maindb::open_readwrite(dir) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
         if rest > 0 {
             let fside = portfolio::Side::parse(side).unwrap_or(portfolio::Side::Buy);
             let req = portfolio::FillReq {
-                code, name: "", side: fside, price, vol: rest,
-                sig_id: &format!("{sig_id}-p2"), trade_date: &conditional::today_dashed(),
+                code,
+                name: "",
+                side: fside,
+                price,
+                vol: rest,
+                sig_id: &format!("{sig_id}-p2"),
+                trade_date: &conditional::today_dashed(),
                 limit_prices: None,
             };
             if let Err(e) = portfolio::apply_fill(&mut conn, &req) {
@@ -704,8 +1205,17 @@ async fn mock_run(
                 return;
             }
         }
-        let _ = progress(&conn, app, sig_id, protocol::FILLED, Some(vol), Some(price), None, None,
-            &format!("模拟全部成交 {vol}"));
+        let _ = progress(
+            &conn,
+            app,
+            sig_id,
+            protocol::FILLED,
+            Some(vol),
+            Some(price),
+            None,
+            None,
+            &format!("模拟全部成交 {vol}"),
+        );
         auto_done_ticket(&conn, app, sig_id);
     }
 }
@@ -722,7 +1232,17 @@ pub async fn broker_cancel(
     match cfg.kind.as_str() {
         "mock" => {
             let conn = maindb::open_readwrite(&dir)?;
-            let _ = progress(&conn, &app, &sig_id, protocol::CANCELLED, None, None, None, None, "模拟撤单");
+            let _ = progress(
+                &conn,
+                &app,
+                &sig_id,
+                protocol::CANCELLED,
+                None,
+                None,
+                None,
+                None,
+                "模拟撤单",
+            );
             Ok(())
         }
         "qmt" => {
@@ -731,7 +1251,12 @@ pub async fn broker_cancel(
                 "cancel",
                 serde_json::json!({ "client_order_id": sig_id }),
             );
-            let stdin = mgr.sidecar.lock().unwrap().as_ref().map(|h| h.stdin.clone());
+            let stdin = mgr
+                .sidecar
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|h| h.stdin.clone());
             match stdin {
                 Some(s) => sidecar::send_to(&s, req).await,
                 None => Err("QMT sidecar 未运行".to_string()),
@@ -754,8 +1279,10 @@ pub async fn broker_query_asset(
             let positions = portfolio::load_positions(&conn)?;
             let codes: Vec<String> = positions.iter().map(|p| p.code.clone()).collect();
             let qs = market::get_quotes(codes).await.unwrap_or_default();
-            let price_of: Vec<(String, f64, f64)> =
-                qs.iter().map(|q| (q.code.clone(), q.price, q.prev_close)).collect();
+            let price_of: Vec<(String, f64, f64)> = qs
+                .iter()
+                .map(|q| (q.code.clone(), q.price, q.prev_close))
+                .collect();
             let s = portfolio::build_snapshot(&conn, &price_of)?;
             Ok(serde_json::json!({
                 "cash": round2(s.cash),
@@ -772,7 +1299,12 @@ pub async fn broker_query_asset(
                 return Ok(cached);
             }
             // 缓存为空：向 sidecar 发一次 query_asset，前端下次轮询即可拿到回报
-            let stdin = mgr.sidecar.lock().unwrap().as_ref().map(|h| h.stdin.clone());
+            let stdin = mgr
+                .sidecar
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|h| h.stdin.clone());
             if let Some(s) = stdin {
                 let req = sidecar::request("query-asset", "query_asset", serde_json::json!({}));
                 if let Err(e) = sidecar::send_to(&s, req).await {
@@ -788,7 +1320,7 @@ pub async fn broker_query_asset(
 }
 
 #[tauri::command]
-pub fn broker_query_position(
+pub async fn broker_query_position(
     ai: State<'_, crate::ai::AiState>,
     mgr: State<'_, BrokerManager>,
 ) -> Result<serde_json::Value, String> {
@@ -799,14 +1331,45 @@ pub fn broker_query_position(
             let positions = portfolio::load_positions(&conn)?;
             let arr: Vec<_> = positions
                 .iter()
-                .map(|p| serde_json::json!({
-                    "code": p.code, "name": p.name,
-                    "vol": p.vol, "avail": p.avail_vol,
-                }))
+                .map(|p| {
+                    serde_json::json!({
+                        "code": p.code, "name": p.name,
+                        "vol": p.vol, "avail": p.avail_vol,
+                    })
+                })
                 .collect();
             Ok(serde_json::json!({ "positions": arr }))
         }
-        _ => Ok(serde_json::json!({ "note": "QMT 持仓由 sidecar 回报（第 2 步）" })),
+        "qmt" => {
+            if !mgr.position_synced.load(Ordering::SeqCst) {
+                // 未同步：主动向 sidecar 查询，前端下次轮询即可拿到回报
+                let stdin = mgr
+                    .sidecar
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .map(|h| h.stdin.clone());
+                if let Some(s) = stdin {
+                    let req =
+                        sidecar::request("query-position", "query_position", serde_json::json!({}));
+                    let _ = sidecar::send_to(&s, req).await;
+                }
+                return Ok(serde_json::json!({ "note": "正在向 QMT 查询持仓…" }));
+            }
+            let cache = mgr.position_cache.lock().unwrap();
+            let arr: Vec<_> = cache
+                .iter()
+                .map(|(code, p)| {
+                    serde_json::json!({
+                        "code": code, "name": "",
+                        "vol": p.vol, "avail": p.avail,
+                        "cost": p.cost, "marketValue": p.mv,
+                    })
+                })
+                .collect();
+            Ok(serde_json::json!({ "positions": arr }))
+        }
+        other => Ok(serde_json::json!({ "note": format!("暂不支持该券商的持仓查询：{other}") })),
     }
 }
 
@@ -826,7 +1389,8 @@ pub async fn broker_kill_switch(
     };
     if cancel_all {
         if let Some(s) = &stdin {
-            let _ = sidecar::send_to(s, sidecar::request("kill", "kill", serde_json::json!({}))).await;
+            let _ =
+                sidecar::send_to(s, sidecar::request("kill", "kill", serde_json::json!({}))).await;
         }
     }
     if let Some(c) = child {
@@ -834,7 +1398,10 @@ pub async fn broker_kill_switch(
     }
     *mgr.sidecar.lock().unwrap() = None;
     mgr.connected.store(false, Ordering::SeqCst);
-    let _ = app.emit("broker:kill", serde_json::json!({ "cancelAll": cancel_all }));
+    let _ = app.emit(
+        "broker:kill",
+        serde_json::json!({ "cancelAll": cancel_all }),
+    );
     log::error!("Kill Switch 已触发，券商通道断开");
     Ok(if cancel_all {
         "紧急停止：已断开（请在界面确认撤单）".to_string()
@@ -847,6 +1414,122 @@ pub async fn broker_kill_switch(
 pub fn broker_release_kill(mgr: State<'_, BrokerManager>) -> Result<(), String> {
     mgr.kill_switch.store(false, Ordering::SeqCst);
     Ok(())
+}
+
+/// 一键急停（全局唯一实现）：封新委托 → 停自动执行 → 撤全部条件单 → 撤全部在途委托 → 断 sidecar。
+/// 恢复为纯手动：解除 kill → 手动重连 → 手动重启自动执行。
+pub async fn emergency_halt(app: &AppHandle) -> Result<serde_json::Value, String> {
+    let mgr = app.state::<BrokerManager>();
+    // 1) 最先封死新委托。
+    mgr.kill_switch.store(true, Ordering::SeqCst);
+
+    // 2) 停止自动执行器（running=false 且配置 enabled=false，防止误触启动循环）。
+    if let Some(ctl) = app.try_state::<std::sync::Arc<crate::ai::autoexec::AutoExecCtl>>() {
+        ctl.running.store(false, Ordering::SeqCst);
+        if let Ok(mut cfg) = ctl.config.lock() {
+            cfg.enabled = false;
+        }
+    }
+
+    let dir = app.state::<crate::ai::AiState>().dir();
+
+    // 3)+4) 同步收集：撤条件单数量、在途委托列表；随后 drop 连接再做异步撤单（保证 future Send）。
+    let (co_count, in_flight): (i64, Vec<(String, String)>) = {
+        let conn = maindb::open_readwrite(&dir)?;
+        let co_count = conditional::cancel_all(&conn).unwrap_or(0);
+        // 在途：已报/部分成交；含刚提交未回报的 submitting。
+        let mut in_flight: Vec<(String, String)> = Vec::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT sig_id, broker_kind FROM broker_order
+             WHERE status IN ('submitting','submitted','part_filled')",
+        ) {
+            if let Ok(rows) =
+                stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            {
+                in_flight = rows.flatten().collect();
+            }
+        }
+        (co_count, in_flight)
+    };
+
+    let order_count = in_flight.len() as i64;
+    // QMT：逐笔发撤单（sidecar 稍后统一断开）。先取出 stdin 并释放锁，避免 guard 跨 await。
+    let qmt_stdin: Option<_> = mgr
+        .sidecar
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|h| h.stdin.clone());
+    if let Some(stdin) = &qmt_stdin {
+        for (sig_id, broker) in &in_flight {
+            if broker == "qmt" {
+                let req = sidecar::request(
+                    &format!("halt-cancel-{sig_id}"),
+                    "cancel",
+                    serde_json::json!({ "client_order_id": sig_id }),
+                );
+                let _ = sidecar::send_to(stdin, req).await;
+            }
+        }
+    }
+
+    // 本地统一标记撤单（mock 直接生效；QMT sidecar 最终状态回报可覆盖）。
+    {
+        let conn = maindb::open_readwrite(&dir)?;
+        for (sig_id, _broker) in &in_flight {
+            let _ = progress(
+                &conn,
+                app,
+                sig_id,
+                protocol::CANCELLED,
+                None,
+                None,
+                None,
+                Some("紧急停止撤单"),
+                "紧急停止：撤全部在途委托",
+            );
+        }
+        audit(
+            &conn,
+            "EMERGENCY_HALT",
+            "emergency_halt",
+            &format!("急停：撤条件单 {co_count} 笔、在途委托 {order_count} 笔"),
+            "user",
+        );
+        checkpoint(&conn);
+    }
+
+    // 5) 断开 sidecar（先发 kill 兜底，再杀进程）。
+    let (stdin, child) = {
+        let opt = mgr.sidecar.lock().unwrap();
+        match opt.as_ref() {
+            Some(h) => (Some(h.stdin.clone()), Some(h.child.clone())),
+            None => (None, None),
+        }
+    };
+    if let Some(s) = &stdin {
+        let _ = sidecar::send_to(
+            s,
+            sidecar::request("halt-kill", "kill", serde_json::json!({})),
+        )
+        .await;
+    }
+    if let Some(c) = child {
+        let _ = c.lock().await.kill().await;
+    }
+    *mgr.sidecar.lock().unwrap() = None;
+    mgr.connected.store(false, Ordering::SeqCst);
+
+    let payload = serde_json::json!({ "coCount": co_count, "orderCount": order_count });
+    let _ = app.emit("broker:kill", serde_json::json!({ "cancelAll": true }));
+    let _ = app.emit("risk:halted", &payload);
+    log::error!("一键急停已触发：撤条件单 {co_count}、在途委托 {order_count}，交易通道全锁定");
+    Ok(payload)
+}
+
+#[tauri::command]
+pub async fn broker_emergency_halt(app: AppHandle) -> Result<serde_json::Value, String> {
+    emergency_halt(&app).await
 }
 
 #[tauri::command]

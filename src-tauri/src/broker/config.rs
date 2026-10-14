@@ -28,6 +28,29 @@ pub struct BrokerConfig {
     pub mock_allow_anytime: bool,
     /// mock 模式初始资金。
     pub mock_init_cash: f64,
+    // ===== v3.0.0-rc 账户级风控阈值（全通道唯一事实源）=====
+    /// 单日亏损限制（%），当日已实现亏损超过即停开新仓。
+    #[serde(default = "default_daily_loss")]
+    pub daily_loss_limit_pct: f64,
+    /// 累计回撤限制（%），从权益峰值回撤超过即停开新仓。
+    #[serde(default = "default_drawdown")]
+    pub max_drawdown_limit_pct: f64,
+    /// 连续亏损笔数限制，达到即暂停开新仓。
+    #[serde(default = "default_consecutive")]
+    pub consecutive_loss_limit: i32,
+    /// 实盘单笔金额上限（绝对值硬兜底）；0 = 实盘锁定，须显式设置才放开。
+    #[serde(default)]
+    pub live_max_order_amount: f64,
+}
+
+fn default_daily_loss() -> f64 {
+    5.0
+}
+fn default_drawdown() -> f64 {
+    20.0
+}
+fn default_consecutive() -> i32 {
+    3
 }
 
 impl Default for BrokerConfig {
@@ -44,6 +67,10 @@ impl Default for BrokerConfig {
             fee_pct: 0.1,
             mock_allow_anytime: true,
             mock_init_cash: 1_000_000.0,
+            daily_loss_limit_pct: 5.0,
+            max_drawdown_limit_pct: 20.0,
+            consecutive_loss_limit: 3,
+            live_max_order_amount: 0.0,
         }
     }
 }
@@ -100,7 +127,8 @@ mod tests {
 
     #[test]
     fn missing_file_yields_default() {
-        let dir = std::env::temp_dir().join(format!("tickgold-broker-missing-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("tickgold-broker-missing-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(load(&dir).kind, "mock");

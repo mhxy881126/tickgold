@@ -39,28 +39,26 @@ pub(crate) fn open_app_browser(app: &tauri::AppHandle, url: &url::Url) {
     }
     // 新建窗口：webview 直接加载外链
     let browser_handle = app.clone();
-    let mut builder = WebviewWindowBuilder::new(
-        app,
-        APP_BROWSER_LABEL,
-        WebviewUrl::External(url.clone()),
-    )
-    .title(title)
-    .inner_size(1100.0, 780.0)
-    .min_inner_size(720.0, 520.0)
-    .resizable(true)
-    .on_new_window(move |u, _features| {
-        // 页面内 target=_blank / window.open：复用同一内置浏览器窗口导航
-        open_app_browser(&browser_handle, &u);
-        tauri::webview::NewWindowResponse::Deny
-    })
-    .on_document_title_changed(|w, t| {
-        if !t.is_empty() {
-            let _ = w.set_title(&t);
-        }
-    });
+    let mut builder =
+        WebviewWindowBuilder::new(app, APP_BROWSER_LABEL, WebviewUrl::External(url.clone()))
+            .title(title)
+            .inner_size(1100.0, 780.0)
+            .min_inner_size(720.0, 520.0)
+            .resizable(true)
+            .on_new_window(move |u, _features| {
+                // 页面内 target=_blank / window.open：复用同一内置浏览器窗口导航
+                open_app_browser(&browser_handle, &u);
+                tauri::webview::NewWindowResponse::Deny
+            })
+            .on_document_title_changed(|w, t| {
+                if !t.is_empty() {
+                    let _ = w.set_title(&t);
+                }
+            });
     // WebView2 自身网络在本机被安全软件拦截（白屏），强制其走 Rust 端本地代理出站；
     // 代理 CONNECT 隧道从 tickgold 进程直接发起 TCP，与 reqwest 同一通道（已验证可用）。
-    if let Some(proxy_port) = app.try_state::<std::sync::Mutex<Option<u16>>>()
+    if let Some(proxy_port) = app
+        .try_state::<std::sync::Mutex<Option<u16>>>()
         .and_then(|s| s.lock().ok().and_then(|g| *g))
     {
         let args = format!("--proxy-server=127.0.0.1:{proxy_port} --disable-quic");
@@ -176,6 +174,19 @@ pub(crate) fn init(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
         }) {
             log::warn!("全局快捷键 Alt+S 注册失败（信号确认桥唤起键不可用）: {e}");
         }
+        // v3.0.0-rc 一键急停：Ctrl+Alt+K，零确认立即全撤；被占用仅 warn。
+        if let Err(e) = gsc.on_shortcut("Ctrl+Alt+K", |app, _sc, event: ShortcutEvent| {
+            if event.state() == ShortcutState::Pressed {
+                let h = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = broker::emergency_halt(&h).await {
+                        log::error!("快捷键急停执行失败: {e}");
+                    }
+                });
+            }
+        }) {
+            log::warn!("全局快捷键 Ctrl+Alt+K 注册失败（一键急停快捷键不可用）: {e}");
+        }
     }
     // ===== v1.9 AI 边车库初始化 + data_dir 状态就位 =====
     {
@@ -189,8 +200,12 @@ pub(crate) fn init(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
         app.state::<ai::AiState>().inner().set_dir(dir.clone());
 
         // ===== v2.6 券商 / 插件：按数据目录加载配置、建插件目录 =====
-        app.state::<broker::BrokerManager>().inner().init_with_dir(&dir);
-        app.state::<plugin::PluginManager>().inner().init_with_dir(&dir);
+        app.state::<broker::BrokerManager>()
+            .inner()
+            .init_with_dir(&dir);
+        app.state::<plugin::PluginManager>()
+            .inner()
+            .init_with_dir(&dir);
 
         // v2.23 高阶盯盘：注册条件单触发监听（落信号票；模拟盘可自动确认提交）
         broker::register_co_listener(app.handle());
@@ -283,30 +298,31 @@ pub(crate) fn init(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
     //   ─────────
     //   关于 TickGold
     //   退出 TickGold
-    let main_item =
-        CheckMenuItem::with_id(app, "toggle_main", "主窗口", true, true, None::<&str>)?;
-    let island_item = CheckMenuItem::with_id(
-        app,
-        "toggle_island",
-        "灵动岛",
-        true,
-        true,
-        None::<&str>,
-    )?;
+    let main_item = CheckMenuItem::with_id(app, "toggle_main", "主窗口", true, true, None::<&str>)?;
+    let island_item =
+        CheckMenuItem::with_id(app, "toggle_island", "灵动岛", true, true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let settings_item = MenuItem::with_id(app, "open_settings", "设置…", true, None::<&str>)?;
-    let pause_item = CheckMenuItem::with_id(app, "pause_alert", "暂停预警", true, false, None::<&str>)?;
+    let pause_item =
+        CheckMenuItem::with_id(app, "pause_alert", "暂停预警", true, false, None::<&str>)?;
     let update_item = MenuItem::with_id(app, "check_update", "检查更新…", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let about_item = MenuItem::with_id(app, "about", "关于 TickGold", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出 TickGold", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[
-        &main_item, &island_item,
-        &sep1,
-        &settings_item, &pause_item, &update_item,
-        &sep2,
-        &about_item, &quit,
-    ])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &main_item,
+            &island_item,
+            &sep1,
+            &settings_item,
+            &pause_item,
+            &update_item,
+            &sep2,
+            &about_item,
+            &quit,
+        ],
+    )?;
 
     let _main_c = main_item.clone();
     let _island_c = island_item.clone();
@@ -316,7 +332,10 @@ pub(crate) fn init(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
     let island_c = island_item.clone();
     let main_c2 = main_item.clone();
 
-    let tray_icon = app.default_window_icon().cloned().expect("no default window icon");
+    let tray_icon = app
+        .default_window_icon()
+        .cloned()
+        .expect("no default window icon");
     TrayIconBuilder::with_id("main-tray")
         .icon(tray_icon)
         .tooltip("TickGold · 金睛盯盘\n左键：显示/隐藏主窗口")

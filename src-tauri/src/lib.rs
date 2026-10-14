@@ -24,7 +24,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         // 预警/提醒仅允许应用内 Toast，不注册系统通知插件，杜绝电脑弹窗
         .plugin(tauri_plugin_autostart::init(
@@ -190,6 +189,7 @@ pub fn run() {
             broker::broker_query_asset,
             broker::broker_query_position,
             broker::broker_kill_switch,
+            broker::broker_emergency_halt,
             broker::broker_release_kill,
             broker::mock_seed_position,
             broker::mock_reset,

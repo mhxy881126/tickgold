@@ -1,8 +1,8 @@
 // 自动执行器：盘中 5s 循环，对盯盘对象走「信号 → 风控闸门 → 模拟盘撮合 → 决策日志」闭环。
 // 模拟盘全自动；实盘只 emit 信号到灵动岛 / 决策条由人工确认，不接券商。硬止损绕过快脑强制执行。
+use crate::ai::bridge;
 use crate::ai::fastbrain::{self, FastDecision, RULE_MODEL_VERSION};
 use crate::ai::intraday::{self, IntradayInput, MarketCtx};
-use crate::ai::bridge;
 use crate::ai::maindb;
 use crate::market::spider;
 use crate::market::{self, Quote};
@@ -12,39 +12,39 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// 自动执行参数（前端可改）。
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AutoExecConfig {
     pub enabled: bool,
-    pub brain_mode: String,   // rule / laya
+    pub brain_mode: String, // rule / laya
     pub laya_url: String,
-    pub hard_stop_pct: f64,   // -7
-    pub exec_confidence: f64, // 0.75
-    pub watch_confidence: f64,// 0.55
-    pub slippage_pct: f64,    // 0.1
-    pub max_single_pct: f64,  // 单票占总资产上限
-    pub max_total_pct: f64,   // 总仓位上限
-    pub no_open_after: String,// 14:55 后禁开仓
+    pub hard_stop_pct: f64,    // -7
+    pub exec_confidence: f64,  // 0.75
+    pub watch_confidence: f64, // 0.55
+    pub slippage_pct: f64,     // 0.1
+    pub max_single_pct: f64,   // 单票占总资产上限
+    pub max_total_pct: f64,    // 总仓位上限
+    pub no_open_after: String, // 14:55 后禁开仓
     // ===== 新增风控 =====
-    pub daily_loss_limit_pct: f64,  // 单日亏损限制（%），今天亏了超过就停止交易
+    pub daily_loss_limit_pct: f64, // 单日亏损限制（%），今天亏了超过就停止交易
     pub max_drawdown_limit_pct: f64, // 最大回撤限制（%），从最高点跌了超过就清仓
-    pub consecutive_loss_limit: i32,  // 连续亏损暂停（笔数），连亏X笔就暂停
+    pub consecutive_loss_limit: i32, // 连续亏损暂停（笔数），连亏X笔就暂停
     // ===== 全自动模式 =====
-    pub full_auto_mode: bool,       // 全自动模式：所有信号都直接下单，不用人工确认
+    pub full_auto_mode: bool, // 全自动模式：所有信号都直接下单，不用人工确认
     // ===== 交易模式（新）=====
-    pub trade_mode: String,         // semi（半自动）/ full（全自动）/ manual（人工确认）
+    pub trade_mode: String, // semi（半自动）/ full（全自动）/ manual（人工确认）
     // ===== 信号桥 =====
-    pub bridge_enabled: bool,         // 信号人工确认桥开关（不自动下单）
-    pub bridge_default_broker: String,// 目标券商软件名
-    pub bridge_broker_path: String,   // 券商可执行/应用路径（空=不唤起）
-    pub bridge_default_action: String,// 默认动作 copy/export/hotkey
-    pub bridge_ttl_minutes: i64,      // 待确认信号有效期（分钟）
-    pub bridge_price_deviate_pct: f64,// 参考价偏离提示阈值（%）
-    pub bridge_order_template: String,  // 自定义下单指令模板（空=内置默认）
-    pub indicators_enabled: std::collections::HashMap<String, bool>,  // 规则脑指标开关
+    pub bridge_enabled: bool,          // 信号人工确认桥开关（不自动下单）
+    pub bridge_default_broker: String, // 目标券商软件名
+    pub bridge_broker_path: String,    // 券商可执行/应用路径（空=不唤起）
+    pub bridge_default_action: String, // 默认动作 copy/export/hotkey
+    pub bridge_ttl_minutes: i64,       // 待确认信号有效期（分钟）
+    pub bridge_price_deviate_pct: f64, // 参考价偏离提示阈值（%）
+    pub bridge_order_template: String, // 自定义下单指令模板（空=内置默认）
+    pub indicators_enabled: std::collections::HashMap<String, bool>, // 规则脑指标开关
     /// RuleBrain 因子权重覆盖；默认空=内置权重。只允许由 tuning_proposal 人工批准写入，
     /// 回测/寻优本身不得直接改此字段（v2.30 进化回灌护栏）。
     #[serde(default)]
@@ -65,13 +65,13 @@ impl Default for AutoExecConfig {
             max_total_pct: 80.0,
             no_open_after: "14:55".to_string(),
             // ===== 新增风控默认值 =====
-            daily_loss_limit_pct: 5.0,      // 单日亏 5% 就停止
-            max_drawdown_limit_pct: 20.0,    // 最大回撤 20% 就清仓
-            consecutive_loss_limit: 3,        // 连亏 3 笔就暂停
+            daily_loss_limit_pct: 5.0,    // 单日亏 5% 就停止
+            max_drawdown_limit_pct: 20.0, // 最大回撤 20% 就清仓
+            consecutive_loss_limit: 3,    // 连亏 3 笔就暂停
             // ===== 全自动模式默认值 =====
-            full_auto_mode: false,           // 默认关闭全自动模式
+            full_auto_mode: false, // 默认关闭全自动模式
             // ===== 交易模式默认值 =====
-            trade_mode: "semi".to_string(),   // 默认半自动模式
+            trade_mode: "semi".to_string(), // 默认半自动模式
             // ===== 信号桥 =====
             bridge_enabled: false,
             bridge_default_broker: "同花顺".to_string(),
@@ -89,11 +89,24 @@ impl Default for AutoExecConfig {
 /// 规则脑 12 个指标默认全启用。
 fn default_indicators() -> std::collections::HashMap<String, bool> {
     let m: std::collections::HashMap<String, bool> = [
-        ("pct", true), ("speed5m", true), ("volumeRatio", true), ("turnover", true),
-        ("distToLimit", true), ("pullback", true), ("blastCount", true), ("marketEmotion", true),
-        ("indexChg", true), ("themeRank", true), ("catalystFreshness", true), ("mainNetInflowYi", true),
-        ("macdHist", true), ("rsi14", true),
-    ].iter().map(|(k, v)| (k.to_string(), *v)).collect();
+        ("pct", true),
+        ("speed5m", true),
+        ("volumeRatio", true),
+        ("turnover", true),
+        ("distToLimit", true),
+        ("pullback", true),
+        ("blastCount", true),
+        ("marketEmotion", true),
+        ("indexChg", true),
+        ("themeRank", true),
+        ("catalystFreshness", true),
+        ("mainNetInflowYi", true),
+        ("macdHist", true),
+        ("rsi14", true),
+    ]
+    .iter()
+    .map(|(k, v)| (k.to_string(), *v))
+    .collect();
     m
 }
 
@@ -174,7 +187,10 @@ fn now_hms() -> String {
 }
 
 // 费用统一走 broker::portfolio::calc_fee（全应用唯一口径，禁止再本地复制一份）。
+// v3.0.0-rc：账户级/订单级风控统一走 broker::risk 闸门，禁止本地再实现日亏/连亏判断。
+use crate::broker::config as broker_config;
 use crate::broker::portfolio::{self, Side};
+use crate::broker::risk;
 
 fn parse_hint(s: &str) -> f64 {
     let mut num = String::new();
@@ -222,9 +238,9 @@ fn collect_watch(conn: &Connection) -> Vec<WatchItem> {
     }
 
     if let Ok(mut stmt) = conn.prepare("SELECT code,name FROM paper_position WHERE vol>0") {
-        if let Ok(rows) = stmt.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-        }) {
+        if let Ok(rows) =
+            stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        {
             for row in rows.flatten() {
                 let (code, name) = row;
                 map.entry(code.clone()).or_insert(WatchItem {
@@ -265,8 +281,10 @@ fn load_positions(conn: &Connection) -> HashMap<String, PosInfo> {
 }
 
 fn load_cash(conn: &Connection) -> f64 {
-    conn.query_row("SELECT cash FROM paper_account WHERE id=1", [], |r| r.get(0))
-        .unwrap_or(1_000_000.0)
+    conn.query_row("SELECT cash FROM paper_account WHERE id=1", [], |r| {
+        r.get(0)
+    })
+    .unwrap_or(1_000_000.0)
 }
 
 fn positions_mv(positions: &HashMap<String, PosInfo>, qmap: &HashMap<String, Quote>) -> f64 {
@@ -336,62 +354,15 @@ fn can_open_now(cfg: &AutoExecConfig) -> bool {
     cur < limit
 }
 
-/// 风控检查：单日亏损限制
-fn check_risk_controls(
-    conn: &rusqlite::Connection,
-    cfg: &AutoExecConfig,
-) -> Result<(), String> {
-    // 检查单日亏损限制（统一账本 paper_order.realized_pnl，不再查幽灵表 trades/account）
-    let today = today_dashed();
-    let today_pnl = portfolio::realized_pnl_of_day(conn, &today).unwrap_or(0.0);
-    let initial_cash: f64 = conn
-        .query_row("SELECT init_cash FROM paper_account WHERE id=1", [], |r| r.get(0))
-        .unwrap_or(1_000_000.0);
-
-    // 计算单日亏损百分比
-    let daily_loss_pct = if initial_cash > 0.0 {
-        today_pnl / initial_cash * 100.0
-    } else {
-        0.0
-    };
-
-    // 如果单日亏损超过限制，就停止开新仓
-    if daily_loss_pct < -cfg.daily_loss_limit_pct {
-        return Err(format!(
-            "单日亏损 {:.2}% 超过限制 {}%，停止开新仓",
-            daily_loss_pct, cfg.daily_loss_limit_pct
-        ));
-    }
-
-    // 检查连续亏损暂停：最近的卖出单是否连续亏损
-    let recent_sells = portfolio::recent_realized(conn, 10).unwrap_or_default();
-
-    let mut consecutive_losses = 0;
-    for pnl in recent_sells {
-        if pnl < 0.0 {
-            consecutive_losses += 1;
-        } else {
-            break; // 遇到盈利的卖出就停止计数
-        }
-    }
-
-    if consecutive_losses >= cfg.consecutive_loss_limit {
-        return Err(format!(
-            "连续亏损 {} 笔，达到限制 {} 笔，暂停开新仓",
-            consecutive_losses, cfg.consecutive_loss_limit
-        ));
-    }
-
-    Ok(())
-}
-
 // ===== 模拟盘撮合 =====
 
+#[allow(clippy::too_many_arguments)]
 fn paper_buy(
     conn: &mut Connection,
     item: &WatchItem,
     q: &Quote,
     cfg: &AutoExecConfig,
+    bcfg: &broker_config::BrokerConfig,
     total_asset: f64,
     cash: f64,
     total_pos_pct: f64,
@@ -408,10 +379,11 @@ fn paper_buy(
     if held > 0.0 {
         return Err(format!("已持仓 {}，跳过重复开仓", item.code));
     }
+    // 仓位上限事实源为 BrokerConfig（全通道唯一），AutoExecConfig 旧字段不再作依据。
     let target_pct = item
         .position_hint_pct
-        .min(cfg.max_single_pct)
-        .min((cfg.max_total_pct - total_pos_pct).max(0.0));
+        .min(bcfg.max_single_pct)
+        .min((bcfg.max_total_pct - total_pos_pct).max(0.0));
     if target_pct <= 0.0 {
         return Err(format!("仓位上限已满（总仓{:.0}%）", total_pos_pct));
     }
@@ -435,6 +407,28 @@ fn paper_buy(
             target_pct, cash, fill
         ));
     }
+    // 订单级统一闸门（时段由 can_open_now 负责，此处 allow_anytime=true 不重复拦截；
+    // 市场涨跌停缺省跳过，与自动撮合既有口径一致）。
+    let order = risk::RiskOrder {
+        code: item.code.clone(),
+        side: "BUY".into(),
+        price: fill,
+        vol,
+    };
+    let account = risk::AccountSnapshot {
+        cash,
+        market_value: (total_asset - cash).max(0.0),
+        positions: std::collections::HashMap::new(),
+    };
+    risk::check(
+        &order,
+        &account,
+        None,
+        &risk::RiskParams::from_config(bcfg),
+        risk::Phase::Morning,
+        0,
+        true,
+    )?;
     // 落账统一走 portfolio（事务内写 账户/持仓/成交，费用/T+1 同口径）
     let oid = format!("AI{}{}", now_millis(), item.code);
     let req = portfolio::FillReq {
@@ -448,7 +442,10 @@ fn paper_buy(
         limit_prices: None,
     };
     portfolio::apply_fill(conn, &req)?;
-    Ok(format!("买入 {} {}股 @{:.2}（含费{:.1}）", item.name, vol, fill, fee))
+    Ok(format!(
+        "买入 {} {}股 @{:.2}（含费{:.1}）",
+        item.name, vol, fill, fee
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -458,14 +455,46 @@ fn paper_sell(
     name: &str,
     q: &Quote,
     cfg: &AutoExecConfig,
+    bcfg: &broker_config::BrokerConfig,
     pos: PosInfo,
     sell_vol: i64,
+    // 硬止损传 None（跳过跌停拦截，保证离场永不锁死）；快脑卖出传实时涨跌停。
+    market: Option<risk::MarketSnapshot>,
 ) -> Result<String, String> {
     let fill = (q.price * (1.0 - cfg.slippage_pct / 100.0)).max(0.001);
     let vol = sell_vol.min(pos.avail).min(pos.vol);
     if vol <= 0 {
         return Err("无可卖（T+1，当日买入不可卖）".to_string());
     }
+    // 订单级闸门：SELL 只做价格/可用持仓/涨跌停校验，账户级熔断永不拦卖出。
+    let order = risk::RiskOrder {
+        code: code.to_string(),
+        side: "SELL".into(),
+        price: fill,
+        vol,
+    };
+    let mut positions = std::collections::HashMap::new();
+    positions.insert(
+        code.to_string(),
+        risk::Position {
+            vol: pos.vol,
+            avail: pos.avail,
+        },
+    );
+    let account = risk::AccountSnapshot {
+        cash: 0.0,
+        market_value: 0.0,
+        positions,
+    };
+    risk::check(
+        &order,
+        &account,
+        market,
+        &risk::RiskParams::from_config(bcfg),
+        risk::Phase::Afternoon,
+        0,
+        true,
+    )?;
     let amount = fill * vol as f64;
     let fee = portfolio::calc_fee(Side::Sell, amount);
     // 落账统一走 portfolio（含已实现盈亏 realized_pnl 记录）
@@ -540,7 +569,11 @@ fn emit_signal(
             session: crate::ai::signal_quality::session_of(&now_hms()).to_string(),
             theme: String::new(),
             factors: None,
-            side: if d.label == "SELL" { "sell".to_string() } else { "buy".to_string() },
+            side: if d.label == "SELL" {
+                "sell".to_string()
+            } else {
+                "buy".to_string()
+            },
         },
     )
     .ok();
@@ -618,6 +651,8 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
         if !cfg.enabled {
             continue;
         }
+        // 账户级/订单级阈值唯一事实源：BrokerConfig（broker_config.json）。
+        let bcfg = broker_config::load(&data_dir);
 
         // ===== 自动复盘：每天收盘后（15:30 之后）自动运行一次（暂时注释，先确保编译通过）=====
         // let today = today_dashed();
@@ -640,6 +675,11 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
         if last_ctx.elapsed() > Duration::from_secs(45) {
             ctx = intraday::refresh_market_ctx().await;
             last_ctx = Instant::now();
+            // 写入 BrokerManager 共享缓存（与风险仪表盘同一事实源，TTL 60s）。
+            if let Some(mgr) = app.try_state::<crate::broker::BrokerManager>() {
+                *mgr.market_ctx.lock().unwrap() =
+                    (ctx.market_emotion, ctx.index_chg, Instant::now());
+            }
         }
 
         // 读：盯盘对象 / 持仓 / 现金
@@ -668,7 +708,8 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                 continue;
             }
         };
-        let qmap: HashMap<String, Quote> = quotes.into_iter().map(|q| (q.code.clone(), q)).collect();
+        let qmap: HashMap<String, Quote> =
+            quotes.into_iter().map(|q| (q.code.clone(), q)).collect();
         for (c, q) in &qmap {
             push_price(&mut hist, c, q.price);
         }
@@ -686,6 +727,17 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
             Err(_) => continue,
         };
         ensure_rule_model(&conn);
+
+        // 账户级闸门每轮只算一次（日亏/回撤/连亏），BUY 定 vol 之前先行判定。
+        let today = today_dashed();
+        let ai_in = crate::broker::build_account_risk_input(
+            &conn,
+            total_asset,
+            crate::broker::read_peak(&conn),
+            &today,
+        );
+        let account_params = risk::AccountRiskParams::from_config(&bcfg);
+        let risk_ok = risk::check_account(&ai_in, &account_params).is_ok();
 
         for item in &watch {
             let Some(q) = qmap.get(&item.code) else {
@@ -717,28 +769,43 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                         infer_ms: 0.0,
                         factor_contributions: Value::Null,
                     };
-                    match paper_sell(&mut conn, &item.code, &item.name, q, &cfg, p, p.vol) {
+                    match paper_sell(
+                        &mut conn, &item.code, &item.name, q, &cfg, &bcfg, p, p.vol, None,
+                    ) {
                         Ok(msg) => {
                             log_decision(&conn, item, &d, "executed", &features, true);
                             emit_signal(&app, &data_dir, item, &d, "executed", &msg, &features);
-                            bridge_push(&app, &conn, &cfg, bridge::SignalInput {
-                                code: item.code.clone(),
-                                name: item.name.clone(),
-                                side: "SELL".to_string(),
-                                source: "hardstop".to_string(),
-                                model_version: d.model_version.clone(),
-                                strategy: item.strategy.clone(),
-                                confidence: d.confidence,
-                                ref_price: q.price,
-                                vol: p.vol,
-                                reason: format!("硬止损：{msg}"),
-                                trade_date: today_dashed(),
-                            });
+                            bridge_push(
+                                &app,
+                                &conn,
+                                &cfg,
+                                bridge::SignalInput {
+                                    code: item.code.clone(),
+                                    name: item.name.clone(),
+                                    side: "SELL".to_string(),
+                                    source: "hardstop".to_string(),
+                                    model_version: d.model_version.clone(),
+                                    strategy: item.strategy.clone(),
+                                    confidence: d.confidence,
+                                    ref_price: q.price,
+                                    vol: p.vol,
+                                    reason: format!("硬止损：{msg}"),
+                                    trade_date: today_dashed(),
+                                },
+                            );
                         }
                         Err(e) => {
                             log_decision(&conn, item, &d, "watch", &features, true);
                             if can_fire(&mut fire_hist, &item.code) {
-                                emit_signal(&app, &data_dir, item, &d, "watch", &format!("硬止损命中但{e}，请人工处理"), &features);
+                                emit_signal(
+                                    &app,
+                                    &data_dir,
+                                    item,
+                                    &d,
+                                    "watch",
+                                    &format!("硬止损命中但{e}，请人工处理"),
+                                    &features,
+                                );
                             }
                         }
                     }
@@ -774,52 +841,90 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                 let aidb = crate::ai::vectordb::open(&data_dir.join("ai.db")).ok();
                 aidb.as_ref().and_then(|db| {
                     let ai_cfg = crate::ai::config::load_config(&db.0).ok()?;
-                    let key = crate::ai::config::SecretStore::get(&crate::ai::config::KeyringSecret {
-                        service: "tickgold.ai.cloud-key".to_string(),
-                        user: "default".to_string(),
-                    }).ok().flatten()?;
+                    let key =
+                        crate::ai::config::SecretStore::get(&crate::ai::config::KeyringSecret {
+                            service: "tickgold.ai.cloud-key".to_string(),
+                            user: "default".to_string(),
+                        })
+                        .ok()
+                        .flatten()?;
                     Some((ai_cfg.base_url, key, ai_cfg.chat_model))
                 })
-            } else { None };
-            let d = fastbrain::fast_decide(pack, &cfg.brain_mode, &cfg.laya_url, cloud, Some(&cfg.indicators_enabled), Some(&cfg.weight_overrides)).await;
+            } else {
+                None
+            };
+            let d = fastbrain::fast_decide(
+                pack,
+                &cfg.brain_mode,
+                &cfg.laya_url,
+                cloud,
+                Some(&cfg.indicators_enabled),
+                Some(&cfg.weight_overrides),
+            )
+            .await;
 
             match d.label.as_str() {
                 "BUY" if pos.is_none() => {
-                    // 风控检查：单日亏损限制
-                    let risk_ok = check_risk_controls(&conn, &cfg).is_ok();
+                    // risk_ok 为本轮统一计算的账户级闸门结果（日亏/回撤/连亏）。
 
                     // 根据交易模式决定行为
                     let should_auto_buy = match cfg.trade_mode.as_str() {
-                        "full" => d.confidence >= cfg.watch_confidence && can_open_now(&cfg) && risk_ok,
-                        "semi" => d.confidence >= cfg.exec_confidence && can_open_now(&cfg) && risk_ok,
+                        "full" => {
+                            d.confidence >= cfg.watch_confidence && can_open_now(&cfg) && risk_ok
+                        }
+                        "semi" => {
+                            d.confidence >= cfg.exec_confidence && can_open_now(&cfg) && risk_ok
+                        }
                         "manual" => false, // 人工确认模式：不自动下单
                         _ => d.confidence >= cfg.exec_confidence && can_open_now(&cfg) && risk_ok,
                     };
 
                     if should_auto_buy {
-                        match paper_buy(&mut conn, item, q, &cfg, total_asset, cash, total_pos_pct) {
+                        match paper_buy(
+                            &mut conn,
+                            item,
+                            q,
+                            &cfg,
+                            &bcfg,
+                            total_asset,
+                            cash,
+                            total_pos_pct,
+                        ) {
                             Ok(msg) => {
                                 log_decision(&conn, item, &d, "executed", &features, false);
                                 emit_signal(&app, &data_dir, item, &d, "executed", &msg, &features);
-                                let budget = total_asset * cfg.max_single_pct / 100.0;
-                                bridge_push(&app, &conn, &cfg, bridge::SignalInput {
-                                    code: item.code.clone(),
-                                    name: item.name.clone(),
-                                    side: "BUY".to_string(),
-                                    source: "fastbrain".to_string(),
-                                    model_version: d.model_version.clone(),
-                                    strategy: item.strategy.clone(),
-                                    confidence: d.confidence,
-                                    ref_price: q.price,
-                                    vol: bridge::suggest_buy_vol(q.price, budget),
-                                    reason: format!("快脑买入：{msg}"),
-                                    trade_date: today_dashed(),
-                                });
+                                let budget = total_asset * bcfg.max_single_pct / 100.0;
+                                bridge_push(
+                                    &app,
+                                    &conn,
+                                    &cfg,
+                                    bridge::SignalInput {
+                                        code: item.code.clone(),
+                                        name: item.name.clone(),
+                                        side: "BUY".to_string(),
+                                        source: "fastbrain".to_string(),
+                                        model_version: d.model_version.clone(),
+                                        strategy: item.strategy.clone(),
+                                        confidence: d.confidence,
+                                        ref_price: q.price,
+                                        vol: bridge::suggest_buy_vol(q.price, budget),
+                                        reason: format!("快脑买入：{msg}"),
+                                        trade_date: today_dashed(),
+                                    },
+                                );
                             }
                             Err(reason) => {
                                 log_decision(&conn, item, &d, "drop", &features, false);
                                 if can_fire(&mut fire_hist, &item.code) {
-                                    emit_signal(&app, &data_dir, item, &d, "watch", &format!("快脑买入但{reason}"), &features);
+                                    emit_signal(
+                                        &app,
+                                        &data_dir,
+                                        item,
+                                        &d,
+                                        "watch",
+                                        &format!("快脑买入但{reason}"),
+                                        &features,
+                                    );
                                 }
                             }
                         }
@@ -833,61 +938,122 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                         };
 
                         if should_auto_buy {
-                            match paper_buy(&mut conn, item, q, &cfg, total_asset, cash, total_pos_pct) {
+                            match paper_buy(
+                                &mut conn,
+                                item,
+                                q,
+                                &cfg,
+                                &bcfg,
+                                total_asset,
+                                cash,
+                                total_pos_pct,
+                            ) {
                                 Ok(msg) => {
                                     log_decision(&conn, item, &d, "executed", &features, false);
-                                    emit_signal(&app, &data_dir, item, &d, "executed", &msg, &features);
+                                    emit_signal(
+                                        &app, &data_dir, item, &d, "executed", &msg, &features,
+                                    );
                                 }
                                 Err(reason) => {
                                     log_decision(&conn, item, &d, "drop", &features, false);
-                                    emit_signal(&app, &data_dir, item, &d, "watch", &format!("全自动买入但{reason}"), &features);
+                                    emit_signal(
+                                        &app,
+                                        &data_dir,
+                                        item,
+                                        &d,
+                                        "watch",
+                                        &format!("全自动买入但{reason}"),
+                                        &features,
+                                    );
                                 }
                             }
                         } else {
                             // 半自动/人工确认模式：只发信号到确认桥
                             log_decision(&conn, item, &d, "watch", &features, false);
-                            emit_signal(&app, &data_dir, item, &d, "watch", "快脑买入观察信号，请人工确认", &features);
-                            let budget = total_asset * cfg.max_single_pct / 100.0;
-                            bridge_push(&app, &conn, &cfg, bridge::SignalInput {
-                                code: item.code.clone(),
-                                name: item.name.clone(),
-                                side: "BUY".to_string(),
-                                source: "fastbrain".to_string(),
-                                model_version: d.model_version.clone(),
-                                strategy: item.strategy.clone(),
-                                confidence: d.confidence,
-                                ref_price: q.price,
-                                vol: bridge::suggest_buy_vol(q.price, budget),
-                                reason: "快脑买入观察信号".to_string(),
-                                trade_date: today_dashed(),
-                            });
-                        }
-                    }
-                }
-                "SELL" if pos.is_some() => {
-                    if let Some(p) = pos {
-                        match paper_sell(&mut conn, &item.code, &item.name, q, &cfg, p, p.vol) {
-                            Ok(msg) => {
-                                log_decision(&conn, item, &d, "executed", &features, false);
-                                emit_signal(&app, &data_dir, item, &d, "executed", &msg, &features);
-                                bridge_push(&app, &conn, &cfg, bridge::SignalInput {
+                            emit_signal(
+                                &app,
+                                &data_dir,
+                                item,
+                                &d,
+                                "watch",
+                                "快脑买入观察信号，请人工确认",
+                                &features,
+                            );
+                            let budget = total_asset * bcfg.max_single_pct / 100.0;
+                            bridge_push(
+                                &app,
+                                &conn,
+                                &cfg,
+                                bridge::SignalInput {
                                     code: item.code.clone(),
                                     name: item.name.clone(),
-                                    side: "SELL".to_string(),
+                                    side: "BUY".to_string(),
                                     source: "fastbrain".to_string(),
                                     model_version: d.model_version.clone(),
                                     strategy: item.strategy.clone(),
                                     confidence: d.confidence,
                                     ref_price: q.price,
-                                    vol: p.vol,
-                                    reason: format!("快脑卖出：{msg}"),
+                                    vol: bridge::suggest_buy_vol(q.price, budget),
+                                    reason: "快脑买入观察信号".to_string(),
                                     trade_date: today_dashed(),
-                                });
+                                },
+                            );
+                        }
+                    }
+                }
+                "SELL" if pos.is_some() => {
+                    if let Some(p) = pos {
+                        // 快脑卖出传实时涨跌停；跌停价卖出会被拦并提示人工处理。
+                        let (lup, ldn) = spider::limit_prices(&item.code, &item.name, q.prev_close);
+                        let mk = risk::MarketSnapshot {
+                            limit_up: Some(lup),
+                            limit_down: Some(ldn),
+                        };
+                        match paper_sell(
+                            &mut conn,
+                            &item.code,
+                            &item.name,
+                            q,
+                            &cfg,
+                            &bcfg,
+                            p,
+                            p.vol,
+                            Some(mk),
+                        ) {
+                            Ok(msg) => {
+                                log_decision(&conn, item, &d, "executed", &features, false);
+                                emit_signal(&app, &data_dir, item, &d, "executed", &msg, &features);
+                                bridge_push(
+                                    &app,
+                                    &conn,
+                                    &cfg,
+                                    bridge::SignalInput {
+                                        code: item.code.clone(),
+                                        name: item.name.clone(),
+                                        side: "SELL".to_string(),
+                                        source: "fastbrain".to_string(),
+                                        model_version: d.model_version.clone(),
+                                        strategy: item.strategy.clone(),
+                                        confidence: d.confidence,
+                                        ref_price: q.price,
+                                        vol: p.vol,
+                                        reason: format!("快脑卖出：{msg}"),
+                                        trade_date: today_dashed(),
+                                    },
+                                );
                             }
                             Err(e) => {
                                 log_decision(&conn, item, &d, "watch", &features, false);
                                 if can_fire(&mut fire_hist, &item.code) {
-                                    emit_signal(&app, &data_dir, item, &d, "watch", &format!("快脑卖出但{e}，请人工确认"), &features);
+                                    emit_signal(
+                                        &app,
+                                        &data_dir,
+                                        item,
+                                        &d,
+                                        "watch",
+                                        &format!("快脑卖出但{e}，请人工确认"),
+                                        &features,
+                                    );
                                 }
                             }
                         }
