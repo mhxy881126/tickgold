@@ -930,7 +930,8 @@ fn build_engine(conn: &Connection, req: BacktestReq) -> AppResult<Engine> {
 pub async fn backtest_run(
     ai: State<'_, crate::ai::AiState>,
     req: BacktestReq,
-) -> AppResult<BacktestResult> {
+app: tauri::AppHandle) -> AppResult<BacktestResult> {
+    crate::license::require_pro(&app)?;
     let dir = ai.dir();
     tauri::async_runtime::spawn_blocking(move || -> AppResult<BacktestResult> {
         let conn = maindb::open_readonly(&dir)?;
@@ -1140,7 +1141,8 @@ fn run_with_params(
 pub async fn backtest_optimize(
     ai: State<'_, crate::ai::AiState>,
     req: OptimizeReq,
-) -> AppResult<OptimizeReport> {
+app: tauri::AppHandle) -> AppResult<OptimizeReport> {
+    crate::license::require_pro(&app)?;
     let dir = ai.dir();
     tauri::async_runtime::spawn_blocking(move || -> AppResult<OptimizeReport> {
         let conn = maindb::open_readonly(&dir)?;

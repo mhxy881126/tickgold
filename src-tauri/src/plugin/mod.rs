@@ -420,7 +420,8 @@ fn l2_secret(plugin_id: &str) -> crate::ai::config::KeyringSecret {
 }
 
 #[tauri::command]
-pub fn plugin_l2_set_key(plugin_id: String, key: String) -> Result<(), String> {
+pub fn plugin_l2_set_key(plugin_id: String, key: String, app: tauri::AppHandle) -> Result<(), String> {
+    crate::license::require_pro(&app)?;
     let k = key.trim();
     if k.is_empty() {
         return Err("Key 不能为空".to_string());

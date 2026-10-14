@@ -510,7 +510,8 @@ pub(crate) fn load_brain(
 pub(crate) async fn ai_build_decision_pack(
     state: tauri::State<'_, ai::AiState>,
     date: Option<String>,
-) -> Result<serde_json::Value, String> {
+app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    crate::license::require_pro(&app)?;
     let dir = state.dir();
     tauri::async_runtime::spawn_blocking(move || ai::decision::build_pack(&dir, date.as_deref()))
         .await
@@ -522,7 +523,8 @@ pub(crate) async fn ai_build_decision_pack(
 pub(crate) async fn ai_build_review_report(
     state: tauri::State<'_, ai::AiState>,
     date: Option<String>,
-) -> Result<serde_json::Value, String> {
+app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    crate::license::require_pro(&app)?;
     let dir = state.dir();
     tauri::async_runtime::spawn_blocking(move || ai::report::build_report(&dir, date.as_deref()))
         .await
@@ -534,7 +536,8 @@ pub(crate) async fn ai_run_review(
     state: tauri::State<'_, ai::AiState>,
     date: Option<String>,
     force: bool,
-) -> Result<Vec<ai::review::ReviewSummary>, String> {
+app: tauri::AppHandle) -> Result<Vec<ai::review::ReviewSummary>, String> {
+    crate::license::require_pro(&app)?;
     let (cfg, key, dir) = load_brain(&state)?;
     ai::review::run_review(&dir, &cfg, &key, date.as_deref(), force).await
 }

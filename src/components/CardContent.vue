@@ -47,6 +47,7 @@ import Backtest from "./cards/Backtest.vue";
 import StrategyScan from "./cards/StrategyScan.vue";
 import ReviewReport from "./ReviewReport.vue";
 import type { CardId } from "../composables/useWorkbench";
+import ProGate from "./common/ProGate.vue";
 
 const props = defineProps<{ id: CardId; selected: string | null }>();
 defineEmits<{ select: [code: string]; sector: [name: string, kind: string]; switchCard: [cardId: string] }>();
@@ -109,23 +110,39 @@ function retry() {
     <ThemeLibrary v-else-if="id === 'themelib'" @select="$emit('select', $event)" />
     <TradeTape v-else-if="id === 'trades'" :code="selected" />
     <AiAssistant v-else-if="id === 'ai'" />
-    <AiReview v-else-if="id === 'review'" />
+    <ProGate v-else-if="id === 'review'" title="AI 复盘" desc="订阅 Pro 后解锁每日复盘报告与决策回溯">
+      <AiReview />
+    </ProGate>
     <BattlePlan v-else-if="id === 'battleplan'" />
     <DecisionLog v-else-if="id === 'decisionlog'" />
-    <EvolutionStats v-else-if="id === 'evolution'" />
-    <SignalBridge v-else-if="id === 'signalbridge'" />
+    <ProGate v-else-if="id === 'evolution'" title="进化回灌" desc="订阅 Pro 后解锁信号回灌与策略迭代分析">
+      <EvolutionStats />
+    </ProGate>
+    <ProGate v-else-if="id === 'signalbridge'" title="信号桥 · 实盘执行" desc="订阅 Pro 后解锁信号桥与实盘对接（需自行履行程序化交易报告义务）">
+      <SignalBridge />
+    </ProGate>
     <ConditionalOrders v-else-if="id === 'co'" />
     <StrategyProfiles v-else-if="id === 'strategy'" />
     <SpiderBot v-else-if="id === 'spiderbot'" @switch-card="$emit('switchCard', $event)" />
     <Performance v-else-if="id === 'performance'" />
-    <IntradayCommentary v-else-if="id === 'intradayai'" />
+    <ProGate v-else-if="id === 'intradayai'" title="AI 盘中解读" desc="订阅 Pro 后解锁盘中市场解读与热点梳理">
+      <IntradayCommentary />
+    </ProGate>
     <NewsDigest v-else-if="id === 'newsdigest'" @select="$emit('select', $event)" />
-    <TomorrowMainline v-else-if="id === 'mainline'" />
+    <ProGate v-else-if="id === 'mainline'" title="今日题材热度" desc="订阅 Pro 后解锁题材热度与主线分析">
+      <TomorrowMainline />
+    </ProGate>
     <RiskDashboard v-else-if="id === 'risk'" />
     <RotationMatrix v-else-if="id === 'rotation'" @sector="(name: string, kind: string) => $emit('sector', name, kind)" />
-    <Backtest v-else-if="id === 'backtest'" />
-    <StrategyScan v-else-if="id === 'strategyscan'" />
-    <ReviewReport v-else-if="id === 'reviewreport'" />
+    <ProGate v-else-if="id === 'backtest'" title="策略回测" desc="订阅 Pro 后解锁历史回测与参数优化">
+      <Backtest />
+    </ProGate>
+    <ProGate v-else-if="id === 'strategyscan'" title="战法选股" desc="订阅 Pro 后解锁战法扫描与候选标的">
+      <StrategyScan />
+    </ProGate>
+    <ProGate v-else-if="id === 'reviewreport'" title="复盘报告" desc="订阅 Pro 后解锁每日复盘报告">
+      <ReviewReport />
+    </ProGate>
   </template>
 </template>
 

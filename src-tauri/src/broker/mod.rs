@@ -387,7 +387,8 @@ pub fn broker_enable_live(
     mgr: State<'_, BrokerManager>,
     enable: bool,
     ack: Option<bool>,
-) -> Result<(), String> {
+app: tauri::AppHandle) -> Result<(), String> {
+    crate::license::require_pro(&app)?;
     let mut cfg = mgr.config.lock().unwrap().clone();
     if enable {
         // P1-1 程序化交易合规护栏：实盘开通三前置条件（见 docs/合规优化路线）
@@ -429,6 +430,7 @@ pub async fn broker_connect(
     ai: State<'_, crate::ai::AiState>,
     mgr: State<'_, BrokerManager>,
 ) -> Result<String, String> {
+    crate::license::require_pro(&app)?;
     if mgr.kill_switch.load(Ordering::SeqCst) {
         return Err("紧急停止已触发，请先解除 Kill Switch".to_string());
     }

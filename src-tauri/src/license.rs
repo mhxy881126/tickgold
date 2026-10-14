@@ -185,6 +185,18 @@ fn build_status(app: &AppHandle) -> LicenseStatus {
     }
 }
 
+/// Pro 门控：Pro 专属命令在入口调用；未激活/已过期/时间回拨时拒绝。
+pub fn require_pro(app: &AppHandle) -> Result<(), String> {
+    let st = build_status(app);
+    if st.active {
+        Ok(())
+    } else {
+        Err(st
+            .message
+            .unwrap_or_else(|| "此功能为 Pro 订阅专享，请先在设置中激活 Pro".into()))
+    }
+}
+
 /// 查询授权状态（前端启动时调用）。
 #[tauri::command]
 pub(crate) async fn license_status(app: AppHandle) -> Result<LicenseStatus, String> {

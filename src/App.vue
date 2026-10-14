@@ -564,6 +564,7 @@ onMounted(async () => {
     // 托盘菜单事件
     unlistenFns.push(await listen("open-settings", () => { settingsInitialTab.value = undefined; showSettings.value = true; }));
     unlistenFns.push(await listen("open-ai-settings", () => { settingsInitialTab.value = "ai"; showSettings.value = true; }));
+    unlistenFns.push(await listen("open-pro-settings", () => { settingsInitialTab.value = "pro"; showSettings.value = true; }));
     unlistenFns.push(await listen("check-update", () => { showUpdate.value = true; }));
     unlistenFns.push(await listen("show-about", () => { showSettings.value = true; }));
     // 预警触发：写历史 + 应用内弹窗（自动消失）+ 声音 + 记录触发时间

@@ -1026,6 +1026,11 @@ async function bDisconnect() {
   }
 }
 async function toggleLive(v: boolean) {
+  if (v && !license.isPro) {
+    bFlash("QMT 实盘接入为 Pro 订阅功能，请先订阅后开启");
+    if (bForm.value) bForm.value.liveEnabled = false;
+    return;
+  }
   if (v) {
     // P1-1 实盘风险告知书 + 程序化交易报告义务（二次确认）
     const ok = await confirmDialog({
@@ -1268,6 +1273,10 @@ async function refreshL2Keys() {
   l2KeySet.value = next;
 }
 async function saveL2Key(r: PluginRow) {
+  if (!license.isPro) {
+    pFlash("Level-2 十档为 Pro 订阅功能，请先订阅后配置");
+    return;
+  }
   const key = (l2Input.value[r.pluginId] || "").trim();
   if (!key) {
     pFlash("请先粘贴数据商 API Key");
@@ -2186,8 +2195,9 @@ async function clearL2Key(r: PluginRow) {
                         autocomplete="off"
                         placeholder="粘贴数据商 API Key（仅存本机系统凭据箱）"
                         @keyup.enter="saveL2Key(r)"
+                        :disabled="!license.isPro"
                       />
-                      <button type="button" class="p-op" :disabled="l2Busy[r.pluginId]" @click="saveL2Key(r)">保存</button>
+                      <button type="button" class="p-op" :disabled="l2Busy[r.pluginId] || !license.isPro" @click="saveL2Key(r)">保存</button>
                       <button
                         v-if="l2KeySet[r.pluginId]"
                         type="button"

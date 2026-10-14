@@ -639,7 +639,8 @@ pub async fn evolution_run_labeling(
     state: State<'_, crate::ai::AiState>,
     config: Option<EvolutionConfig>,
     force: Option<bool>,
-) -> Result<Value, String> {
+app: tauri::AppHandle) -> Result<Value, String> {
+    crate::license::require_pro(&app)?;
     run_labeling(
         &state.dir(),
         config.unwrap_or_default(),

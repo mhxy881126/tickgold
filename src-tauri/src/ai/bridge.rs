@@ -638,7 +638,8 @@ pub fn signal_create_spider(
 }
 
 #[tauri::command]
-pub fn signal_launch_broker(path: String) -> Result<(), String> {
+pub fn signal_launch_broker(path: String, app: tauri::AppHandle) -> Result<(), String> {
+    crate::license::require_pro(&app)?;
     launch_broker(&path)
 }
 

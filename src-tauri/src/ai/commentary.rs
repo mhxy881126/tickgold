@@ -288,7 +288,8 @@ const SYSTEM_INTRADAY: &str = "你是 A 股盘中实时解读助手。基于给�
 #[tauri::command]
 pub async fn ai_intraday_commentary(
     state: tauri::State<'_, super::AiState>,
-) -> Result<IntradayCommentary, String> {
+app: tauri::AppHandle) -> Result<IntradayCommentary, String> {
+    crate::license::require_pro(&app)?;
     let (cfg, key) = load_cfg(&state.dir())?;
     let (idx, sec, zt, news) = tokio::join!(
         index_summary(),
@@ -348,7 +349,8 @@ pub async fn ai_explain_signal(
     code: String,
     name: String,
     kind: String,
-) -> Result<SignalAttribution, String> {
+app: tauri::AppHandle) -> Result<SignalAttribution, String> {
+    crate::license::require_pro(&app)?;
     let (cfg, key) = load_cfg(&state.dir())?;
 
     // 拉取个股实时行情
@@ -568,7 +570,8 @@ const SYSTEM_MAINLINE: &str = "你是行情结构梳理助手。基于当日涨�
 #[tauri::command]
 pub async fn ai_tomorrow_mainline(
     state: tauri::State<'_, super::AiState>,
-) -> Result<TomorrowMainline, String> {
+app: tauri::AppHandle) -> Result<TomorrowMainline, String> {
+    crate::license::require_pro(&app)?;
     let (cfg, key) = load_cfg(&state.dir())?;
     let today = market::today_yyyymmdd();
 
@@ -685,7 +688,8 @@ pub async fn ai_intraday_commentary_stream(
     state: tauri::State<'_, super::AiState>,
     app_handle: tauri::AppHandle,
     stream_id: String,
-) -> Result<(), String> {
+app: tauri::AppHandle) -> Result<(), String> {
+    crate::license::require_pro(&app)?;
     let (cfg, key) = match load_cfg(&state.dir()) {
         Ok(v) => v,
         Err(e) => {
@@ -815,7 +819,8 @@ pub async fn ai_tomorrow_mainline_stream(
     state: tauri::State<'_, super::AiState>,
     app_handle: tauri::AppHandle,
     stream_id: String,
-) -> Result<(), String> {
+app: tauri::AppHandle) -> Result<(), String> {
+    crate::license::require_pro(&app)?;
     let (cfg, key) = match load_cfg(&state.dir()) {
         Ok(v) => v,
         Err(e) => {
