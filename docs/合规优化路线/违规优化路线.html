@@ -262,12 +262,12 @@
 
     <div class="card" data-sev="p2">
       <div class="c-top">
-        <div class="c-check"><input type="checkbox" id="i9"><label for="i9"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-check"><input type="checkbox" id="i9" checked><label for="i9"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
         <div class="c-body">
           <div class="c-title">README / 产品文案突出「历史胜率 / 期望收益 / 跟庄统计」</div>
           <div class="c-loc">README.md（席位胜率、期望收益、盈亏比等）；EvolutionStats / Performance / DragonTiger 组件</div>
           <div class="c-desc">大量「胜率」「期望收益」「跟庄」表述——自用无碍，一旦对外宣传即构成收益诱导。</div>
-          <div class="c-fix"><b>改法：</b>对外文档改为「历史样本统计」「样本内回测结果，不代表未来收益」；去掉「跟庄」「抓妖」等营销词；组件内统计标注「仅历史样本，非收益承诺」。</div>
+          <div class="c-fix"><b>改法：</b>对外文档改为「历史样本统计」「样本内回测结果，不代表未来收益」；去掉「跟庄」「抓妖」等营销词；组件内统计标注「仅历史样本，非收益承诺」。<div class="c-done">✅ 已完成：README 席位/回灌条目改为「席位历史样本统计」「样本内统计，不代表未来收益」，去除「跟庄/胜率/期望收益」营销词；EvolutionStats / Performance / DragonTiger 组件统计文案中性化（胜率→上涨占比、上榜后表现回测→历史样本统计）。</div></div>
           <div class="c-law"><b>监管依据：</b>证监会风险提示（付费/收益承诺式荐股整治）。</div>
         </div>
       </div>
@@ -275,12 +275,12 @@
 
     <div class="card" data-sev="p2">
       <div class="c-top">
-        <div class="c-check"><input type="checkbox" id="i10"><label for="i10"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-check"><input type="checkbox" id="i10" checked><label for="i10"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
         <div class="c-body">
           <div class="c-title">「明日主线 / AI 预测」类方向性输出</div>
           <div class="c-loc">src/components/cards/TomorrowMainline.vue；commentary.rs 主线/解读模块</div>
           <div class="c-desc">「明日主线」「AI 预测」虽带免责，但预测式标题对 C 端用户构成诱导。</div>
-          <div class="c-fix"><b>改法：</b>标题改「今日题材热度梳理」「基于今日数据的题材关联归纳」；正文只列事实（涨停家数、板块涨幅、连板梯队），不预测明日。</div>
+          <div class="c-fix"><b>改法：</b>标题改「今日题材热度梳理」「基于今日数据的题材关联归纳」；正文只列事实（涨停家数、板块涨幅、连板梯队），不预测明日。<div class="c-done">✅ 已完成：TomorrowMainline 标题改「今日题材热度」，加载/失败/刷新/置信度文案全部去「预测」改「梳理/归纳」，footer 明示「不预测明日行情」。</div></div>
           <div class="c-law"><b>监管依据：</b>禁止确定性预测/承诺（证监会风险提示）。</div>
         </div>
       </div>
@@ -288,12 +288,12 @@
 
     <div class="card" data-sev="p2">
       <div class="c-top">
-        <div class="c-check"><input type="checkbox" id="i11"><label for="i11"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-check"><input type="checkbox" id="i11" checked><label for="i11"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
         <div class="c-body">
           <div class="c-title">数据源合规声明：免费接口仅限个人用途</div>
           <div class="c-loc">docs/数据源说明.md（已声明「个人学习与盯盘用途，勿商业转售」）+ Level-2 插件试点</div>
           <div class="c-desc">免费接口条款不覆盖商业化转售；L2 数据（十档/逐笔）需持牌或授权，插件「自带 Key 用户自担合规」需在 UI 显式声明。</div>
-          <div class="c-fix"><b>改法：</b>保留并强化个人用途声明；商业化前必须：① 与数据源洽谈授权或改用持牌数据供应商；② L2 接入页强制展示「数据来源合规声明 + 用户自担」；③ 严禁接入/分发盗版 L2 数据。</div>
+          <div class="c-fix"><b>改法：</b>保留并强化个人用途声明；商业化前必须：① 与数据源洽谈授权或改用持牌数据供应商；② L2 接入页强制展示「数据来源合规声明 + 用户自担」；③ 严禁接入/分发盗版 L2 数据。<div class="c-done">✅ 已完成：L2 Key 录入区强制展示「数据合规声明」（持牌/授权要求 + 个人使用 + 不得转售/再分发/商业产品）；MultiCell 十档盘口使用中显示「数据由你自备的授权账号提供，仅供个人使用」。<b>剩余（商业化前）：</b>与数据商洽谈授权或改用持牌供应商。</div></div>
           <div class="c-law"><b>监管依据：</b>行情数据版权与授权；Level-2 数据持牌要求。</div>
         </div>
       </div>
@@ -301,12 +301,12 @@
 
     <div class="card" data-sev="p2">
       <div class="c-top">
-        <div class="c-check"><input type="checkbox" id="i12"><label for="i12"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
+        <div class="c-check"><input type="checkbox" id="i12" checked><label for="i12"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></label></div>
         <div class="c-body">
           <div class="c-title">免责声明覆盖不完整（部分入口缺失）</div>
           <div class="c-loc">src/components/：SignalBridge、EvolutionStats、DecisionLog、StrategyScan、DragonTiger、ConditionalOrders 等</div>
           <div class="c-desc">已 15 处「不构成投资建议」（AiReview/AiAssistant/BattlePlan/TomorrowMainline/NewsDigest/SignalAttribution/IntradayCommentary/RiskDashboard/AlertSuggestion/Performance/Sieve/StrategyProfiles/ThemeLibrary 等），但交易/信号侧部分组件未覆盖。</div>
-          <div class="c-fix"><b>改法：</b>抽出全局免责组件（ComplianceFooter.vue）统一挂载：信号桥、决策日志、进化统计、战法选股、龙虎榜、条件单、复盘报告导出、回测卡片，统一文案「仅供参考，不构成投资建议，不承诺收益」。</div>
+          <div class="c-fix"><b>改法：</b>抽出全局免责组件（ComplianceFooter.vue）统一挂载：信号桥、决策日志、进化统计、战法选股、龙虎榜、条件单、复盘报告导出、回测卡片，统一文案「仅供参考，不构成投资建议，不承诺收益」。<div class="c-done">✅ 已完成：新建 ComplianceFooter.vue（「本软件数据与提示仅供参考，不构成任何投资建议，不承诺收益。据此操作风险自担。」），已挂载 8 个组件：SignalBridge / EvolutionStats / DecisionLog / StrategyScan / DragonTiger / ConditionalOrders / ReviewReport / Backtest。</div></div>
           <div class="c-law"><b>监管依据：</b>风险披露完整性；投顾业务风险揭示要求。</div>
         </div>
       </div>

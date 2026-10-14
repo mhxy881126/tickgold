@@ -10,7 +10,7 @@
   "shots": {
     "desktop": {
       "screenshot": "D:\\Doubao-pek\\股票盯盘系统·灵动岛版\\docs\\合规优化路线\\_shots\\违规优化路线_desktop.jpg",
-      "screenshotBytes": 389267,
+      "screenshotBytes": 420815,
       "truncated": false,
       "structure": {
         "title": "TickGold 合规优化路线（个人开发者版）",
@@ -21,7 +21,7 @@
         },
         "fullpage": {
           "w": 1455,
-          "h": 5449
+          "h": 5708
         },
         "counts": {
           "section": 6,
@@ -63,6 +63,26 @@
           "tag": "div",
           "chars": "✅",
           "contextText": "✅ 纵深加固：tauri.conf.json 已补严格 CSP（生产 csp + 开发 devCsp，script-sr"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 已完成：README 席位/回灌条目改为「席位历史样本统计」「样本内统计，不代表未来收益」，去除「跟庄/胜率/期望收"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 已完成：TomorrowMainline 标题改「今日题材热度」，加载/失败/刷新/置信度文案全部去「预测」改「梳理"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 已完成：L2 Key 录入区强制展示「数据合规声明」（持牌/授权要求 + 个人使用 + 不得转售/再分发/商业产品）"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 已完成：新建 ComplianceFooter.vue（「本软件数据与提示仅供参考，不构成任何投资建议，不承诺收益。"
         }
       ],
       "emojiUsageHint": "warning · 含义：页面正文里检出 emoji 字符（U+1F300–U+1FAFF 或 U+2600–U+27BF 平面）。SKILL.md 视觉设计段明确禁用 emoji——不作图标、不作装饰、不放进数据。 | 修法：换成内联 SVG 图标（<svg viewBox=\"0 0 24 24\">）建立风格连贯的图标语言。 | 豁免：(1) **用户品牌资产明确包含 emoji**（罕见，但如即时通讯、社交媒体主题的产物合理）；(2) 主题本身就是关于 emoji 的（emoji 历史 / 表情包研究 / Unicode 演进）；(3) 引用某条真实文本原文（如推文截图的文字版），emoji 是内容而非装饰——保留原文可接受，但仍应权衡；(4) 装饰性 dingbat（如 U+2713 勾选符 ✓、U+2192 箭头 →、U+2605 星 ★）落入 U+2600–U+27BF 平面被误报的，如确认是符号非 emoji 可忽略。",
@@ -85,7 +105,7 @@
         },
         "fullpage": {
           "w": 1275,
-          "h": 9464
+          "h": 10187
         },
         "counts": {
           "section": 6,
@@ -127,6 +147,26 @@
           "tag": "div",
           "chars": "✅",
           "contextText": "✅ 纵深加固：tauri.conf.json 已补严格 CSP（生产 csp + 开发 devCsp，script-sr"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 已完成：README 席位/回灌条目改为「席位历史样本统计」「样本内统计，不代表未来收益」，去除「跟庄/胜率/期望收"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 已完成：TomorrowMainline 标题改「今日题材热度」，加载/失败/刷新/置信度文案全部去「预测」改「梳理"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 已完成：L2 Key 录入区强制展示「数据合规声明」（持牌/授权要求 + 个人使用 + 不得转售/再分发/商业产品）"
+        },
+        {
+          "tag": "div",
+          "chars": "✅",
+          "contextText": "✅ 已完成：新建 ComplianceFooter.vue（「本软件数据与提示仅供参考，不构成任何投资建议，不承诺收益。"
         }
       ],
       "emojiUsageHint": "warning · 含义：页面正文里检出 emoji 字符（U+1F300–U+1FAFF 或 U+2600–U+27BF 平面）。SKILL.md 视觉设计段明确禁用 emoji——不作图标、不作装饰、不放进数据。 | 修法：换成内联 SVG 图标（<svg viewBox=\"0 0 24 24\">）建立风格连贯的图标语言。 | 豁免：(1) **用户品牌资产明确包含 emoji**（罕见，但如即时通讯、社交媒体主题的产物合理）；(2) 主题本身就是关于 emoji 的（emoji 历史 / 表情包研究 / Unicode 演进）；(3) 引用某条真实文本原文（如推文截图的文字版），emoji 是内容而非装饰——保留原文可接受，但仍应权衡；(4) 装饰性 dingbat（如 U+2713 勾选符 ✓、U+2192 箭头 →、U+2605 星 ★）落入 U+2600–U+27BF 平面被误报的，如确认是符号非 emoji 可忽略。",
@@ -137,7 +177,7 @@
   "chromiumExec": "C:\\Users\\Administrator/AppData/Local/ms-playwright\\chromium_headless_shell-1243\\chrome-headless-shell-win64\\chrome-headless-shell.exe",
   "engineDegraded": true,
   "engineDegradedReason": "playwright 未装",
-  "elapsedSec": 7.23,
+  "elapsedSec": 7.08,
   "schemaVersion": 2,
   "status": "warning",
   "engineInfo": {
@@ -162,7 +202,7 @@
       {
         "viewport": "desktop",
         "path": "D:\\Doubao-pek\\股票盯盘系统·灵动岛版\\docs\\合规优化路线\\_shots\\违规优化路线_desktop.jpg",
-        "size": 389267,
+        "size": 420815,
         "visualCoverage": {
           "complete": true,
           "reason": null
@@ -185,7 +225,7 @@
   "summary": {
     "blocker": 0,
     "error": 0,
-    "warning": 10,
+    "warning": 18,
     "info": 0
   },
   "findings": [
@@ -258,6 +298,58 @@
       "ruleId": "emojiUsageWarning",
       "severity": "warning",
       "kind": "typography",
+      "viewport": "desktop",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 已完成：README 席位/回灌条目改为「席位历史样本统计」「样本内统计，不代表未来收益」，去除「跟庄/胜率/期望收"
+      },
+      "dedupeKey": "emojiUsageWarning|desktop|div|5"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "desktop",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 已完成：TomorrowMainline 标题改「今日题材热度」，加载/失败/刷新/置信度文案全部去「预测」改「梳理"
+      },
+      "dedupeKey": "emojiUsageWarning|desktop|div|6"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "desktop",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 已完成：L2 Key 录入区强制展示「数据合规声明」（持牌/授权要求 + 个人使用 + 不得转售/再分发/商业产品）"
+      },
+      "dedupeKey": "emojiUsageWarning|desktop|div|7"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "desktop",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 已完成：新建 ComplianceFooter.vue（「本软件数据与提示仅供参考，不构成任何投资建议，不承诺收益。"
+      },
+      "dedupeKey": "emojiUsageWarning|desktop|div|8"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
       "viewport": "mobile",
       "selector": "div",
       "evidence": {
@@ -318,6 +410,58 @@
         "contextText": "✅ 纵深加固：tauri.conf.json 已补严格 CSP（生产 csp + 开发 devCsp，script-sr"
       },
       "dedupeKey": "emojiUsageWarning|mobile|div|4"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "mobile",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 已完成：README 席位/回灌条目改为「席位历史样本统计」「样本内统计，不代表未来收益」，去除「跟庄/胜率/期望收"
+      },
+      "dedupeKey": "emojiUsageWarning|mobile|div|5"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "mobile",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 已完成：TomorrowMainline 标题改「今日题材热度」，加载/失败/刷新/置信度文案全部去「预测」改「梳理"
+      },
+      "dedupeKey": "emojiUsageWarning|mobile|div|6"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "mobile",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 已完成：L2 Key 录入区强制展示「数据合规声明」（持牌/授权要求 + 个人使用 + 不得转售/再分发/商业产品）"
+      },
+      "dedupeKey": "emojiUsageWarning|mobile|div|7"
+    },
+    {
+      "ruleId": "emojiUsageWarning",
+      "severity": "warning",
+      "kind": "typography",
+      "viewport": "mobile",
+      "selector": "div",
+      "evidence": {
+        "tag": "div",
+        "chars": "✅",
+        "contextText": "✅ 已完成：新建 ComplianceFooter.vue（「本软件数据与提示仅供参考，不构成任何投资建议，不承诺收益。"
+      },
+      "dedupeKey": "emojiUsageWarning|mobile|div|8"
     }
   ],
   "prioritizedActions": [
