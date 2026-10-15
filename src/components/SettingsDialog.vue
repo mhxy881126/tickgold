@@ -1396,9 +1396,9 @@ async function clearL2Key(r: PluginRow) {
                 <div style="margin:0 0 12px;padding:12px 14px;border:1px solid #1f2a3f;border-radius:10px;background:rgba(15,23,42,.5)">
                   <div style="font-size:13px;font-weight:600;margin-bottom:8px">如何获取激活码</div>
                   <div style="font-size:12px;line-height:1.9;color:#9fb3d1">
-                    ① 在面包多购买「TickGold Pro 年卡」（¥99/年）；<br>
-                    ② 卡密自动发货，复制收到的 TG 激活码；<br>
-                    ③ 粘贴到下方输入框，点击「激活 Pro」。
+                    ① 点击下方按钮跳转面包多平台完成支付（支持微信/支付宝，年卡 ¥99）；<br>
+                    ② 支付成功后卡密自动发货，复制收到的 TG 激活码；<br>
+                    ③ 粘贴到下方输入框，点击「激活 Pro」，立即生效。
                   </div>
                   <button class="primary-btn" style="margin-top:10px" @click="goBuy">去面包多购买</button>
                 </div>
@@ -2262,7 +2262,6 @@ async function clearL2Key(r: PluginRow) {
               <div class="ab-logo">TG</div>
               <div class="ab-name">TickGold</div>
               <div class="ab-desc">开源跨平台 A 股盯盘终端</div>
-              <div class="ab-ver">v{{ curVersion || "—" }}</div>
               <div class="ab-tech">Tauri 2.0 · Rust · Vue 3 · TypeScript · ECharts</div>
               <div class="ab-actions">
                 <button type="button" class="ab-primary" @click="emit('check-update')">检查更新</button>
