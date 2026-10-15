@@ -340,13 +340,13 @@ async function moveAddGroup() {
               <input
                 v-model="smartQueryText"
                 class="sm-in sm-q-in"
-                placeholder="输入选股问句，如：市盈率低于20 且 换手率大于5%"
+                placeholder="选股问句，如：市盈率低于20 且 换手率大于5%"
                 @keydown.enter="parseSmartQuery"
               />
               <button class="sm-parse" @click="parseSmartQuery">解析</button>
             </div>
             <div v-if="smartUnparsed.length" class="sm-tip warn">
-              未识别：{{ smartUnparsed.join("；") }}（请用下方条件编辑器补充）
+              未识别「{{ smartUnparsed.join("；") }}」——支持：市盈率/市净率/总市值/流通市值/涨跌幅/现价/成交额/成交量/换手率/量比/连板数，或用下方编辑器添加。
             </div>
 
             <!-- 已解析条件 -->
@@ -357,7 +357,7 @@ async function moveAddGroup() {
               </span>
             </div>
 
-            <!-- 条件编辑器 -->
+            <!-- 条件编辑器：两行布局 -->
             <div class="sm-editor">
               <select v-model="smartFieldGroup" class="sm-sel" @change="onFieldGroupChange">
                 <option v-for="g in FIELD_GROUPS" :key="g.label" :value="g.label">{{ g.label }}</option>
@@ -367,10 +367,12 @@ async function moveAddGroup() {
                   {{ f.label }}
                 </option>
               </select>
+            </div>
+            <div class="sm-editor sm-editor2">
               <select v-model="smartOp" class="sm-sel sm-op">
-                <option value=">=">≥</option>
-                <option value="<=">≤</option>
-                <option value="==">=</option>
+                <option value=">=">≥（不低于）</option>
+                <option value="<=">≤（不高于）</option>
+                <option value="==">=（等于）</option>
               </select>
               <input
                 v-model.number="smartValue"
@@ -379,7 +381,7 @@ async function moveAddGroup() {
                 placeholder="数值"
                 @keydown.enter="addSmartCond"
               />
-              <button class="sm-add" @click="addSmartCond">添加</button>
+              <button class="sm-add" @click="addSmartCond">添加条件</button>
             </div>
 
             <div class="sm-row sm-logic">
@@ -391,7 +393,7 @@ async function moveAddGroup() {
             </div>
 
             <div class="sm-tip">
-              成员从涨幅/成交额/换手三榜前 300 只动态筛选（约 700-900 只候选），每次打开分组自动刷新；连板数来自近 5 日涨停记录。
+              候选：涨幅/成交额/换手三榜前 300 只并集（约 700-900 只），切换分组自动刷新；连板数来自近 5 日涨停记录，非涨停股为 0。
             </div>
             <button class="sm-go" :class="{ disabled: !smartCanCreate() }" :disabled="!smartCanCreate()" @click="commitSmartAdd">
               创建
@@ -631,7 +633,10 @@ tbody tr:hover .op { border-color: var(--border); }
 .mm-addgo:hover { filter: brightness(1.08); }
 .empty { text-align: center; color: var(--text-dim); padding: 30px; font-size: 12px; }
 
-.table-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.table-wrap { position: relative; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.table-wrap::-webkit-scrollbar { width: 6px; }
+.table-wrap::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 3px; }
+.table-wrap::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
 
 /* v2.31 智能分组 / 信号高亮 */
 .chip.addsmart { font-size: 11px; line-height: 1; padding: 3px 8px; color: #e8c66a; border-color: #8a753588; }
@@ -653,7 +658,7 @@ tbody tr.hit { box-shadow: inset 2px 0 0 #e8c66a; }
 }
 .sm-mask { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px); }
 .sm-box {
-  position: relative; width: 300px; max-width: calc(100vw - 32px);
+  position: relative; width: 400px; max-width: calc(100vw - 32px);
   background: var(--bg-panel); border: 1px solid var(--border-light); border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6); padding: 14px;
   animation: mmPop 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -695,14 +700,15 @@ tbody tr.hit { box-shadow: inset 2px 0 0 #e8c66a; }
 }
 .sm-cond-x { cursor: pointer; color: var(--text-dim); font-size: 12px; line-height: 1; }
 .sm-cond-x:hover { color: #f23645; }
-.sm-editor { display: flex; gap: 5px; margin-bottom: 8px; align-items: center; }
+.sm-editor { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
 .sm-editor .sm-sel {
   flex: 1; min-width: 0; height: 28px; border-radius: 7px;
   border: 1px solid var(--border); background: var(--bg); color: var(--text);
   padding: 0 6px; font-size: 11px;
 }
-.sm-editor .sm-op { flex: 0 0 44px; }
-.sm-editor .sm-val { flex: 0 0 62px; width: 62px; height: 28px; margin-bottom: 0; }
+.sm-editor2 { margin-bottom: 10px; }
+.sm-editor .sm-op { flex: 1.2; }
+.sm-editor .sm-val { flex: 0 0 96px; width: 96px; height: 28px; margin-bottom: 0; }
 .sm-add {
   height: 28px; padding: 0 8px; border: none; border-radius: 7px;
   background: var(--accent); color: #1a1405; font-size: 11px; font-weight: 700;

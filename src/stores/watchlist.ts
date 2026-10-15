@@ -91,12 +91,18 @@ export const useWatchlistStore = defineStore("watchlist", () => {
     return smartHits.value.find((h) => h.code === code);
   }
 
-  /** 全部股票代码（跨分组，供行情轮询/灵动岛使用） */
-  const codes = computed(() =>
-    [...stocks.value]
+  /** 全部股票代码（跨分组，供行情轮询/灵动岛使用；含 v2 动态选股成员） */
+  const codes = computed(() => {
+    const list = [...stocks.value]
       .sort((a, b) => a.groupId - b.groupId || a.sortOrder - b.sortOrder)
-      .map((s) => s.code)
-  );
+      .map((s) => s.code);
+    for (const v of Object.values(smartV2.value)) {
+      for (const m of v.members) {
+        if (!list.includes(m.code)) list.push(m.code);
+      }
+    }
+    return list;
+  });
 
   /** 当前分组下的股票（智能分组为动态命中成员） */
   const currentStocks = computed(() => membersOf(currentGroupId.value));

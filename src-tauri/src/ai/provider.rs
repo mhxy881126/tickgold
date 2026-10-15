@@ -331,6 +331,11 @@ fn build_api_messages(msgs: &[ChatMsg]) -> Vec<serde_json::Value> {
         .collect()
 }
 
+/// 智谱等平台要求 temperature 最多 2 位小数（超限返回 400 code 1210），统一消毒。
+fn sanitize_temp(t: f32) -> f32 {
+    ((t * 100.0).round() / 100.0).clamp(0.0, 2.0)
+}
+
 /// 流式对话。on 回调实时收到文本增量与工具参数碎片；工具组装由 SseState。
 pub async fn chat_stream(
     cfg: &AiConfig,
@@ -354,7 +359,7 @@ pub async fn chat_stream(
     let mut body = serde_json::json!({
         "model": cfg.chat_model,
         "messages": messages,
-        "temperature": cfg.temperature,
+        "temperature": sanitize_temp(cfg.temperature),
         "stream": true,
     });
     if !tool_schemas.is_empty() {
