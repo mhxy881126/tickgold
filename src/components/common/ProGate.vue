@@ -20,7 +20,12 @@ function goSubscribe() {
 <template>
   <div v-if="license.isPro" class="pg-active">
     <div class="pg-active-bar">
-      <span class="pg-active-badge">PRO 已激活</span>
+      <span class="pg-active-badge">
+        <svg class="pg-crown" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+          <path fill="currentColor" d="M3 17h18l1.2-8.6-5.7 3.3L12 5 7.5 11.7 1.8 8.4 3 17zM2 19h20v2H2v-2z" />
+        </svg>
+        <span>PRO 已激活</span>
+      </span>
     </div>
     <div class="pg-slot">
       <slot />
@@ -52,17 +57,27 @@ function goSubscribe() {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 6px 10px 0;
+  padding: 8px 12px 4px;
 }
 .pg-active-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: #1a1508;
-  background: linear-gradient(135deg, #e8c66a, #d9a441);
-  border-radius: 6px;
-  padding: 2px 8px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: #f6dd8e;
+  background: linear-gradient(135deg, rgba(232, 198, 106, 0.18), rgba(217, 164, 65, 0.08));
+  border: 1px solid rgba(232, 198, 106, 0.45);
+  border-radius: 20px;
+  padding: 3px 10px 3px 8px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(232, 198, 106, 0.12);
+  animation: pg-breathe 2.6s ease-in-out infinite;
+}
+.pg-crown { flex: none; filter: drop-shadow(0 0 3px rgba(232, 198, 106, 0.55)); }
+@keyframes pg-breathe {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(232, 198, 106, 0.10); }
+  50% { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 2px 14px rgba(232, 198, 106, 0.28); }
 }
 .pro-gate {
   flex: 1;

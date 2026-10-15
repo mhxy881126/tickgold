@@ -286,12 +286,27 @@ const glassGroups = computed(() => {
     .filter((g) => g.items.length > 0);
 });
 
-// 玻璃浮岛右侧导航：所有分组都显示，可折叠
+// 玻璃浮岛右侧导航：所有分组都显示，可折叠。
+// 默认全部折叠（只展开当前激活卡片所在组），避免 40+ 卡片平铺把列表撑爆、
+// 底部卡片（如盯盘复盘报告）被挤出视野。
 const allGlassGroups = dockGroups;
-const openGroups = ref<Set<string>>(new Set(dockGroups.value.map(g => g.name)));
+const openGroups = ref<Set<string>>(new Set());
 watch(dockGroups, (gs) => {
-  openGroups.value = new Set([...openGroups.value, ...gs.map((g) => g.name)]);
+  // 新出现的分组默认折叠，不强制展开
+  openGroups.value = new Set([...openGroups.value].filter((n) => gs.some((g) => g.name === n)));
 });
+// 激活卡片变化时，自动展开其所在分组
+watch(
+  () => bench.glassActive.value,
+  (id) => {
+    if (!id) return;
+    const g = dockGroups.value.find((g) => g.items.some((i) => i.id === id));
+    if (g && !openGroups.value.has(g.name)) {
+      openGroups.value = new Set([...openGroups.value, g.name]);
+    }
+  },
+  { immediate: true }
+);
 function toggleGroup(name: string) {
   if (openGroups.value.has(name)) openGroups.value.delete(name);
   else openGroups.value.add(name);
