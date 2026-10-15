@@ -264,21 +264,29 @@ fn auth_header(api_key: &Option<String>) -> Option<(&'static str, String)> {
     }
 }
 
-fn check_status(resp: reqwest::Response) -> Result<reqwest::Response, String> {
+async fn check_status(resp: reqwest::Response) -> Result<reqwest::Response, String> {
     let status = resp.status();
     if status.is_success() {
-        Ok(resp)
-    } else {
-        let code = status.as_u16();
-        let hint = match code {
-            401 => "鉴权失败（401）：请检查云端 API Key 是否正确",
-            402 => "API 账户余额不足或配额已用尽（402）：请充值、更换 API Key 或联系服务商",
-            404 => "接口不存在（404）：请检查 base_url 与模型名",
-            429 => "请求过多（429）：触发限流，请稍后再试",
-            s if s >= 500 => "模型服务端错误（5xx）",
-            _ => "HTTP 错误",
-        };
+        return Ok(resp);
+    }
+    let code = status.as_u16();
+    // 透传服务端错误体：400 类参数/模型错误的具体原因（error.message）对定位至关重要，
+    // 仅给状态码无法区分「模型不存在 / 参数越界 / 工具格式不合规」。
+    let body = resp.text().await.unwrap_or_default();
+    let detail: String = body.chars().take(300).collect();
+    let hint = match code {
+        401 => "鉴权失败（401）：请检查云端 API Key 是否正确",
+        402 => "API 账户余额不足或配额已用尽（402）：请充值、更换 API Key 或联系服务商",
+        404 => "接口不存在（404）：请检查 base_url 与模型名",
+        429 => "请求过多（429）：触发限流，请稍后再试",
+        s if s >= 500 => "模型服务端错误（5xx）",
+        _ => "HTTP 错误",
+    };
+    let detail = detail.trim();
+    if detail.is_empty() {
         Err(format!("{hint}（{code}）"))
+    } else {
+        Err(format!("{hint}（{code}）：{detail}"))
     }
 }
 
@@ -364,7 +372,7 @@ pub async fn chat_stream(
         .await
         .map_err(|_| "连接模型超时（60s）：请确认 Ollama 已启动或网络可达".to_string())?
         .map_err(|e| friendly_request_err(e, &chat_url))?;
-    let mut resp = check_status(resp)?;
+    let mut resp = check_status(resp).await?;
 
     let mut state = SseState::new();
     // 字节缓冲（不是 String）：多字节 UTF-8（如中文）可能被 TCP 切到两个 chunk，
@@ -470,7 +478,7 @@ pub async fn list_models(cfg: &AiConfig, api_key: &Option<String>) -> Result<Mod
                 continue 'next_candidate;
             }
             // 401/402/429/5xx 等属于确定性错误，直接把中文提示返回（不再试其他路径）
-            let resp = check_status(resp)?;
+            let resp = check_status(resp).await?;
             let v: serde_json::Value =
                 match tokio::time::timeout(std::time::Duration::from_secs(8), async {
                     resp.json::<serde_json::Value>().await
@@ -525,7 +533,7 @@ pub async fn embed(
         .await
         .map_err(|_| "嵌入服务超时（30s）".to_string())?
         .map_err(|e| friendly_request_err(e, &embed_url))?;
-    let resp = check_status(resp)?;
+    let resp = check_status(resp).await?;
     let v: serde_json::Value = tokio::time::timeout(std::time::Duration::from_secs(30), async {
         resp.json::<serde_json::Value>().await
     })

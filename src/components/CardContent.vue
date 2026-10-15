@@ -109,7 +109,9 @@ function retry() {
     <DragonTiger v-else-if="id === 'dragon'" @select="$emit('select', $event)" />
     <ThemeLibrary v-else-if="id === 'themelib'" @select="$emit('select', $event)" />
     <TradeTape v-else-if="id === 'trades'" :code="selected" />
-    <AiAssistant v-else-if="id === 'ai'" />
+    <ProGate v-else-if="id === 'ai'" title="AI 问数" desc="订阅 Pro 后解锁 AI 问答与智能行情助理">
+      <AiAssistant />
+    </ProGate>
     <ProGate v-else-if="id === 'review'" title="AI 复盘" desc="订阅 Pro 后解锁每日复盘报告与决策回溯">
       <AiReview />
     </ProGate>

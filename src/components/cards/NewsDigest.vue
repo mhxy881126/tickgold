@@ -12,9 +12,11 @@ import { fetchNewsFlash, fetchQuotes, type NewsItem } from "../../api/market";
 import { openInAppBrowser } from "../../utils/openInApp";
 import { readAiCache, writeAiCache, formatCacheTime } from "../../utils/aiCache";
 import { useSmartPolling } from "../../composables/useSmartPolling";
+import { useLicenseStore } from "../../stores/license";
 import { logger } from "../../utils/logger";
 
 const emit = defineEmits<{ select: [code: string] }>();
+const license = useLicenseStore();
 
 const CACHE_KEY = "news-digest";
 
@@ -295,6 +297,15 @@ function refresh() {
   }
 }
 
+// 启用 AI：未激活 Pro 时引导订阅，不发起模型请求
+function onEnableAi() {
+  if (!license.isPro) {
+    void tauriEmit("open-pro-settings");
+    return;
+  }
+  switchMode("ai");
+}
+
 // 切换模式
 function switchMode(m: "ai" | "direct") {
   mode.value = m;
@@ -486,7 +497,7 @@ useSmartPolling(() => {
           <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/>
         </svg>
         <span>实时快讯流 · AI 不可用时自动降级到此模式</span>
-        <button class="hint-close" @click="switchMode('ai')" title="切回 AI 模式">
+        <button class="hint-close" @click="onEnableAi" title="切回 AI 模式">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/>
             <path d="M12 8v4l3 2"/>

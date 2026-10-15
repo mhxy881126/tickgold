@@ -2,7 +2,8 @@
 import { emit } from "@tauri-apps/api/event";
 import { useLicenseStore } from "../../stores/license";
 
-// Pro 功能门控：未激活订阅时展示引导占位，激活后渲染插槽内容。
+// Pro 功能门控：未激活订阅时展示引导占位；激活后渲染插槽内容，
+// 并在右上角常驻「PRO 已激活」徽标，让用户明确知道当前卡片为 Pro 功能。
 defineProps<{
   /** 功能名（默认 "Pro 订阅专享"） */
   title?: string;
@@ -17,8 +18,11 @@ function goSubscribe() {
 </script>
 
 <template>
-  <div v-if="license.isPro" class="pg-slot">
-    <slot />
+  <div v-if="license.isPro" class="pg-active">
+    <span class="pg-active-badge">PRO 已激活</span>
+    <div class="pg-slot">
+      <slot />
+    </div>
   </div>
   <div v-else class="pro-gate">
     <div class="pg-badge">PRO</div>
@@ -34,6 +38,28 @@ function goSubscribe() {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+.pg-active {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.pg-active-badge {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 5;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #1a1508;
+  background: linear-gradient(135deg, #e8c66a, #d9a441);
+  border-radius: 6px;
+  padding: 2px 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
 }
 .pro-gate {
   flex: 1;
