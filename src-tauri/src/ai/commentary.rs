@@ -287,7 +287,12 @@ const SYSTEM_INTRADAY: &str = "你是 A 股盘中实时解读助手。基于给�
 pub async fn ai_intraday_commentary(
     state: tauri::State<'_, super::AiState>,
 app: tauri::AppHandle) -> Result<IntradayCommentary, String> {
-    crate::license::require_pro_ai(&app)?;
+    let use_builtin = crate::ai::config::load_config(
+        &crate::ai::vectordb::open(&state.dir().join("ai.db"))?.0,
+    )
+    .map(|c| c.use_builtin)
+    .unwrap_or(true);
+    crate::license::require_pro_ai_ex(&app, use_builtin)?;
     let (cfg, key) = load_cfg(&state.dir())?;
     let (idx, sec, zt, news) = tokio::join!(
         index_summary(),
@@ -348,7 +353,12 @@ pub async fn ai_explain_signal(
     name: String,
     kind: String,
 app: tauri::AppHandle) -> Result<SignalAttribution, String> {
-    crate::license::require_pro_ai(&app)?;
+    let use_builtin = crate::ai::config::load_config(
+        &crate::ai::vectordb::open(&state.dir().join("ai.db"))?.0,
+    )
+    .map(|c| c.use_builtin)
+    .unwrap_or(true);
+    crate::license::require_pro_ai_ex(&app, use_builtin)?;
     let (cfg, key) = load_cfg(&state.dir())?;
 
     // 拉取个股实时行情
@@ -569,7 +579,12 @@ const SYSTEM_MAINLINE: &str = "你是行情结构梳理助手。基于当日涨�
 pub async fn ai_tomorrow_mainline(
     state: tauri::State<'_, super::AiState>,
 app: tauri::AppHandle) -> Result<TomorrowMainline, String> {
-    crate::license::require_pro_ai(&app)?;
+    let use_builtin = crate::ai::config::load_config(
+        &crate::ai::vectordb::open(&state.dir().join("ai.db"))?.0,
+    )
+    .map(|c| c.use_builtin)
+    .unwrap_or(true);
+    crate::license::require_pro_ai_ex(&app, use_builtin)?;
     let (cfg, key) = load_cfg(&state.dir())?;
     let today = market::today_yyyymmdd();
 
@@ -687,7 +702,12 @@ pub async fn ai_intraday_commentary_stream(
     app_handle: tauri::AppHandle,
     stream_id: String,
 app: tauri::AppHandle) -> Result<(), String> {
-    crate::license::require_pro_ai(&app)?;
+    let use_builtin = crate::ai::config::load_config(
+        &crate::ai::vectordb::open(&state.dir().join("ai.db"))?.0,
+    )
+    .map(|c| c.use_builtin)
+    .unwrap_or(true);
+    crate::license::require_pro_ai_ex(&app, use_builtin)?;
     let (cfg, key) = match load_cfg(&state.dir()) {
         Ok(v) => v,
         Err(e) => {
@@ -818,7 +838,12 @@ pub async fn ai_tomorrow_mainline_stream(
     app_handle: tauri::AppHandle,
     stream_id: String,
 app: tauri::AppHandle) -> Result<(), String> {
-    crate::license::require_pro_ai(&app)?;
+    let use_builtin = crate::ai::config::load_config(
+        &crate::ai::vectordb::open(&state.dir().join("ai.db"))?.0,
+    )
+    .map(|c| c.use_builtin)
+    .unwrap_or(true);
+    crate::license::require_pro_ai_ex(&app, use_builtin)?;
     let (cfg, key) = match load_cfg(&state.dir()) {
         Ok(v) => v,
         Err(e) => {

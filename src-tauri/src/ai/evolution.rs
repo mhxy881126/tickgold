@@ -640,7 +640,12 @@ pub async fn evolution_run_labeling(
     config: Option<EvolutionConfig>,
     force: Option<bool>,
 app: tauri::AppHandle) -> Result<Value, String> {
-    crate::license::require_pro_ai(&app)?;
+    let use_builtin = crate::ai::config::load_config(
+        &crate::ai::vectordb::open(&state.dir().join("ai.db"))?.0,
+    )
+    .map(|c| c.use_builtin)
+    .unwrap_or(true);
+    crate::license::require_pro_ai_ex(&app, use_builtin)?;
     run_labeling(
         &state.dir(),
         config.unwrap_or_default(),

@@ -370,8 +370,6 @@ pub(crate) async fn ai_chat_send(
     session_id: i64,
     text: String,
 ) -> Result<(), String> {
-    // v3.0.8 门控：AI 对话为 Pro 专属（生成内容消耗内置模型 token，免费用户放行会造成成本泄漏）
-    crate::license::require_pro_ai(&app)?;
     let (cfg, key, data_dir) = {
         let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
         let cfg = ai::config::load_config(&db.0)?;
@@ -380,6 +378,8 @@ pub(crate) async fn ai_chat_send(
         let key = ai::config::effective_key(&cfg, &secret)?;
         (eff, key, state.dir().clone())
     };
+    // v3.0.9 门控：AI 对话为 Pro 专属；内置模型扣每日配额，自备模型源不限量
+    crate::license::require_pro_ai_ex(&app, cfg.use_builtin)?;
     // flags 是 Arc<Mutex<HashSet>>：克隆 Arc 与 spawn 共享，中止命令可即时置位
     let reg = ai::AbortRegistry {
         flags: registry.flags.clone(),
@@ -557,9 +557,9 @@ pub(crate) async fn ai_generate_plan(
     profile_key: Option<String>,
     review_date: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    // v3.0.8 门控：作战计划生成为 Pro 专属
-    crate::license::require_pro_ai(&app)?;
     let (cfg, key, dir) = load_brain(&state)?;
+    // v3.0.9 门控：作战计划生成为 Pro 专属；内置模型扣配额，自备模型源不限量
+    crate::license::require_pro_ai_ex(&app, cfg.use_builtin)?;
     ai::plan::generate_plan(
         &dir,
         &cfg,

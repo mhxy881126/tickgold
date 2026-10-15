@@ -931,7 +931,12 @@ pub async fn backtest_run(
     ai: State<'_, crate::ai::AiState>,
     req: BacktestReq,
 app: tauri::AppHandle) -> AppResult<BacktestResult> {
-    crate::license::require_pro_ai(&app)?;
+    let use_builtin = crate::ai::config::load_config(
+        &crate::ai::vectordb::open(&ai.dir().join("ai.db"))?.0,
+    )
+    .map(|c| c.use_builtin)
+    .unwrap_or(true);
+    crate::license::require_pro_ai_ex(&app, use_builtin)?;
     let dir = ai.dir();
     tauri::async_runtime::spawn_blocking(move || -> AppResult<BacktestResult> {
         let conn = maindb::open_readonly(&dir)?;
@@ -1142,7 +1147,12 @@ pub async fn backtest_optimize(
     ai: State<'_, crate::ai::AiState>,
     req: OptimizeReq,
 app: tauri::AppHandle) -> AppResult<OptimizeReport> {
-    crate::license::require_pro_ai(&app)?;
+    let use_builtin = crate::ai::config::load_config(
+        &crate::ai::vectordb::open(&ai.dir().join("ai.db"))?.0,
+    )
+    .map(|c| c.use_builtin)
+    .unwrap_or(true);
+    crate::license::require_pro_ai_ex(&app, use_builtin)?;
     let dir = ai.dir();
     tauri::async_runtime::spawn_blocking(move || -> AppResult<OptimizeReport> {
         let conn = maindb::open_readonly(&dir)?;

@@ -268,8 +268,18 @@ pub fn consume_ai_quota(app: &AppHandle) -> Result<(), String> {
 
 /// Pro 门控 + AI 配额（AI 生成类命令入口统一调用）。
 pub fn require_pro_ai(app: &AppHandle) -> Result<(), String> {
+    require_pro_ai_ex(app, true)
+}
+
+/// Pro 门控 + 按模型源决定配额：内置模型消耗开发者 token，需扣每日配额；
+/// 自备模型源（本地 Ollama / 用户云端 Key）不消耗开发者成本，只校验 Pro、不限量。
+pub fn require_pro_ai_ex(app: &AppHandle, use_builtin: bool) -> Result<(), String> {
     require_pro(app)?;
-    consume_ai_quota(app)
+    if use_builtin {
+        consume_ai_quota(app)
+    } else {
+        Ok(())
+    }
 }
 
 /// 查询授权状态（前端启动时调用）。
