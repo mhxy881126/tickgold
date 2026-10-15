@@ -319,8 +319,8 @@ fn civil_compact(z: i64) -> i64 {
     y * 10000 + m * 100 + d
 }
 
-/// 回填单只个股：东财主、腾讯兜底。
-async fn backfill_one(
+/// 回填单只个股：东财主、腾讯兜底（回测自动补数复用）。
+pub(crate) async fn backfill_one(
     conn: Arc<Mutex<Connection>>,
     code: String,
     period: i64,

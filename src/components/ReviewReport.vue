@@ -10,6 +10,9 @@ import { renderHtml, renderMarkdown } from "../utils/reviewReport";
 const busy = ref(false);
 const msg = ref("");
 const ok = ref(false);
+const previewHtml = ref("");
+const previewDay = ref("");
+const previewBusy = ref(false);
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -17,6 +20,21 @@ function pad2(n: number) {
 function stamp() {
   const d = new Date();
   return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}_${pad2(d.getHours())}${pad2(d.getMinutes())}`;
+}
+
+async function preview() {
+  if (previewHtml.value) { previewHtml.value = ""; return; }  // 再点收起
+  previewBusy.value = true;
+  try {
+    const data = await buildReviewReport();
+    previewHtml.value = renderHtml(data);
+    previewDay.value = data.date;
+  } catch (e: any) {
+    msg.value = "生成预览失败：" + (e?.message || String(e));
+    ok.value = false;
+  } finally {
+    previewBusy.value = false;
+  }
 }
 
 async function exportAs(kind: "html" | "md") {
@@ -67,6 +85,19 @@ async function exportAs(kind: "html" | "md") {
         <b>导出 Markdown</b>
         <span>纯文本，便于二次编辑</span>
       </button>
+      <button class="rr-btn prev" :disabled="busy" @click="preview">
+        <b>{{ previewHtml ? '收起预览' : '预览报告' }}</b>
+        <span>{{ previewHtml ? '关闭内嵌预览' : '内嵌查看完整报告' }}</span>
+      </button>
+    </div>
+
+    <div v-if="previewBusy" class="rr-busy">正在生成预览…</div>
+    <div v-if="previewHtml" class="rr-preview">
+      <div class="rr-preview-bar">
+        <span>{{ previewDay }} 复盘报告预览</span>
+        <button @click="previewHtml = ''">关闭</button>
+      </div>
+      <iframe class="rr-preview-frame" :srcdoc="previewHtml" sandbox="allow-same-origin"></iframe>
     </div>
 
     <div v-if="busy" class="rr-busy">正在生成…</div>
@@ -144,5 +175,21 @@ async function exportAs(kind: "html" | "md") {
   border: 1px solid rgba(201, 162, 74, .4);
   border-radius: 8px;
   padding: 8px 12px;
+}
+
+.rr-btn.prev { grid-column: 1 / -1; border-color: var(--accent, #3370ff); color: var(--accent, #3370ff); }
+.rr-preview { display: flex; flex-direction: column; gap: 6px; min-height: 0; flex: 1; }
+.rr-preview-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; font-weight: 600; color: var(--text);
+}
+.rr-preview-bar button {
+  border: 1px solid var(--border); background: var(--bg-card2); color: var(--text);
+  border-radius: 6px; padding: 2px 10px; font-size: 11px; cursor: pointer;
+}
+.rr-preview-frame {
+  width: 100%; flex: 1; min-height: 0;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: #fff;
 }
 </style>

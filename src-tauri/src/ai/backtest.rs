@@ -938,6 +938,78 @@ app: tauri::AppHandle) -> AppResult<BacktestResult> {
     .unwrap_or(true);
     crate::license::require_pro_ai_ex(&app, use_builtin)?;
     let dir = ai.dir();
+    // 自动补数：标的池 + 基准若在 hist_kline 缺失或未覆盖到回测结束日，先在线回填再运行
+    {
+        let mut codes: Vec<String> = req.codes.clone();
+        if !req.benchmark.is_empty() && !codes.contains(&req.benchmark) {
+            codes.push(req.benchmark.clone());
+        }
+        let start_y: i64 = req
+            .start
+            .chars()
+            .take(4)
+            .collect::<String>()
+            .parse()
+            .unwrap_or(2025);
+        let now_y = 1970 + (crate::ai::now_millis() / 1000 / 86_400 / 365) as i64;
+        let years = (now_y - start_y + 1).clamp(1, 20);
+        let conn = maindb::open_readwrite(&dir)?;
+        let conn = std::sync::Arc::new(std::sync::Mutex::new(conn));
+        for code in codes {
+            let need = {
+                let c = conn.lock().unwrap();
+                let end = req.end.replace('-', "");
+                let n: i64 = c
+                    .query_row(
+                        "SELECT COUNT(*) FROM hist_kline WHERE code=?1 AND period=101 AND adj IN ('qfq','none') AND date<=?2",
+                        rusqlite::params![code, end],
+                        |r| r.get(0),
+                    )
+                    .unwrap_or(0);
+                if n > 0 {
+                    let mx: Option<String> = c
+                        .query_row(
+                            "SELECT MAX(date) FROM hist_kline WHERE code=?1 AND period=101 AND adj IN ('qfq','none')",
+                            rusqlite::params![code],
+                            |r| r.get(0),
+                        )
+                        .unwrap_or(None);
+                    match mx {
+                        Some(mx) => mx.replace('-', "") < end,
+                        None => true,
+                    }
+                } else {
+                    true
+                }
+            };
+            if need {
+                // qfq 优先（回测口径），失败自动回退 none（指数/无除权数据）
+                match crate::market::history::backfill_one(
+                    conn.clone(),
+                    code.clone(),
+                    crate::market::history::PERIOD_DAILY,
+                    "qfq".to_string(),
+                    years,
+                )
+                .await
+                {
+                    Ok(_) => {}
+                    Err(e) => {
+                        log::warn!("回测自动回填 {code} qfq 失败: {e}");
+                        crate::market::history::backfill_one(
+                            conn.clone(),
+                            code.clone(),
+                            crate::market::history::PERIOD_DAILY,
+                            "none".to_string(),
+                            years,
+                        )
+                        .await
+                        .map_err(|e| AppError::business(format!("回测需历史K线，自动回填 {code} 失败: {e}")))?;
+                    }
+                }
+            }
+        }
+    }
     tauri::async_runtime::spawn_blocking(move || -> AppResult<BacktestResult> {
         let conn = maindb::open_readonly(&dir)?;
         let mut engine = build_engine(&conn, req)?;

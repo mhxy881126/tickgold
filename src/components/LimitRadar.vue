@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
-  startRadar, stopRadar, fetchZtPool, fetchQuotes, fetchLadderStats,
+  startRadar, stopRadar, fetchZtPool, fetchQuotes, fetchLadderStats, fetchRadarSnapshot,
   type LadderGroup, type LadderStat, type RadarData, type RadarStatus, type ZtStock,
 } from "../api/market";
 
@@ -81,6 +81,14 @@ const dash = computed(() => {
 });
 
 onMounted(async () => {
+  // 先取后端最近一帧快照：引擎已运行（55s 一轮）时切卡立即有数据，不必干等下一轮推流
+  try {
+    const snap = await fetchRadarSnapshot();
+    if (snap) {
+      data.value = snap;
+      dataStale.value = false;
+    }
+  } catch (e) { console.warn("radar snapshot", e); }
   un.push(await listen<RadarData>("radar:data", (e) => {
     data.value = e.payload;
     dataStale.value = false;

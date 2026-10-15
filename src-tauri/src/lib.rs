@@ -93,6 +93,7 @@ pub fn run() {
             commands::stop_spider,
             commands::spider_get_thresholds,
             commands::spider_set_thresholds,
+            commands::get_radar_snapshot,
             commands::start_radar,
             commands::stop_radar,
             commands::start_alert_engine,

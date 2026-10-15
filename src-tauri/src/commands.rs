@@ -837,6 +837,13 @@ pub(crate) fn stop_spider(
 }
 
 #[tauri::command]
+pub(crate) fn get_radar_snapshot(
+    ctl: tauri::State<'_, Arc<market::limitup::LimitRadar>>,
+) -> Option<market::limitup::RadarData> {
+    ctl.last.lock().unwrap().clone()
+}
+
+#[tauri::command]
 pub(crate) async fn start_radar(
     app: tauri::AppHandle,
     ctl: tauri::State<'_, Arc<market::limitup::LimitRadar>>,

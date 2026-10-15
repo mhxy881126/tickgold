@@ -557,6 +557,10 @@ export interface ZtPool {
   list: ZtStock[];
 }
 /** 涨停池（date 为空取今日，格式 YYYYMMDD） */
+export async function fetchRadarSnapshot(): Promise<RadarData | null> {
+  return await invoke<RadarData | null>("get_radar_snapshot");
+}
+
 export async function fetchZtPool(date = ""): Promise<ZtPool> {
   return await invoke<ZtPool>("get_zt_pool", { date });
 }

@@ -70,11 +70,14 @@ pub struct RadarStatus {
 /// 控制器
 pub struct LimitRadar {
     pub running: AtomicBool,
+    /// 最近一次成功计算的完整帧（前端切卡挂载时先取快照，避免干等下一轮 55s 推流）
+    pub last: std::sync::Mutex<Option<RadarData>>,
 }
 impl LimitRadar {
     pub fn new() -> Self {
         LimitRadar {
             running: AtomicBool::new(false),
+            last: std::sync::Mutex::new(None),
         }
     }
 }
@@ -426,9 +429,11 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<LimitRadar>) {
         let (fast, zt, zb, dt) = scan_fast(trading).await;
         // v2.32：顺带采样封单额，供盘口“封单趋势”曲线。
         super::depth_enhance::record_seal_snapshot(&zt.list).await;
+        *ctl.last.lock().unwrap() = Some(fast.clone());
         let _ = app.emit("radar:data", fast);
         // 阶段2：补充全市场宽度（3-5秒）
         let full = scan_full(trading, zt, zb, dt).await;
+        *ctl.last.lock().unwrap() = Some(full.clone());
         let _ = app.emit("radar:data", full);
         let _ = app.emit(
             "radar:status",
