@@ -3,6 +3,13 @@ use crate::ai::now_millis;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
+/// 内置云端模型（Pro 激活即用，无需用户配置）。
+/// 智谱 GLM-4.5：输入 0.8 元/百万 tokens、输出 2 元/百万 tokens（官方定价）。
+pub const BUILTIN_BASE_URL: &str = "https://open.bigmodel.cn/api/paas/v4";
+pub const BUILTIN_CHAT_MODEL: &str = "glm-4.5";
+pub const BUILTIN_EMBED_MODEL: &str = "embedding-3";
+pub const BUILTIN_API_KEY: &str = "d9dbab10ef2a4f158b3b43a4ac7eb29c.Sro93uZJWZs17Hu1";
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AiConfig {
@@ -12,6 +19,13 @@ pub struct AiConfig {
     pub embed_model: String,
     pub temperature: f32,
     pub enable_auto_index: bool,
+    /// 使用内置云端模型（默认开箱即用；关闭后按 provider/baseUrl/自填 Key 走 BYOK）。
+    #[serde(default = "default_true")]
+    pub use_builtin: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for AiConfig {
@@ -23,7 +37,36 @@ impl Default for AiConfig {
             embed_model: "nomic-embed-text".to_string(),
             temperature: 0.3,
             enable_auto_index: true,
+            use_builtin: true,
         }
+    }
+}
+
+/// 生效配置：use_builtin 时强制覆盖为内置智谱端点与模型（忽略历史 ollama 默认值）。
+/// BYOK（cloud + 自填 Key）与本地 Ollama 保持原配置。
+pub fn effective_cfg(cfg: &AiConfig) -> AiConfig {
+    if cfg.use_builtin {
+        let mut c = cfg.clone();
+        c.base_url = BUILTIN_BASE_URL.to_string();
+        c.chat_model = BUILTIN_CHAT_MODEL.to_string();
+        c.embed_model = BUILTIN_EMBED_MODEL.to_string();
+        c
+    } else {
+        cfg.clone()
+    }
+}
+
+/// 生效 API Key：内置 Key / 用户自填云 Key（BYOK）/ 本地 Ollama 无 Key。
+pub fn effective_key(cfg: &AiConfig, secret: &impl SecretStore) -> Result<Option<String>, String> {
+    if cfg.use_builtin {
+        Ok(Some(BUILTIN_API_KEY.to_string()))
+    } else if cfg.provider == "cloud" {
+        secret
+            .get()?
+            .ok_or_else(|| "未设置云端 API Key：请关闭内置模型后，在 AI 模型页填写并保存自己的 Key".to_string())
+            .map(Some)
+    } else {
+        Ok(None)
     }
 }
 
@@ -130,6 +173,8 @@ mod tests {
         assert_eq!(cfg.provider, "ollama");
         assert_eq!(cfg.base_url, "http://127.0.0.1:11434/v1");
         assert!(cfg.enable_auto_index);
+        // 新用户默认开箱即用内置模型
+        assert!(cfg.use_builtin);
     }
 
     #[test]
@@ -161,5 +206,62 @@ mod tests {
         assert_eq!(s.get().unwrap().as_deref(), Some("sk-test"));
         s.erase().unwrap();
         assert_eq!(s.get().unwrap(), None);
+    }
+
+    #[test]
+    fn builtin_resolves_to_zhipu_and_ignores_stale_fields() {
+        let s = MemSecret::new();
+        // 旧库可能残留 ollama 默认 base_url/model；use_builtin=true 必须强制覆盖
+        let cfg = AiConfig::default();
+        assert!(cfg.use_builtin);
+        let eff = effective_cfg(&cfg);
+        assert_eq!(eff.base_url, BUILTIN_BASE_URL);
+        assert_eq!(eff.chat_model, BUILTIN_CHAT_MODEL);
+        assert_eq!(eff.embed_model, BUILTIN_EMBED_MODEL);
+        assert_eq!(
+            effective_key(&cfg, &s).unwrap().as_deref(),
+            Some(BUILTIN_API_KEY)
+        );
+    }
+
+    #[test]
+    fn byok_cloud_uses_user_key_and_url() {
+        let s = MemSecret::new();
+        s.set("sk-user").unwrap();
+        let cfg = AiConfig {
+            use_builtin: false,
+            provider: "cloud".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            chat_model: "deepseek-chat".to_string(),
+            ..Default::default()
+        };
+        let eff = effective_cfg(&cfg);
+        assert_eq!(eff.base_url, "https://api.deepseek.com/v1");
+        assert_eq!(eff.chat_model, "deepseek-chat");
+        assert_eq!(effective_key(&cfg, &s).unwrap().as_deref(), Some("sk-user"));
+    }
+
+    #[test]
+    fn byok_cloud_without_key_errors() {
+        let s = MemSecret::new();
+        let cfg = AiConfig {
+            use_builtin: false,
+            provider: "cloud".to_string(),
+            ..Default::default()
+        };
+        assert!(effective_key(&cfg, &s).is_err());
+    }
+
+    #[test]
+    fn ollama_mode_keeps_no_key() {
+        let s = MemSecret::new();
+        let cfg = AiConfig {
+            use_builtin: false,
+            provider: "ollama".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(effective_key(&cfg, &s).unwrap(), None);
+        let eff = effective_cfg(&cfg);
+        assert_eq!(eff.base_url, "http://127.0.0.1:11434/v1");
     }
 }

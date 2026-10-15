@@ -344,7 +344,7 @@ pub async fn scan(req: &StrategyScanReq) -> Result<Vec<TacticHit>, String> {
 
 #[tauri::command]
 pub async fn strategy_scan_run(req: StrategyScanReq, app: tauri::AppHandle) -> Result<Vec<TacticHit>, String> {
-    crate::license::require_pro(&app)?;
+    crate::license::require_pro_ai(&app)?;
     scan(&req).await
 }
 

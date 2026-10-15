@@ -768,6 +768,7 @@ mod tests {
             embed_model: "e".into(),
             temperature: 0.3,
             enable_auto_index: true,
+            use_builtin: false,
         };
         let mut text = String::new();
         let calls = chat_stream(&cfg, &None, &[], &[], &mut |e| {
@@ -822,6 +823,7 @@ mod tests {
             embed_model: "e".into(),
             temperature: 0.3,
             enable_auto_index: true,
+            use_builtin: false,
         }
     }
 
@@ -992,6 +994,7 @@ mod tests {
             embed_model: String::new(),
             temperature: 0.3,
             enable_auto_index: false,
+            use_builtin: false,
         };
         let info = list_models(&cfg, &Some("sk-test".into())).await.unwrap();
         assert_eq!(info.models, vec!["deepseek-chat", "deepseek-reasoner"]);
@@ -1012,6 +1015,7 @@ mod tests {
             embed_model: String::new(),
             temperature: 0.3,
             enable_auto_index: false,
+            use_builtin: false,
         };
         let info = list_models(&cfg, &None).await.unwrap();
         assert_eq!(info.models, vec!["llama3.1:8b", "qwen2.5:7b"]);

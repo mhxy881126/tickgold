@@ -931,7 +931,7 @@ pub async fn backtest_run(
     ai: State<'_, crate::ai::AiState>,
     req: BacktestReq,
 app: tauri::AppHandle) -> AppResult<BacktestResult> {
-    crate::license::require_pro(&app)?;
+    crate::license::require_pro_ai(&app)?;
     let dir = ai.dir();
     tauri::async_runtime::spawn_blocking(move || -> AppResult<BacktestResult> {
         let conn = maindb::open_readonly(&dir)?;
@@ -1142,7 +1142,7 @@ pub async fn backtest_optimize(
     ai: State<'_, crate::ai::AiState>,
     req: OptimizeReq,
 app: tauri::AppHandle) -> AppResult<OptimizeReport> {
-    crate::license::require_pro(&app)?;
+    crate::license::require_pro_ai(&app)?;
     let dir = ai.dir();
     tauri::async_runtime::spawn_blocking(move || -> AppResult<OptimizeReport> {
         let conn = maindb::open_readonly(&dir)?;

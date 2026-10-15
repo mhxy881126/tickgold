@@ -299,12 +299,10 @@ pub(crate) async fn ai_test_connection(
         let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
         ai::config::load_config(&db.0)?
     };
-    let key = if cfg.provider == "cloud" {
-        ai::config::SecretStore::get(&cloud_secret())?
-    } else {
-        None
-    };
-    let info = ai::provider::list_models(&cfg, &key).await?;
+    let secret = cloud_secret();
+    let eff = ai::config::effective_cfg(&cfg);
+    let key = ai::config::effective_key(&cfg, &secret)?;
+    let info = ai::provider::list_models(&eff, &key).await?;
     Ok(serde_json::json!({"latencyMs": info.latency_ms, "models": info.models}))
 }
 
@@ -375,12 +373,10 @@ pub(crate) async fn ai_chat_send(
     let (cfg, key, data_dir) = {
         let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
         let cfg = ai::config::load_config(&db.0)?;
-        let key = if cfg.provider == "cloud" {
-            ai::config::SecretStore::get(&cloud_secret())?
-        } else {
-            None
-        };
-        (cfg, key, state.dir().clone())
+        let secret = cloud_secret();
+        let eff = ai::config::effective_cfg(&cfg);
+        let key = ai::config::effective_key(&cfg, &secret)?;
+        (eff, key, state.dir().clone())
     };
     // flags 是 Arc<Mutex<HashSet>>：克隆 Arc 与 spawn 共享，中止命令可即时置位
     let reg = ai::AbortRegistry {
@@ -458,16 +454,14 @@ pub(crate) async fn ai_reindex(state: tauri::State<'_, ai::AiState>) -> Result<u
         let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
         ai::config::load_config(&db.0)?
     };
-    let key = if cfg.provider == "cloud" {
-        ai::config::SecretStore::get(&cloud_secret())?
-    } else {
-        None
-    };
+    let secret = cloud_secret();
+    let eff = ai::config::effective_cfg(&cfg);
+    let key = ai::config::effective_key(&cfg, &secret)?;
     let embedder = ai::provider::HttpEmbedder {
-        cfg: cfg.clone(),
+        cfg: eff.clone(),
         api_key: key,
     };
-    ai::ingest::embed_pending(&state.dir(), &cfg, &embedder, None, 100_000).await
+    ai::ingest::embed_pending(&state.dir(), &eff, &embedder, None, 100_000).await
 }
 
 #[tauri::command]
@@ -479,16 +473,14 @@ pub(crate) async fn ai_index_daily(
         let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
         ai::config::load_config(&db.0)?
     };
-    let key = if cfg.provider == "cloud" {
-        ai::config::SecretStore::get(&cloud_secret())?
-    } else {
-        None
-    };
+    let secret = cloud_secret();
+    let eff = ai::config::effective_cfg(&cfg);
+    let key = ai::config::effective_key(&cfg, &secret)?;
     let embedder = ai::provider::HttpEmbedder {
-        cfg: cfg.clone(),
+        cfg: eff.clone(),
         api_key: key,
     };
-    ai::ingest::index_day(&state.dir(), &cfg, &embedder, &trade_date, None).await
+    ai::ingest::index_day(&state.dir(), &eff, &embedder, &trade_date, None).await
 }
 
 // ===== v2.0 AI 决策：特征包 / 三层复盘 / 作战计划 =====
@@ -498,12 +490,10 @@ pub(crate) fn load_brain(
 ) -> Result<(ai::config::AiConfig, Option<String>, std::path::PathBuf), String> {
     let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
     let cfg = ai::config::load_config(&db.0)?;
-    let key = if cfg.provider == "cloud" {
-        ai::config::SecretStore::get(&cloud_secret())?
-    } else {
-        None
-    };
-    Ok((cfg, key, state.dir()))
+    let secret = cloud_secret();
+    let eff = ai::config::effective_cfg(&cfg);
+    let key = ai::config::effective_key(&cfg, &secret)?;
+    Ok((eff, key, state.dir()))
 }
 
 #[tauri::command]
@@ -511,7 +501,7 @@ pub(crate) async fn ai_build_decision_pack(
     state: tauri::State<'_, ai::AiState>,
     date: Option<String>,
 app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    crate::license::require_pro(&app)?;
+    crate::license::require_pro_ai(&app)?;
     let dir = state.dir();
     tauri::async_runtime::spawn_blocking(move || ai::decision::build_pack(&dir, date.as_deref()))
         .await
@@ -524,7 +514,7 @@ pub(crate) async fn ai_build_review_report(
     state: tauri::State<'_, ai::AiState>,
     date: Option<String>,
 app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    crate::license::require_pro(&app)?;
+    crate::license::require_pro_ai(&app)?;
     let dir = state.dir();
     tauri::async_runtime::spawn_blocking(move || ai::report::build_report(&dir, date.as_deref()))
         .await
@@ -537,7 +527,7 @@ pub(crate) async fn ai_run_review(
     date: Option<String>,
     force: bool,
 app: tauri::AppHandle) -> Result<Vec<ai::review::ReviewSummary>, String> {
-    crate::license::require_pro(&app)?;
+    crate::license::require_pro_ai(&app)?;
     let (cfg, key, dir) = load_brain(&state)?;
     ai::review::run_review(&dir, &cfg, &key, date.as_deref(), force).await
 }

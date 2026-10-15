@@ -841,14 +841,13 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                 let aidb = crate::ai::vectordb::open(&data_dir.join("ai.db")).ok();
                 aidb.as_ref().and_then(|db| {
                     let ai_cfg = crate::ai::config::load_config(&db.0).ok()?;
-                    let key =
-                        crate::ai::config::SecretStore::get(&crate::ai::config::KeyringSecret {
-                            service: "tickgold.ai.cloud-key".to_string(),
-                            user: "default".to_string(),
-                        })
-                        .ok()
-                        .flatten()?;
-                    Some((ai_cfg.base_url, key, ai_cfg.chat_model))
+                    let secret = crate::ai::config::KeyringSecret {
+                        service: "tickgold.ai.cloud-key".to_string(),
+                        user: "default".to_string(),
+                    };
+                    let eff = crate::ai::config::effective_cfg(&ai_cfg);
+                    let key = crate::ai::config::effective_key(&ai_cfg, &secret).ok()??;
+                    Some((eff.base_url, key, eff.chat_model))
                 })
             } else {
                 None

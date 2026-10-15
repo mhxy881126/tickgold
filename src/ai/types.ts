@@ -9,6 +9,8 @@ export interface AiConfig {
   embedModel: string;
   temperature: number;
   enableAutoIndex: boolean;
+  /** 使用内置云端模型（默认开箱即用，Pro 激活即用；关闭后走 BYOK/本地） */
+  useBuiltin: boolean;
 }
 
 export interface SessionInfo {

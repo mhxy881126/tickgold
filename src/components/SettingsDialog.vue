@@ -256,6 +256,7 @@ const DEFAULT_AI_CFG: AiConfig = {
   embedModel: "",
   temperature: 0.4,
   enableAutoIndex: true,
+  useBuiltin: true,
 };
 const aiCfg = ref<AiConfig>({ ...DEFAULT_AI_CFG });
 const aiLoaded = ref(false);
@@ -415,6 +416,11 @@ async function onTestAi() {
   } finally {
     testingAi.value = false;
   }
+}
+
+function pickAi(p: "ollama" | "cloud") {
+  aiCfg.value.useBuiltin = false;
+  aiCfg.value.provider = p;
 }
 
 /** 单独拉取模型列表（不强制保存配置），用于手动刷新下拉选项 */
@@ -1773,47 +1779,55 @@ async function clearL2Key(r: PluginRow) {
               <div class="section-title">AI 模型</div>
               <div class="section-sub">选本地或云端模型，用于智能问答和选股分析</div>
               <div class="seg ai-provider">
-                <button type="button" class="seg-btn" :class="{ on: aiCfg.provider === 'ollama' }" @click="aiCfg.provider = 'ollama'">本地 Ollama</button>
-                <button type="button" class="seg-btn" :class="{ on: aiCfg.provider === 'cloud' }" @click="aiCfg.provider = 'cloud'">云端 API</button>
+                <button type="button" class="seg-btn" :class="{ on: aiCfg.useBuiltin }" @click="aiCfg.useBuiltin = true">内置模型（推荐）</button>
+                <button type="button" class="seg-btn" :class="{ on: !aiCfg.useBuiltin && aiCfg.provider === 'ollama' }" @click="pickAi('ollama')">本地 Ollama</button>
+                <button type="button" class="seg-btn" :class="{ on: !aiCfg.useBuiltin && aiCfg.provider === 'cloud' }" @click="pickAi('cloud')">云端 API</button>
               </div>
 
-              <div class="ai-field">
-                <label>接口地址 Base URL</label>
-                <input v-model="aiCfg.baseUrl" type="text" spellcheck="false" :placeholder="aiCfg.provider === 'ollama' ? 'http://localhost:11434' : 'https://api.deepseek.com/v1'" />
+              <div v-if="aiCfg.useBuiltin" class="builtin-tip">
+                <div class="builtin-title">内置智谱 GLM-4.5 · 开箱即用</div>
+                <div class="section-sub" style="margin-top:4px">订阅 Pro 激活后 AI 功能直接可用，无需配置模型或密钥。每日 AI 调用设有合理配额（100 次/天），防止账号滥用，次日自动重置。</div>
               </div>
 
-              <div class="ai-field-row">
+              <template v-else>
                 <div class="ai-field">
-                  <label>对话模型
-                    <button v-if="aiCfg.provider === 'cloud'" type="button" class="mini-link" :disabled="fetchingModels" @click.prevent="onFetchModels">
-                      ↻ 拉取模型列表
-                    </button>
-                  </label>
-                  <input v-model="aiCfg.chatModel" type="text" spellcheck="false"
-                    :placeholder="aiCfg.provider === 'ollama' ? 'qwen2.5:7b' : '如 deepseek-chat'" />
-                  <div v-if="aiCfg.provider === 'cloud' && availableModels.length" class="model-chips">
-                    <button v-for="m in availableModels" :key="m" type="button"
-                      class="model-chip" :class="{ on: aiCfg.chatModel === m }"
-                      @click="aiCfg.chatModel = m">{{ m }}</button>
+                  <label>接口地址 Base URL</label>
+                  <input v-model="aiCfg.baseUrl" type="text" spellcheck="false" :placeholder="aiCfg.provider === 'ollama' ? 'http://localhost:11434' : 'https://api.deepseek.com/v1'" />
+                </div>
+
+                <div class="ai-field-row">
+                  <div class="ai-field">
+                    <label>对话模型
+                      <button v-if="aiCfg.provider === 'cloud'" type="button" class="mini-link" :disabled="fetchingModels" @click.prevent="onFetchModels">
+                        ↻ 拉取模型列表
+                      </button>
+                    </label>
+                    <input v-model="aiCfg.chatModel" type="text" spellcheck="false"
+                      :placeholder="aiCfg.provider === 'ollama' ? 'qwen2.5:7b' : '如 deepseek-chat'" />
+                    <div v-if="aiCfg.provider === 'cloud' && availableModels.length" class="model-chips">
+                      <button v-for="m in availableModels" :key="m" type="button"
+                        class="model-chip" :class="{ on: aiCfg.chatModel === m }"
+                        @click="aiCfg.chatModel = m">{{ m }}</button>
+                    </div>
+                  </div>
+                  <div class="ai-field">
+                    <label>嵌入模型（知识库用）</label>
+                    <input v-model="aiCfg.embedModel" type="text" spellcheck="false"
+                      placeholder="bge-m3 / text-embedding-3-small" />
                   </div>
                 </div>
-                <div class="ai-field">
-                  <label>嵌入模型（知识库用）</label>
-                  <input v-model="aiCfg.embedModel" type="text" spellcheck="false"
-                    placeholder="bge-m3 / text-embedding-3-small" />
-                </div>
-              </div>
 
-              <template v-if="aiCfg.provider === 'cloud'">
-                <div class="ai-field">
-                  <label>API Key</label>
-                  <div class="ai-keyrow">
-                    <span v-if="cloudKeySet" class="key-ok">✓ 已设置</span>
-                    <input v-else v-model="cloudKeyInput" type="password" placeholder="粘贴 API Key（sk-…）" />
-                    <button v-if="cloudKeySet" type="button" class="logs-btn" @click="clearCloudKeyEv">清除</button>
-                    <button v-else type="button" class="logs-btn" :disabled="!cloudKeyInput.trim()" @click="saveCloudKeyEv">保存密钥</button>
+                <template v-if="aiCfg.provider === 'cloud'">
+                  <div class="ai-field">
+                    <label>API Key</label>
+                    <div class="ai-keyrow">
+                      <span v-if="cloudKeySet" class="key-ok">✓ 已设置</span>
+                      <input v-else v-model="cloudKeyInput" type="password" placeholder="粘贴 API Key（sk-…）" />
+                      <button v-if="cloudKeySet" type="button" class="logs-btn" @click="clearCloudKeyEv">清除</button>
+                      <button v-else type="button" class="logs-btn" :disabled="!cloudKeyInput.trim()" @click="saveCloudKeyEv">保存密钥</button>
+                    </div>
                   </div>
-                </div>
+                </template>
               </template>
 
               <div class="ai-actions">
@@ -2489,6 +2503,12 @@ async function clearL2Key(r: PluginRow) {
 .bridge-tpl { width:100%; box-sizing:border-box; background:var(--bg-input,#0e1117); border:1px solid var(--border,#2a3344); border-radius:6px; color:var(--text,#e6ecf5); padding:6px 8px; font-size:11px; resize:vertical; font-family:inherit; line-height:1.5; }
 .tpl-hint { color:var(--text-dim,#7d8698); font-size:10px; line-height:1.6; }
 .ai-provider { align-self: flex-start; margin-bottom: 4px; }
+.builtin-tip {
+  margin: 0 0 12px; padding: 12px 14px;
+  border: 1px solid rgba(0,255,213,.35); border-radius: 10px;
+  background: rgba(0,255,213,.06);
+}
+.builtin-title { font-size: 13px; font-weight: 600; color: #00ffd5; }
 .ai-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 13px; }
 .ai-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .ai-field label { font-size: 11.5px; font-weight: 600; color: var(--text-dim); display: flex; align-items: center; gap: 8px; }

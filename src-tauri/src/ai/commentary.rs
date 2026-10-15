@@ -1,6 +1,6 @@
 // v2.25 智能赋能：AI 自然语言层——盘中解读、信号归因、预警推荐、资讯聚合、明日主线。
 // 复用现有行情/快讯/涨停池/板块数据，通过 LLM 转化为可理解的自然语言输出。
-use super::config::{load_config, AiConfig, SecretStore};
+use super::config::{load_config, AiConfig};
 use super::provider::{chat_stream, ChatMsg, StreamEv};
 use crate::market;
 use serde::{Deserialize, Serialize};
@@ -14,15 +14,13 @@ use tauri::Emitter;
 pub fn load_cfg(dir: &Path) -> Result<(AiConfig, Option<String>), String> {
     let db = super::vectordb::open(&dir.join("ai.db"))?;
     let cfg = load_config(&db.0)?;
-    let key = if cfg.provider == "cloud" {
-        SecretStore::get(&crate::ai::config::KeyringSecret {
-            service: "tickgold.ai.cloud-key".to_string(),
-            user: "default".to_string(),
-        })?
-    } else {
-        None
+    let secret = crate::ai::config::KeyringSecret {
+        service: "tickgold.ai.cloud-key".to_string(),
+        user: "default".to_string(),
     };
-    Ok((cfg, key))
+    let eff = crate::ai::config::effective_cfg(&cfg);
+    let key = crate::ai::config::effective_key(&cfg, &secret)?;
+    Ok((eff, key))
 }
 
 /// 调用 LLM，收集流式 delta，返回完整文本。
@@ -289,7 +287,7 @@ const SYSTEM_INTRADAY: &str = "你是 A 股盘中实时解读助手。基于给�
 pub async fn ai_intraday_commentary(
     state: tauri::State<'_, super::AiState>,
 app: tauri::AppHandle) -> Result<IntradayCommentary, String> {
-    crate::license::require_pro(&app)?;
+    crate::license::require_pro_ai(&app)?;
     let (cfg, key) = load_cfg(&state.dir())?;
     let (idx, sec, zt, news) = tokio::join!(
         index_summary(),
@@ -350,7 +348,7 @@ pub async fn ai_explain_signal(
     name: String,
     kind: String,
 app: tauri::AppHandle) -> Result<SignalAttribution, String> {
-    crate::license::require_pro(&app)?;
+    crate::license::require_pro_ai(&app)?;
     let (cfg, key) = load_cfg(&state.dir())?;
 
     // 拉取个股实时行情
@@ -571,7 +569,7 @@ const SYSTEM_MAINLINE: &str = "你是行情结构梳理助手。基于当日涨�
 pub async fn ai_tomorrow_mainline(
     state: tauri::State<'_, super::AiState>,
 app: tauri::AppHandle) -> Result<TomorrowMainline, String> {
-    crate::license::require_pro(&app)?;
+    crate::license::require_pro_ai(&app)?;
     let (cfg, key) = load_cfg(&state.dir())?;
     let today = market::today_yyyymmdd();
 
@@ -689,7 +687,7 @@ pub async fn ai_intraday_commentary_stream(
     app_handle: tauri::AppHandle,
     stream_id: String,
 app: tauri::AppHandle) -> Result<(), String> {
-    crate::license::require_pro(&app)?;
+    crate::license::require_pro_ai(&app)?;
     let (cfg, key) = match load_cfg(&state.dir()) {
         Ok(v) => v,
         Err(e) => {
@@ -820,7 +818,7 @@ pub async fn ai_tomorrow_mainline_stream(
     app_handle: tauri::AppHandle,
     stream_id: String,
 app: tauri::AppHandle) -> Result<(), String> {
-    crate::license::require_pro(&app)?;
+    crate::license::require_pro_ai(&app)?;
     let (cfg, key) = match load_cfg(&state.dir()) {
         Ok(v) => v,
         Err(e) => {

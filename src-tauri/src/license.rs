@@ -10,6 +10,7 @@ use rsa::signature::Verifier;
 use rsa::RsaPublicKey;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
@@ -197,6 +198,80 @@ pub fn require_pro(app: &AppHandle) -> Result<(), String> {
     }
 }
 
+
+/// AI 调用配额：基于当前激活卡密指纹，每自然日限 AI_DAILY_QUOTA 次。
+/// 防止卡密共享/多设备刷量造成内置模型 token 成本失控。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AiQuotaEntry {
+    date: String,
+    count: u32,
+}
+
+pub const AI_DAILY_QUOTA: u32 = 100;
+
+/// 纯逻辑：给定今日计数 map 与指纹，返回 (是否放行, 更新后的 map)。
+fn quota_tick(
+    map: &BTreeMap<String, AiQuotaEntry>,
+    fp: &str,
+    today: &str,
+    limit: u32,
+) -> (bool, BTreeMap<String, AiQuotaEntry>) {
+    let mut m = map.clone();
+    let entry = m
+        .entry(fp.to_string())
+        .or_insert_with(|| AiQuotaEntry {
+            date: today.to_string(),
+            count: 0,
+        });
+    if entry.date != today {
+        entry.date = today.to_string();
+        entry.count = 0;
+    }
+    if entry.count >= limit {
+        return (false, m);
+    }
+    entry.count += 1;
+    (true, m)
+}
+
+fn quota_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法定位数据目录: {e}"))?;
+    Ok(dir.join("ai_quota.json"))
+}
+
+/// 消费一次 AI 配额（Pro AI 命令入口调用；未激活/超限均拒绝）。
+pub fn consume_ai_quota(app: &AppHandle) -> Result<(), String> {
+    let st = load_state(app).ok_or_else(|| "未激活 Pro，AI 功能不可用".to_string())?;
+    let today = today_str();
+    let p = quota_path(app)?;
+    let map: BTreeMap<String, AiQuotaEntry> = if p.exists() {
+        fs::read_to_string(&p)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    } else {
+        BTreeMap::new()
+    };
+    let (ok, next) = quota_tick(&map, &st.code_hash, &today, AI_DAILY_QUOTA);
+    if ok {
+        if let Ok(s) = serde_json::to_string(&next) {
+            let _ = fs::write(&p, s);
+        }
+        Ok(())
+    } else {
+        Err(format!("今日 AI 调用已达上限（{} 次/天），明日自动重置。", AI_DAILY_QUOTA))
+    }
+}
+
+/// Pro 门控 + AI 配额（AI 生成类命令入口统一调用）。
+pub fn require_pro_ai(app: &AppHandle) -> Result<(), String> {
+    require_pro(app)?;
+    consume_ai_quota(app)
+}
+
 /// 查询授权状态（前端启动时调用）。
 #[tauri::command]
 pub(crate) async fn license_status(app: AppHandle) -> Result<LicenseStatus, String> {
@@ -341,5 +416,33 @@ mod tests {
             .to_string();
         assert_eq!(days_left(&past), Some(-3));
         assert_eq!(days_left("bad-date"), None);
+    }
+
+    #[test]
+    fn quota_tick_limits_daily() {
+        let mut m = BTreeMap::new();
+        for _ in 0..3 {
+            let (ok, m2) = quota_tick(&m, "fp1", "2026-10-15", 3);
+            assert!(ok);
+            m = m2;
+        }
+        let (ok4, m4) = quota_tick(&m, "fp1", "2026-10-15", 3);
+        assert!(!ok4, "第 4 次应超限");
+        assert_eq!(m4.get("fp1").unwrap().count, 3);
+        // 换天重置
+        let (ok5, _) = quota_tick(&m4, "fp1", "2026-10-16", 3);
+        assert!(ok5);
+    }
+
+    #[test]
+    fn quota_tick_independent_per_fingerprint() {
+        let mut m = BTreeMap::new();
+        for _ in 0..3 {
+            let (ok, m2) = quota_tick(&m, "fpA", "2026-10-15", 3);
+            assert!(ok);
+            m = m2;
+        }
+        let (ok, _) = quota_tick(&m, "fpB", "2026-10-15", 3);
+        assert!(ok, "不同卡密互不影响");
     }
 }
