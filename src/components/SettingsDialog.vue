@@ -178,14 +178,6 @@ async function onActivate() {
     actBusy.value = false;
   }
 }
-async function onDeactivate() {
-  actBusy.value = true;
-  try {
-    await license.deactivate();
-  } finally {
-    actBusy.value = false;
-  }
-}
 watch(() => props.open, (v) => {
   if (v && props.initialTab) tab.value = props.initialTab;
 });
@@ -1341,7 +1333,6 @@ async function clearL2Key(r: PluginRow) {
             <button class="nav-item" :class="{ on: tab === 'pro' }" @click="pickTab('pro')">
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 17.3 6.1 20l1.1-6.5L2.5 9l6.5-1L12 2l3 6 6.5 1-4.7 4.5L17.9 20z" /></svg>
               订阅 Pro
-              <span v-if="license.isPro" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#00ffd5;margin-left:6px" title="Pro 已生效"></span>
             </button>
             <button class="nav-item" :class="{ on: tab === 'appearance' }" @click="pickTab('appearance')">
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 3a9 9 0 100 18 9 9 0 000-18zm0 2v14a7 7 0 000-14zm0 0a7 7 0 010 14z" /></svg>
@@ -1395,7 +1386,6 @@ async function clearL2Key(r: PluginRow) {
                   订阅计划：{{ license.plan || "pro-annual" }} · 到期：{{ license.expiresAt }} · 剩余 {{ license.daysLeft }} 天
                 </div>
                 <div v-if="license.status?.rollback_detected" style="margin-top:10px;font-size:12.5px;color:#ff5f57">检测到系统时间回拨，Pro 已暂停，请校正系统时间后重新打开软件。</div>
-                <button class="primary-btn" style="margin-top:16px" :disabled="actBusy" @click="onDeactivate">{{ actBusy ? "处理中…" : "退出 Pro（恢复免费版）" }}</button>
               </template>
               <template v-else>
                 <div class="section-sub" style="margin:4px 0 10px">尚未激活 Pro，当前为免费版。</div>
@@ -2272,7 +2262,7 @@ async function clearL2Key(r: PluginRow) {
             </div>
 
             <!-- 关于 -->
-            <div v-else class="about">
+            <div v-else-if="tab === 'about'" class="about">
               <div class="ab-logo">TG</div>
               <div class="ab-name">TickGold</div>
               <div class="ab-desc">开源跨平台 A 股盯盘终端</div>
