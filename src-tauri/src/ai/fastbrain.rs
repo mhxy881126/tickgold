@@ -483,7 +483,7 @@ impl CloudLlmClient {
                 {"role": "system", "content": "你是严谨的行情特征归纳助手，只输出JSON，不提供投资建议。"},
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.2,
+            "temperature": super::provider::sanitize_temp(0.2),
             "max_tokens": 200
         });
 
