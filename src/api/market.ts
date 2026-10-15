@@ -88,7 +88,7 @@ export async function fetchDepthEnhance(code: string): Promise<DepthEnhance> {
 
 /** 榜单：gainers=涨幅榜 losers=跌幅榜 amount=成交额榜（失败抛出错误供上层展示） */
 export async function fetchRankPage(
-  sort: "gainers" | "losers" | "amount",
+  sort: "gainers" | "losers" | "amount" | "turnover",
   page: number,
   num = 50,
 ): Promise<Quote[]> {

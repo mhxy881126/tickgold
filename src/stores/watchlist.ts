@@ -12,6 +12,8 @@ function watchChanged() {
   }
 }
 import type { Group, SmartGroupRule, WatchStock } from "../api/types";
+import { fetchRankPage, fetchQuotes } from "../api/market";
+import { evalRule, type SmartQueryRule } from "../lib/smartQuery";
 
 /** 近 N 日涨停记录（智能分组归类 / 信号命中高亮的数据源，v2.31） */
 export interface SmartHit {
@@ -43,9 +45,12 @@ export const useWatchlistStore = defineStore("watchlist", () => {
     }
   }
 
-  /** 智能分组的动态成员：命中规则的近 N 日涨停记录（无需手动维护） */
+  /** 智能分组的动态成员：v2 选股规则走榜单位缓存；v1 规则走近 N 日涨停匹配（无需手动维护） */
   function smartMembers(g: Group): WatchStock[] {
     const rule = parseRule(g);
+    if ((rule as SmartQueryRule).version === 2) {
+      return smartV2.value[g.id]?.members ?? [];
+    }
     const days = Math.max(1, rule.days || SMART_LOOKBACK_DAYS);
     const seen = new Set<string>();
     const out: WatchStock[] = [];
@@ -108,6 +113,72 @@ export const useWatchlistStore = defineStore("watchlist", () => {
 
   function nameOf(code: string): string {
     return stocks.value.find((s) => s.code === code)?.name ?? "";
+  }
+
+  /** v2 动态选股：各分组缓存成员 + 更新时间；榜单位候选缓存（60s TTL） */
+  const smartV2 = ref<Record<number, { members: WatchStock[]; updatedAt: number }>>({});
+  const smartV2Loading = ref<Record<number, boolean>>({});
+  const smartV2Error = ref<Record<number, string>>({});
+  const smartV2Refreshing = ref<Record<number, boolean>>({});
+  let rankCache: import("../api/types").Quote[] | null = null;
+  let rankCacheAt = 0;
+  const RANK_CACHE_TTL = 60_000;
+
+  /** 榜单位候选集：涨幅/成交额/换手三榜各前 3 页并集去重（约 700-900 只），60s 缓存 */
+  async function fetchRankCandidates(): Promise<import("../api/types").Quote[]> {
+    const now = Date.now();
+    if (rankCache && now - rankCacheAt < RANK_CACHE_TTL) return rankCache;
+    const sorts = ["gainers", "amount", "turnover"] as const;
+    const tasks = sorts.flatMap((sort) =>
+      [1, 2, 3].map((page) => fetchRankPage(sort, page, 100).catch(() => [] as import("../api/types").Quote[]))
+    );
+    const lists = await Promise.all(tasks);
+    const map = new Map<string, import("../api/types").Quote>();
+    for (const list of lists) {
+      for (const q of list) {
+        if (q.code && !map.has(q.code)) map.set(q.code, q);
+      }
+    }
+    // 新浪榜单缺量比/振幅：候选集用腾讯批量行情补全（getQuotes 内部自动分批并发）
+    const codes = [...map.keys()];
+    if (codes.length) {
+      const enriched = await fetchQuotes(codes).catch(() => [] as import("../api/types").Quote[]);
+      for (const q of enriched) {
+        if (q.code && map.has(q.code)) map.set(q.code, q);
+      }
+    }
+    rankCache = [...map.values()];
+    rankCacheAt = Date.now();
+    return rankCache;
+  }
+
+  /** 刷新单个 v2 智能分组：拉榜单位候选 → 本地条件过滤 → 写缓存 */
+  async function refreshSmartGroup(id: number): Promise<void> {
+    const g = groups.value.find((x) => x.id === id);
+    if (!g || g.kind !== "smart") return;
+    const rule = parseRule(g);
+    if ((rule as SmartQueryRule).version !== 2) return;
+    if (smartV2Loading.value[id]) return;
+    smartV2Loading.value[id] = true;
+    smartV2Refreshing.value[id] = true;
+    delete smartV2Error.value[id];
+    try {
+      const rows = await fetchRankCandidates();
+      const hitMap = new Map(smartHits.value.map((h) => [h.code, h]));
+      const members: WatchStock[] = [];
+      for (const q of rows) {
+        const boards = hitMap.get(q.code)?.boards ?? 0;
+        if (evalRule(rule as SmartQueryRule, q as unknown as Record<string, unknown>, boards)) {
+          members.push({ code: q.code, name: q.name, groupId: id, sortOrder: members.length });
+        }
+      }
+      smartV2.value[id] = { members, updatedAt: Date.now() };
+    } catch (e) {
+      smartV2Error.value[id] = e instanceof Error ? e.message : String(e);
+    } finally {
+      smartV2Loading.value[id] = false;
+      smartV2Refreshing.value[id] = false;
+    }
   }
 
   /** 拉取近 N 个交易日涨停记录，供智能分组 / 信号高亮 */
@@ -325,5 +396,10 @@ export const useWatchlistStore = defineStore("watchlist", () => {
     hitOf,
     refreshSmartHits,
     nameOf,
+    smartV2,
+    smartV2Loading,
+    smartV2Error,
+    smartV2Refreshing,
+    refreshSmartGroup,
   };
 });

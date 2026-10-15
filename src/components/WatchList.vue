@@ -1,10 +1,18 @@
 <script setup lang="ts">
-import { ref, nextTick } from "vue";
+import { ref, nextTick, onMounted, watch } from "vue";
 import { useWatchlistStore } from "../stores/watchlist";
 import { useQuotesStore } from "../stores/quotes";
 import { searchStocks } from "../api/market";
 import type { StockItem, Quote } from "../api/types";
 import AnimatedNumber from "./common/AnimatedNumber.vue";
+import {
+  FIELD_GROUPS,
+  FIELD_META,
+  parseQuery,
+  hasCondition,
+  type QueryCondition,
+  type SmartQueryRule,
+} from "../lib/smartQuery";
 
 const props = defineProps<{ selected: string | null }>();
 const emit = defineEmits<{ select: [code: string] }>();
@@ -23,12 +31,105 @@ const editingId = ref<number | null>(null);
 const editName = ref("");
 const groupInput = ref<HTMLInputElement | null>(null);
 
-// v2.31 智能分组：按战法/题材自动归类近 N 日涨停股
+// v2.31 智能分组 → v3 动态选股：选股问句 + 指标条件编辑器，榜单位每日动态筛选
 const smartAdding = ref(false);
 const smartName = ref("");
-const smartTactic = ref("multi_board");
-const smartTheme = ref("");
-const smartDays = ref(5);
+const smartQueryText = ref("");
+const smartLogic = ref<"AND" | "OR">("AND");
+const smartConds = ref<QueryCondition[]>([]);
+const smartUnparsed = ref<string[]>([]);
+// 条件编辑器
+const smartFieldGroup = ref(FIELD_GROUPS[0].label);
+const smartField = ref(FIELD_GROUPS[0].fields[0].key);
+const smartOp = ref<QueryCondition["op"]>("<=");
+const smartValue = ref<number | null>(null);
+
+function resetSmartDraft() {
+  smartName.value = "";
+  smartQueryText.value = "";
+  smartLogic.value = "AND";
+  smartConds.value = [];
+  smartUnparsed.value = [];
+  smartFieldGroup.value = FIELD_GROUPS[0].label;
+  smartField.value = FIELD_GROUPS[0].fields[0].key;
+  smartOp.value = "<=";
+  smartValue.value = null;
+}
+
+/** 问句解析：解析出的条件进入条件列表（可继续编辑） */
+function parseSmartQuery() {
+  const r = parseQuery(smartQueryText.value);
+  smartLogic.value = r.logic;
+  smartUnparsed.value = r.unparsed;
+  for (const c of r.conditions) upsertCond(c);
+}
+
+function upsertCond(c: QueryCondition) {
+  const idx = smartConds.value.findIndex((x) => x.field === c.field);
+  if (idx >= 0) smartConds.value[idx] = c;
+  else smartConds.value.push({ ...c });
+}
+
+/** 条件编辑器：切换类别时同步字段 */
+function onFieldGroupChange() {
+  const g = FIELD_GROUPS.find((x) => x.label === smartFieldGroup.value);
+  if (g) smartField.value = g.fields[0].key;
+}
+
+function addSmartCond() {
+  if (smartValue.value == null || Number.isNaN(smartValue.value)) return;
+  upsertCond({ field: smartField.value, op: smartOp.value, value: smartValue.value });
+  smartValue.value = null;
+}
+
+function removeSmartCond(i: number) {
+  smartConds.value.splice(i, 1);
+}
+
+function condLabel(c: QueryCondition): string {
+  const m = FIELD_META[c.field];
+  const opTxt = c.op === ">=" ? "≥" : c.op === "<=" ? "≤" : "=";
+  return `${m?.label ?? c.field} ${opTxt} ${c.value}${m?.unit ? " " + m.unit : ""}`;
+}
+
+/** v2 规则是否可创建 */
+function smartCanCreate(): boolean {
+  return smartName.value.trim().length > 0 && hasCondition({ version: 2, logic: smartLogic.value, conditions: smartConds.value });
+}
+
+/** 智能分组最近更新时间（v2） */
+function smartUpdatedText(gid: number): string {
+  const v = wl.smartV2[gid];
+  if (!v) return "";
+  const d = new Date(v.updatedAt);
+  return `更新于 ${d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`;
+}
+
+/** 打开/切到 v2 分组时自动刷新（无缓存或超 3 分钟） */
+function ensureSmartRefresh(gid: number) {
+  const g = wl.groups.find((x) => x.id === gid);
+  if (!g || g.kind !== "smart") return;
+  let rule: SmartQueryRule | null = null;
+  try {
+    const parsed = JSON.parse(g.ruleJson || "{}");
+    if (parsed.version === 2) rule = parsed as SmartQueryRule;
+  } catch {
+    rule = null;
+  }
+  if (!rule) return;
+  const v = wl.smartV2[gid];
+  if (!v || Date.now() - v.updatedAt > 3 * 60_000) {
+    void wl.refreshSmartGroup(gid);
+  }
+}
+
+onMounted(() => {
+  ensureSmartRefresh(wl.currentGroupId);
+});
+watch(
+  () => wl.currentGroupId,
+  (gid) => ensureSmartRefresh(gid)
+);
 
 function hitBadge(code: string): string {
   const h = wl.hitOf(code);
@@ -40,10 +141,7 @@ function isWatched(code: string): boolean {
 }
 async function startSmartAdd() {
   smartAdding.value = true;
-  smartName.value = "";
-  smartTactic.value = "multi_board";
-  smartTheme.value = "";
-  smartDays.value = 5;
+  resetSmartDraft();
   await nextTick();
   groupInput.value?.focus();
 }
@@ -52,11 +150,16 @@ async function commitSmartAdd() {
   const name = smartName.value.trim();
   smartAdding.value = false;
   if (!name) return;
-  await wl.addSmartGroup(name, {
-    tactic: smartTactic.value || undefined,
-    theme: smartTheme.value.trim() || undefined,
-    days: smartDays.value,
-  });
+  // 问句未解析部分提示（不阻断）
+  if (smartUnparsed.value.length) {
+    smartUnparsed.value = [];
+  }
+  const rule: SmartQueryRule = {
+    version: 2,
+    logic: smartLogic.value,
+    conditions: smartConds.value,
+  };
+  await wl.addSmartGroup(name, rule as never);
 }
 function isSmartGroup(id: number): boolean {
   return wl.groups.find((g) => g.id === id)?.kind === "smart";
@@ -184,8 +287,22 @@ async function moveAddGroup() {
         />
         <template v-else>
           <span class="gname">{{ g.name }}</span>
-          <i v-if="g.kind === 'smart'" class="gsmart" title="智能分组（按规则自动归类）">智</i>
+          <i v-if="g.kind === 'smart'" class="gsmart" title="智能分组（动态选股/按规则自动归类）">智</i>
+          <span v-if="g.kind === 'smart' && wl.smartV2[g.id]" class="gupd">{{ smartUpdatedText(g.id) }}</span>
           <span class="gcount">{{ wl.membersOf(g.id).length }}</span>
+          <span
+            v-if="g.kind === 'smart' && wl.smartV2Refreshing[g.id]"
+            class="grefresh loading"
+            title="刷新中…"
+            >⟳</span
+          >
+          <span
+            v-else-if="g.kind === 'smart'"
+            class="grefresh"
+            title="立即刷新动态成员"
+            @click.stop="wl.refreshSmartGroup(g.id)"
+            >⟳</span
+          >
           <span
             v-if="g.id !== 1"
             class="gdel"
@@ -209,39 +326,76 @@ async function moveAddGroup() {
           <div class="sm-mask" @click="smartAdding = false"></div>
           <div class="sm-box">
             <div class="sm-head">
-              <span>新建智能分组</span>
+              <span>新建智能分组 · 动态选股</span>
               <button class="sm-x" @click="smartAdding = false">×</button>
             </div>
             <input
               ref="groupInput"
               v-model="smartName"
               class="sm-in"
-              placeholder="分组名称，如 连板梯队"
+              placeholder="分组名称，如 低估值高换手"
               maxlength="12"
-              @keydown.enter="commitSmartAdd"
             />
-            <div class="sm-row">
-              <label>战法</label>
-              <select v-model="smartTactic">
-                <option value="">不限</option>
-                <option value="first_board">首板</option>
-                <option value="multi_board">连板（≥2 板）</option>
+            <div class="sm-q">
+              <input
+                v-model="smartQueryText"
+                class="sm-in sm-q-in"
+                placeholder="输入选股问句，如：市盈率低于20 且 换手率大于5%"
+                @keydown.enter="parseSmartQuery"
+              />
+              <button class="sm-parse" @click="parseSmartQuery">解析</button>
+            </div>
+            <div v-if="smartUnparsed.length" class="sm-tip warn">
+              未识别：{{ smartUnparsed.join("；") }}（请用下方条件编辑器补充）
+            </div>
+
+            <!-- 已解析条件 -->
+            <div v-if="smartConds.length" class="sm-conds">
+              <span v-for="(c, i) in smartConds" :key="c.field" class="sm-cond">
+                {{ condLabel(c) }}
+                <b class="sm-cond-x" @click="removeSmartCond(i)">×</b>
+              </span>
+            </div>
+
+            <!-- 条件编辑器 -->
+            <div class="sm-editor">
+              <select v-model="smartFieldGroup" class="sm-sel" @change="onFieldGroupChange">
+                <option v-for="g in FIELD_GROUPS" :key="g.label" :value="g.label">{{ g.label }}</option>
+              </select>
+              <select v-model="smartField" class="sm-sel">
+                <option v-for="f in FIELD_GROUPS.find((x) => x.label === smartFieldGroup)?.fields ?? []" :key="f.key" :value="f.key">
+                  {{ f.label }}
+                </option>
+              </select>
+              <select v-model="smartOp" class="sm-sel sm-op">
+                <option value=">=">≥</option>
+                <option value="<=">≤</option>
+                <option value="==">=</option>
+              </select>
+              <input
+                v-model.number="smartValue"
+                class="sm-in sm-val"
+                type="number"
+                placeholder="数值"
+                @keydown.enter="addSmartCond"
+              />
+              <button class="sm-add" @click="addSmartCond">添加</button>
+            </div>
+
+            <div class="sm-row sm-logic">
+              <label>满足条件</label>
+              <select v-model="smartLogic">
+                <option value="AND">全部满足（且）</option>
+                <option value="OR">任一满足（或）</option>
               </select>
             </div>
-            <div class="sm-row">
-              <label>题材</label>
-              <input v-model="smartTheme" class="sm-in" placeholder="行业/概念关键词，可空" />
+
+            <div class="sm-tip">
+              成员从涨幅/成交额/换手三榜前 300 只动态筛选（约 700-900 只候选），每次打开分组自动刷新；连板数来自近 5 日涨停记录。
             </div>
-            <div class="sm-row">
-              <label>回看</label>
-              <select v-model.number="smartDays">
-                <option :value="3">近 3 日</option>
-                <option :value="5">近 5 日</option>
-                <option :value="10">近 10 日</option>
-              </select>
-            </div>
-            <div class="sm-tip">成员由近 N 日涨停记录按规则自动归类，收盘定格后更新。</div>
-            <button class="sm-go" @click="commitSmartAdd">创建</button>
+            <button class="sm-go" :class="{ disabled: !smartCanCreate() }" :disabled="!smartCanCreate()" @click="commitSmartAdd">
+              创建
+            </button>
           </div>
         </div>
       </Teleport>
@@ -524,6 +678,48 @@ tbody tr.hit { box-shadow: inset 2px 0 0 #e8c66a; }
   border: 1px solid var(--border); background: var(--bg); color: var(--text); padding: 0 7px; font-size: 12px;
 }
 .sm-tip { font-size: 10px; color: var(--text-dim); line-height: 1.6; margin: 2px 0 10px; }
+.sm-tip.warn { color: #ffb13d; }
+.sm-q { display: flex; gap: 6px; }
+.sm-q .sm-q-in { flex: 1; margin-bottom: 8px; }
+.sm-parse {
+  height: 30px; padding: 0 10px; border: none; border-radius: 7px;
+  background: #2a3344; color: #e8c66a; font-size: 12px; font-weight: 700;
+  cursor: pointer; white-space: nowrap; margin-bottom: 8px;
+}
+.sm-parse:hover { filter: brightness(1.1); }
+.sm-conds { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.sm-cond {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: #e8c66a; background: rgba(232, 198, 106, 0.08);
+  border: 1px solid rgba(232, 198, 106, 0.35); border-radius: 6px; padding: 2px 7px;
+}
+.sm-cond-x { cursor: pointer; color: var(--text-dim); font-size: 12px; line-height: 1; }
+.sm-cond-x:hover { color: #f23645; }
+.sm-editor { display: flex; gap: 5px; margin-bottom: 8px; align-items: center; }
+.sm-editor .sm-sel {
+  flex: 1; min-width: 0; height: 28px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  padding: 0 6px; font-size: 11px;
+}
+.sm-editor .sm-op { flex: 0 0 44px; }
+.sm-editor .sm-val { flex: 0 0 62px; width: 62px; height: 28px; margin-bottom: 0; }
+.sm-add {
+  height: 28px; padding: 0 8px; border: none; border-radius: 7px;
+  background: var(--accent); color: #1a1405; font-size: 11px; font-weight: 700;
+  cursor: pointer; white-space: nowrap; flex-shrink: 0;
+}
+.sm-add:hover { filter: brightness(1.08); }
+.sm-logic label { width: 52px; }
+.sm-go.disabled { opacity: 0.45; cursor: not-allowed; }
+.sm-go.disabled:hover { filter: none; }
+.gupd { font-size: 9px; color: var(--text-dim); margin-left: 3px; }
+.grefresh {
+  font-size: 11px; line-height: 1; color: var(--text-dim);
+  cursor: pointer; margin-left: 2px; padding: 0 2px;
+}
+.grefresh:hover { color: #e8c66a; }
+.grefresh.loading { animation: gspin 0.9s linear infinite; cursor: default; }
+@keyframes gspin { to { transform: rotate(360deg); } }
 .sm-go {
   width: 100%; height: 32px; border: none; border-radius: 7px;
   background: var(--accent); color: #1a1405; font-size: 12px;

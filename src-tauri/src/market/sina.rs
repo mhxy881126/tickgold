@@ -211,6 +211,7 @@ pub async fn rank_page(sort: &str, page: i64, num: i64) -> Result<Vec<Quote>, St
     let (sort_key, asc) = match sort {
         "losers" => ("changepercent", 1),
         "amount" => ("amount", 0),
+        "turnover" => ("turnoverratio", 0),
         _ => ("changepercent", 0),
     };
     let url = format!(
@@ -256,7 +257,7 @@ pub async fn rank_page(sort: &str, page: i64, num: i64) -> Result<Vec<Quote>, St
                 pe: f(v, "per"),
                 pb: f(v, "pb"),
                 amplitude: 0.0,
-                volume_ratio: 0.0,
+                volume_ratio: f(v, "volratio"),
                 circ_mv: f(v, "nmc") / 10000.0, // 万元 -> 亿元
                 total_mv: f(v, "mktcap") / 10000.0,
                 inside_vol: 0.0,
