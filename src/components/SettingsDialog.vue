@@ -1795,6 +1795,14 @@ async function clearL2Key(r: PluginRow) {
 
             <!-- AI 模型配置 -->
             <div v-else-if="tab === 'ai'" class="ai-tab">
+              <!-- v3.0.9 门控：AI 配置为 Pro 专属，免费态锁定 -->
+              <div v-if="!license.isPro" class="ai-locked">
+                <svg class="ai-lock-icon" viewBox="0 0 24 24" width="34" height="34"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm0 2a3 3 0 0 1 3 3v3H9V7a3 3 0 0 1 3-3zm0 8.5a1.5 1.5 0 0 1 1 2.65V18a1 1 0 0 1-2 0v-2.85a1.5 1.5 0 0 1 1-2.65z"/></svg>
+                <div class="ai-lock-title">AI 功能为 Pro 订阅专享</div>
+                <div class="ai-lock-sub">激活 Pro 后可使用内置智谱 GLM-4.5 开箱即用，每日 100 次调用配额；本地 Ollama / 云端 API 模型源同样仅在 Pro 下生效。</div>
+                <button class="pro-buy-btn" @click="goBuy">订阅 Pro 解锁 AI</button>
+              </div>
+              <template v-else>
               <!-- 第一步：选 AI 模型 -->
               <div class="section-title">AI 模型</div>
               <div class="section-sub">选本地或云端模型，用于智能问答和选股分析</div>
@@ -1855,6 +1863,7 @@ async function clearL2Key(r: PluginRow) {
                 <button type="button" class="logs-btn primary" @click="saveAiTab">保存模型配置</button>
                 <span v-if="aiMsg" class="ai-msg" :class="{ ok: /成功|已保存/.test(aiMsg) }">{{ aiMsg }}</span>
               </div>
+              </template>
 
             </div>
 
@@ -2809,5 +2818,14 @@ async function clearL2Key(r: PluginRow) {
 .pro-active-row b { font-size: 13px; color: var(--text); font-weight: 600; }
 .pro-rollback { margin-top: 14px; padding: 10px 12px; border-radius: 8px; font-size: 12.5px;
   color: #ff5f57; background: rgba(255,95,87,.08); border: 1px solid rgba(255,95,87,.3); }
+
+
+/* ===== v3.0.9 AI 配置锁定态 ===== */
+.ai-locked { display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding: 42px 26px; border-radius: 14px; border: 1px dashed rgba(0,255,213,.35);
+  background: linear-gradient(160deg, rgba(13,26,40,.6), rgba(6,14,24,.85)); }
+.ai-lock-icon { color: rgba(0,255,213,.85); margin-bottom: 14px; }
+.ai-lock-title { font-size: 16px; font-weight: 800; color: #fff; }
+.ai-lock-sub { margin: 10px 0 18px; font-size: 12.5px; color: #9fb3d1; line-height: 1.8; max-width: 430px; }
 
 </style>
