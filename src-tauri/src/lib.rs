@@ -264,7 +264,9 @@ pub fn run() {
             // ===== v3.0.2 Pro 订阅授权（面包多卡密 · 离线验签）=====
             license::license_status,
             license::license_activate,
-            license::license_deactivate
+            license::license_deactivate,
+            // ===== v3.0.7 关于页版本号 =====
+            app_version
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");

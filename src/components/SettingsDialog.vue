@@ -154,6 +154,12 @@ const tab = ref<Tab>("appearance");
 // ===== Pro 订阅授权（v3.0.2 面包多卡密 · 离线验签）=====
 const license = useLicenseStore();
 
+// 当前应用版本号（关于页显示，来自后端 app_version 命令）
+const appVersion = ref("");
+void invoke<string>("app_version")
+  .then((v) => (appVersion.value = v))
+  .catch(() => {});
+
 // 面包多购买链接（TickGold Pro 年卡商品，2026-10-15 更新发布地址）
 const PRO_PURCHASE_URL = "https://mbd.pub/o/bread/YZaVmppuZg==";
 function goBuy() {
@@ -2267,6 +2273,7 @@ async function clearL2Key(r: PluginRow) {
               <div class="ab-name">TickGold</div>
               <div class="ab-desc">开源跨平台 A 股盯盘终端</div>
               <div class="ab-tech">Tauri 2.0 · Rust · Vue 3 · TypeScript · ECharts</div>
+              <div class="ab-version">当前版本：v{{ appVersion || "—" }}</div>
               <div class="ab-actions">
                 <button type="button" class="ab-primary" @click="emit('check-update')">检查更新</button>
                 <button type="button" class="ab-ghost" @click="replayOnboarding">新手引导</button>

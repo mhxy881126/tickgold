@@ -1157,3 +1157,9 @@ pub(crate) fn rust_clear_logs() -> Result<(), String> {
 pub(crate) fn rust_set_log_level(level: String) -> Result<bool, String> {
     Ok(logging::set_level(&level))
 }
+
+/// 当前应用版本号（关于页显示，来源 Cargo.toml / tauri.conf.json）。
+#[tauri::command]
+pub(crate) fn app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
