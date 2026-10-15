@@ -154,8 +154,8 @@ const tab = ref<Tab>("appearance");
 // ===== Pro 订阅授权（v3.0.2 面包多卡密 · 离线验签）=====
 const license = useLicenseStore();
 
-// 面包多购买链接（TickGold Pro 年卡商品）
-const PRO_PURCHASE_URL = "https://mbd.pub/o/bread/YZaVmplyZg==";
+// 面包多购买链接（TickGold Pro 年卡商品，2026-10-15 更新发布地址）
+const PRO_PURCHASE_URL = "https://mbd.pub/o/bread/YZaVmppuZg==";
 function goBuy() {
   void openInAppBrowser(PRO_PURCHASE_URL);
 }
