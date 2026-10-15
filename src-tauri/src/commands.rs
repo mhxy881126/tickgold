@@ -370,6 +370,8 @@ pub(crate) async fn ai_chat_send(
     session_id: i64,
     text: String,
 ) -> Result<(), String> {
+    // v3.0.8 门控：AI 对话为 Pro 专属（生成内容消耗内置模型 token，免费用户放行会造成成本泄漏）
+    crate::license::require_pro_ai(&app)?;
     let (cfg, key, data_dir) = {
         let db = ai::vectordb::open(&state.dir().join("ai.db"))?;
         let cfg = ai::config::load_config(&db.0)?;
@@ -550,10 +552,13 @@ pub(crate) fn ai_get_review(
 
 #[tauri::command]
 pub(crate) async fn ai_generate_plan(
+    app: tauri::AppHandle,
     state: tauri::State<'_, ai::AiState>,
     profile_key: Option<String>,
     review_date: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    // v3.0.8 门控：作战计划生成为 Pro 专属
+    crate::license::require_pro_ai(&app)?;
     let (cfg, key, dir) = load_brain(&state)?;
     ai::plan::generate_plan(
         &dir,
@@ -611,9 +616,12 @@ pub(crate) fn ai_update_instruction(
 
 #[tauri::command]
 pub(crate) fn ai_convert_instruction_alert(
+    app: tauri::AppHandle,
     state: tauri::State<ai::AiState>,
     instr_id: i64,
 ) -> Result<String, String> {
+    // v3.0.8 门控：指令转预警为 Pro 专属
+    crate::license::require_pro(&app)?;
     ai::plan::convert_instruction_to_alert(&state.dir(), instr_id)
 }
 
