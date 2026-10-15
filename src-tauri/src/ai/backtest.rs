@@ -951,7 +951,7 @@ app: tauri::AppHandle) -> AppResult<BacktestResult> {
             .collect::<String>()
             .parse()
             .unwrap_or(2025);
-        let now_y = 1970 + (crate::ai::now_millis() / 1000 / 86_400 / 365) as i64;
+        let now_y = 1970 + crate::ai::now_millis() / 1000 / 86_400 / 365;
         let years = (now_y - start_y + 1).clamp(1, 20);
         let conn = maindb::open_readwrite(&dir)?;
         let conn = std::sync::Arc::new(std::sync::Mutex::new(conn));
