@@ -1384,30 +1384,54 @@ async function clearL2Key(r: PluginRow) {
             <div v-if="tab === 'pro'" class="ai-tab">
               <div class="section-title">订阅 Pro</div>
               <template v-if="license.isPro">
-                <div class="pro-status-row" style="display:flex;align-items:center;gap:8px;padding:12px 14px;border:1px solid rgba(0,255,213,.4);border-radius:10px;background:rgba(0,255,213,.06)">
-                  <span style="width:9px;height:9px;border-radius:50%;background:#00ffd5"></span>
-                  <span style="font-weight:600">Pro 订阅生效中</span>
+                <div class="pro-active-card">
+                  <div class="pro-active-glow"></div>
+                  <div class="pro-badge-corner">PRO</div>
+                  <div class="pro-active-head">
+                    <span class="pro-active-dot"></span>
+                    <span class="pro-active-title">Pro 订阅生效中</span>
+                  </div>
+                  <div class="pro-active-row"><span>订阅计划</span><b>{{ license.plan || "pro-annual" }}</b></div>
+                  <div class="pro-active-row"><span>到期时间</span><b>{{ license.expiresAt }}</b></div>
+                  <div class="pro-active-row"><span>剩余天数</span><b>{{ license.daysLeft }} 天</b></div>
+                  <div v-if="license.status?.rollback_detected" class="pro-rollback">检测到系统时间回拨，Pro 已暂停，请校正系统时间后重新打开软件。</div>
                 </div>
-                <div style="margin-top:12px;font-size:13px;color:#e6edf7">
-                  订阅计划：{{ license.plan || "pro-annual" }} · 到期：{{ license.expiresAt }} · 剩余 {{ license.daysLeft }} 天
-                </div>
-                <div v-if="license.status?.rollback_detected" style="margin-top:10px;font-size:12.5px;color:#ff5f57">检测到系统时间回拨，Pro 已暂停，请校正系统时间后重新打开软件。</div>
               </template>
               <template v-else>
-                <div class="section-sub" style="margin:4px 0 10px">尚未激活 Pro，当前为免费版。</div>
-                <div style="margin:0 0 12px;padding:12px 14px;border:1px solid #1f2a3f;border-radius:10px;background:rgba(15,23,42,.5)">
-                  <div style="font-size:13px;font-weight:600;margin-bottom:8px">如何获取激活码</div>
-                  <div style="font-size:12px;line-height:1.9;color:#9fb3d1">
-                    ① 点击下方按钮跳转面包多平台完成支付（支持微信/支付宝，年卡 ¥99）；<br>
-                    ② 支付成功后卡密自动发货，复制收到的 TG 激活码；<br>
-                    ③ 粘贴到下方输入框，点击「激活 Pro」，立即生效。
-                  </div>
-                  <button class="primary-btn" style="margin-top:10px" @click="goBuy">去面包多购买</button>
+                <div class="pro-hero">
+                  <div class="pro-hero-glow"></div>
+                  <div class="pro-badge">PRO</div>
+                  <div class="pro-hero-title">TickGold <span>Pro</span></div>
+                  <div class="pro-hero-sub">解锁 AI 盯盘助手与全部 Pro 高级能力</div>
+                  <div class="pro-price">¥99<span> / 年</span></div>
+                  <button class="pro-buy-btn" @click="goBuy">
+                    <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5z" /></svg>
+                    去面包多购买
+                  </button>
+                  <div class="pro-hero-foot">支持微信 / 支付宝 · 支付成功后卡密自动发货</div>
                 </div>
-                <textarea v-model="codeInput" rows="3" style="width:100%;box-sizing:border-box;background:#0a0f1a;border:1px solid #1f2a3f;border-radius:8px;color:#e6edf7;font-size:13px;padding:10px 12px;resize:vertical" placeholder="粘贴激活码（TG.xxx.xxx.xxx）"></textarea>
-                <button class="primary-btn" style="margin-top:12px" :disabled="actBusy" @click="onActivate">{{ actBusy ? "激活中…" : "激活 Pro" }}</button>
-                <div v-if="actMsg" style="margin-top:10px;font-size:12.5px;color:#ffd76a">{{ actMsg }}</div>
-                <div class="section-sub" style="margin-top:14px;font-size:12px;line-height:1.8">激活后立即生效，到期自动降级免费版。卡密仅供本人使用，请勿转售。</div>
+                <div class="pro-steps">
+                  <div class="pro-step">
+                    <div class="pro-step-num">1</div>
+                    <div class="pro-step-txt">完成支付<span>面包多平台</span></div>
+                  </div>
+                  <div class="pro-step-line"></div>
+                  <div class="pro-step">
+                    <div class="pro-step-num">2</div>
+                    <div class="pro-step-txt">复制激活码<span>自动发货</span></div>
+                  </div>
+                  <div class="pro-step-line"></div>
+                  <div class="pro-step">
+                    <div class="pro-step-num">3</div>
+                    <div class="pro-step-txt">粘贴激活<span>立即生效</span></div>
+                  </div>
+                </div>
+                <div class="pro-activate">
+                  <textarea v-model="codeInput" rows="2" class="pro-code-input" placeholder="粘贴激活码（TG.xxx.xxx）"></textarea>
+                  <button class="pro-act-btn" :disabled="actBusy" @click="onActivate">{{ actBusy ? "激活中…" : "激活 Pro" }}</button>
+                </div>
+                <div v-if="actMsg" class="pro-msg">{{ actMsg }}</div>
+                <div class="pro-note">激活后立即生效，到期自动降级免费版。卡密仅供本人使用，请勿转售。</div>
               </template>
             </div>
             <!-- 外观 / 配色 -->
@@ -2714,4 +2738,76 @@ async function clearL2Key(r: PluginRow) {
 .hist-prog-txt { margin-top: 6px; font-size: 12px; color: var(--text-dim); }
 .hist-fails { margin-top: 10px; max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
 .hist-fail-line { font-size: 11.5px; color: #ff8a96; font-family: ui-monospace, monospace; }
+
+/* ===== 订阅 Pro 页（v3.0.8 视觉升级）===== */
+.pro-hero { position: relative; margin-top: 4px; padding: 28px 22px 20px; border-radius: 14px; text-align: center;
+  background: linear-gradient(160deg, rgba(13,26,40,.92), rgba(6,14,24,.96));
+  border: 1px solid rgba(0,255,213,.25); overflow: hidden; }
+.pro-hero-glow { position: absolute; top: -70px; left: 50%; transform: translateX(-50%);
+  width: 340px; height: 170px; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(0,255,213,.30), transparent 72%); }
+.pro-badge { position: absolute; top: 12px; right: 14px; padding: 2px 9px; border-radius: 6px;
+  font-size: 10px; font-weight: 800; letter-spacing: 1.5px; color: #04121a;
+  background: linear-gradient(135deg, #00ffd5, #3ae0ff); }
+.pro-badge-corner { position: absolute; top: 14px; right: 14px; padding: 2px 9px; border-radius: 6px;
+  font-size: 10px; font-weight: 800; letter-spacing: 1.5px; color: #04121a;
+  background: linear-gradient(135deg, #00ffd5, #3ae0ff); }
+.pro-hero-title { font-size: 23px; font-weight: 800; color: #fff; letter-spacing: .5px; }
+.pro-hero-title span { color: #00ffd5; }
+.pro-hero-sub { margin-top: 7px; font-size: 12.5px; color: #9fb3d1; }
+.pro-price { margin-top: 15px; font-size: 27px; font-weight: 800; color: #00ffd5; }
+.pro-price span { font-size: 12px; color: #6b7f9b; font-weight: 500; }
+.pro-buy-btn { margin-top: 15px; display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 28px; border: none; border-radius: 10px; cursor: pointer;
+  font-size: 13.5px; font-weight: 700; color: #04121a;
+  background: linear-gradient(135deg, #00ffd5, #3ae0ff);
+  box-shadow: 0 6px 20px rgba(0,255,213,.35);
+  transition: transform .15s ease, box-shadow .2s ease, filter .2s ease; }
+.pro-buy-btn:hover { filter: brightness(1.08); box-shadow: 0 8px 28px rgba(0,255,213,.5); }
+.pro-buy-btn:active { transform: scale(.97); }
+.pro-hero-foot { margin-top: 13px; font-size: 11px; color: #6b7f9b; }
+
+.pro-steps { display: flex; align-items: center; margin: 18px 2px 16px; }
+.pro-step { flex: none; display: flex; flex-direction: column; align-items: center; gap: 7px; width: 92px; }
+.pro-step-num { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800; color: #04121a;
+  background: linear-gradient(135deg, #00ffd5, #3ae0ff);
+  box-shadow: 0 3px 10px rgba(0,255,213,.3); }
+.pro-step-txt { font-size: 12px; color: var(--text); text-align: center; line-height: 1.5; }
+.pro-step-txt span { display: block; color: #6b7f9b; font-size: 11px; }
+.pro-step-line { flex: 1; height: 1px; margin: 0 6px;
+  background: linear-gradient(90deg, rgba(0,255,213,.5), rgba(58,224,255,.15)); }
+
+.pro-activate { display: flex; gap: 10px; }
+.pro-code-input { flex: 1; box-sizing: border-box; background: rgba(10,15,26,.9); border: 1px solid #1f2a3f; border-radius: 10px;
+  color: var(--text); font-size: 13px; padding: 11px 13px; resize: vertical; line-height: 1.5;
+  transition: border-color .2s ease, box-shadow .2s ease; }
+.pro-code-input:focus { outline: none; border-color: rgba(0,255,213,.7); box-shadow: 0 0 0 3px rgba(0,255,213,.15); }
+.pro-act-btn { flex: none; padding: 0 24px; border: none; border-radius: 10px; cursor: pointer;
+  font-size: 13.5px; font-weight: 700; color: #04121a;
+  background: linear-gradient(135deg, #00ffd5, #3ae0ff);
+  box-shadow: 0 4px 14px rgba(0,255,213,.28);
+  transition: transform .15s ease, filter .2s ease; }
+.pro-act-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.pro-act-btn:active:not(:disabled) { transform: scale(.97); }
+.pro-act-btn:disabled { opacity: .55; cursor: not-allowed; }
+.pro-msg { margin-top: 10px; font-size: 12.5px; color: #ffd76a; }
+.pro-note { margin-top: 14px; font-size: 11.5px; color: #6b7f9b; line-height: 1.7; }
+
+.pro-active-card { position: relative; margin-top: 4px; padding: 24px 22px; border-radius: 14px;
+  background: linear-gradient(160deg, rgba(13,26,40,.92), rgba(6,14,24,.96));
+  border: 1px solid rgba(0,255,213,.3); overflow: hidden; }
+.pro-active-glow { position: absolute; top: -55px; right: -45px; width: 240px; height: 150px; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(0,255,213,.22), transparent 72%); }
+.pro-active-head { display: flex; align-items: center; gap: 9px; }
+.pro-active-dot { width: 10px; height: 10px; border-radius: 50%; background: #00ffd5;
+  box-shadow: 0 0 10px rgba(0,255,213,.85); }
+.pro-active-title { font-size: 15px; font-weight: 800; color: #fff; }
+.pro-active-row { display: flex; align-items: center; justify-content: space-between; margin-top: 13px;
+  padding: 10px 13px; border-radius: 8px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.05); }
+.pro-active-row span { font-size: 12.5px; color: #9fb3d1; }
+.pro-active-row b { font-size: 13px; color: var(--text); font-weight: 600; }
+.pro-rollback { margin-top: 14px; padding: 10px 12px; border-radius: 8px; font-size: 12.5px;
+  color: #ff5f57; background: rgba(255,95,87,.08); border: 1px solid rgba(255,95,87,.3); }
+
 </style>
