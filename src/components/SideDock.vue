@@ -195,7 +195,8 @@ async function doMove(toGroup: string) {
 
     </div>
 
-    <!-- 展开的分组面板：从 dock 右侧浮出 -->
+    <Teleport to="body">
+    <!-- 展开的分组面板：从 dock 右侧浮出（Teleport 到 body，避免被侧栏层叠/裁剪） -->
     <Transition name="dpop">
       <div
         v-if="current"
@@ -219,7 +220,7 @@ async function doMove(toGroup: string) {
             <span class="dpi-ic">
               <svg viewBox="0 0 24 24"><path fill="currentColor" :d="it.icon" /></svg>
             </span>
-            <span class="dpi-t">{{ it.label }}</span>
+            <span class="dpi-t" :title="it.desc">{{ it.label }}</span>
             <span class="dpi-d">{{ it.desc }}</span>
             <button
               type="button"
@@ -293,6 +294,7 @@ async function doMove(toGroup: string) {
         </button>
       </div>
     </Transition>
+    </Teleport>
   </aside>
 </template>
 
@@ -382,7 +384,7 @@ async function doMove(toGroup: string) {
   border-radius: 10px;
   box-shadow: 20px 20px 50px rgba(0,0,0,.6);
   padding: 10px;
-  max-height: calc(100vh - 58px);
+  max-height: min(520px, calc(100vh - 120px));
   overflow-y: auto;
   z-index: 95;
 }
@@ -394,14 +396,13 @@ async function doMove(toGroup: string) {
 .dp-head span { font-size: 9px; color: var(--text-dim); letter-spacing: 0; }
 .dp-x { background: transparent; border: 0; color: var(--text-dim); font-size: 12px; cursor: pointer; padding: 0 2px; }
 .dp-x:hover { color: var(--text); }
-.dp-grid { display: flex; flex-direction: column; gap: 2px; }
+.dp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .dp-item {
   display: grid;
-  grid-template-columns: 28px 1fr;
-  grid-template-rows: auto auto;
+  grid-template-columns: 24px 1fr;
   align-items: center;
-  column-gap: 8px;
-  padding: 7px 8px;
+  column-gap: 6px;
+  padding: 5px 7px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
@@ -409,16 +410,16 @@ async function doMove(toGroup: string) {
   text-align: left; cursor: pointer;
   transition: background 0.14s, border-color 0.14s;
   position: relative;
+  min-width: 0;
 }
 .dpi-ic {
-  grid-row: 1 / 3;
-  width: 28px; height: 28px; border-radius: 6px;
+  width: 24px; height: 24px; border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
   font-size: 11px; font-weight: 700;
 }
-.dpi-ic svg { width: 15px; height: 15px; }
-.dpi-t { font-size: 12px; font-weight: 400; line-height: 1.2; display: flex; align-items: center; gap: 6px; }
-.dpi-d { font-size: 9.5px; color: var(--text-dim); line-height: 1.3; margin-top: 1px; }
+.dpi-ic svg { width: 13px; height: 13px; }
+.dpi-t { font-size: 11px; font-weight: 400; line-height: 1.2; display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dpi-d { display: none; }
 .dp-item:hover { background: rgba(255,255,255,.05); }
 .dp-item.on { background: rgba(232,184,96,.08); border-color: rgba(232,184,96,.25); }
 .dp-item.on .dpi-t::after {

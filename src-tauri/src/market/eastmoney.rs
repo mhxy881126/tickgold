@@ -86,20 +86,24 @@ const PUSH2_HOSTS: &[&str] = &[
 /// `path_query` 为以 "/" 开头、含 query 的接口路径。
 pub(crate) async fn push2_json(path_query: &str) -> Result<Value, String> {
     let mut last = String::from("无可用 push2 节点");
+    // 每节点先 HTTPS 后 HTTP：部分网络对 eastmoney 443 出口做封锁/干扰，
+    // 而 80 端口仍可达（实测），双协议串行可显著提升节点可用率。
     for host in PUSH2_HOSTS {
-        let url = format!("https://{host}{path_query}");
-        match http()
-            .get(&url)
-            .header("Referer", "https://quote.eastmoney.com/")
-            .timeout(std::time::Duration::from_secs(2))
-            .send()
-            .await
-        {
-            Ok(resp) => match resp.json::<Value>().await {
-                Ok(v) => return Ok(v),
-                Err(e) => last = format!("{host}: 解析失败 {e}"),
-            },
-            Err(e) => last = format!("{host}: {e}"),
+        for scheme in ["https", "http"] {
+            let url = format!("{scheme}://{host}{path_query}");
+            match http()
+                .get(&url)
+                .header("Referer", "https://quote.eastmoney.com/")
+                .timeout(std::time::Duration::from_secs(2))
+                .send()
+                .await
+            {
+                Ok(resp) => match resp.json::<Value>().await {
+                    Ok(v) => return Ok(v),
+                    Err(e) => last = format!("{host}: 解析失败 {e}"),
+                },
+                Err(e) => last = format!("{host}/{scheme}: {e}"),
+            }
         }
     }
     Err(format!("所有 push2 节点均失败；{last}"))
@@ -263,24 +267,28 @@ pub async fn rank_board(
     // 多个 push2 节点并发竞速：任一先返回可解析 JSON 即采用，其余请求丢弃。
     // 主域被网络阻断时无需逐节点串行等超时（最坏 40s），整体只受单请求 8s 超时约束。
     let mut set = tokio::task::JoinSet::new();
+    // 每节点同时尝试 HTTPS 与 HTTP：部分网络封锁 eastmoney 443 而 80 可达（实测），
+    // 双协议并发任一命中即采用。
     for &host in CLIST_HOSTS {
-        let url = format!(
-            "https://{host}/api/qt/clist/get?pn={pn}&pz={num}&po={po}&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid={fid}&fs={fs}&fields=f12,f14,f2,f3,f6,f8,f10,f22,f62,f72,f236,f237"
-        );
-        set.spawn(async move {
-            let resp = http()
-                .get(&url)
-                .header("Referer", "https://quote.eastmoney.com/")
-                .timeout(std::time::Duration::from_secs(4))
-                .send()
-                .await
-                .map_err(|e| format!("{host}: {e}"))?;
-            let json: RankBoardResp = resp
-                .json()
-                .await
-                .map_err(|e| format!("{host}: decode {e}"))?;
-            Ok::<Vec<Value>, String>(json.data.map(|d| d.diff).unwrap_or_default())
-        });
+        for scheme in ["https", "http"] {
+            let url = format!(
+                "{scheme}://{host}/api/qt/clist/get?pn={pn}&pz={num}&po={po}&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid={fid}&fs={fs}&fields=f12,f14,f2,f3,f6,f8,f10,f22,f62,f72,f236,f237"
+            );
+            set.spawn(async move {
+                let resp = http()
+                    .get(&url)
+                    .header("Referer", "https://quote.eastmoney.com/")
+                    .timeout(std::time::Duration::from_secs(4))
+                    .send()
+                    .await
+                    .map_err(|e| format!("{host}: {e}"))?;
+                let json: RankBoardResp = resp
+                    .json()
+                    .await
+                    .map_err(|e| format!("{host}: decode {e}"))?;
+                Ok::<Vec<Value>, String>(json.data.map(|d| d.diff).unwrap_or_default())
+            });
+        }
     }
     let mut last = String::from("所有 clist 节点均失败");
     let mut rows: Vec<Value> = Vec::new();

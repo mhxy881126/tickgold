@@ -52,6 +52,7 @@ onBeforeUnmount(() => {
     <button
       type="button"
       class="ss-btn"
+      data-tauri-drag-region="false"
       :class="{ on: open, placeholder: !current }"
       :title="'切换盯盘场景'"
       @click="toggle"
@@ -62,7 +63,7 @@ onBeforeUnmount(() => {
     </button>
 
     <Transition name="sspop">
-      <div v-if="open" class="ss-menu">
+      <div v-if="open" class="ss-menu" data-tauri-drag-region="false">
         <template v-for="(sc, i) in SCENES" :key="sc.id">
           <div v-if="isBuiltinHead(i)" class="ss-head">打法模板</div>
           <button

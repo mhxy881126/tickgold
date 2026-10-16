@@ -105,6 +105,13 @@ function smartUpdatedText(gid: number): string {
   return `更新于 ${d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`;
 }
 
+/** 分组 chip 的悬浮提示：智能分组带更新时间与刷新提示 */
+function smartGroupTitle(g: { name: string; kind?: string; id: number }): string {
+  if (g.kind !== "smart") return "";
+  const upd = smartUpdatedText(g.id);
+  return `智能分组 · ${upd || "未刷新"} · 点击立即刷新动态成员`;
+}
+
 /** 打开/切到 v2 分组时自动刷新（无缓存或超 3 分钟） */
 function ensureSmartRefresh(gid: number) {
   const g = wl.groups.find((x) => x.id === gid);
@@ -286,10 +293,9 @@ async function moveAddGroup() {
           @blur="commitEdit(g)"
         />
         <template v-else>
-          <span class="gname">{{ g.name }}</span>
+          <span class="gname" :title="smartGroupTitle(g)">{{ g.name }}</span>
           <i v-if="g.kind === 'smart'" class="gsmart" title="智能分组（动态选股/按规则自动归类）">智</i>
-          <span v-if="g.kind === 'smart' && wl.smartV2[g.id]" class="gupd">{{ smartUpdatedText(g.id) }}</span>
-          <span class="gcount">{{ wl.membersOf(g.id).length }}</span>
+          <span class="gcount" :title="smartGroupTitle(g)">{{ wl.membersOf(g.id).length }}</span>
           <span
             v-if="g.kind === 'smart' && wl.smartV2Refreshing[g.id]"
             class="grefresh loading"
@@ -461,7 +467,16 @@ async function moveAddGroup() {
           </td>
         </tr>
         <tr v-if="wl.currentStocks.length === 0">
-          <td colspan="5" class="empty">该分组暂无股票，上方搜索添加</td>
+          <td colspan="5" class="empty">
+            <template v-if="isSmartGroup(wl.currentGroupId)">
+              <span v-if="wl.smartV2Error[wl.currentGroupId]" class="empty-err">
+                {{ wl.smartV2Error[wl.currentGroupId] }}
+              </span>
+              <span v-else>该智能分组暂无命中股票（条件未匹配到候选池）</span>
+              <button class="empty-retry" @click="wl.refreshSmartGroup(wl.currentGroupId)">重新刷新</button>
+            </template>
+            <template v-else>该分组暂无股票，上方搜索添加</template>
+          </td>
         </tr>
       </tbody>
     </table>
@@ -641,8 +656,9 @@ tbody tr:hover .op { border-color: var(--border); }
 /* v2.31 智能分组 / 信号高亮 */
 .chip.addsmart { font-size: 11px; line-height: 1; padding: 3px 8px; color: #e8c66a; border-color: #8a753588; }
 .gsmart {
-  font-style: normal; font-size: 9px; color: #e8c66a;
-  border: 1px solid #e8c66a66; border-radius: 4px; padding: 0 3px;
+  font-style: normal; font-size: 9px; font-weight: 600; color: #1a1204;
+  background: linear-gradient(135deg, #f0d57c, #d4af37);
+  border-radius: 4px; padding: 0 4px; line-height: 14px;
 }
 tbody tr.hit { box-shadow: inset 2px 0 0 #e8c66a; }
 .hit-badge {
@@ -725,6 +741,13 @@ tbody tr.hit { box-shadow: inset 2px 0 0 #e8c66a; }
 }
 .grefresh:hover { color: #e8c66a; }
 .grefresh.loading { animation: gspin 0.9s linear infinite; cursor: default; }
+.empty-err { color: #f23645; font-size: 12px; }
+.empty-retry {
+  margin-left: 8px; padding: 2px 10px; font-size: 11px;
+  background: #16233a; color: #e8c66a; border: 1px solid #e8c66a66;
+  border-radius: 10px; cursor: pointer;
+}
+.empty-retry:hover { background: #1d2c47; }
 @keyframes gspin { to { transform: rotate(360deg); } }
 .sm-go {
   width: 100%; height: 32px; border: none; border-radius: 7px;

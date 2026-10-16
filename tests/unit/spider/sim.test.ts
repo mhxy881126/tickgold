@@ -133,7 +133,7 @@ describe("SpiderSim 步态", () => {
       sim.update(16, 8000 * 16);
       expect(sim.legsForRender().every(l => !l.lifting)).toBe(true);
     }
-  });
+  }, 15000); // 计算密集：7 方向 × 40 点 × 8000 帧 IK，Windows 软件环境约 5.2s，放宽超时
 });
 
 describe("SpiderSim 扫描进度", () => {

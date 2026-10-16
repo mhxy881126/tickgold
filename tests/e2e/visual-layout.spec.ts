@@ -3,7 +3,7 @@
 // 纯像素快照受字体 / 抗锯齿影响易抖动，故 CI 另对关键视图截图存档（见 ci.yml）供人工复核。
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { mkdirSync } from "fs";
-import { boot } from "./support/helpers";
+import { boot, applyScene } from "./support/helpers";
 
 test.use({ viewport: { width: 1600, height: 900 } });
 mkdirSync("screenshots", { recursive: true });
@@ -15,7 +15,7 @@ async function rect(loc: Locator) {
 }
 
 async function openMini(page: Page) {
-  await page.locator(".scene-pill", { hasText: "极简看盘" }).click();
+  await applyScene(page, "极简看盘");
   const chartSlot = page.locator('[data-card-id="chart"]');
   // chart 已恢复经典 StockChart（klinecharts canvas）
   await chartSlot.locator(".chart-host canvas").first().waitFor();

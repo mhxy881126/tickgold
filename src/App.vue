@@ -753,6 +753,7 @@ onBeforeUnmount(() => {
               v-for="id in bench.openCards.value"
               :key="id"
               class="ot-item"
+              :data-nav-id="id"
               :class="{ on: id === bench.glassActive.value }"
               @click="onTabPick(id)"
             >
@@ -766,6 +767,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="ot-add" @click="toggleAddMenu">＋ 添加卡片</div>
 
+          <Teleport to="body">
           <Transition name="dpop">
             <div v-if="addCardOpen" class="add-menu" @click.stop>
               <div v-for="g in addGroups" :key="g.name" class="am-group">
@@ -775,6 +777,7 @@ onBeforeUnmount(() => {
                   :key="it.id"
                   type="button"
                   class="am-item"
+                  :data-card-id="it.id"
                   :class="{ disabled: bench.isOpen(it.id) }"
                   @click="openFromAddMenu(it.id)"
                 >
@@ -785,6 +788,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </Transition>
+          </Teleport>
         </aside>
         </div>
       </template>

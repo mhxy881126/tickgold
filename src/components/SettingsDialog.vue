@@ -5,7 +5,7 @@ import { listen, emit as tauriEmit } from "@tauri-apps/api/event";
 import { openInAppBrowser } from "../utils/openInApp";
 import { useTheme, type ThemeId } from "../composables/useTheme";
 import { useAccessibility } from "../composables/useAccessibility";
-import { useMotion } from "../composables/useMotion";
+
 import { useSkins } from "../composables/useSkins";
 import { useNovice } from "../composables/useNovice";
 import { useWindowControls } from "../composables/useWindowControls";
@@ -82,7 +82,7 @@ function close() {
 
 const { theme, setTheme, THEMES } = useTheme();
 const { zoom, highContrast, setZoom, setHighContrast, ZOOM_LEVELS } = useAccessibility();
-const { tier: motionTier, setTier: setMotionTier, MOTION_TIERS } = useMotion();
+
 const { curVersion } = useWindowControls();
 const skinsApi = useSkins();
 const noviceApi = useNovice();
@@ -1571,15 +1571,6 @@ async function clearL2Key(r: PluginRow) {
                   <div class="section-sub" style="margin:3px 0 0">增强文字与边框对比，更易辨识</div>
                 </div>
                 <button type="button" class="switch" :class="{ on: highContrast }" @click="setHighContrast(!highContrast)"><span class="knob"></span></button>
-              </div>
-              <div class="startup-row" style="margin-top:10px">
-                <div class="startup-info">
-                  <div class="startup-name">动效强度</div>
-                  <div class="section-sub" style="margin:3px 0 0">数值补间 / 涨跌辉光 / 悬停抬升，省电档瞬时到位</div>
-                </div>
-                <div class="seg">
-                  <button v-for="m in MOTION_TIERS" :key="m.id" type="button" class="seg-btn" :class="{ on: motionTier === m.id }" :title="m.desc" @click="setMotionTier(m.id)">{{ m.name }}</button>
-                </div>
               </div>
             </div>
 

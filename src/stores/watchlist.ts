@@ -145,12 +145,20 @@ export const useWatchlistStore = defineStore("watchlist", () => {
         if (q.code && !map.has(q.code)) map.set(q.code, q);
       }
     }
-    // 新浪榜单缺量比/振幅：候选集用腾讯批量行情补全（getQuotes 内部自动分批并发）
+    // 新浪榜单缺量比/振幅：候选集用腾讯批量行情补全（getQuotes 内部自动分批并发）。
+    // 只做字段级补全，绝不整条覆盖——腾讯对 pe/pb/市值等字段可能返回 0，
+    // 整条覆盖会破坏智能分组基本面条件的命中。
     const codes = [...map.keys()];
     if (codes.length) {
       const enriched = await fetchQuotes(codes).catch(() => [] as import("../api/types").Quote[]);
       for (const q of enriched) {
-        if (q.code && map.has(q.code)) map.set(q.code, q);
+        const orig = q.code && map.get(q.code);
+        if (!orig) continue;
+        map.set(q.code, {
+          ...orig,
+          volumeRatio: orig.volumeRatio || q.volumeRatio,
+          amplitude: orig.amplitude || q.amplitude,
+        });
       }
     }
     rankCache = [...map.values()];
@@ -194,7 +202,7 @@ export const useWatchlistStore = defineStore("watchlist", () => {
         "SELECT DISTINCT trade_date AS d FROM limit_up_record ORDER BY d DESC LIMIT ?",
         [SMART_LOOKBACK_DAYS]
       );
-      if (!dates.length) {
+      if (!dates || !dates.length) {
         smartHits.value = [];
         return;
       }
@@ -207,7 +215,7 @@ export const useWatchlistStore = defineStore("watchlist", () => {
          ORDER BY trade_date DESC, boards DESC`,
         dates.map((x) => x.d)
       );
-      smartHits.value = rows;
+      smartHits.value = rows ?? [];
     } catch (e) {
       // 表不存在（旧库未迁移）等情况静默
       console.warn("[watchlist] 智能命中加载失败", e);
