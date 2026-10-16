@@ -2,7 +2,7 @@
   display: grid;
   grid-template-rows: 38px 1fr;
   grid-template-columns: 56px 1fr;
-  height: 100vh;
+  position: fixed; inset: 0;
   background: var(--bg);
   color: var(--text);
 }
@@ -32,8 +32,16 @@
 .wc-btn:hover { background: var(--bg-hover); color: var(--text); }
 .wc-btn.close:hover { background: #e23b45; color: #fff; }
 
-/* 指数条 */
-.idx-row { grid-column: 1; }
+/* 行情条：指数 + 时段合并为一条 */
+.quote-bar {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  flex: none;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+.quote-bar .idx-row { grid-column: auto; }
 
 /* 右侧主区容器（指数条 + 工作台） */
 .app-main {
@@ -547,7 +555,7 @@ html[data-motion="balanced"] .card-leave { animation-name: cardOutLite; }
 /* ============================================================
    玻璃浮岛模式（Glass Island）
    ============================================================ */
-.ws-body.glass { position: relative; overflow: hidden; }
+.ws-body.glass { position: relative; overflow: hidden; display: flex; flex-direction: column; }
 
 /* 顶栏布局模式切换 */
 .layout-mode-toggle {
@@ -569,14 +577,15 @@ html[data-motion="balanced"] .card-leave { animation-name: cardOutLite; }
 
 /* 主卡占满：顶部仅留 2px 呼吸，消除大块留白；右/底 12px 保安全边距 */
 .glass-layout {
-  position: absolute; inset: 0; display: flex; gap: 10px; padding: 2px 12px 12px 2px;
+  position: relative; flex: 1; min-height: 0;
+  display: flex; gap: 10px; padding: 2px 12px 12px 2px;
 }
 .glass-master { flex: 1; min-width: 0; }
 .glass-master .card-shell { height: 100%; }
 
 /* 右侧固定卡片导航栏 */
 .glass-edge {
-  width: 180px; flex: none; z-index: 20;
+  width: 190px; flex: none; z-index: 20; position: relative;
   background: rgba(20,24,32,.8);
   backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border);
@@ -585,56 +594,80 @@ html[data-motion="balanced"] .card-leave { animation-name: cardOutLite; }
   overflow: hidden;
 }
 
-.ge-head {
-  padding: 14px 14px 10px; border-bottom: 1px solid var(--border); flex: none;
+.ot-head {
+  padding: 13px 14px 10px; border-bottom: 1px solid var(--border); flex: none;
+  display: flex; align-items: center; justify-content: space-between;
 }
-.ge-title { font-size: 11px; color: var(--gold); letter-spacing: 2px; font-weight: 600; }
-.ge-sub { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
-
-.ge-groups { flex: 1; overflow-y: auto; padding: 10px 10px 18px; }
-.ge-groups::-webkit-scrollbar { width: 4px; }
-.ge-groups::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-.ge-group { margin-bottom: 8px; }
-.ge-group-head {
-  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
-  cursor: pointer; border-radius: 8px; transition: background .15s;
-  user-select: none;
+.ot-head .t { font-size: 12px; font-weight: 600; color: var(--text); }
+.ot-head .n { font-size: 10px; color: var(--accent); font-family: var(--mono, monospace); transition: transform .2s; }
+.ot-list { flex: 1; overflow-y: auto; padding: 8px; }
+.ot-list::-webkit-scrollbar { width: 4px; }
+.ot-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.ot-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 10px; border-radius: 8px; font-size: 12px;
+  color: var(--text-dim); cursor: pointer; margin-bottom: 3px;
+  position: relative; transition: background .15s;
 }
-.ge-group-head:hover { background: rgba(255,255,255,.04); }
-.ge-group-icon {
-  width: 22px; height: 22px; border-radius: 6px;
-  background: rgba(255,255,255,.05);
+.ot-item .dt { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.ot-item .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ot-item .x {
+  margin-left: auto; width: 16px; height: 16px; border-radius: 4px;
   display: flex; align-items: center; justify-content: center;
-  flex: none;
+  font-size: 11px; color: var(--text-dim); opacity: 0; flex: none;
+  transition: opacity .15s, background .15s;
 }
-.ge-group-icon svg { width: 12px; height: 12px; }
-.ge-group-name { font-size: 12px; font-weight: 600; flex: 1; color: var(--text); }
-.ge-group-count {
-  font-size: 10px; color: var(--text-dim);
-  background: rgba(255,255,255,.06);
-  padding: 1px 6px; border-radius: 8px;
+.ot-item:hover { background: rgba(255,255,255,.04); color: var(--text); }
+.ot-item:hover .x { opacity: 1; }
+.ot-item .x:hover { background: rgba(242,54,69,.2); color: #ff6b78; }
+.ot-item.on { background: rgba(232,184,96,.12); color: var(--accent); }
+.ot-item.on::before {
+  content: ""; position: absolute; left: 0; top: 20%; bottom: 20%;
+  width: 3px; border-radius: 2px; background: var(--accent);
 }
-.ge-group-arrow { font-size: 9px; color: var(--text-dim); transition: transform .2s; }
-.ge-group.open .ge-group-arrow { transform: rotate(90deg); }
+.ot-empty {
+  padding: 20px 12px; text-align: center;
+  color: var(--text-dim); font-size: 10.5px; line-height: 1.7;
+}
+.ot-add {
+  margin: 6px; padding: 8px; border: 1px dashed var(--border-light);
+  border-radius: 8px; color: var(--text-dim); font-size: 11px;
+  text-align: center; cursor: pointer; flex: none; transition: all .15s;
+}
+.ot-add:hover { color: var(--accent); border-color: var(--accent); background: rgba(232,184,96,.06); }
 
-.ge-group-items { overflow: hidden; }
-.ge-group:not(.open) .ge-group-items { display: none; }
-
-.ge-item {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 7px 10px 7px 38px; border-radius: 6px; font-size: 11.5px;
-  color: var(--text-dim); background: transparent; border: none;
-  cursor: pointer; text-align: left; transition: all .15s; position: relative;
+/* 添加卡片菜单 */
+.add-menu {
+  position: absolute; right: 8px; bottom: 46px; width: 212px;
+  max-height: 320px; overflow-y: auto;
+  background: rgba(14,17,22,.97);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,.1); border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.66);
+  padding: 6px; z-index: 80;
 }
-.ge-item:hover { background: rgba(255,255,255,.04); color: var(--text); }
-.ge-item.on {
-  background: rgba(232,184,96,.1); color: var(--gold);
+.add-menu::-webkit-scrollbar { width: 6px; }
+.add-menu::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 6px; }
+.am-group { margin-bottom: 2px; }
+.am-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 7px 9px 5px; font-size: 11px; color: var(--text);
+  font-weight: 600; letter-spacing: .5px;
+  border-bottom: 1px solid var(--border); margin-bottom: 3px;
 }
-.ge-item.on::before {
-  content: ""; position: absolute; left: 28px; top: 50%; transform: translateY(-50%);
-  width: 4px; height: 4px; border-radius: 50%; background: var(--gold);
-  box-shadow: 0 0 8px var(--gold);
+.am-head .hc { font-size: 10px; font-weight: 400; color: var(--text-dim); }
+.am-item {
+  position: relative; display: flex; align-items: center; gap: 9px;
+  padding: 0 9px; height: 30px; width: 100%;
+  border: 0; background: transparent; border-radius: 8px;
+  font-size: 12px; color: var(--text-dim); cursor: pointer;
+  white-space: nowrap; text-align: left;
+  transition: background .12s, color .12s;
 }
-.ge-item.closed { opacity: 0.4; }
-.ge-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.am-item .mi { width: 15px; height: 15px; color: var(--text-dim); flex: none; }
+.am-item .mi svg { width: 15px; height: 15px; }
+.am-item .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.am-item:hover:not(.disabled) { background: rgba(255,255,255,.055); color: var(--text); }
+.am-item:hover:not(.disabled) .mi { color: var(--text); }
+.am-item.disabled { opacity: .45; cursor: default; pointer-events: none; }
+.am-item.disabled .gn { margin-left: auto; font-size: 10px; color: var(--text-dim); }

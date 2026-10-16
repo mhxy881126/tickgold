@@ -10,8 +10,8 @@ import ShortcutDialog from "./components/ShortcutDialog.vue";
 import OnboardingDialog from "./components/OnboardingDialog.vue";
 import ToastContainer from "./components/ToastContainer.vue";
 import LayoutMenu from "./components/LayoutMenu.vue";
+import SceneSwitcher from "./components/SceneSwitcher.vue";
 import SideDock from "./components/SideDock.vue";
-import CardTabStrip from "./components/CardTabStrip.vue";
 import AppDialog from "./components/AppDialog.vue";
 import ShortTermSpider from "./components/ShortTermSpider.vue";
 import LimitRadar from "./components/LimitRadar.vue";
@@ -37,7 +37,7 @@ import WelcomeBoard from "./components/WelcomeBoard.vue";
 import { useWatchlistStore } from "./stores/watchlist";
 import { useQuotesStore } from "./stores/quotes";
 import { useAlertStore } from "./stores/alert";
-import { useWorkbench, CARD_META, SCENES, currentTimeSlot, type CardId, type Scene } from "./composables/useWorkbench";
+import { useWorkbench, CARD_META, currentTimeSlot, type CardId, type Scene } from "./composables/useWorkbench";
 import { useDockGroups } from "./composables/useDockGroups";
 import { useTheme } from "./composables/useTheme";
 import { useAccessibility } from "./composables/useAccessibility";
@@ -272,54 +272,31 @@ function applySceneGuarded(sc: Scene) {
   bench.applyScene(sc);
 }
 
-// ===== 玻璃浮岛：按 Dock 分组聚合已开卡片 =====
-// 用户可自定义左侧菜单分组（新增/重命名/删除/移动功能），此处共享同一份配置
+// ===== 方案 A：右栏只列"已开卡片"标签页（左 Dock 管"全部卡片"）=====
 const dock = useDockGroups();
-const dockGroups = dock.groups;
-const glassGroups = computed(() => {
-  const open = bench.openCards.value;
-  return dockGroups.value
-    .map((g) => ({
-      name: g.name,
-      items: g.items.filter((it) => open.includes(it.id as CardId)),
-    }))
-    .filter((g) => g.items.length > 0);
-});
-
-// 玻璃浮岛右侧导航：所有分组都显示，可折叠。
-// 默认全部折叠（只展开当前激活卡片所在组），避免 40+ 卡片平铺把列表撑爆、
-// 底部卡片（如盯盘复盘报告）被挤出视野。
-const allGlassGroups = dockGroups;
-const openGroups = ref<Set<string>>(new Set());
-watch(dockGroups, (gs) => {
-  // 新出现的分组默认折叠，不强制展开
-  openGroups.value = new Set([...openGroups.value].filter((n) => gs.some((g) => g.name === n)));
-});
-// 激活卡片变化时，自动展开其所在分组
-watch(
-  () => bench.glassActive.value,
-  (id) => {
-    if (!id) return;
-    const g = dockGroups.value.find((g) => g.items.some((i) => i.id === id));
-    if (g && !openGroups.value.has(g.name)) {
-      openGroups.value = new Set([...openGroups.value, g.name]);
-    }
-  },
-  { immediate: true }
-);
-function toggleGroup(name: string) {
-  if (openGroups.value.has(name)) openGroups.value.delete(name);
-  else openGroups.value.add(name);
-  openGroups.value = new Set(openGroups.value);
+const addCardOpen = ref(false);
+// 添加卡片菜单：按用户分组列出全部卡片（已开的置灰）
+const addGroups = computed(() => dock.groups.value);
+function toggleAddMenu() {
+  addCardOpen.value = !addCardOpen.value;
 }
-// 右侧导航点击：已开则切换主卡，未开则打开并设为主卡
-function onNavPick(id: CardId) {
-  if (bench.openCards.value.includes(id)) {
-    bench.setGlassActive(id);
-  } else {
-    bench.open(id);
-    bench.setGlassActive(id);
-  }
+// 已开卡片点击：切换主卡
+function onTabPick(id: CardId) {
+  if (bench.glassActive.value !== id) bench.setGlassActive(id);
+}
+// 添加菜单点击：打开并设为主卡
+function openFromAddMenu(id: CardId) {
+  if (bench.isOpen(id)) return;
+  bench.open(id);
+  bench.setGlassActive(id);
+  addCardOpen.value = false;
+}
+// 点击面板外部关闭添加菜单
+function onDocClickAdd(e: MouseEvent) {
+  if (!addCardOpen.value) return;
+  const t = e.target as HTMLElement;
+  if (t.closest(".add-menu") || t.closest(".ot-add")) return;
+  addCardOpen.value = false;
 }
 
 // 底部 Tab 流点击
@@ -553,6 +530,8 @@ onMounted(async () => {
   window.addEventListener("keydown", onPaletteKey);
   // —— 槽位吸附：拖拽中实时算纵向偏置 ——
   window.addEventListener("pointermove", onDragMoveBias);
+  // —— 右侧添加卡片菜单：点击外部关闭 ——
+  document.addEventListener("click", onDocClickAdd);
 
   // —— 事件监听 ——
   try {
@@ -625,6 +604,7 @@ onBeforeUnmount(() => {
   unlistenFns.forEach((f) => f());
   window.removeEventListener("keydown", onPaletteKey);
   window.removeEventListener("pointermove", onDragMoveBias);
+  document.removeEventListener("click", onDocClickAdd);
 });
 </script>
 
@@ -633,19 +613,7 @@ onBeforeUnmount(() => {
     <!-- 顶栏 -->
     <header class="topbar" :class="{ mac: isMac }" data-tauri-drag-region>
       <div class="brand" data-tauri-drag-region>TickGold</div>
-      <div class="scene-pill-group-top">
-        <button
-          v-for="sc in SCENES"
-          :key="sc.id"
-          type="button"
-          class="scene-pill"
-          :class="{ on: bench.sceneId.value === sc.id }"
-          @click="applySceneGuarded(sc)"
-        >
-          <svg viewBox="0 0 24 24"><path fill="currentColor" :d="sc.icon" /></svg>
-          <span>{{ sc.label }}</span>
-        </button>
-      </div>
+      <SceneSwitcher :current-id="bench.sceneId.value" @select="applySceneGuarded" />
       <!-- 布局已统一为主卡+右导航 -->
 
       <SearchBox @select="onSearchSelect" />
@@ -654,10 +622,6 @@ onBeforeUnmount(() => {
         {{ quotes.polling ? "实时" : "已暂停" }}
         <span class="sep">|</span>
         {{ Object.keys(quotes.map).length }} 只
-        <span class="sep">|</span>
-        <button class="icon-btn" title="设置" @click="showSettings = true">
-          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
-        </button>
       </div>
       <!-- Windows 自绘窗口控制（macOS 使用原生红绿灯） -->
       <div v-if="isWin" class="win-ctl" data-tauri-drag-region="false">
@@ -696,26 +660,25 @@ onBeforeUnmount(() => {
     </header>
 
     <!-- 左侧 Dock：功能分类竖排导航（替代原顶部 Mega 横条） -->
-    <SideDock @toggle="toggleCard" @palette="openPalette" />
+    <SideDock @toggle="toggleCard" @palette="openPalette" @settings="showSettings = true" />
 
     <!-- 右侧主区：指数条 + 工作台 -->
     <div class="app-main">
-    <!-- 指数条 -->
-    <Indices class="idx-row" />
+    <!-- 行情条：指数 + 时段合并为一条紧凑行 -->
+    <div class="quote-bar">
+      <Indices class="idx-row" />
+      <TimeTabs :active="bench.timeMode.value" @select="bench.enterTimeMode($event)" />
+    </div>
 
     <!-- 工作台主区域 -->
     <main
       class="workspace"
       :class="{ dragging: bench.dragId.value !== null, bare: bench.openCards.value.length === 0 }"
     >
-      <!-- 空台沉浸背景：铺满整个 workspace（含时段栏后方），与时段栏融为一体 -->
+      <!-- 空台沉浸背景：铺满整个 workspace -->
       <Transition name="welcome">
         <WelcomeBoard v-if="bench.openCards.value.length === 0" />
       </Transition>
-      <!-- 时段 Tabs 一行 -->
-      <div class="time-tabs-row">
-        <TimeTabs :active="bench.timeMode.value" @select="bench.enterTimeMode($event)" />
-      </div>
 
       <div class="ws-body" :class="{ free: bench.freeMode.value, glass: true }">
 
@@ -780,37 +743,48 @@ onBeforeUnmount(() => {
             />
           </CardShell>
         </div>
-        <aside class="glass-edge">
-          <div class="ge-head">
-            <div class="ge-title">卡片导航</div>
-            <div class="ge-sub">{{ bench.openCards.value.length }} 张已开</div>
+        <aside class="glass-edge open-tabs">
+          <div class="ot-head">
+            <span class="t">已开卡片</span>
+            <span class="n">{{ bench.openCards.value.length }}</span>
           </div>
-          <div class="ge-groups">
-            <div v-for="g in allGlassGroups" :key="g.name" class="ge-group" :class="{ open: openGroups.has(g.name) }">
-              <div class="ge-group-head" @click="toggleGroup(g.name)">
-                <span class="ge-group-icon">
-                  <svg viewBox="0 0 24 24"><path fill="currentColor" :d="g.icon" /></svg>
-                </span>
-                <span class="ge-group-name">{{ g.name }}</span>
-                <span class="ge-group-count">{{ g.items.filter(i => bench.openCards.value.includes(i.id)).length }}</span>
-                <span class="ge-group-arrow">▶</span>
-              </div>
-              <div class="ge-group-items">
+          <div class="ot-list">
+            <div
+              v-for="id in bench.openCards.value"
+              :key="id"
+              class="ot-item"
+              :class="{ on: id === bench.glassActive.value }"
+              @click="onTabPick(id)"
+            >
+              <span class="dt" :style="{ background: CARD_META[id]?.accent || '#8b97a8' }"></span>
+              <span class="nm">{{ CARD_META[id]?.title || id }}</span>
+              <span class="x" title="关闭" @click.stop="bench.close(id)">✕</span>
+            </div>
+            <div v-if="bench.openCards.value.length === 0" class="ot-empty">
+              暂无已开卡片<br />从左侧 Dock 或下方「添加卡片」打开
+            </div>
+          </div>
+          <div class="ot-add" @click="toggleAddMenu">＋ 添加卡片</div>
+
+          <Transition name="dpop">
+            <div v-if="addCardOpen" class="add-menu" @click.stop>
+              <div v-for="g in addGroups" :key="g.name" class="am-group">
+                <div class="am-head"><span class="hg">{{ g.name }}</span><span class="hc">{{ g.items.length }}</span></div>
                 <button
-                  v-for="item in g.items"
-                  :key="item.id"
+                  v-for="it in g.items"
+                  :key="it.id"
                   type="button"
-                  class="ge-item"
-                  :data-nav-id="item.id"
-                  :class="{ on: item.id === bench.glassActive.value, closed: !bench.openCards.value.includes(item.id) }"
-                  @click="onNavPick(item.id)"
+                  class="am-item"
+                  :class="{ disabled: bench.isOpen(it.id) }"
+                  @click="openFromAddMenu(it.id)"
                 >
-                  <span class="ge-dot" :style="{ background: CARD_META[item.id]?.accent || '#8b97a8' }"></span>
-                  {{ CARD_META[item.id]?.title || item.label }}
+                  <span class="mi"><svg viewBox="0 0 24 24"><path fill="currentColor" :d="it.icon" /></svg></span>
+                  <span class="nm">{{ CARD_META[it.id]?.title || it.label }}</span>
+                  <span v-if="bench.isOpen(it.id)" class="gn">已开</span>
                 </button>
               </div>
             </div>
-          </div>
+          </Transition>
         </aside>
         </div>
       </template>

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import { fetchIndexQuotes } from "../api/market";
 import type { Quote } from "../api/types";
 
 const list = ref<Quote[]>([]);
+// 方案 A 紧凑行情条：仅展示最核心的 3 个指数（上证/深成/创业板）
+const shown = computed(() => list.value.slice(0, 3));
 let timer: number | null = null;
 
 async function refresh() {
@@ -29,10 +31,9 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="indices">
-    <div v-for="q in list" :key="q.code" class="idx" :class="cls(q.pct)">
+    <div v-for="q in shown" :key="q.code" class="idx" :class="cls(q.pct)">
       <span class="name">{{ q.name }}</span>
       <span class="price">{{ fmt(q.price) }}</span>
-      <span class="chg">{{ q.change > 0 ? "+" : "" }}{{ fmt(q.change) }}</span>
       <span class="pct">{{ q.pct > 0 ? "+" : "" }}{{ q.pct.toFixed(2) }}%</span>
     </div>
   </div>
@@ -40,13 +41,12 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .indices {
-  display: flex; align-items: center; gap: 22px;
-  padding: 4px 12px; height: 28px;
-  background: var(--bg-panel); border-bottom: 1px solid var(--border);
-  font-size: 12px; overflow: hidden; white-space: nowrap;
+  display: flex; align-items: center; gap: 18px;
+  padding: 0 14px; flex: 1 1 auto; min-width: 0;
+  font-size: 11px; overflow: hidden; white-space: nowrap;
 }
-.idx { display: flex; align-items: baseline; gap: 6px; }
+.idx { display: flex; align-items: center; gap: 6px; }
 .name { color: var(--text-dim); }
 .price { font-weight: 600; font-variant-numeric: tabular-nums; }
-.chg, .pct { font-variant-numeric: tabular-nums; opacity: 0.9; }
+.pct { font-variant-numeric: tabular-nums; font-size: 10px; opacity: 0.95; }
 </style>

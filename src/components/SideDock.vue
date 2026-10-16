@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { ref, inject, computed } from "vue";
+import { ref, inject, computed, onMounted, onBeforeUnmount } from "vue";
 import type { DockGroup, DockItem } from "../lib/dock";
 import { useDockGroups } from "../composables/useDockGroups";
 import type { CardId } from "../lib/cards";
 
-const emit = defineEmits<{ (e: "toggle", id: CardId): void; (e: "palette"): void }>();
+const emit = defineEmits<{
+  (e: "toggle", id: CardId): void;
+  (e: "palette"): void;
+  (e: "settings"): void;
+}>();
 
 // 工作台状态（从 App provide 注入；这里只需要 isOpen 判断高亮）
 const bench = inject<{
@@ -17,6 +21,8 @@ const groups = dock.groups;
 
 const activeGroup = ref<string | null>(null);
 const hoverTimer = ref<number | null>(null);
+// 点击后锁定面板：不受鼠标移开自动关闭影响（真实窗口下 hover 时序容易导致面板一闪即关）
+const locked = ref(false);
 
 // ===== 分组管理状态 =====
 const addOpen = ref(false);        // 新增分组输入面板
@@ -39,8 +45,10 @@ function groupCount(g: DockGroup): number {
 function openGroup(g: DockGroup) {
   if (hoverTimer.value) { window.clearTimeout(hoverTimer.value); hoverTimer.value = null; }
   activeGroup.value = g.name;
+  locked.value = true;
 }
 function scheduleClose() {
+  if (locked.value) return;
   if (hoverTimer.value) window.clearTimeout(hoverTimer.value);
   hoverTimer.value = window.setTimeout(() => { activeGroup.value = null; }, 280);
 }
@@ -49,10 +57,24 @@ function cancelClose() {
 }
 // 鼠标离开 Dock 时：如果是移向浮出面板（relatedTarget 在 .dock-panel 内），不关闭
 function onDockLeave(e: MouseEvent) {
+  if (locked.value) return;
   const rt = e.relatedTarget as Node | null;
   if (rt && (rt as HTMLElement).closest?.(".dock-panel")) return;
   scheduleClose();
 }
+
+// 点击 dock/面板外部：解除锁定并关闭面板
+function unlockDock() {
+  activeGroup.value = null;
+  locked.value = false;
+}
+onMounted(() => {
+  document.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    if (t.closest?.(".side-dock") || t.closest?.(".dock-panel")) return;
+    if (locked.value) unlockDock();
+  });
+});
 function pick(it: DockItem) {
   emit("toggle", it.id);
   // 打开卡片后不自动收起面板，方便连续开多张；Esc / 点击空白由 App 层处理
@@ -131,6 +153,7 @@ async function doMove(toGroup: string) {
 
 <template>
   <aside class="side-dock" @mouseleave="onDockLeave">
+    <div class="dock-scroll">
     <button
       v-for="g in groups"
       :key="g.name"
@@ -139,7 +162,7 @@ async function doMove(toGroup: string) {
       :class="{ on: activeGroup === g.name }"
       @mouseenter="openGroup(g)"
       @focus="openGroup(g)"
-      @click="activeGroup === g.name ? (activeGroup = null) : openGroup(g)"
+      @click="openGroup(g)"
     >
       <span v-if="groupCount(g) > 0" class="d-badge">{{ groupCount(g) }}</span>
       <span class="d-ic">
@@ -155,12 +178,22 @@ async function doMove(toGroup: string) {
       <span class="d-label">新增</span>
     </button>
 
+    </div>
+
+    <div class="dock-foot">
     <div class="dock-sep"></div>
 
     <button type="button" class="dock-btn" title="命令面板 (Ctrl+K)" @click="emit('palette')">
       <svg viewBox="0 0 24 24" class="d-ic"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 10-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1114 9.5 4.5 4.5 0 019.5 14z" /></svg>
       <span class="d-label">命令</span>
     </button>
+
+    <button type="button" class="dock-btn" title="设置" @click="emit('settings')">
+      <svg viewBox="0 0 24 24" class="d-ic"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" /></svg>
+      <span class="d-label">设置</span>
+    </button>
+
+    </div>
 
     <!-- 展开的分组面板：从 dock 右侧浮出 -->
     <Transition name="dpop">
@@ -273,9 +306,22 @@ async function doMove(toGroup: string) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 10px 0;
   gap: 2px;
   z-index: 90;
+}
+.dock-scroll {
+  flex: 1; min-height: 0;
+  width: 100%;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 2px; padding-top: 10px;
+  overflow-y: auto;
+}
+.dock-scroll::-webkit-scrollbar { width: 0; }
+.dock-foot {
+  flex: none;
+  width: 100%;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 2px; padding-bottom: 10px;
 }
 .dock-btn {
   width: 54px; padding: 6px 0;
@@ -303,7 +349,7 @@ async function doMove(toGroup: string) {
 .dock-btn.on .d-ic svg { opacity: 1; color: #000; }
 .dock-add .d-ic { font-size: 16px; line-height: 20px; color: var(--text-dim); }
 .dock-add:hover .d-ic { color: #e8c878; }
-.dock-sep { width: 30px; height: 1px; background: var(--border); margin: 6px 0; }
+.dock-sep { width: 30px; height: 1px; background: var(--border); margin: auto 0 6px; }
 .d-badge {
   position: absolute; top: 2px; right: 4px;
   min-width: 14px; height: 14px; border-radius: 7px;
@@ -324,21 +370,21 @@ async function doMove(toGroup: string) {
 .dock-btn:hover .d-manage { display: block; }
 .d-manage:hover { background: rgba(232,184,96,.3); color: #e8c878; }
 
-/* dock 右侧浮出面板 */
+/* dock 右侧浮出面板：视口相对定位，窄窗口自适应宽度（不超出视口） */
 .dock-panel {
-  position: absolute;
-  left: calc(100% - 2px); top: 0;
-  width: 250px;
+  position: fixed;
+  left: 68px; top: 38px;
+  width: min(250px, calc(100vw - 78px));
   background: rgba(14,17,22,.97);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255,255,255,.1);
-  border-left: 0;
-  border-radius: 0 10px 10px 0;
+  border-radius: 10px;
   box-shadow: 20px 20px 50px rgba(0,0,0,.6);
   padding: 10px;
-  max-height: calc(100vh - 80px);
+  max-height: calc(100vh - 58px);
   overflow-y: auto;
+  z-index: 95;
 }
 .dp-head {
   display: flex; align-items: baseline; justify-content: space-between;

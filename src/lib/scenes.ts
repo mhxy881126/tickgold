@@ -88,7 +88,7 @@ export interface Scene {
   builtin?: boolean;
 }
 export const SCENES: Scene[] = [
-  { id: "pan", label: "盘中盯盘", icon: "M12 8a4 4 0 100 8 4 4 0 000-8zm0-4C7 4 3 12 3 12s4 8 9 8 9-8 9-8-4-8-9-8z",
+  { id: "pan", label: "盘中盯盘", icon: "M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 110-10 5 5 0 010 10zm0-8a3 3 0 100 6 3 3 0 000-6z",
     cards: ["chart", "radar", "watch", "spider", "sectorevent"],
     // 12×6=72 精确铺满：图表 8×4 + 雷达 4×4，底两行为自选 6 格 + 精灵/板块异动各 3 格
     size: { chart: { w: 8, h: 4 }, radar: { w: 4, h: 4 }, watch: { w: 6, h: 2 }, spider: { w: 3, h: 2 }, sectorevent: { w: 3, h: 2 } } },
@@ -134,7 +134,7 @@ export const SCENES: Scene[] = [
     size: { auction: { w: 8, h: 4 }, radar: { w: 4, h: 4 }, watch: { w: 4, h: 2 }, spider: { w: 8, h: 2 } },
     presetAlertKeys: ["auction-grab", "volume-surge"], presetCoPlans: [],
     watchGroup: "竞价关注" },
-  { id: "qushi", label: "趋势跟踪", icon: "M12 8a4 4 0 100 8 4 4 0 000-8zm0-4C7 4 3 12 3 12s4 8 9 8 9-8 9-8-4-8-9-8z", builtin: true,
+  { id: "qushi", label: "趋势跟踪", icon: "M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 110-10 5 5 0 010 10zm0-8a3 3 0 100 6 3 3 0 000-6z", builtin: true,
     cards: ["chart", "sector", "trades", "watch", "co"],
     // 12×6=72：主图 8×4 + 板块 4×4；逐笔/自选/条件单各 4×2 垫底
     size: { chart: { w: 8, h: 4 }, sector: { w: 4, h: 4 }, trades: { w: 4, h: 2 },
