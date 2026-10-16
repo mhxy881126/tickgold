@@ -1,7 +1,7 @@
 # TickGold 后端命令 / 迁移对照清单（v2.29.0 基线）
 
 > 巨石拆分（lib.rs → db/migrations.rs、commands.rs、setup.rs 模块化）的护栏。
-> 每次后端结构调整后，必须重新核对：**命令总数 207、迁移总数 55**，逐一对照无缺失。
+> 每次后端结构调整后，必须重新核对：**命令总数 212、迁移总数 56**，逐一对照无缺失。
 > （v2.30 起命令/迁移逐步增加，历史编号未全量回填；P0 新增条目见文末对应小节。）
 > 基线：v2.27.0（149 命令 / 48 迁移）；v2.28.0 净增 21 个命令
 > （资金流 3、组合层 2、风险仪表盘 1、异动阈值 2、板块日快照 3、备份中心 7、数据治理 3）
@@ -247,9 +247,16 @@
 > - workflow_advance（顺序推进当前步，写入快照；禁止跳步，全完成报错）
 > - workflow_reset（重置今日流程回第 0 步）
 
+> P1 盘前闭环新增 5 个命令（模块 ai::workflow_p1，实际注册总数 212）：
+> - workflow_collect（第①步门禁：聚合涨停/炸板/连板梯队/题材/高标，生成战场态势包 briefing_json，推进 0→1）
+> - workflow_analyze（第②步：六战法全市场扫描→统一打分排序→幂等重写 candidate_pool，推进 1→2）
+> - workflow_plan（第③步：按情绪与候选池生成次日作战卡草稿 plan/plan_instruction，不推进）
+> - workflow_plan_confirm（确认作战卡：候选/观察指令幂等转预警并入明日盯盘，推进 2→3）
+> - workflow_p1_products（只读回显：重开驾驶舱/次日盘前取回 briefing/candidates/plan/planConfirmed）
+
 ---
 
-## 二、数据库迁移：55 条（主库 sqlite:stock-dock.db）
+## 二、数据库迁移：56 条（主库 sqlite:stock-dock.db）
 
 | v | description |
 | --- | --- |
@@ -308,5 +315,6 @@
 | 53 | smart watch groups + screener subscription (v2.31 signal quality & quant screening) |
 | 54 | persist broken-limit pool for ladder reseal rate + amount on limit_up_record (v2.31 ladder depth) |
 | 55 | create daily_mission (P0 AI trading workflow orchestrator: six-step state machine) |
+| 56 | P1 pre-market loop: daily_mission.briefing_json + candidate_pool (six-tactic scored candidates) |
 
 > ai.db 另有独立版本链（当前 v4），不在此表。

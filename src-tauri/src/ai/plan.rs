@@ -31,7 +31,7 @@ fn weekday(y: i32, m: i32, d: i32) -> i32 {
 }
 
 /// 下一交易日（跳过周六周日）。
-fn next_trade_date(date: &str) -> String {
+pub(crate) fn next_trade_date(date: &str) -> String {
     let p: Vec<i32> = date.split('-').filter_map(|x| x.parse().ok()).collect();
     if p.len() != 3 {
         return date.to_string();
@@ -368,6 +368,14 @@ pub fn update_instruction(
 /// 指令 alertRule 映射为 alerts 行，返回新预警 id。
 pub fn convert_instruction_to_alert(data_dir: &Path, instr_id: i64) -> Result<String, String> {
     let c = open_readwrite(data_dir)?;
+    convert_instruction_to_alert_conn(&c, instr_id)
+}
+
+/// 单条指令转预警（指定连接，供批量确认复用）。
+fn convert_instruction_to_alert_conn(
+    c: &rusqlite::Connection,
+    instr_id: i64,
+) -> Result<String, String> {
     let (code, name, rule_json): (String, String, String) = c
         .query_row(
             "SELECT code,name,alert_rule FROM plan_instruction WHERE id=?1",
@@ -403,6 +411,60 @@ pub fn convert_instruction_to_alert(data_dir: &Path, instr_id: i64) -> Result<St
     )
     .map_err(|e| e.to_string())?;
     Ok(id)
+}
+
+/// P1 作战流：保存外部（规则引擎/候选池）构造的作战卡为计划，返回完整计划 JSON。
+pub fn save_external_plan(
+    data_dir: &Path,
+    plan_date: &str,
+    source_date: &str,
+    profile_key: &str,
+    pj: &Value,
+) -> Result<Value, String> {
+    let c = open_readwrite(data_dir)?;
+    save_plan(&c, plan_date, source_date, Some(profile_key), "rule-based", pj)?;
+    let id: i64 = c
+        .query_row("SELECT id FROM plan WHERE plan_date=?1", [plan_date], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    plan_to_json(&c, id)
+}
+
+/// 按 plan_date 取计划 id（无则 None）。
+pub fn find_plan_id_by_date(data_dir: &Path, plan_date: &str) -> Result<Option<i64>, String> {
+    let c = open_readwrite(data_dir)?;
+    match c.query_row("SELECT id FROM plan WHERE plan_date=?1", [plan_date], |r| r.get::<_, i64>(0)) {
+        Ok(id) => Ok(Some(id)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// P1 作战流：确认作战卡——把未转预警的指令批量转为预警（即入明日盯盘），计划置 confirmed。
+/// 返回本次新建预警条数；幂等：已转（status=alerted）的指令不重复转。
+pub fn confirm_plan_alerts(data_dir: &Path, plan_id: i64) -> Result<i64, String> {
+    let c = open_readwrite(data_dir)?;
+    let ids: Vec<i64> = {
+        let mut stmt = c
+            .prepare("SELECT id FROM plan_instruction WHERE plan_id=?1 AND status='open' ORDER BY sort")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([plan_id], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        rows.filter_map(|x| x.ok()).collect()
+    };
+    let mut n = 0i64;
+    for instr_id in ids {
+        convert_instruction_to_alert_conn(&c, instr_id)?;
+        c.execute("UPDATE plan_instruction SET status='alerted' WHERE id=?1", [instr_id])
+            .map_err(|e| e.to_string())?;
+        n += 1;
+    }
+    c.execute(
+        "UPDATE plan SET status='confirmed', updated_at=?1 WHERE id=?2",
+        rusqlite::params![now_millis(), plan_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(n)
 }
 
 #[cfg(test)]

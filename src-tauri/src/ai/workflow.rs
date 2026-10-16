@@ -79,12 +79,12 @@ pub fn advance_steps(
     Ok(next)
 }
 
-fn today_str() -> String {
+pub(crate) fn today_str() -> String {
     Local::now().format("%Y-%m-%d").to_string()
 }
 
 /// 幂等建表（旁路连接早于主连接迁移时自保）。
-fn ensure_table(c: &Connection) -> Result<(), String> {
+pub(crate) fn ensure_table(c: &Connection) -> Result<(), String> {
     c.execute_batch(
         "CREATE TABLE IF NOT EXISTS daily_mission (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,12 +110,12 @@ struct MissionRow {
     updated_at: i64,
 }
 
-fn parse_steps(raw: &str) -> Vec<StepState> {
+pub(crate) fn parse_steps(raw: &str) -> Vec<StepState> {
     serde_json::from_str::<Vec<StepState>>(raw).unwrap_or_else(|_| new_steps())
 }
 
 #[allow(clippy::too_many_arguments)]
-fn mission_json(
+pub(crate) fn mission_json(
     trade_date: &str,
     current_step: i64,
     steps: &[StepState],
@@ -139,7 +139,7 @@ fn mission_json(
 }
 
 /// 读取（不存在则创建）当日任务。
-fn load_or_create(c: &Connection, trade_date: &str) -> Result<Value, String> {
+pub(crate) fn load_or_create(c: &Connection, trade_date: &str) -> Result<Value, String> {
     ensure_table(c)?;
     let now = now_millis();
     let row = c.query_row(
@@ -183,6 +183,87 @@ fn load_or_create(c: &Connection, trade_date: &str) -> Result<Value, String> {
         }
         Err(e) => Err(format!("读取当日作战任务失败: {e}")),
     }
+}
+
+/// P1 各步命令复用的当前任务状态快照。
+pub(crate) struct MissionState {
+    pub current_step: i64,
+    pub steps: Vec<StepState>,
+    pub mode: String,
+    pub account_json: String,
+    pub created_at: i64,
+}
+
+/// 读取当日任务状态（不存在则建），供 P1 采集/分析/计划各步做门禁判断。
+pub(crate) fn load_mission_state(c: &Connection, date: &str) -> Result<MissionState, String> {
+    ensure_table(c)?;
+    let _ = load_or_create(c, date)?;
+    let m = c.query_row(
+        "SELECT current_step, steps_json, mode, account_json, created_at
+         FROM daily_mission WHERE trade_date=?1",
+        [date],
+        |r| {
+            Ok(MissionState {
+                current_step: r.get(0)?,
+                steps: parse_steps(&r.get::<_, String>(1)?),
+                mode: r.get(2)?,
+                account_json: r.get(3)?,
+                created_at: r.get(4)?,
+            })
+        },
+    )
+    .map_err(|e| format!("读取当日作战任务失败: {e}"))?;
+    Ok(m)
+}
+
+/// 业务成功后推进当前步并持久化，返回最新 mission JSON。
+pub(crate) fn persist_advance(
+    c: &Connection,
+    date: &str,
+    st: &mut MissionState,
+    snapshot: Option<String>,
+) -> Result<Value, String> {
+    let now = now_millis();
+    let new_current = advance_steps(&mut st.steps, st.current_step, snapshot, now)?;
+    let steps_json = serde_json::to_string(&st.steps).map_err(|e| e.to_string())?;
+    c.execute(
+        "UPDATE daily_mission SET current_step=?1, steps_json=?2, updated_at=?3 WHERE trade_date=?4",
+        rusqlite::params![new_current, steps_json, now, date],
+    )
+    .map_err(|e| format!("推进作战步骤失败: {e}"))?;
+    st.current_step = new_current;
+    Ok(mission_json(
+        date,
+        new_current,
+        &st.steps,
+        &st.mode,
+        &st.account_json,
+        st.created_at,
+        now,
+    ))
+}
+
+/// 写入当前任务的战场态势包（P1 采集步产物）。
+pub(crate) fn save_briefing(c: &Connection, date: &str, briefing: &Value) -> Result<(), String> {
+    let raw = serde_json::to_string(briefing).map_err(|e| e.to_string())?;
+    c.execute(
+        "UPDATE daily_mission SET briefing_json=?1, updated_at=?2 WHERE trade_date=?3",
+        rusqlite::params![raw, now_millis(), date],
+    )
+    .map_err(|e| format!("保存战场态势包失败: {e}"))?;
+    Ok(())
+}
+
+/// 读取当前任务的战场态势包（无则空对象）。
+pub(crate) fn load_briefing(c: &Connection, date: &str) -> Value {
+    c.query_row(
+        "SELECT briefing_json FROM daily_mission WHERE trade_date=?1",
+        [date],
+        |r| r.get::<_, String>(0),
+    )
+    .ok()
+    .and_then(|raw| serde_json::from_str(&raw).ok())
+    .unwrap_or_else(|| json!({}))
 }
 
 /// 获取今日作战任务（不存在自动创建，第一步为进行中）。

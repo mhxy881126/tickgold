@@ -7,7 +7,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { useWorkflowStore } from "../../../src/stores/workflow";
-import type { Mission } from "../../../src/stores/workflow";
+import type { Mission, Briefing } from "../../../src/stores/workflow";
 
 const KEYS = ["collect", "analyze", "plan", "watch", "execute", "feedback"];
 
@@ -31,6 +31,8 @@ function makeMission(currentStep: number): Mission {
   };
 }
 
+const emptyProducts = { briefing: null, candidates: [], plan: null, planConfirmed: false };
+
 beforeEach(() => {
   vi.resetAllMocks();
   setActivePinia(createPinia());
@@ -50,7 +52,9 @@ describe("workflow store", () => {
   });
 
   it("uses backend data when the command resolves", async () => {
-    invokeMock.invoke.mockResolvedValue(makeMission(2));
+    invokeMock.invoke
+      .mockResolvedValueOnce(makeMission(2))
+      .mockResolvedValueOnce(emptyProducts);
     const s = useWorkflowStore();
     await s.loadToday();
 
@@ -85,6 +89,7 @@ describe("workflow store", () => {
   it("passes the snapshot through to the backend advance command", async () => {
     invokeMock.invoke
       .mockResolvedValueOnce(makeMission(0))
+      .mockResolvedValueOnce(emptyProducts)
       .mockResolvedValueOnce(makeMission(1));
     const s = useWorkflowStore();
     await s.loadToday();
@@ -115,6 +120,85 @@ describe("workflow store", () => {
     const s = useWorkflowStore();
     expect(s.stepMeta.map((m) => m.key)).toEqual(KEYS);
     expect(s.account.totalAsset).toBe(1_000_000);
-    expect(s.signals.length).toBeGreaterThan(0);
+    // P1 产物初始为空。
+    expect(s.candidates).toEqual([]);
+    expect(s.battlePlan).toBeNull();
+    expect(s.planConfirmed).toBe(false);
+  });
+
+  it("P1 drives collect -> analyze -> plan -> confirm via local mock", async () => {
+    invokeMock.invoke.mockRejectedValue(new Error("offline"));
+    const s = useWorkflowStore();
+    await s.loadToday();
+    expect(s.currentStep).toBe(0);
+
+    // ① 采集：产出态势包，推进到分析。
+    await s.collect();
+    expect(s.currentStep).toBe(1);
+    expect(s.briefing?.limitUp).toBeGreaterThan(0);
+    expect(s.briefing?.highStocks.length).toBeGreaterThan(0);
+
+    // ② 分析：候选池按分数降序，推进到计划。
+    await s.analyze();
+    expect(s.currentStep).toBe(2);
+    expect(s.candidates.length).toBeGreaterThan(0);
+    const scores = s.candidates.map((c) => c.score);
+    expect(scores).toEqual([...scores].sort((a, b) => b - a));
+
+    // ③ 生成作战卡草稿：不推进、待确认。
+    await s.planGenerate();
+    expect(s.currentStep).toBe(2);
+    expect(s.battlePlan?.instructions.length).toBeGreaterThan(0);
+    expect(s.planConfirmed).toBe(false);
+
+    // ③ 确认：转预警、推进到盯盘步。
+    const n = s.battlePlan?.instructions.length ?? 0;
+    await s.planConfirm();
+    expect(s.currentStep).toBe(3);
+    expect(s.planConfirmed).toBe(true);
+    expect(s.alertsCreated).toBe(n);
+  });
+
+  it("P1 calls the real collect command and hydrates the briefing", async () => {
+    const briefing: Briefing = {
+      tradeDate: "2026-10-16",
+      limitUp: 61,
+      broken: 9,
+      brokenRate: 12.9,
+      maxBoards: 5,
+      ladder: [{ boards: 1, count: 40 }],
+      themes: [],
+      highStocks: [],
+    };
+    invokeMock.invoke
+      .mockResolvedValueOnce(makeMission(0))
+      .mockResolvedValueOnce(emptyProducts)
+      .mockResolvedValueOnce({ mission: makeMission(1), briefing });
+    const s = useWorkflowStore();
+    await s.loadToday();
+    await s.collect();
+
+    expect(s.mockMode).toBe(false);
+    expect(s.currentStep).toBe(1);
+    expect(s.briefing?.limitUp).toBe(61);
+    expect(invokeMock.invoke).toHaveBeenCalledWith(
+      "workflow_collect",
+      expect.objectContaining({ tradeDate: expect.any(String) }),
+    );
+  });
+
+  it("P1 resets clear produced artifacts", async () => {
+    invokeMock.invoke.mockRejectedValue(new Error("offline"));
+    const s = useWorkflowStore();
+    await s.loadToday();
+    await s.collect();
+    await s.analyze();
+    expect(s.candidates.length).toBeGreaterThan(0);
+
+    await s.reset();
+    expect(s.briefing).toBeNull();
+    expect(s.candidates).toEqual([]);
+    expect(s.battlePlan).toBeNull();
+    expect(s.planConfirmed).toBe(false);
   });
 });

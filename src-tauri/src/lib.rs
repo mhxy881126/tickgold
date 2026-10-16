@@ -270,6 +270,12 @@ pub fn run() {
             ai::workflow::workflow_get_today,
             ai::workflow::workflow_advance,
             ai::workflow::workflow_reset,
+            // ===== P1 盘前闭环（采集/分析/计划自动串）=====
+            ai::workflow_p1::workflow_collect,
+            ai::workflow_p1::workflow_analyze,
+            ai::workflow_p1::workflow_plan,
+            ai::workflow_p1::workflow_plan_confirm,
+            ai::workflow_p1::workflow_p1_products,
             // ===== v3.0.7 关于页版本号 =====
             app_version
         ])

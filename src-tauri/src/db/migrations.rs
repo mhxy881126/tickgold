@@ -1,5 +1,5 @@
 // 主库迁移清单（v2.27 巨石拆分：从 lib.rs 抽出）。
-// 追加式：只许新增版本，禁止改动已发布条目。共 55 条（v1..v55）。
+// 追加式：只许新增版本，禁止改动已发布条目。共 56 条（v1..v56）。
 // 数量护栏见 src-tauri/INVENTORY.md；改动后需与之一致。
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -890,6 +890,34 @@ pub fn migrations() -> Vec<Migration> {
                                 updated_at INTEGER NOT NULL
                             );
                             CREATE INDEX IF NOT EXISTS idx_daily_mission_date ON daily_mission(trade_date);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 56,
+                            description: "P1 pre-market loop: daily_mission.briefing_json + candidate_pool (six-tactic scored candidates)",
+                            sql: "ALTER TABLE daily_mission ADD COLUMN briefing_json TEXT NOT NULL DEFAULT '{}';
+                            CREATE TABLE IF NOT EXISTS candidate_pool (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                trade_date TEXT NOT NULL,
+                                code TEXT NOT NULL,
+                                name TEXT NOT NULL DEFAULT '',
+                                tactics_json TEXT NOT NULL DEFAULT '[]',
+                                score REAL NOT NULL DEFAULT 0,
+                                rank_no INTEGER NOT NULL DEFAULT 0,
+                                boards INTEGER NOT NULL DEFAULT 0,
+                                price REAL NOT NULL DEFAULT 0,
+                                pct REAL NOT NULL DEFAULT 0,
+                                amount REAL NOT NULL DEFAULT 0,
+                                turnover REAL NOT NULL DEFAULT 0,
+                                fund REAL NOT NULL DEFAULT 0,
+                                main_net REAL NOT NULL DEFAULT 0,
+                                industry TEXT NOT NULL DEFAULT '',
+                                reasons_json TEXT NOT NULL DEFAULT '[]',
+                                status TEXT NOT NULL DEFAULT 'candidate',
+                                created_at INTEGER NOT NULL,
+                                UNIQUE(trade_date, code)
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_candidate_pool_date ON candidate_pool(trade_date, score DESC);",
                             kind: MigrationKind::Up,
                         },
     ]
