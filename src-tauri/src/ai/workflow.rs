@@ -266,6 +266,29 @@ pub(crate) fn load_briefing(c: &Connection, date: &str) -> Value {
     .unwrap_or_else(|| json!({}))
 }
 
+/// 写入当前任务的当日回灌小结（P2 回灌步产物）。
+pub(crate) fn save_feedback(c: &Connection, date: &str, feedback: &Value) -> Result<(), String> {
+    let raw = serde_json::to_string(feedback).map_err(|e| e.to_string())?;
+    c.execute(
+        "UPDATE daily_mission SET feedback_json=?1, updated_at=?2 WHERE trade_date=?3",
+        rusqlite::params![raw, now_millis(), date],
+    )
+    .map_err(|e| format!("保存当日回灌小结失败: {e}"))?;
+    Ok(())
+}
+
+/// 读取当前任务的当日回灌小结（无则空对象）。
+pub(crate) fn load_feedback(c: &Connection, date: &str) -> Value {
+    c.query_row(
+        "SELECT feedback_json FROM daily_mission WHERE trade_date=?1",
+        [date],
+        |r| r.get::<_, String>(0),
+    )
+    .ok()
+    .and_then(|raw| serde_json::from_str(&raw).ok())
+    .unwrap_or_else(|| json!({}))
+}
+
 /// 获取今日作战任务（不存在自动创建，第一步为进行中）。
 #[tauri::command]
 pub fn workflow_get_today(

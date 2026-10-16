@@ -21,6 +21,7 @@ pub mod tools;
 pub mod vectordb;
 pub mod workflow;
 pub mod workflow_p1;
+pub mod workflow_p2;
 
 use std::collections::HashSet;
 use std::path::PathBuf;

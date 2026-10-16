@@ -276,6 +276,10 @@ pub fn run() {
             ai::workflow_p1::workflow_plan,
             ai::workflow_p1::workflow_plan_confirm,
             ai::workflow_p1::workflow_p1_products,
+            ai::workflow_p2::workflow_watch_start,
+            ai::workflow_p2::workflow_execute_status,
+            ai::workflow_p2::workflow_feedback,
+            ai::workflow_p2::workflow_p2_products,
             // ===== v3.0.7 关于页版本号 =====
             app_version
         ])

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 作战流驾驶舱：账户条 + 六步进度 + 当前作战卡（P1 前三步真实产物：态势包/候选池/作战卡）+ 作战日志。
 // P1 串起 采集→分析→计划（真实行情/六战法/规则作战卡，无需大模型）；后三步盯盘/执行/回灌为 P2 占位。
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
   useWorkflowStore,
   STEP_META,
@@ -154,25 +154,67 @@ const journal = computed<SignalRow[]>(() => {
   rows.push({
     time: "P2",
     title: "盯盘 · 执行 · 回灌",
-    desc: wf.planConfirmed
-      ? "预警已就位；P2 起实时盯盘、风控闸门、模拟/券商下单、进化回灌"
-      : "P2 上线：快脑信号、信号桥下单、成交打标",
-    tone: "muted",
+    desc: wf.feedback
+      ? `已收盘结算：${wf.feedback.fills.total} 笔成交、已实现 ${wf.feedback.realizedPnl} 元、胜率 ${wf.feedback.winRate}%，结果已回灌`
+      : wf.killSwitch
+        ? "紧急停止已触发：已封锁新委托并停止自动执行，可解除后重启"
+        : wf.running
+          ? `盘中执行中：${wf.execStatus?.signals.total ?? 0} 信号 / ${wf.execStatus?.fills.total ?? 0} 成交，模拟盘自动撮合`
+          : wf.watchStarted
+            ? "盯盘已启动，等待收盘结算与回灌"
+            : wf.planConfirmed
+              ? "盯盘对象已继承，待启动模拟盘全自动（风控闸门护航）"
+              : "P2：快脑盯盘、风控闸门、模拟盘自动撮合、收盘回灌",
+    tone: wf.feedback ? "up" : wf.running ? "info" : "muted",
   });
   return rows;
 });
 
-// Kill Switch：P0 仅本地演示态，P2 接 broker 真实熔断。
-const killOn = ref(false);
-function toggleKill() {
-  killOn.value = !killOn.value;
+// ===== P2 盯盘执行层交互 =====
+onUnmounted(() => {
+  wf.stopPolling();
+});
+
+// 快脑信号标签中文（与后端 fastbrain LABEL 对齐：1 买入 / -1 卖出 / 0 观望）。
+const LABEL_TEXT: Record<string, string> = {
+  "1": "买入信号",
+  "-1": "卖出信号",
+  "0": "观望",
+  "2": "持有",
+};
+function labelText(label: string) {
+  return LABEL_TEXT[label] ?? "观望";
 }
+function signalTone(action: string, label: string): "muted" | "info" | "up" | "down" {
+  if (action !== "executed") return "muted";
+  return label === "-1" ? "down" : "up";
+}
+function actionText(action: string) {
+  return action === "executed" ? "已成交" : "观察";
+}
+
+async function doWatchStart() {
+  await wf.watchStart();
+  selected.value = null;
+}
+async function doEmergencyHalt() {
+  await wf.emergencyHalt();
+}
+async function doReleaseHalt() {
+  await wf.releaseHalt();
+}
+async function doFeedbackClose() {
+  await wf.feedbackClose();
+  selected.value = null;
+}
+
+const killOn = computed(() => wf.killSwitch);
 </script>
 
 <template>
   <div class="cockpit">
     <!-- 账户条 -->
-    <div class="acct-bar" :class="{ killed: killOn }">
+    <div class="acct-bar" :class="{ killed: wf.killSwitch }">
       <div class="acct-mode">
         <span class="mode-dot" />
         <span class="mode-name">{{ wf.account.modeLabel }}</span>
@@ -200,17 +242,17 @@ function toggleKill() {
         </div>
         <div class="acct-item">
           <div class="ai-label">风控</div>
-          <div class="ai-val risk-ok">{{ killOn ? "已熔断" : "正常" }}</div>
+          <div class="ai-val" :class="wf.killSwitch ? 'risk-halt' : 'risk-ok'">{{ wf.killSwitch ? "已熔断" : "正常" }}</div>
         </div>
       </div>
-      <button class="kill-btn" :class="{ on: killOn }" @click="toggleKill">
+      <button class="kill-btn" :class="{ on: wf.killSwitch }" @click="wf.killSwitch ? doReleaseHalt() : doEmergencyHalt()">
         <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
           <path
             fill="currentColor"
             d="M12 2 1 21h22L12 2zm0 6 7.5 11.5h-15L12 8zm-1 4v4h2v-4h-2zm0 5v2h2v-2h-2z"
           />
         </svg>
-        <span>{{ killOn ? "解除熔断" : "一键熔断" }}</span>
+        <span>{{ wf.killSwitch ? "解除熔断" : "一键熔断" }}</span>
       </button>
     </div>
 
@@ -276,6 +318,40 @@ function toggleKill() {
             </div>
             <h3>六步作战流已闭环</h3>
             <p class="dim">今日的采集 → 分析 → 计划 → 盯盘 → 执行 → 回灌已全部走完。结果已进入回灌，明日盘前自动进入下一循环。</p>
+          </div>
+
+          <!-- ⑥ 回灌：当日作战小结 -->
+          <div v-if="wf.feedback" class="panel feedback-panel">
+            <div class="fb-head">
+              <span class="fb-title">当日作战小结 · {{ wf.feedback.tradeDate }}</span>
+              <span class="fb-badge">已回灌</span>
+            </div>
+            <div class="exec-stat-row">
+              <div class="es-cell">
+                <div class="es-k">信号</div>
+                <div class="es-v mono">{{ wf.feedback.signals.total }}</div>
+                <div class="es-sub">成交 {{ wf.feedback.signals.executed }} · 观察 {{ wf.feedback.signals.observe }}</div>
+              </div>
+              <div class="es-cell">
+                <div class="es-k">成交</div>
+                <div class="es-v mono">{{ wf.feedback.fills.total }}</div>
+                <div class="es-sub">买 {{ wf.feedback.fills.buy }} · 卖 {{ wf.feedback.fills.sell }}</div>
+              </div>
+              <div class="es-cell">
+                <div class="es-k">已实现盈亏</div>
+                <div class="es-v mono" :class="wf.feedback.realizedPnl >= 0 ? 'up' : 'down'">
+                  {{ fmtMoney(wf.feedback.realizedPnl) }}
+                </div>
+                <div class="es-sub">卖出胜率 {{ wf.feedback.winRate }}%</div>
+              </div>
+              <div class="es-cell">
+                <div class="es-k">持仓 / 现金</div>
+                <div class="es-v mono">{{ wf.feedback.openPositions }}</div>
+                <div class="es-sub">{{ fmtMoney(wf.feedback.cash) }}</div>
+              </div>
+            </div>
+            <p class="fb-conclusion">{{ wf.feedback.conclusion }}</p>
+            <div v-if="wf.feedback.killSwitch" class="halt-banner">当日盘中触发过紧急停止，已记录风控事件。</div>
           </div>
         </template>
         <template v-else>
@@ -411,14 +487,118 @@ function toggleKill() {
             </div>
           </div>
 
-          <!-- 后三步（P2） -->
-          <div v-else-if="view.index >= 3" class="future-tip">
-            <div class="future-title">第 {{ view.index + 1 }} 步「{{ view.title }}」将在 P2 上线</div>
-            <p v-if="wf.planConfirmed" class="future-ready">
-              作战卡已确认，{{ wf.alertsCreated }} 条预警已就位，明日盘中会先以预警提醒方式工作；
-              P2 起接入实时盯盘、风控闸门、模拟/券商下单与成交回灌。
-            </p>
-            <p v-else class="dim">完成前序采集→分析→计划后，这里接入实时盯盘、信号桥下单与进化回灌。</p>
+          <!-- ④ 盯盘：启动模拟盘全自动 -->
+          <div v-else-if="view.index === 3" class="panel">
+            <div class="watch-hero">
+              <div class="wh-status" :class="wf.watchStarted ? 'on' : 'idle'">
+                <span class="wh-dot" />
+                {{ wf.watchStarted ? "盯盘已启动" : "盯盘待命" }}
+              </div>
+              <div class="wh-count">
+                <span class="wh-num mono">{{ wf.watchStarted ? (wf.execStatus?.watchCount ?? wf.watchCount) : wf.alertsCreated }}</span>
+                <span class="wh-k">只盯盘对象（继承作战卡 + 持仓）</span>
+              </div>
+            </div>
+            <div class="watch-block">
+              <div class="wb-title">盯盘对象自动继承</div>
+              <p class="dim">
+                第③步确认的作战卡已转为 <b>{{ wf.alertsCreated }}</b> 条预警/盯盘指令，连同模拟账户现有持仓，
+                启动后由快脑每 5 秒扫描一次，命中买入 / 卖出 / 硬止损信号即进入风控闸门。
+              </p>
+            </div>
+            <div class="watch-block">
+              <div class="wb-title">模拟盘安全边界</div>
+              <ul class="wb-list">
+                <li>仅操作<b>模拟盘</b>（paper 账户），不接券商真实通道；实盘开关开启时拒绝启动。</li>
+                <li>规则脑出信号 → 风控闸门：硬止损 -7% / 单票 ≤20% / 总仓 ≤80% / 日亏 5% / 回撤 20% / 连亏 3 停。</li>
+                <li>一键熔断全局生效：立即封新委托、停止自动执行、撤销在途单；解除后需手动重启盯盘。</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- ⑤ 执行：实时信号 / 成交 / 账户风控 -->
+          <div v-else-if="view.index === 4" class="panel exec-panel">
+            <div class="exec-top">
+              <div class="exec-run" :class="wf.killSwitch ? 'halt' : wf.running ? 'on' : 'idle'">
+                <span class="er-dot" />
+                {{ wf.killSwitch ? "已熔断 · 停止开新仓" : wf.running ? "自动执行中" : "已停止" }}
+              </div>
+              <div class="exec-meta mono">规则脑 · 模拟盘全自动 · 盯盘 {{ wf.execStatus?.watchCount ?? wf.watchCount }} 只</div>
+            </div>
+
+            <div class="exec-stat-row">
+              <div class="es-cell">
+                <div class="es-k">信号</div>
+                <div class="es-v mono">{{ wf.execStatus?.signals.total ?? 0 }}</div>
+                <div class="es-sub">成交 {{ wf.execStatus?.signals.executed ?? 0 }} · 观察 {{ wf.execStatus?.signals.observe ?? 0 }}</div>
+              </div>
+              <div class="es-cell">
+                <div class="es-k">成交</div>
+                <div class="es-v mono">{{ wf.execStatus?.fills.total ?? 0 }}</div>
+                <div class="es-sub">买 {{ wf.execStatus?.fills.buy ?? 0 }} · 卖 {{ wf.execStatus?.fills.sell ?? 0 }}</div>
+              </div>
+              <div class="es-cell">
+                <div class="es-k">已实现盈亏</div>
+                <div class="es-v mono" :class="(wf.execStatus?.fills.realizedPnl ?? 0) >= 0 ? 'up' : 'down'">
+                  {{ fmtMoney(wf.execStatus?.fills.realizedPnl ?? 0) }}
+                </div>
+                <div class="es-sub">卖出胜率 {{ wf.execStatus?.fills.winRate ?? 0 }}%</div>
+              </div>
+              <div class="es-cell">
+                <div class="es-k">总资产</div>
+                <div class="es-v mono">{{ fmtMoney(wf.riskSnap?.equity ?? wf.account.totalAsset) }}</div>
+                <div class="es-sub" :class="(wf.riskSnap?.dayPnl ?? 0) >= 0 ? 'up' : 'down'">
+                  当日 {{ fmtMoney(wf.riskSnap?.dayPnl ?? 0) }}
+                </div>
+              </div>
+            </div>
+
+            <div v-if="wf.killSwitch" class="halt-banner">
+              <svg viewBox="0 0 24 24" width="15" height="15">
+                <path fill="currentColor" d="M12 2 1 21h22L12 2zm0 6 7.5 11.5h-15L12 8zm-1 4v4h2v-4h-2zm0 5v2h2v-2h-2z" />
+              </svg>
+              紧急停止已触发：已封锁新委托并停止自动执行。核对无误后可在右上「解除熔断」，再手动重启盯盘。
+            </div>
+
+            <div class="exec-cols">
+              <div class="exec-col">
+                <div class="ec-head">实时信号 · 快脑</div>
+                <div v-if="!wf.execStatus?.signals.recent.length" class="ec-empty dim">
+                  启动后这里实时刷新快脑信号（每 3 秒轮询）
+                </div>
+                <div v-for="(g, i) in wf.execStatus?.signals.recent ?? []" :key="'g' + i" class="flow-row">
+                  <span class="fr-time mono">{{ g.ts }}</span>
+                  <span class="fr-name">{{ g.name }}<span class="fr-code mono">{{ g.code }}</span></span>
+                  <span class="fr-tag" :class="signalTone(g.action, g.label)">{{ labelText(g.label) }}</span>
+                  <span class="fr-conf mono">{{ (g.confidence * 100).toFixed(0) }}%</span>
+                  <span class="fr-act" :class="g.action === 'executed' ? 'up' : 'muted'">{{ actionText(g.action) }}</span>
+                </div>
+              </div>
+              <div class="exec-col">
+                <div class="ec-head">模拟成交</div>
+                <div v-if="!wf.execStatus?.fills.recent.length" class="ec-empty dim">
+                  暂无成交，信号通过风控闸门后自动撮合
+                </div>
+                <div v-for="(f, i) in wf.execStatus?.fills.recent ?? []" :key="'f' + i" class="flow-row">
+                  <span class="fr-side" :class="f.side === 'buy' ? 'up' : 'down'">{{ f.side === "buy" ? "买" : "卖" }}</span>
+                  <span class="fr-name">{{ f.name }}<span class="fr-code mono">{{ f.code }}</span></span>
+                  <span class="fr-price mono">{{ f.price.toFixed(2) }} × {{ f.vol }}</span>
+                  <span class="fr-pnl mono" :class="f.side === 'sell' ? (f.realizedPnl >= 0 ? 'up' : 'down') : 'muted'">
+                    {{ f.side === "sell" ? (f.realizedPnl >= 0 ? "+" : "") + f.realizedPnl.toFixed(0) : "—" }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="wf.riskSnap?.positions.length" class="exec-positions">
+              <div class="ec-head">当前持仓</div>
+              <div v-for="(p, i) in wf.riskSnap.positions" :key="'p' + i" class="pos-row">
+                <span class="pos-name">{{ p.name }}<span class="fr-code mono">{{ p.code }}</span></span>
+                <span class="pos-vol mono">{{ p.vol }} 股</span>
+                <span class="pos-mv mono">{{ fmtMoney(p.marketValue) }}</span>
+                <span class="pos-pct mono">占 {{ p.pct.toFixed(1) }}%</span>
+              </div>
+            </div>
           </div>
 
           <!-- 锁定/输入产出说明 -->
@@ -467,7 +647,21 @@ function toggleKill() {
                 <span v-else class="confirmed-ok">已转入明日盯盘</span>
               </template>
             </template>
-            <button v-else class="btn-primary" disabled>第 {{ view.index + 1 }} 步将在 P2 上线</button>
+            <template v-else-if="view.index === 3">
+              <button v-if="!wf.watchStarted" class="btn-primary" :disabled="wf.busy" @click="doWatchStart">
+                {{ wf.busy ? "启动中…" : "启动盯盘 · 进入执行（模拟盘全自动）" }}
+              </button>
+              <span v-else class="confirmed-ok">盯盘已启动，执行中</span>
+            </template>
+            <template v-else-if="view.index === 4">
+              <button class="btn-danger" :disabled="wf.busy || wf.killSwitch" @click="doEmergencyHalt">
+                一键熔断
+              </button>
+              <button class="btn-primary" :disabled="wf.busy" @click="doFeedbackClose">
+                {{ wf.busy ? "结算中…" : "收盘结算 · 进入回灌" }}
+              </button>
+            </template>
+            <button v-else class="btn-primary" disabled>第 {{ view.index + 1 }} 步</button>
           </template>
           <button v-else-if="!wf.allDone" class="btn-ghost" @click="backToCurrent">返回当前步</button>
           <button class="btn-ghost" :disabled="wf.busy" @click="doReset">重置今日流程</button>
@@ -836,6 +1030,92 @@ function toggleKill() {
 .sf-d { font-size: 10.5px; line-height: 1.45; margin-top: 2px; }
 .sf-foot { padding: 10px 12px; font-size: 10.5px; line-height: 1.5; border-top: 1px solid var(--border); }
 
+/* ===== P2 盯盘 / 执行 / 回灌 ===== */
+.risk-halt { color: var(--up); font-weight: 800; }
+
+/* ④ 盯盘启动 */
+.watch-hero {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel);
+}
+.wh-status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; color: var(--text-dim); }
+.wh-status .wh-dot, .exec-run .er-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border-light); flex: none; }
+.wh-status.on { color: var(--down); }
+.wh-status.on .wh-dot { background: var(--down); animation: p2-pulse 1.4s ease-in-out infinite; }
+.wh-count { display: flex; align-items: baseline; gap: 8px; }
+.wh-num { font-size: 26px; font-weight: 800; color: var(--text); }
+.wh-k { font-size: 11px; color: var(--text-dim); }
+.watch-block { border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; background: var(--bg-panel); }
+.wb-title { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.watch-block .dim { margin: 0; font-size: 11.5px; line-height: 1.7; }
+.wb-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
+.wb-list li { font-size: 11.5px; line-height: 1.6; color: var(--text-dim); }
+.wb-list b { color: var(--text); font-weight: 700; }
+
+/* ⑤ 执行面板 */
+.exec-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.exec-run { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--text-dim); }
+.exec-run.on { color: var(--down); }
+.exec-run.on .er-dot { background: var(--down); animation: p2-pulse 1.4s ease-in-out infinite; }
+.exec-run.halt { color: var(--up); }
+.exec-run.halt .er-dot { background: var(--up); }
+.exec-meta { font-size: 11px; color: var(--text-dim); }
+.exec-stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; }
+.es-cell { border: 1px solid var(--border); border-radius: 9px; background: var(--bg-panel); padding: 9px 11px; }
+.es-k { font-size: 10.5px; color: var(--text-dim); }
+.es-v { font-size: 18px; font-weight: 800; margin: 2px 0; }
+.es-sub { font-size: 10.5px; color: var(--text-dim); }
+.halt-banner {
+  display: flex; align-items: center; gap: 8px; font-size: 11.5px; line-height: 1.5;
+  color: var(--up); border: 1px solid color-mix(in srgb, var(--up) 45%, var(--border));
+  background: color-mix(in srgb, var(--up) 8%, transparent); border-radius: 9px; padding: 9px 11px;
+}
+.exec-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.exec-col, .exec-positions { border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); overflow: hidden; }
+.ec-head { font-size: 11.5px; font-weight: 700; color: var(--text); padding: 9px 12px; border-bottom: 1px solid var(--border); }
+.ec-empty { padding: 16px 12px; font-size: 11.5px; line-height: 1.6; }
+.flow-row { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 11.5px; border-top: 1px dashed var(--border); }
+.flow-row:first-of-type { border-top: none; }
+.fr-time { font-size: 10.5px; color: var(--text-dim); width: 52px; flex: none; }
+.fr-name { font-weight: 600; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fr-code { font-size: 10px; color: var(--text-dim); margin-left: 6px; }
+.fr-tag { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; flex: none; }
+.fr-tag.up { color: var(--up); background: color-mix(in srgb, var(--up) 12%, transparent); }
+.fr-tag.down { color: var(--down); background: color-mix(in srgb, var(--down) 12%, transparent); }
+.fr-tag.muted { color: var(--text-dim); background: var(--bg-hover); }
+.fr-conf { font-size: 10.5px; color: var(--text-dim); flex: none; }
+.fr-act { font-size: 10.5px; font-weight: 700; flex: none; }
+.fr-act.up { color: var(--up); }
+.fr-act.muted { color: var(--text-dim); }
+.fr-side { font-weight: 800; font-size: 11px; width: 22px; text-align: center; flex: none; }
+.fr-side.up { color: var(--up); }
+.fr-side.down { color: var(--down); }
+.fr-price { font-size: 10.5px; color: var(--text-dim); flex: none; }
+.fr-pnl { font-size: 11px; font-weight: 700; flex: none; min-width: 52px; text-align: right; }
+.pos-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; font-size: 11.5px; border-top: 1px dashed var(--border); }
+.pos-row:first-of-type { border-top: none; }
+.pos-name { font-weight: 600; color: var(--text); flex: 1; min-width: 0; }
+.pos-vol, .pos-mv, .pos-pct { color: var(--text-dim); font-size: 11px; flex: none; }
+
+/* 熔断按钮（执行面板内，与主按钮同规格） */
+.btn-danger {
+  flex: 1; padding: 11px 16px; border-radius: 9px; cursor: pointer;
+  font-size: 13px; font-weight: 800; color: #fff;
+  background: var(--up); border: 1px solid var(--up);
+  transition: filter 0.15s, transform 0.05s;
+}
+.btn-danger:hover { filter: brightness(1.08); }
+.btn-danger:active { transform: translateY(1px); }
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ⑥ 回灌小结 */
+.fb-head { display: flex; align-items: center; justify-content: space-between; }
+.fb-title { font-size: 13.5px; font-weight: 800; color: var(--text); }
+.fb-badge { font-size: 10.5px; color: var(--down); border: 1px solid color-mix(in srgb, var(--down) 45%, var(--border)); padding: 2px 10px; border-radius: 999px; }
+.fb-conclusion { margin: 0; font-size: 12px; line-height: 1.75; color: var(--text); border: 1px solid var(--border); border-radius: 9px; background: var(--bg-panel); padding: 11px 13px; }
+
+@keyframes p2-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
 @media (max-width: 1100px) {
   .cockpit-body { grid-template-columns: 1fr; }
 }
@@ -845,6 +1125,9 @@ function toggleKill() {
   .io-grid { grid-template-columns: 1fr; }
   .io-arrow { transform: rotate(90deg); justify-self: center; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .exec-stat-row { grid-template-columns: repeat(2, 1fr); }
+  .exec-cols { grid-template-columns: 1fr; }
+  .watch-hero { flex-direction: column; align-items: flex-start; }
 }
 @media (prefers-reduced-motion: reduce) {
   .step-pulse { animation: none; }

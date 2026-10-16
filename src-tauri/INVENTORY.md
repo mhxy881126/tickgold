@@ -1,7 +1,7 @@
 # TickGold 后端命令 / 迁移对照清单（v2.29.0 基线）
 
 > 巨石拆分（lib.rs → db/migrations.rs、commands.rs、setup.rs 模块化）的护栏。
-> 每次后端结构调整后，必须重新核对：**命令总数 212、迁移总数 56**，逐一对照无缺失。
+> 每次后端结构调整后，必须重新核对：**命令总数 216、迁移总数 57**，逐一对照无缺失。
 > （v2.30 起命令/迁移逐步增加，历史编号未全量回填；P0 新增条目见文末对应小节。）
 > 基线：v2.27.0（149 命令 / 48 迁移）；v2.28.0 净增 21 个命令
 > （资金流 3、组合层 2、风险仪表盘 1、异动阈值 2、板块日快照 3、备份中心 7、数据治理 3）
@@ -254,9 +254,16 @@
 > - workflow_plan_confirm（确认作战卡：候选/观察指令幂等转预警并入明日盯盘，推进 2→3）
 > - workflow_p1_products（只读回显：重开驾驶舱/次日盘前取回 briefing/candidates/plan/planConfirmed）
 
+> P2 盯盘执行层新增 4 个命令（模块 ai::workflow_p2，实际注册总数 216）：
+> - workflow_watch_start（第④步门禁：急停/实盘开关拦截；模拟盘 paper 全自动配置启动 autoexec 5s 循环；盯盘对象继承 open/alerted 作战卡指令 + 持仓，推进 3→4）
+> - workflow_execute_status（只读：运行态/急停/盯盘数 + 当日 decision_log 信号统计 + paper_order 成交统计，供前端 3s 轮询）
+> - workflow_feedback（第⑤步收盘：停自动执行→settle 结算→聚合当日信号/成交/胜率/持仓/现金/盈亏→写 feedback_json，连续推进 4→5→6；幂等）
+> - workflow_p2_products（只读回显：重开驾驶舱取回 mission/feedback/running/killSwitch）
+> 一键熔断复用既有 broker_emergency_halt / broker_release_kill，不新增命令。
+
 ---
 
-## 二、数据库迁移：56 条（主库 sqlite:stock-dock.db）
+## 二、数据库迁移：57 条（主库 sqlite:stock-dock.db）
 
 | v | description |
 | --- | --- |
@@ -316,5 +323,6 @@
 | 54 | persist broken-limit pool for ladder reseal rate + amount on limit_up_record (v2.31 ladder depth) |
 | 55 | create daily_mission (P0 AI trading workflow orchestrator: six-step state machine) |
 | 56 | P1 pre-market loop: daily_mission.briefing_json + candidate_pool (six-tactic scored candidates) |
+| 57 | P2 execution loop: daily_mission.feedback_json (daily trading summary writeback) |
 
 > ai.db 另有独立版本链（当前 v4），不在此表。

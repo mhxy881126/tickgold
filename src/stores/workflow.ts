@@ -96,6 +96,90 @@ export interface SignalRow {
   tone: "muted" | "info" | "up" | "down";
 }
 
+// ============================ P2 执行 / 回灌产物类型 ============================
+
+export interface ExecuteSignal {
+  ts: string;
+  code: string;
+  name: string;
+  label: string;
+  action: string;
+  confidence: number;
+  strategy: string;
+}
+export interface ExecuteFill {
+  side: string;
+  code: string;
+  name: string;
+  price: number;
+  vol: number;
+  amount: number;
+  realizedPnl: number;
+  createdAt: number;
+}
+export interface SignalStats {
+  total: number;
+  executed: number;
+  observe: number;
+  recent: ExecuteSignal[];
+}
+export interface FillStats {
+  total: number;
+  buy: number;
+  sell: number;
+  buyAmount: number;
+  sellWin: number;
+  winRate: number;
+  realizedPnl: number;
+  recent: ExecuteFill[];
+}
+export interface ExecuteStatus {
+  running: boolean;
+  enabled: boolean;
+  killSwitch: boolean;
+  tradeMode: string;
+  brainMode: string;
+  watchCount: number;
+  signals: SignalStats;
+  fills: FillStats;
+}
+export interface RiskPosition {
+  code: string;
+  name: string;
+  vol: number;
+  availVol: number;
+  pct: number;
+  marketValue: number;
+  floatPnl: number;
+  floatPnlPct: number;
+}
+export interface RiskSnapshot {
+  equity: number;
+  cash: number;
+  marketValue: number;
+  positionPct: number;
+  dayPnl: number;
+  dayPnlPct: number;
+  drawdownPct: number;
+  stopTriggerCount: number;
+  consecutiveLosses: number;
+  killSwitch: boolean;
+  warnings: string[];
+  positions: RiskPosition[];
+}
+export interface Feedback {
+  tradeDate: string;
+  finishedAt: number;
+  signals: SignalStats;
+  fills: FillStats;
+  openPositions: number;
+  cash: number;
+  realizedPnl: number;
+  winRate: number;
+  killSwitch: boolean;
+  conclusion: string;
+}
+
 // 六战法中文标签（与后端 strategy_scan::TACTICS / tactic_label 对齐）。
 export const TACTIC_LABEL: Record<string, string> = {
   first_board: "首板",
@@ -259,6 +343,42 @@ function mockPlan(cands: Candidate[]): BattlePlan {
   };
 }
 
+// ===== P2 浏览器 mock 盘中事件（确定序列，便于走查；非真实行情）=====
+interface MockEvent {
+  code: string;
+  name: string;
+  label: string;
+  confidence: number;
+  action: "executed" | "observe";
+  strategy: string;
+  side?: "buy" | "sell";
+  price?: number;
+  vol?: number;
+  realizedPnl?: number;
+}
+const MOCK_EVENTS: MockEvent[] = [
+  { code: "300xxx", name: "示例龙头", label: "1", action: "executed", strategy: "multi_board", confidence: 0.82, side: "buy", price: 18.62, vol: 1000 },
+  { code: "002xxx", name: "示例二板", label: "0", action: "observe", strategy: "multi_board", confidence: 0.58 },
+  { code: "600xxx", name: "示例三板", label: "1", action: "executed", strategy: "fund_resonance", confidence: 0.78, side: "buy", price: 6.37, vol: 1000 },
+  { code: "301xxx", name: "示例四板", label: "0", action: "observe", strategy: "first_board", confidence: 0.51 },
+  { code: "000xxx", name: "示例反包", label: "1", action: "executed", strategy: "reversal", confidence: 0.76, side: "buy", price: 5.21, vol: 1000 },
+  { code: "300xxx", name: "示例龙头", label: "-1", action: "executed", strategy: "hard_stop", confidence: 0.9, side: "sell", price: 18.74, vol: 1000, realizedPnl: 120 },
+  { code: "600xxx", name: "示例三板", label: "-1", action: "executed", strategy: "hard_stop", confidence: 0.9, side: "sell", price: 6.3, vol: 1000, realizedPnl: -70 },
+  { code: "001xxx", name: "示例首板", label: "0", action: "observe", strategy: "first_board", confidence: 0.46 },
+];
+
+function hhmmss(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 export const useWorkflowStore = defineStore("workflow", () => {
   const mission = ref<Mission | null>(null);
   const loading = ref(false);
@@ -273,7 +393,43 @@ export const useWorkflowStore = defineStore("workflow", () => {
   const planConfirmed = ref(false);
   const alertsCreated = ref(0);
 
+  // P2 盯盘执行层状态
+  const watchStarted = ref(false);
+  const watchCount = ref(0);
+  const running = ref(false);
+  const killSwitch = ref(false);
+  const execStatus = ref<ExecuteStatus | null>(null);
+  const riskSnap = ref<RiskSnapshot | null>(null);
+  const feedback = ref<Feedback | null>(null);
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  // 浏览器 mock 盘中运行时
+  let mockTick = 0;
+  let mockSig: ExecuteSignal[] = [];
+  let mockFills: ExecuteFill[] = [];
+  let mockCash = 1_000_000;
+  let mockPos: Map<string, { code: string; name: string; vol: number; cost: number; price: number }> =
+    new Map();
+
+  // 账户条：启动盯盘后用真实模拟盘 risk_snapshot；此前用任务/占位账户。
   const account = computed(() => {
+    const r = riskSnap.value;
+    if (r) {
+      return {
+        modeLabel: "模拟盘",
+        totalAsset: r.equity,
+        cash: r.cash,
+        marketValue: r.marketValue,
+        dayPnl: r.dayPnl,
+        dayPnlPct: r.dayPnlPct,
+        positionPct: r.positionPct,
+        riskState: (r.killSwitch
+          ? "halt"
+          : r.warnings.length
+            ? "warn"
+            : "normal") as "halt" | "warn" | "normal",
+        killSwitch: r.killSwitch,
+      };
+    }
     const a = mission.value?.account;
     return a && Object.keys(a).length ? { ...MOCK_ACCOUNT, ...a } : { ...MOCK_ACCOUNT };
   });
@@ -352,6 +508,21 @@ export const useWorkflowStore = defineStore("workflow", () => {
       candidates.value = r.candidates ?? [];
       battlePlan.value = r.plan ?? null;
       planConfirmed.value = !!r.planConfirmed;
+      // P2 回显：运行态 / 急停 / 当日回灌小结；仍在盯盘则恢复轮询。
+      try {
+        const p2 = await invoke<{
+          feedback: Feedback | null;
+          running: boolean;
+          killSwitch: boolean;
+        }>("workflow_p2_products", { tradeDate: todayStr() });
+        feedback.value = p2.feedback && p2.feedback.tradeDate ? p2.feedback : null;
+        running.value = p2.running;
+        killSwitch.value = p2.killSwitch;
+        watchStarted.value = p2.running || !!feedback.value;
+        if (p2.running) startPolling();
+      } catch {
+        // 后端尚未具备 P2 或表为空：忽略。
+      }
     } catch {
       // 后端尚未具备 P1 或表为空：忽略，保持空态。
     }
@@ -471,6 +642,285 @@ export const useWorkflowStore = defineStore("workflow", () => {
     }
   }
 
+  // ============================ P2 盯盘 / 执行 / 回灌 ============================
+
+  function mockResetRuntime() {
+    mockTick = 0;
+    mockSig = [];
+    mockFills = [];
+    mockCash = 1_000_000;
+    mockPos = new Map();
+  }
+
+  // 浏览器 mock：每个轮询周期消费一个脚本化事件（熔断后停止开新仓）。
+  function mockTickOnce() {
+    if (!running.value || killSwitch.value || mockTick >= MOCK_EVENTS.length) return;
+    const ev = MOCK_EVENTS[mockTick++]!;
+    mockSig.push({
+      ts: hhmmss(),
+      code: ev.code,
+      name: ev.name,
+      label: ev.label,
+      action: ev.action,
+      confidence: ev.confidence,
+      strategy: ev.strategy,
+    });
+    if (ev.action === "executed" && ev.side && ev.price && ev.vol) {
+      const amount = round2(ev.price * ev.vol);
+      if (ev.side === "buy") {
+        mockCash = round2(mockCash - amount);
+        const p = mockPos.get(ev.code);
+        if (p) {
+          p.vol += ev.vol;
+          p.cost = round2(p.cost + amount);
+          p.price = ev.price;
+        } else {
+          mockPos.set(ev.code, { code: ev.code, name: ev.name, vol: ev.vol, cost: amount, price: ev.price });
+        }
+        mockFills.push({
+          side: "buy", code: ev.code, name: ev.name, price: ev.price, vol: ev.vol,
+          amount, realizedPnl: 0, createdAt: Date.now(),
+        });
+      } else {
+        const pnl = ev.realizedPnl ?? 0;
+        mockCash = round2(mockCash + amount);
+        const p = mockPos.get(ev.code);
+        if (p) {
+          p.vol -= ev.vol;
+          if (p.vol <= 0) mockPos.delete(ev.code);
+        }
+        mockFills.push({
+          side: "sell", code: ev.code, name: ev.name, price: ev.price, vol: ev.vol,
+          amount, realizedPnl: pnl, createdAt: Date.now(),
+        });
+      }
+    }
+  }
+
+  function mockBuildStatus(): ExecuteStatus {
+    const executed = mockSig.filter((x) => x.action === "executed").length;
+    const buys = mockFills.filter((x) => x.side === "buy");
+    const sells = mockFills.filter((x) => x.side === "sell");
+    const realized = round2(sells.reduce((a, x) => a + x.realizedPnl, 0));
+    const win = sells.filter((x) => x.realizedPnl > 0).length;
+    return {
+      running: running.value,
+      enabled: running.value,
+      killSwitch: killSwitch.value,
+      tradeMode: "full",
+      brainMode: "rule",
+      watchCount: watchCount.value,
+      signals: {
+        total: mockSig.length,
+        executed,
+        observe: mockSig.length - executed,
+        recent: [...mockSig].reverse().slice(0, 10),
+      },
+      fills: {
+        total: mockFills.length,
+        buy: buys.length,
+        sell: sells.length,
+        buyAmount: round2(buys.reduce((a, x) => a + x.amount, 0)),
+        sellWin: win,
+        winRate: sells.length ? round1((win / sells.length) * 100) : 0,
+        realizedPnl: realized,
+        recent: [...mockFills].reverse().slice(0, 10),
+      },
+    };
+  }
+
+  function mockBuildRisk(): RiskSnapshot {
+    const positions = [...mockPos.values()];
+    const mv = round2(positions.reduce((a, p) => a + p.vol * p.price, 0));
+    const equity = round2(mockCash + mv);
+    const realized = round2(
+      mockFills.filter((x) => x.side === "sell").reduce((a, x) => a + x.realizedPnl, 0),
+    );
+    return {
+      equity,
+      cash: round2(mockCash),
+      marketValue: mv,
+      positionPct: equity > 0 ? round1((mv / equity) * 100) : 0,
+      dayPnl: realized,
+      dayPnlPct: equity > 0 ? round1((realized / equity) * 100) : 0,
+      drawdownPct: 0,
+      stopTriggerCount: 0,
+      consecutiveLosses: 0,
+      killSwitch: killSwitch.value,
+      warnings: [],
+      positions: positions.map((p) => {
+        const marketValue = round2(p.vol * p.price);
+        return {
+          code: p.code,
+          name: p.name,
+          vol: p.vol,
+          availVol: p.vol,
+          pct: equity > 0 ? round1((marketValue / equity) * 100) : 0,
+          marketValue,
+          floatPnl: 0,
+          floatPnlPct: 0,
+        };
+      }),
+    };
+  }
+
+  function mockConclusion(total: number, realized: number, winRate: number, kill: boolean) {
+    if (kill) return "盘中触发紧急停止，已强制停止开新仓；请核对风控告警后再解除熔断。";
+    if (total === 0) return "今日快脑未给出符合阈值的信号，模拟盘空仓观望——不交易也是纪律的一部分。";
+    const head = `今日模拟成交 ${total} 笔，已实现盈亏 ${realized.toFixed(0)} 元，卖出胜率 ${winRate.toFixed(0)}%。`;
+    return realized > 0
+      ? head + "规则脑当日为正，按战法纪律执行，结果已回灌，供后续胜率进化。"
+      : head + "当日为负属正常波动，继续严守仓位与硬止损，不追高、不补仓。";
+  }
+
+  // 第④步：启动盯盘（模拟盘全自动），盯盘对象继承当日作战卡。
+  async function watchStart() {
+    busy.value = true;
+    error.value = "";
+    try {
+      if (mockMode.value) {
+        mockResetRuntime();
+        watchStarted.value = true;
+        watchCount.value = battlePlan.value?.instructions.length ?? 6;
+        running.value = true;
+        killSwitch.value = false;
+        if (mission.value)
+          mission.value = localAdvance(mission.value, `启动盯盘 ${watchCount.value} 只`);
+        startPolling();
+      } else {
+        const r = await invoke<{ mission: Mission; watchCount: number; running: boolean }>(
+          "workflow_watch_start",
+          { tradeDate: todayStr() },
+        );
+        mission.value = r.mission;
+        watchCount.value = r.watchCount;
+        watchStarted.value = true;
+        running.value = r.running;
+        killSwitch.value = false;
+        startPolling();
+      }
+    } catch (e) {
+      error.value = (e as { message?: string })?.message ?? String(e);
+    } finally {
+      busy.value = false;
+    }
+  }
+
+  // 第⑤步只读：拉取运行态 / 信号 / 成交；真实环境同时拉账户风控快照。
+  async function refreshExec() {
+    try {
+      if (mockMode.value) {
+        if (running.value) mockTickOnce();
+        execStatus.value = mockBuildStatus();
+        riskSnap.value = mockBuildRisk();
+      } else {
+        const st = await invoke<ExecuteStatus>("workflow_execute_status", {
+          tradeDate: todayStr(),
+        });
+        execStatus.value = st;
+        running.value = st.running;
+        killSwitch.value = st.killSwitch;
+        try {
+          riskSnap.value = await invoke<RiskSnapshot>("risk_snapshot");
+        } catch {
+          /* 模拟账户尚未初始化时忽略 */
+        }
+      }
+    } catch {
+      /* 盘中未启动或无数据时忽略 */
+    }
+  }
+
+  function startPolling() {
+    stopPolling();
+    void refreshExec();
+    pollTimer = setInterval(() => {
+      void refreshExec();
+    }, 3000);
+  }
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  // 一键熔断：真实环境调全局急停（封新委托 + 停自动执行 + 撤单 + 断 sidecar）。
+  async function emergencyHalt() {
+    if (mockMode.value) {
+      killSwitch.value = true;
+      running.value = false;
+      await refreshExec();
+      return;
+    }
+    try {
+      await invoke("broker_emergency_halt");
+      killSwitch.value = true;
+      running.value = false;
+      await refreshExec();
+    } catch (e) {
+      error.value = (e as { message?: string })?.message ?? String(e);
+    }
+  }
+
+  async function releaseHalt() {
+    if (mockMode.value) {
+      killSwitch.value = false;
+      return;
+    }
+    try {
+      await invoke("broker_release_kill");
+      killSwitch.value = false;
+    } catch (e) {
+      error.value = (e as { message?: string })?.message ?? String(e);
+    }
+  }
+
+  // 第⑥步：收盘结算，停自动执行，落当日回灌小结，完成 execute→feedback 两步。
+  async function feedbackClose() {
+    busy.value = true;
+    error.value = "";
+    try {
+      if (mockMode.value) {
+        stopPolling();
+        running.value = false;
+        if (mission.value) mission.value = localAdvance(mission.value, "收盘结算完成");
+        const st = mockBuildStatus();
+        const rk = mockBuildRisk();
+        feedback.value = {
+          tradeDate: todayStr(),
+          finishedAt: Date.now(),
+          signals: st.signals,
+          fills: st.fills,
+          openPositions: rk.positions.length,
+          cash: rk.cash,
+          realizedPnl: st.fills.realizedPnl,
+          winRate: st.fills.winRate,
+          killSwitch: killSwitch.value,
+          conclusion: mockConclusion(
+            st.fills.total,
+            st.fills.realizedPnl,
+            st.fills.winRate,
+            killSwitch.value,
+          ),
+        };
+        if (mission.value) mission.value = localAdvance(mission.value, "当日作战小结已回灌");
+      } else {
+        const r = await invoke<{ mission: Mission; feedback: Feedback }>("workflow_feedback", {
+          tradeDate: todayStr(),
+        });
+        stopPolling();
+        mission.value = r.mission;
+        feedback.value = r.feedback;
+        running.value = false;
+      }
+    } catch (e) {
+      error.value = (e as { message?: string })?.message ?? String(e);
+    } finally {
+      busy.value = false;
+    }
+  }
+
   async function reset() {
     busy.value = true;
     error.value = "";
@@ -482,6 +932,15 @@ export const useWorkflowStore = defineStore("workflow", () => {
       setLocalMission(0);
     } finally {
       clearProducts();
+      stopPolling();
+      mockResetRuntime();
+      watchStarted.value = false;
+      watchCount.value = 0;
+      running.value = false;
+      killSwitch.value = false;
+      execStatus.value = null;
+      riskSnap.value = null;
+      feedback.value = null;
       busy.value = false;
     }
   }
@@ -503,6 +962,21 @@ export const useWorkflowStore = defineStore("workflow", () => {
     battlePlan,
     planConfirmed,
     alertsCreated,
+    // P2 执行层
+    watchStarted,
+    watchCount,
+    running,
+    killSwitch,
+    execStatus,
+    riskSnap,
+    feedback,
+    watchStart,
+    refreshExec,
+    startPolling,
+    stopPolling,
+    emergencyHalt,
+    releaseHalt,
+    feedbackClose,
     signals: [] as SignalRow[],
     stepMeta: STEP_META,
     loadToday,

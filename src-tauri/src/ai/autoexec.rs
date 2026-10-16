@@ -126,7 +126,7 @@ impl AutoExecCtl {
 }
 
 /// 盯盘对象。
-struct WatchItem {
+pub(crate) struct WatchItem {
     code: String,
     name: String,
     strategy: String,
@@ -206,16 +206,19 @@ fn parse_hint(s: &str) -> f64 {
     num.parse().unwrap_or(10.0)
 }
 
-/// 收集盯盘对象：open 指令 + 持仓。
-fn collect_watch(conn: &Connection) -> Vec<WatchItem> {
+/// 收集盯盘对象：当日作战卡指令（open / 已确认转预警 alerted）+ 持仓。
+/// P2：作战卡确认后指令被置为 alerted（已入明日盯盘），必须一并纳入盯盘；
+/// plan_date>=今日 避免盯历史作战卡；持仓始终收集（卖出/硬止损不依赖指令状态）。
+pub(crate) fn collect_watch(conn: &Connection) -> Vec<WatchItem> {
     let mut map: HashMap<String, WatchItem> = HashMap::new();
 
+    let today = today_dashed();
     if let Ok(mut stmt) = conn.prepare(
         "SELECT i.id,i.code,i.name,i.position_hint,p.profile_key
          FROM plan_instruction i JOIN plan p ON i.plan_id=p.id
-         WHERE i.status='open'",
+         WHERE i.status IN ('open','alerted') AND p.plan_date >= ?1",
     ) {
-        if let Ok(rows) = stmt.query_map([], |r| {
+        if let Ok(rows) = stmt.query_map([&today], |r| {
             Ok((
                 r.get::<_, i64>(0)?,
                 r.get::<_, String>(1)?,

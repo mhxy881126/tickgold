@@ -32,6 +32,7 @@ function makeMission(currentStep: number): Mission {
 }
 
 const emptyProducts = { briefing: null, candidates: [], plan: null, planConfirmed: false };
+const emptyP2Products = { feedback: null, running: false, killSwitch: false };
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -54,7 +55,8 @@ describe("workflow store", () => {
   it("uses backend data when the command resolves", async () => {
     invokeMock.invoke
       .mockResolvedValueOnce(makeMission(2))
-      .mockResolvedValueOnce(emptyProducts);
+      .mockResolvedValueOnce(emptyProducts)
+      .mockResolvedValueOnce(emptyP2Products);
     const s = useWorkflowStore();
     await s.loadToday();
 
@@ -90,6 +92,7 @@ describe("workflow store", () => {
     invokeMock.invoke
       .mockResolvedValueOnce(makeMission(0))
       .mockResolvedValueOnce(emptyProducts)
+      .mockResolvedValueOnce(emptyP2Products)
       .mockResolvedValueOnce(makeMission(1));
     const s = useWorkflowStore();
     await s.loadToday();
@@ -173,6 +176,7 @@ describe("workflow store", () => {
     invokeMock.invoke
       .mockResolvedValueOnce(makeMission(0))
       .mockResolvedValueOnce(emptyProducts)
+      .mockResolvedValueOnce(emptyP2Products)
       .mockResolvedValueOnce({ mission: makeMission(1), briefing });
     const s = useWorkflowStore();
     await s.loadToday();
@@ -200,5 +204,47 @@ describe("workflow store", () => {
     expect(s.candidates).toEqual([]);
     expect(s.battlePlan).toBeNull();
     expect(s.planConfirmed).toBe(false);
+  });
+
+  it("P2 drives watch -> execute -> feedback closed loop via local mock", async () => {
+    invokeMock.invoke.mockRejectedValue(new Error("offline"));
+    const s = useWorkflowStore();
+    await s.loadToday();
+
+    // 先走到第④步盯盘（collect/analyze/planConfirm 各推进一步）。
+    await s.collect();
+    await s.analyze();
+    await s.planGenerate();
+    await s.planConfirm();
+    expect(s.currentStep).toBe(3);
+
+    // ④ 启动盯盘：进入执行，运行态开启。
+    await s.watchStart();
+    expect(s.currentStep).toBe(4);
+    expect(s.watchStarted).toBe(true);
+    expect(s.running).toBe(true);
+
+    // ⑤ 消费完全部脚本事件（8 信号：5 成交 / 3 观察；3 买 2 卖）。
+    for (let i = 0; i < 10; i++) await s.refreshExec();
+    expect(s.execStatus?.signals.total).toBe(8);
+    expect(s.execStatus?.signals.executed).toBe(5);
+    expect(s.execStatus?.signals.observe).toBe(3);
+    expect(s.execStatus?.fills.total).toBe(5);
+    expect(s.execStatus?.fills.buy).toBe(3);
+    expect(s.execStatus?.fills.sell).toBe(2);
+    expect(s.execStatus?.fills.realizedPnl).toBe(50);
+    expect(s.execStatus?.fills.winRate).toBe(50);
+
+    // 一键熔断真实生效（运行态停止）。
+    await s.emergencyHalt();
+    expect(s.killSwitch).toBe(true);
+    expect(s.running).toBe(false);
+
+    // ⑥ 收盘结算：两步闭环，产出当日作战小结。
+    await s.feedbackClose();
+    expect(s.allDone).toBe(true);
+    expect(s.feedback).not.toBeNull();
+    expect(s.feedback?.killSwitch).toBe(true);
+    expect(s.feedback?.conclusion).toContain("紧急停止");
   });
 });
