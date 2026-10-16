@@ -74,6 +74,7 @@ export const DOCK_GROUPS: DockGroup[] = [
     name: "交易工具",
     icon: "M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z",
     items: [
+      { id: "cockpit", label: "今日作战流", icon: "M4 4h4v4H4zm6 0h10v4H10zM4 10h4v4H4zm6 0h10v4H10zM4 16h4v4H4zm6 0h10v4H10z", desc: "采集→分析→计划→盯盘→执行→回灌，一条自己会跑的作战主线", star: true },
       { id: "ai", label: "AI 问数", icon: "M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2zM9 21h6M10 17v4M14 17v4", desc: "自然语言查询行情/题材/资金/持仓", star: true },
       { id: "spiderbot", label: "爬虫机器人", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z", desc: "AI 自动盯盘/选股/信号生成（实盘须人工确认）", star: true },
       { id: "risk", label: "风险仪表盘", icon: "M12 2 1 21h22L12 2zm0 6 7.5 11.5h-15L12 8zm-1 4v4h2v-4h-2zm0 5v2h2v-2h-2z", desc: "总权益/仓位集中度/当日盈亏/回撤一本账", star: true },

@@ -1,5 +1,5 @@
 // 主库迁移清单（v2.27 巨石拆分：从 lib.rs 抽出）。
-// 追加式：只许新增版本，禁止改动已发布条目。共 54 条（v1..v54）。
+// 追加式：只许新增版本，禁止改动已发布条目。共 55 条（v1..v55）。
 // 数量护栏见 src-tauri/INVENTORY.md；改动后需与之一致。
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -874,6 +874,22 @@ pub fn migrations() -> Vec<Migration> {
                                 created_at INTEGER NOT NULL DEFAULT 0,
                                 UNIQUE(trade_date, code)
                             );",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 55,
+                            description: "create daily_mission (P0 AI trading workflow orchestrator: six-step state machine)",
+                            sql: "CREATE TABLE IF NOT EXISTS daily_mission (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                trade_date TEXT NOT NULL UNIQUE,
+                                current_step INTEGER NOT NULL DEFAULT 0,
+                                steps_json TEXT NOT NULL DEFAULT '[]',
+                                mode TEXT NOT NULL DEFAULT 'mock',
+                                account_json TEXT NOT NULL DEFAULT '{}',
+                                created_at INTEGER NOT NULL,
+                                updated_at INTEGER NOT NULL
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_daily_mission_date ON daily_mission(trade_date);",
                             kind: MigrationKind::Up,
                         },
     ]

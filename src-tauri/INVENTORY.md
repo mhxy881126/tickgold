@@ -1,7 +1,8 @@
 # TickGold 后端命令 / 迁移对照清单（v2.29.0 基线）
 
 > 巨石拆分（lib.rs → db/migrations.rs、commands.rs、setup.rs 模块化）的护栏。
-> 每次后端结构调整后，必须重新核对：**命令总数 194、迁移总数 50**，逐一对照无缺失。
+> 每次后端结构调整后，必须重新核对：**命令总数 207、迁移总数 55**，逐一对照无缺失。
+> （v2.30 起命令/迁移逐步增加，历史编号未全量回填；P0 新增条目见文末对应小节。）
 > 基线：v2.27.0（149 命令 / 48 迁移）；v2.28.0 净增 21 个命令
 > （资金流 3、组合层 2、风险仪表盘 1、异动阈值 2、板块日快照 3、备份中心 7、数据治理 3）
 > + 迁移 v49（统一账本回填）+ v50（重建 ts_sector_day 支持自建板块日历史）；
@@ -241,9 +242,14 @@
 
 > v3.0.2 授权系统新增 3 个命令（暂未重排编号，发版核对时统一 #20）。
 
+> P0 AI 作战流编排新增 3 个命令（模块 ai::workflow，实际注册总数 207）：
+> - workflow_get_today（取今日 daily_mission，不存在则建，current_step=0）
+> - workflow_advance（顺序推进当前步，写入快照；禁止跳步，全完成报错）
+> - workflow_reset（重置今日流程回第 0 步）
+
 ---
 
-## 二、数据库迁移：50 条（主库 sqlite:stock-dock.db）
+## 二、数据库迁移：55 条（主库 sqlite:stock-dock.db）
 
 | v | description |
 | --- | --- |
@@ -297,5 +303,10 @@
 | 48 | create hist_kline + trade_calendar (multi-year history) |
 | 49 | backfill broker_order + paper_order.sig_id (unified ledger) |
 | 50 | rebuild ts_sector_day: PK(day,kind) + 涨跌家数/涨停数/换手/成交额 |
+| 51 | create backtest_run (backtest engine result storage) |
+| 52 | create tuning_proposal (backtest-to-live human approval queue) |
+| 53 | smart watch groups + screener subscription (v2.31 signal quality & quant screening) |
+| 54 | persist broken-limit pool for ladder reseal rate + amount on limit_up_record (v2.31 ladder depth) |
+| 55 | create daily_mission (P0 AI trading workflow orchestrator: six-step state machine) |
 
 > ai.db 另有独立版本链（当前 v4），不在此表。

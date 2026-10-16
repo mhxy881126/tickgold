@@ -266,6 +266,10 @@ pub fn run() {
             license::license_status,
             license::license_activate,
             license::license_deactivate,
+            // ===== P0 AI 作战流编排（daily_mission 六步状态机）=====
+            ai::workflow::workflow_get_today,
+            ai::workflow::workflow_advance,
+            ai::workflow::workflow_reset,
             // ===== v3.0.7 关于页版本号 =====
             app_version
         ])

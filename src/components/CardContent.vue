@@ -46,6 +46,7 @@ import RotationMatrix from "./cards/RotationMatrix.vue";
 import Backtest from "./cards/Backtest.vue";
 import StrategyScan from "./cards/StrategyScan.vue";
 import ReviewReport from "./ReviewReport.vue";
+import Cockpit from "./cockpit/Cockpit.vue";
 import type { CardId } from "../composables/useWorkbench";
 import ProGate from "./common/ProGate.vue";
 
@@ -145,6 +146,7 @@ function retry() {
     <ProGate v-else-if="id === 'reviewreport'" title="复盘报告" desc="订阅 Pro 后解锁每日复盘报告">
       <ReviewReport />
     </ProGate>
+    <Cockpit v-else-if="id === 'cockpit'" />
   </template>
 </template>
 

@@ -19,6 +19,7 @@ pub mod rule_review;
 pub mod signal_quality;
 pub mod tools;
 pub mod vectordb;
+pub mod workflow;
 
 use std::collections::HashSet;
 use std::path::PathBuf;

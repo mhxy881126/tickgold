@@ -46,7 +46,8 @@ export type CardId =
   | "rotation"
   | "backtest"
   | "strategyscan"
-  | "reviewreport";
+  | "reviewreport"
+  | "cockpit";
 
 export type Zone = "main" | "side";
 
@@ -103,6 +104,7 @@ export const CARD_META: Record<CardId, CardMeta> = {
   backtest: { title: "策略回测", accent: "#1dbe7d", kind: "chart" },
   strategyscan: { title: "战法选股", accent: "#ff3232", kind: "chart" },
   reviewreport: { title: "盯盘复盘报告", accent: "#c9a24a", kind: "chart" },
+  cockpit: { title: "今日作战流", accent: "#d4af37", kind: "chart" },
 };
 
 // ===== 卡片个性化（V1 单卡设置 / V3 场景模板）=====
