@@ -55,13 +55,23 @@ import zlib
 # stdout 帧写锁
 _out_lock = threading.Lock()
 
+# HTTP API 事件捕获器：{"type": str, "box": dict, "done": threading.Event} 或 None。
+# 查询类方法只 emit 不返回值，API 线程通过它同步取回查询结果。
+_api_capture = None
+
 
 def emit(obj):
-    """输出一行 JSON（协议帧）。"""
+    """输出一行 JSON（协议帧）；若有 API 捕获器且事件类型匹配，则旁路取回。"""
     line = json.dumps(obj, ensure_ascii=False)
     with _out_lock:
         sys.stdout.write(line + "\n")
         sys.stdout.flush()
+    cap = _api_capture
+    if cap is not None:
+        ev = obj.get("event")
+        if ev == cap["type"] or cap["type"] == "*":
+            cap["box"].update(obj)
+            cap["done"].set()
 
 
 def log(msg):
@@ -1553,6 +1563,257 @@ class RealSidecar(BaseSidecar):
 
 # ============================== main ==============================
 
+# ============================== HTTP API 服务（P10-1，对齐 THSAutoTrader 接口） ==============================
+
+class ApiServer:
+    """标准库 ThreadingHTTPServer，把引擎命令映射为 REST 接口。
+
+    与 THSAutoTrader 保持一致的调用习惯：
+      /xiadan?code=600000&status=1&amount=100     闪电下单（amount 可选）
+      /confirm_order?position=2                    用最近一次 /xiadan 上下文按仓位下单
+      /position /today_trades /pending_orders /balance  表格与资金查询
+      /cancel_all_orders?type=A|X|C  /send_key?key=  /click?x=&y=
+      /health /check_trading_app /current_page     探测
+    查询类只读（互斥锁内串行，与 GUI 窗口操作互斥）；下单类不绕过任何护栏。
+    """
+
+    def __init__(self, sc, port=0, token=""):
+        self.sc = sc
+        self.token = token
+        self._lock = threading.Lock()  # 同一时刻只处理一个 API 请求（窗口互斥，与 README 一致）
+        self._ctx = {}  # 最近一次 /xiadan 上下文：code/side/price
+
+    # ---------- 请求处理 ----------
+    def handle(self, path, query):
+        global _api_capture
+        with self._lock:
+            try:
+                return self._dispatch(path, query, _api_capture)
+            except GuiBusyError:
+                return {"status": "busy", "message": "GUI 操作繁忙，请稍后重试"}
+            except Exception as e:  # noqa: BLE001
+                return {"status": "error", "message": str(e)}
+
+    def _dispatch(self, path, query, cap_holder):
+        p = path.lstrip("/").split("?")[0].strip()
+        q = {}
+        for k, v in query.items():
+            q[k] = v[0] if isinstance(v, list) else v
+        if p == "health":
+            return {"status": "success", "timestamp": time.time()}
+        if p == "check_trading_app":
+            box = self._call_event("app_state", self.sc.do_check_app)
+            return {"status": "success", "running": bool(box.get("running", box.get("page", {}).get("running", False)))}
+        if p == "current_page":
+            box = self._call_event("current_page", self.sc.do_current_page)
+            data = {k: box.get(k) for k in ("found", "hwnd", "pid", "title", "className", "rect",
+                                            "isMinimized", "isMaximized", "running")}
+            return {"status": "success", "data": data}
+        if p == "position":
+            box = self._call_event("position", self.sc.do_query_position)
+            return {"status": "success", "data": box.get("positions", [])}
+        if p == "today_trades":
+            box = self._call_event("trades", self.sc.do_query_trades)
+            return {"status": "success", "data": box.get("trades", [])}
+        if p == "pending_orders":
+            box = self._call_event("pending", self.sc.do_query_pending)
+            return {"status": "success", "data": box.get("orders", [])}
+        if p == "balance":
+            box = self._call_event("asset", self.sc.do_query_asset)
+            data = {k: box.get(k) for k in ("cash", "frozenCash", "marketValue", "totalAsset",
+                                            "floatPnl", "dayPnl", "source")}
+            return {"status": "success", "data": data}
+        if p == "xiadan":
+            return self._xiadan(q)
+        if p == "confirm_order":
+            return self._confirm_order(q)
+        if p == "cancel_all_orders":
+            ctype = (q.get("type") or "A").upper()
+            self._run_cmd("cancel_all", {"type": ctype})
+            return {"status": "success", "message": f"撤单指令已执行（{ctype}）",
+                    "data": {"operation": {"A": "全部撤单", "X": "撤买", "C": "撤卖"}.get(ctype, "全部撤单"), "type": ctype}}
+        if p == "send_key":
+            key = q.get("key", "")
+            if not key:
+                return {"status": "error", "message": "缺少 key 参数"}
+            self._run_cmd("send_key", {"key": key})
+            return {"status": "success", "message": f"已发送按键：{key}"}
+        if p == "click":
+            try:
+                x, y = int(q.get("x", "")), int(q.get("y", ""))
+            except (TypeError, ValueError):
+                return {"status": "error", "message": "x/y 必须为整数坐标"}
+            self._run_cmd("click", {"x": x, "y": y})
+            return {"status": "success", "message": f"坐标点击成功: ({x}, {y})"}
+        return {"status": "error", "message": f"未知接口：/{p}"}
+
+    # ---------- 下单 ----------
+    def _xiadan(self, q):
+        code = q.get("code", "")
+        status = q.get("status", "1")
+        side = "BUY" if str(status) == "1" else "SELL"
+        amount = q.get("amount", "")
+        try:
+            price = float(q.get("price", "") or 0)
+        except (TypeError, ValueError):
+            price = 0.0
+        if not code:
+            return {"status": "error", "message": "缺少 code 参数"}
+        self._ctx = {"code": code, "side": side, "price": price}
+        cid = "api" + str(int(time.time() * 1000))
+        if str(amount).strip():
+            try:
+                vol = int(amount)
+            except (TypeError, ValueError):
+                return {"status": "error", "message": f"amount 必须为整数股数：{amount}"}
+            if vol <= 0 or vol % 100 != 0:
+                return {"status": "error", "message": f"数量必须为 100 的正整数倍：{vol}"}
+            if price <= 0:
+                # dry-run 缺省价（真实模式应显式传 price，否则由客户端窗口带出）
+                price = 10.0
+            p = {"client_order_id": cid, "code": code, "side": side,
+                 "price": price, "vol": vol}
+            if self.sc.auto_confirm:
+                box = self._call_order_terminal(p)
+                if box.get("event") == "error" or box.get("status") == "error":
+                    return {"status": "error",
+                            "message": box.get("message", "下单失败（引擎返回 error 事件）")}
+                return {"status": "success",
+                        "message": f"已成交 {vol} 股 {code}（{side} @ {price}）",
+                        "data": {"code": code, "side": side, "vol": vol,
+                                 "price": price, "status": box.get("status", "filled")}}
+            self._run_cmd("submit", p)
+            return {"status": "success",
+                    "message": f"已提交委托 {code}（{side} {vol} 股），等待人工确认（可在应用确认桥确认，或开启自动确认）",
+                    "data": {"code": code, "side": side, "vol": vol, "client_order_id": cid}}
+        # 未给 amount：记录上下文，等待 /confirm_order 按仓位下单（与 THSAutoTrader 用法一致）
+        return {"status": "success",
+                "message": f"闪电下单窗口已就绪：{code}（{side}），请调用 /confirm_order?position=",
+                "data": {"code": code, "side": side}}
+
+    def _confirm_order(self, q):
+        if not self._ctx or not self._ctx.get("code"):
+            return {"status": "error", "message": "请先调用 /xiadan 建立下单上下文"}
+        try:
+            position = int(q.get("position", "") or 0)
+        except (TypeError, ValueError):
+            position = 0
+        if position not in (0, 1, 2, 3, 4):
+            return {"status": "error", "message": "position 只能为 1(全仓)/2(半仓)/3(1/3)/4(1/4)/0(满仓)"}
+        price = self._ctx.get("price") or 10.0
+        p = {"client_order_id": "apipos" + str(int(time.time() * 1000)),
+             "code": self._ctx["code"], "side": self._ctx["side"],
+             "position": position, "ref_price": price}
+        if self.sc.auto_confirm:
+            box = self._call_order_terminal(p, position_order=True)
+            if box.get("event") == "error" or box.get("status") == "error":
+                return {"status": "error",
+                        "message": box.get("message", "下单失败（引擎返回 error 事件）")}
+            return {"status": "success",
+                    "message": f"仓位下单已成交：{self._ctx['code']}（{self._ctx['side']}，仓位{position or 1}）",
+                    "data": box}
+        self._run_cmd("position_order", p)
+        return {"status": "success",
+                "message": f"已按仓位提交委托：{self._ctx['code']}（仓位{position or 1}），等待人工确认",
+                "data": {"code": self._ctx["code"], "side": self._ctx["side"], "position": position or 1}}
+
+    # ---------- 同步执行辅助 ----------
+    def _call_event(self, event_type, fn):
+        """调用只 emit 的查询方法，同步捕获其事件 payload。"""
+        cap = {"type": event_type, "box": {}, "done": threading.Event()}
+        global _api_capture
+        _api_capture = cap
+        try:
+            fn()
+            cap["done"].wait(timeout=30)
+        finally:
+            _api_capture = None
+        return cap["box"]
+
+    def _call_order_terminal(self, p, position_order=False):
+        """auto_confirm 模式下同步等到订单终态（filled/cancelled/error）。
+
+        捕获器持续接收 order / error 事件（submitting→submitted→filled…），
+        直到出现终态才返回；超时则返回最后一次事件快照。
+        """
+        cap = {"type": "*", "box": {}, "done": threading.Event()}
+        global _api_capture
+        _api_capture = cap
+        try:
+            self._run_cmd("position_order" if position_order else "submit", p)
+            deadline = time.monotonic() + 45
+            while time.monotonic() < deadline:
+                st = cap["box"].get("status")
+                if st in ("filled", "cancelled", "error") or cap["box"].get("event") == "error":
+                    break
+                cap["done"].wait(0.5)
+        finally:
+            _api_capture = None
+        return cap["box"]
+
+    def _run_cmd(self, method, params):
+        fn = getattr(self.sc, {"submit": "submit", "cancel_all": "do_cancel_all",
+                               "position_order": "do_position_order",
+                               "send_key": "do_send_key", "click": "do_click"}[method], None)
+        if fn is None:
+            raise RuntimeError(f"当前模式不支持 {method}")
+        fn(params)
+
+
+def _make_api_server(sc, port, token):
+    import http.server
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        server_version = "TickGoldAPI/1.0"
+
+        def _respond(self, obj, status=200):
+            body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _auth_ok(self):
+            tok = self.headers.get("Authorization", "")
+            if tok.startswith("Bearer "):
+                tok = tok[7:]
+            return (not api.token) or (tok == api.token)
+
+        def _serve(self):
+            from urllib.parse import urlparse, parse_qs
+            u = urlparse(self.path)
+            q = parse_qs(u.query)
+            header_tok = self.headers.get("Authorization", "")
+            if header_tok.startswith("Bearer "):
+                header_tok = header_tok[7:]
+            qtok = q.get("token", [""])[0]
+            tok = header_tok or qtok
+            if api.token and tok != api.token:
+                self._respond({"status": "error", "message": "API 令牌无效"}, 401)
+                return
+            q.pop("token", None)
+            self._respond(api.handle(u.path, q))
+
+        def do_GET(self):  # noqa: N802
+            try:
+                self._serve()
+            except Exception as e:  # noqa: BLE001
+                self._respond({"status": "error", "message": str(e)}, 500)
+
+        def log_message(self, fmt, *args):  # noqa: A003
+            log("[api] " + (fmt % args))
+
+    class S(http.server.ThreadingHTTPServer):
+        daemon_threads = True
+
+    api = ApiServer(sc, port, token)
+    sc.api = api
+    srv = S(("127.0.0.1", port), Handler)
+    return srv
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--vendor", default="ths", choices=["ths", "eastmoney"])
@@ -1567,6 +1828,8 @@ def main():
     ap.add_argument("--max-amount", type=float, default=0.0, help="真实模式单笔金额硬上限（0=不额外限制）")
     ap.add_argument("--max-daily", type=float, default=0.0, help="真实模式单日累计买入硬上限（0=不额外限制）")
     ap.add_argument("--tesseract", default="", help="tesseract.exe 路径（验证码 OCR，留空则复制时转人工）")
+    ap.add_argument("--api-port", type=int, default=0, help="HTTP API 服务端口（0=关闭，默认 5000 语义）")
+    ap.add_argument("--api-token", default="", help="HTTP API 访问令牌（留空=本机免密）")
     args = ap.parse_args()
 
     wl = [bare_code(x) for x in args.whitelist.split(",") if bare_code(x)]
@@ -1582,6 +1845,20 @@ def main():
     if not sc.connect():
         time.sleep(0.5)
         sys.exit(1)
+
+    # P10-1：HTTP API 服务（默认关闭；开启后仅绑定 127.0.0.1，可选令牌）
+    api_port = args.api_port or 0
+    if api_port > 0:
+        try:
+            srv = _make_api_server(sc, api_port, args.api_token)
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            emit({"event": "note",
+                  "message": f"HTTP API 服务已就绪：http://127.0.0.1:{api_port}"
+                             + ("（令牌保护）" if args.api_token else "")})
+            log(f"[api] listening on 127.0.0.1:{api_port}")
+        except Exception as e:  # noqa: BLE001
+            log(f"[api] 启动失败：{e}")
+            emit({"event": "error", "message": f"HTTP API 服务启动失败：{e}"})
 
     # 复制表格 / OCR / 控件操作较慢，GUI 方法统一在守护线程执行，避免阻塞 stdin 读循环，
     # 保证 confirm/reject/captcha_input 等人工响应能被即时处理。
