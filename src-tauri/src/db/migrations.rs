@@ -978,5 +978,39 @@ pub fn migrations() -> Vec<Migration> {
                             CREATE INDEX IF NOT EXISTS idx_shadow_decision_date ON shadow_decision(trade_date);",
                             kind: MigrationKind::Up,
                         },
+                        Migration {
+                            version: 60,
+                            description: "P6 one-click pilot mode: pilot_config (single-row paper-only autopilot config) + pilot_daily_log (per-day autopilot run log)",
+                            sql: "CREATE TABLE IF NOT EXISTS pilot_config (
+                              id INTEGER PRIMARY KEY CHECK (id=1),
+                              mode TEXT NOT NULL DEFAULT 'off',
+                              account_type TEXT NOT NULL DEFAULT 'paper',
+                              virtual_cash INTEGER NOT NULL DEFAULT 10000000,
+                              tactic_profile_id INTEGER NOT NULL DEFAULT 0,
+                              risk_profile TEXT NOT NULL DEFAULT 'steady',
+                              schedule_enabled INTEGER NOT NULL DEFAULT 1,
+                              today_scan_target INTEGER NOT NULL DEFAULT 15,
+                              today_scan_count INTEGER NOT NULL DEFAULT 0,
+                              last_scan_at INTEGER NOT NULL DEFAULT 0,
+                              created_at INTEGER NOT NULL DEFAULT 0,
+                              updated_at INTEGER NOT NULL DEFAULT 0
+                            );
+                            INSERT OR IGNORE INTO pilot_config(id) VALUES(1);
+                            CREATE TABLE IF NOT EXISTS pilot_daily_log (
+                              id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              trade_date TEXT NOT NULL UNIQUE,
+                              scan_count INTEGER NOT NULL DEFAULT 0,
+                              buy_count INTEGER NOT NULL DEFAULT 0,
+                              sell_count INTEGER NOT NULL DEFAULT 0,
+                              pnl_cents INTEGER NOT NULL DEFAULT 0,
+                              asset_cents INTEGER NOT NULL DEFAULT 10000000,
+                              summary TEXT NOT NULL DEFAULT '',
+                              detail_log_id INTEGER NOT NULL DEFAULT 0,
+                              created_at INTEGER NOT NULL DEFAULT 0,
+                              updated_at INTEGER NOT NULL DEFAULT 0
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_pilot_daily_log_date ON pilot_daily_log(trade_date);",
+                            kind: MigrationKind::Up,
+                        },
     ]
 }

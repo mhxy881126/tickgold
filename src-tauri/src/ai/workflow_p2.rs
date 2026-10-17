@@ -22,7 +22,8 @@ use tauri::{AppHandle, State};
 
 /// 驾驶舱「启动盯盘」的默认执行配置：规则脑 + 模拟盘全自动（full 模式休市也可按最近收盘价演示）。
 /// 风控阈值沿用 autoexec 的保守默认（硬止损 -7%、单票 20%、总仓 80%、日亏 5%、回撤 20%、连亏 3 停）。
-fn paper_full_config() -> AutoExecConfig {
+/// pub(crate)：P6 智驾（pilot.rs）复用同一份全自动配置，避免两处漂移。
+pub(crate) fn paper_full_config() -> AutoExecConfig {
     AutoExecConfig {
         enabled: true,
         brain_mode: "rule".to_string(),

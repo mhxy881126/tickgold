@@ -1,7 +1,7 @@
 # TickGold 后端命令 / 迁移对照清单（v2.29.0 基线）
 
 > 巨石拆分（lib.rs → db/migrations.rs、commands.rs、setup.rs 模块化）的护栏。
-> 每次后端结构调整后，必须重新核对：**命令总数 227、迁移总数 59**，逐一对照无缺失。
+> 每次后端结构调整后，必须重新核对：**命令总数 233、迁移总数 60**，逐一对照无缺失。
 > （v2.30 起命令/迁移逐步增加，历史编号未全量回填；P0 新增条目见文末对应小节。）
 > 基线：v2.27.0（149 命令 / 48 迁移）；v2.28.0 净增 21 个命令
 > （资金流 3、组合层 2、风险仪表盘 1、异动阈值 2、板块日快照 3、备份中心 7、数据治理 3）
@@ -310,9 +310,23 @@
 > cockpit/LaunchWizard.vue（三道选择上线向导：模拟盘 / 半自动实盘 / 全自动接管，含前置 checklist、风控确认、故障演练）。
 > 影子达标默认 ≥100 样本且一致率 ≥60%；真正的 laya_sidecar 未启动前影子脑不可用（shadow_ok=0），启动 sidecar 后即开始攒样本。
 
+> **P6 一键智驾模式（模块 ai::pilot，实际注册总数 233）新增 6 个命令**：
+> - pilot_start（一键开始智驾：仅模拟盘校验 + 非急停 → 立即执行首轮闭环 → 启动 20s 轮询排程器）
+> - pilot_pause / pilot_stop（暂停保留进度 / 停止置 off，均持久化 mode）
+> - pilot_status（配置 + 当日扫描进度 + 排程器运行态 + 当日小结 + 下次触发点）
+> - pilot_config_get / pilot_config_set（读取 / 更新智驾配置：风控档位、虚拟资金、战法、调度开关、每日扫描次数；仅 mode=off 可写）
+>
+> 调度：每日 15 次扫描（09:30 / 09:45 / 10:00–11:40 每 20 分 / 13:00–14:40 每 20 分 / 15:10）+ 15:30 收盘结算；
+> 盘前四步自动补齐（复用 workflow_p1 采集/分析/计划/确认），盘中复用 workflow_watch_start 启动 autoexec 全自动执行，
+> 收盘复用 workflow_feedback 回灌并写 pilot_daily_log 小结。
+> 安全红线：智驾强制模拟盘（live_enabled / live_armed_at / client_sim=false 任一命中即拒启动），急停状态禁止启动；
+> 执行风控仍走 autoexec 现有闸门（硬止损/日亏/回撤/连亏），风控档位三档映射 steady（-7%/80%/5%/20%）/
+> aggressive（-8%/90%/6%/25%）/ defensive（-4%/60%/3%/12%）。
+> 数据表：迁移 v60 新增 pilot_config（单行配置）+ pilot_daily_log（按交易日运行日志）。
+
 ---
 
-## 二、数据库迁移：59 条（主库 sqlite:stock-dock.db）
+## 二、数据库迁移：60 条（主库 sqlite:stock-dock.db）
 
 | v | description |
 | --- | --- |
@@ -375,5 +389,6 @@
 | 57 | P2 execution loop: daily_mission.feedback_json (daily trading summary writeback) |
 | 58 | P4 broker_order.is_live (mark real vs simulated orders; live daily buy quota counts is_live=1 only) |
 | 59 | P5 brain_rollout (rule→shadow→canary→live state machine) + shadow_decision (shadow vs rule decision log) |
+| 60 | P6 pilot_config (one-row autopilot config) + pilot_daily_log (per-trading-day autopilot run log) |
 
 > ai.db 另有独立版本链（当前 v4），不在此表。

@@ -13,6 +13,7 @@ pub mod fastbrain;
 pub mod ingest;
 pub mod intraday;
 pub mod maindb;
+pub mod pilot;
 pub mod plan;
 pub mod provider;
 pub mod report;

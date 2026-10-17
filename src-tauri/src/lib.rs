@@ -44,6 +44,7 @@ pub fn run() {
         .manage(Arc::new(market::limitup::LimitRadar::new()))
         .manage(Arc::new(market::alert::AlertEngine::new()))
         .manage(ai::autoexec::AutoExecCtl::new())
+        .manage(ai::pilot::PilotCtl::new())
         .manage(broker::BrokerManager::new())
         .manage(plugin::PluginManager::new())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -294,6 +295,13 @@ pub fn run() {
             ai::workflow_p2::workflow_execute_status,
             ai::workflow_p2::workflow_feedback,
             ai::workflow_p2::workflow_p2_products,
+            // ===== P6 一键智驾模式（模拟盘全自动闭环，真实通道互斥）=====
+            ai::pilot::pilot_start,
+            ai::pilot::pilot_pause,
+            ai::pilot::pilot_stop,
+            ai::pilot::pilot_status,
+            ai::pilot::pilot_config_get,
+            ai::pilot::pilot_config_set,
             // ===== v3.0.7 关于页版本号 =====
             app_version
         ])
