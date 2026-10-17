@@ -44,6 +44,7 @@ const TABS: { k: TabKey; t: string }[] = [
 const tab = ref<TabKey>("position");
 
 const status = ref<BrokerStatus | null>(null);
+const sidecarErr = ref("");
 const asset = ref<BrokerAsset | null>(null);
 const positions = ref<BrokerPosition[]>([]);
 const trades = ref<BrokerTrade[]>([]);
@@ -461,6 +462,10 @@ onMounted(() => {
   listen<ClientAppState>("broker:app_state", (ev) => {
     if (ev.payload) appState.value = ev.payload;
   }).then((u) => unlisteners.push(u));
+  listen("broker:sidecar_error", (ev) => {
+    const p = ev.payload as { message?: string };
+    sidecarErr.value = p?.message ?? "交易通道异常";
+  }).then((u) => unlisteners.push(u));
   listen<ClientCurrentPage>("broker:current_page", (ev) => {
     if (ev.payload) currentPage.value = ev.payload;
   }).then((u) => unlisteners.push(u));
@@ -534,7 +539,7 @@ onBeforeUnmount(() => {
         <div class="ba-v" :class="pnlCls(asset?.dayPnl)">{{ fmtMoney(asset?.dayPnl) }}</div>
       </div>
     </div>
-    <div v-if="asset?.note" class="bc-note">{{ asset.note }}</div>
+    <div v-if="asset?.note" class="bc-note">{{ connected ? asset.note : "未连接，无法获取资产（请先连接通道，或点下方「一键演练」）" }}</div>
 
     <!-- Tabs -->
     <div class="bc-tabs">
@@ -608,6 +613,7 @@ onBeforeUnmount(() => {
 
     <!-- 未连接空态 -->
     <div v-else-if="!connected" class="bc-empty">
+      <div v-if="sidecarErr" class="bc-sidecar-err">连接失败：{{ sidecarErr }}</div>
       <div class="be-icon">🔌</div>
       <div class="be-title">客户端通道未连接</div>
       <div class="be-desc">连接真实同花顺客户端前，可以先一键演练：自动切换 dry-run 通道并展示完整的虚拟账户数据（持仓 / 成交 / 挂单 / 资金），不碰真实客户端、不碰真钱。</div>
@@ -850,6 +856,11 @@ onBeforeUnmount(() => {
 .ba-v { margin-top: 2px; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text, #e6ecf5); }
 .ba-v.up { color: #f23645; }
 .ba-v.down { color: #0ecb81; }
+.bc-sidecar-err {
+  margin-bottom: 8px; padding: 6px 10px; border-radius: 7px; font-size: 11px; line-height: 1.6;
+  color: #ff7a85; background: rgba(242, 54, 69, 0.1); border: 1px solid rgba(242, 54, 69, 0.45);
+  word-break: break-all;
+}
 .bc-note { font-size: 10px; color: var(--text-dim, #7c8798); flex-shrink: 0; }
 
 .bc-tabs {

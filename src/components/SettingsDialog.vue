@@ -1013,6 +1013,8 @@ async function bRefreshSelfcheck() {
 }
 // broker:sidecar / broker:sidecar_error 实时联动（连接结果不再靠轮询猜）
 let unlistenBroker: (() => void) | null = null;
+// 连接失败原因（sidecar stderr / fatal 透传），状态条红条展示
+const bSidecarErr = ref("");
 async function ensureBrokerListener() {
   if (unlistenBroker) return;
   const offs: UnlistenFn[] = [];
@@ -1021,6 +1023,7 @@ async function ensureBrokerListener() {
       const e = (ev.payload as { event?: string })?.event;
       if (e === "connected") {
         bMsg.value = "";
+        bSidecarErr.value = "";
         void refreshBStatus();
         void bRefreshSelfcheck();
         bFlash("交易通道已连接");
@@ -1033,6 +1036,7 @@ async function ensureBrokerListener() {
   offs.push(
     await listen("broker:sidecar_error", (ev) => {
       const payload = ev.payload as { message?: string; fatal?: boolean };
+      bSidecarErr.value = payload.message ?? "交易通道异常";
       bFlash(payload.message ?? "交易通道异常");
       if (payload.fatal) void refreshBStatus();
     })
@@ -1323,6 +1327,10 @@ async function bConnect() {
   if (bConnectBusy.value) return;
   bConnectBusy.value = true;
   try {
+    // 新手习惯：改完配置直接点「保存并连接」，无需先记着保存。
+    if (!bForm.value) throw new Error("配置未加载");
+    await saveBroker();
+    bSidecarErr.value = "";
     bFlash(await brokerConnect());
     // sidecar 连接后异步推送自检（dry-run 秒级，真机起客户端较慢），稍候拉取，亦可手动刷新。
     await new Promise((r) => setTimeout(r, 2200));
@@ -1339,6 +1347,7 @@ async function bDisconnect() {
   bDisconnectBusy.value = true;
   try {
     await brokerDisconnect();
+    bSidecarErr.value = "";
     await refreshBStatus();
     bFlash("已断开");
   } catch (e) {
@@ -2307,6 +2316,10 @@ async function clearL2Key(r: PluginRow) {
                   </span>
                   <button type="button" class="logs-btn" @click="refreshBStatus">刷新</button>
                 </div>
+                <div v-if="!bStatus?.connected && bSidecarErr" class="bk-sidecar-err">
+                  连接失败：{{ bSidecarErr }}
+                  <button type="button" class="logs-btn danger" @click="bSidecarErr = ''">知道了</button>
+                </div>
                 <div v-if="bStatus?.killSwitch" class="bk-kill-warn">
                   ⚠ Kill Switch 已触发 —— 所有交易通道已断开
                   <button type="button" class="logs-btn danger" @click="bReleaseKill">解除</button>
@@ -2381,6 +2394,13 @@ async function clearL2Key(r: PluginRow) {
               <!-- 同花顺客户端通道（P3）：参数 / 开关 / 连接 / 自检 -->
               <template v-if="bForm && bForm.kind === 'client'">
                 <div class="section-title" style="margin-top:16px">同花顺客户端参数</div>
+                <div class="bk-auto-summary">
+                  <span class="bk-auto-dot"></span>
+                  <span v-if="bProbeSummary" class="bk-probe-summary" :class="{ bad: (bProbe?.summary.bad ?? 0) > 0 }">{{ bProbeSummary }}</span>
+                  <span v-else class="bk-auto-tip">已按本机自动探测结果配置，一般无需改动；点下方「参数细节」可查看/修改</span>
+                </div>
+                <details class="bk-advanced" style="margin-top:8px">
+                <summary>参数细节（一般无需改动）</summary>
                 <div class="bridge-grid">
                   <label class="ai-field"><span>Python 路径</span>
                     <div class="bk-probe-row">
@@ -2415,6 +2435,8 @@ async function clearL2Key(r: PluginRow) {
                     <span v-if="bProbeItem('clientTesseract')" class="bk-probe-hint">{{ bProbeHint('clientTesseract') }}</span>
                   </label>
                 </div>
+
+                </details>
 
                 <div class="section-title" style="margin-top:16px">HTTP API 服务（THSAutoTrader 兼容）</div>
                 <div class="section-sub">连接通道后在本机开放 REST 接口，供你的脚本 / EasyUp 平台 / Excel 宏调用下单与查询；仅监听 127.0.0.1，不绕过任何风控。</div>
@@ -2462,8 +2484,7 @@ async function clearL2Key(r: PluginRow) {
                 </div>
 
                 <div class="bk-actions" style="margin-top:12px">
-                  <button type="button" class="logs-btn primary" @click="saveBroker">保存配置</button>
-                  <button type="button" class="logs-btn primary big" :disabled="bConnectBusy" @click="bConnect">{{ bConnectBusy ? "连接中…" : "连接通道" }}</button>
+                  <button type="button" class="logs-btn primary big" :disabled="bConnectBusy" @click="bConnect">{{ bConnectBusy ? "连接中…" : "保存并连接" }}</button>
                   <button type="button" class="logs-btn" :disabled="bDisconnectBusy" @click="bDisconnect">{{ bDisconnectBusy ? "断开中…" : "断开" }}</button>
                   <button type="button" class="logs-btn" :disabled="bSelfcheckBusy" @click="bRefreshSelfcheck">{{ bSelfcheckBusy ? "自检中…" : "刷新自检" }}</button>
                 </div>
@@ -2498,8 +2519,10 @@ async function clearL2Key(r: PluginRow) {
                 </div>
               </template>
 
-              <!-- 第三步：实盘开关（醒目警示） -->
-              <div class="section-title" style="margin-top:20px">实盘委托</div>
+              <!-- 第三步：实盘开关（醒目警示；默认折叠，模拟模式无需配置） -->
+              <details class="bk-advanced" style="margin-top:16px">
+              <summary>实盘与风控（模拟模式无需配置，保持出厂锁定即可）</summary>
+              <div class="section-title" style="margin-top:14px">实盘委托</div>
               <div v-if="bForm && bForm.kind === 'mock'" class="bk-live-card disabled">
                 <div>
                   <div class="bk-live-title">⚪ 当前为模拟模式</div>
@@ -2610,6 +2633,7 @@ async function clearL2Key(r: PluginRow) {
                     <input v-model.number="bForm.consecutiveLossLimit" type="range" min="2" max="10" step="1" /></label>
                 </div>
               </template>
+              </details>
 
               <!-- 折叠：高级设置 -->
               <details class="bk-advanced" style="margin-top:20px">
@@ -3352,6 +3376,18 @@ async function clearL2Key(r: PluginRow) {
 .bk-switch-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .bk-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; }
 .bk-sw-title { font-size: 12px; font-weight: 600; }
+.bk-sidecar-err {
+  margin-top: 8px; padding: 6px 10px; border-radius: 7px; font-size: 11px; line-height: 1.6;
+  color: #ff7a85; background: rgba(242, 54, 69, 0.1); border: 1px solid rgba(242, 54, 69, 0.45);
+  display: flex; align-items: center; gap: 8px; word-break: break-all;
+}
+.bk-auto-summary {
+  display: flex; align-items: center; gap: 7px; margin-top: 8px;
+  padding: 6px 10px; border-radius: 7px; font-size: 11px;
+  background: rgba(38, 208, 124, 0.06); border: 1px solid rgba(38, 208, 124, 0.3); color: var(--text-dim, #97a0b2);
+}
+.bk-auto-dot { width: 7px; height: 7px; border-radius: 50%; background: #26d07c; flex-shrink: 0; }
+.bk-auto-tip { color: var(--text-dim, #97a0b2); }
 .bk-selfcheck { margin-top: 12px; border: 1px solid rgba(90,160,255,0.25); border-radius: 8px; padding: 10px 12px; background: rgba(90,160,255,0.05); }
 .bk-sc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 6px; }
 .bk-sc-title { font-weight: 600; }
