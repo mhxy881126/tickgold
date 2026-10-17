@@ -47,6 +47,7 @@ import Backtest from "./cards/Backtest.vue";
 import StrategyScan from "./cards/StrategyScan.vue";
 import ReviewReport from "./ReviewReport.vue";
 import Cockpit from "./cockpit/Cockpit.vue";
+import BrokerConsole from "./BrokerConsole.vue";
 import type { CardId } from "../composables/useWorkbench";
 import ProGate from "./common/ProGate.vue";
 
@@ -147,6 +148,7 @@ function retry() {
       <ReviewReport />
     </ProGate>
     <Cockpit v-else-if="id === 'cockpit'" />
+    <BrokerConsole v-else-if="id === 'brokerconsole'" />
   </template>
 </template>
 

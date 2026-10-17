@@ -43,6 +43,9 @@ export interface BrokerPosition {
   avail: number;
   cost?: number;
   marketValue?: number;
+  price?: number;
+  pnl?: number;
+  dayPnl?: number;
 }
 
 export interface BrokerConfigPatch {
@@ -69,6 +72,7 @@ export interface BrokerConfigPatch {
   clientAutoConfirm?: boolean;
   clientMinIntervalMs?: number;
   clientDryRun?: boolean;
+  clientTesseract?: string;
   // P4 真实通道安全护栏
   liveMaxDailyAmount?: number;
   liveCodesWhitelist?: string[];
@@ -103,6 +107,7 @@ export interface BrokerConfigFull {
   clientAutoConfirm: boolean;
   clientMinIntervalMs: number;
   clientDryRun: boolean;
+  clientTesseract: string;
   // P4 真实通道安全护栏
   liveMaxDailyAmount: number;
   liveCodesWhitelist: string[];
@@ -137,6 +142,7 @@ export function brokerSetConfig(patch: BrokerConfigPatch) {
     clientAutoConfirm: patch.clientAutoConfirm ?? null,
     clientMinIntervalMs: patch.clientMinIntervalMs ?? null,
     clientDryRun: patch.clientDryRun ?? null,
+    clientTesseract: patch.clientTesseract ?? null,
     liveMaxDailyAmount: patch.liveMaxDailyAmount ?? null,
     liveCodesWhitelist: patch.liveCodesWhitelist ?? null,
     liveSimDrillPassed: patch.liveSimDrillPassed ?? null,
@@ -246,6 +252,9 @@ export interface ClientShotExpect {
   amount?: number;
   sim?: boolean;
   autoConfirm?: boolean;
+  captcha?: boolean; // 复制表格验证码（需人工输入）
+  cancelPage?: boolean; // 撤单页面核对
+  position?: string; // 仓位下单档位文案
 }
 
 export interface ClientShot {
@@ -268,6 +277,109 @@ export function brokerClientSelfcheck() {
 /** 读取指定委托（或最近一张）下单前截图。 */
 export function brokerClientShot(sigId?: string | null) {
   return invoke<ClientShot | null>("broker_client_shot", { sigId: sigId ?? null });
+}
+
+// ===== P7 同花顺真实通道（移植 THSAutoTrader 键盘精灵自动化）=====
+
+/** 当日成交记录（客户端查询树 → 当日成交，剪贴板读表）。 */
+export interface BrokerTrade {
+  code: string;
+  name?: string;
+  side?: string;
+  price: number;
+  vol: number;
+  time?: string;
+  status?: string;
+}
+
+/** 当日挂单（未成交委托）。 */
+export interface BrokerPending {
+  code: string;
+  name?: string;
+  side?: string;
+  price: number;
+  vol: number;
+  filledVol?: number;
+  time?: string;
+  status?: string;
+}
+
+/** 同花顺下单程序进程 / 窗口运行状态。 */
+export interface ClientAppState {
+  running?: boolean;
+  page?: string;
+  note?: string;
+}
+
+/** 当前前台窗口信息（句柄 / 标题 / 最小化等，用于校准与排查）。 */
+export interface ClientCurrentPage {
+  found?: boolean;
+  hwnd?: number;
+  pid?: number;
+  title?: string;
+  className?: string;
+  running?: boolean;
+  isMinimized?: boolean;
+  isMaximized?: boolean;
+  note?: string;
+}
+
+/** 当日成交：优先缓存，空则向客户端查询（结果经 broker:trades 事件回传）。 */
+export function brokerClientQueryTrades() {
+  return invoke<{ trades?: BrokerTrade[]; note?: string }>("broker_client_query_trades");
+}
+
+/** 当日挂单（未成交委托）。 */
+export function brokerClientQueryPending() {
+  return invoke<{ orders?: BrokerPending[]; note?: string }>("broker_client_query_pending");
+}
+
+/** 一键撤单：kind = A(全撤) / X(撤买) / C(撤卖)。 */
+export function brokerClientCancelAll(kind: string) {
+  return invoke<void>("broker_client_cancel_all", { kind });
+}
+
+/**
+ * 仓位下单：position 0/1=全仓、2=半仓、3=1/3、4=1/4。
+ * 返回 client_order_id，供半自动确认桥 / 下单前截图关联。
+ */
+export function brokerClientPositionOrder(
+  code: string,
+  side: string,
+  position: number,
+  refPrice: number,
+) {
+  return invoke<string>("broker_client_position_order", {
+    code,
+    side,
+    position,
+    refPrice,
+  });
+}
+
+/** 探测同花顺下单程序进程 / 窗口状态。 */
+export function brokerClientCheckApp() {
+  return invoke<ClientAppState>("broker_client_check_app");
+}
+
+/** 读取当前前台窗口信息。 */
+export function brokerClientCurrentPage() {
+  return invoke<ClientCurrentPage>("broker_client_current_page");
+}
+
+/** 高级调试：向同花顺窗口发送键盘序列（空格分隔）。 */
+export function brokerClientSendKey(key: string) {
+  return invoke<void>("broker_client_send_key", { key });
+}
+
+/** 高级调试：在同花顺窗口客户区点击坐标。 */
+export function brokerClientClick(x: number, y: number) {
+  return invoke<void>("broker_client_click", { x, y });
+}
+
+/** 人工验证码：复制表格遇到验证码时弹窗输入数字回传。 */
+export function brokerClientCaptchaInput(text: string) {
+  return invoke<void>("broker_client_captcha_input", { text });
 }
 
 export interface FillResult {

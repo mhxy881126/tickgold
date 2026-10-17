@@ -418,8 +418,9 @@ onMounted(() => {
   // P3 客户端自动化：半自动下单截图确认桥 + 操作提示
   listen<ClientShot>("broker:client_screenshot", (ev) => {
     const shot = ev.payload;
-    // 自动确认模式下 sidecar 不发截图；收到截图即说明处于半自动，需人工核对。
-    if (shot && shot.client_order_id) pendingShot.value = shot;
+    // 仅下单类截图（闪电下单 / 仓位下单，expect 含 code）走本桥确认；
+    // 复制表格验证码（captcha）与撤单页（cancelPage）由「同花顺控制台」卡片处理。
+    if (shot && shot.client_order_id && shot.expect?.code) pendingShot.value = shot;
   }).then((u) => unlisteners.push(u));
   listen<{ message?: string }>("broker:client_note", (ev) => {
     if (ev.payload?.message) flash(ev.payload.message);

@@ -36,6 +36,11 @@ pub struct BrokerManager {
     pub client_selfcheck: Mutex<serde_json::Value>,
     /// P3 客户端自动化通道：最近下单前截图（cid, 事件），仅保留最近若干张。
     pub client_shots: Mutex<Vec<(String, serde_json::Value)>>,
+    /// P7 同花顺真实通道：当日成交 / 挂单 / 进程窗口 / 当前窗口缓存（最近一次全量回报）。
+    pub trades_cache: Mutex<serde_json::Value>,
+    pub pending_cache: Mutex<serde_json::Value>,
+    pub app_state_cache: Mutex<serde_json::Value>,
+    pub current_page_cache: Mutex<serde_json::Value>,
 }
 
 impl BrokerManager {
@@ -56,6 +61,10 @@ impl BrokerManager {
             position_synced: AtomicBool::new(false),
             client_selfcheck: Mutex::new(serde_json::json!({})),
             client_shots: Mutex::new(Vec::new()),
+            trades_cache: Mutex::new(serde_json::json!({})),
+            pending_cache: Mutex::new(serde_json::json!({})),
+            app_state_cache: Mutex::new(serde_json::json!({})),
+            current_page_cache: Mutex::new(serde_json::json!({})),
         }
     }
 
@@ -194,6 +203,24 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
                                 ),
                             )
                             .await;
+                            let _ = sidecar::send_to(
+                                &stdin,
+                                sidecar::request(
+                                    "connected-query-trades",
+                                    "query_trades",
+                                    serde_json::json!({}),
+                                ),
+                            )
+                            .await;
+                            let _ = sidecar::send_to(
+                                &stdin,
+                                sidecar::request(
+                                    "connected-query-pending",
+                                    "query_pending",
+                                    serde_json::json!({}),
+                                ),
+                            )
+                            .await;
                         }
                     }
                 });
@@ -205,6 +232,10 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
                 // 断开后缓存作废，重连由 connected 分支重新全量查询
                 m.position_synced.store(false, Ordering::SeqCst);
                 *m.asset_cache.lock().unwrap() = serde_json::json!({});
+                *m.trades_cache.lock().unwrap() = serde_json::json!({});
+                *m.pending_cache.lock().unwrap() = serde_json::json!({});
+                *m.app_state_cache.lock().unwrap() = serde_json::json!({});
+                *m.current_page_cache.lock().unwrap() = serde_json::json!({});
             }
         }
         "selfcheck" => {
@@ -230,6 +261,32 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
         "note" => {
             // sidecar 文本提示（如已点确认、真机首版回报说明）转发给前端。
             let _ = app.emit("broker:client_note", v.clone());
+        }
+        "trades" => {
+            // P7 同花顺真实通道：当日成交全量回报缓存并转发。
+            if let Some(m) = try_manager(app) {
+                *m.trades_cache.lock().unwrap() = v.clone();
+            }
+            let _ = app.emit("broker:trades", v.clone());
+        }
+        "pending" => {
+            // P7 当日挂单（未成交委托）全量回报缓存并转发。
+            if let Some(m) = try_manager(app) {
+                *m.pending_cache.lock().unwrap() = v.clone();
+            }
+            let _ = app.emit("broker:pending", v.clone());
+        }
+        "current_page" => {
+            if let Some(m) = try_manager(app) {
+                *m.current_page_cache.lock().unwrap() = v.clone();
+            }
+            let _ = app.emit("broker:current_page", v.clone());
+        }
+        "app_state" => {
+            if let Some(m) = try_manager(app) {
+                *m.app_state_cache.lock().unwrap() = v.clone();
+            }
+            let _ = app.emit("broker:app_state", v.clone());
         }
         "asset" => {
             // 缓存最近一次资产回报，broker_query_asset（QMT/客户端）直接读缓存
@@ -376,6 +433,7 @@ pub fn broker_set_config(
     client_auto_confirm: Option<bool>,
     client_min_interval_ms: Option<u64>,
     client_dry_run: Option<bool>,
+    client_tesseract: Option<String>,
     // P4 真实通道安全护栏
     live_max_daily_amount: Option<f64>,
     live_codes_whitelist: Option<Vec<String>>,
@@ -447,6 +505,9 @@ pub fn broker_set_config(
     }
     if let Some(v) = client_dry_run {
         cfg.client_dry_run = v;
+    }
+    if let Some(v) = client_tesseract {
+        cfg.client_tesseract = v;
     }
     // P4 真实通道安全护栏字段
     if let Some(v) = live_max_daily_amount {
@@ -1737,9 +1798,10 @@ pub async fn broker_query_position(
                 .iter()
                 .map(|(code, p)| {
                     serde_json::json!({
-                        "code": code, "name": "",
+                        "code": code, "name": p.name,
                         "vol": p.vol, "avail": p.avail,
                         "cost": p.cost, "marketValue": p.mv,
+                        "price": p.price, "pnl": p.pnl, "dayPnl": p.day_pnl,
                     })
                 })
                 .collect();

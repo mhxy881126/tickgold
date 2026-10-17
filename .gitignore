@@ -75,3 +75,7 @@ _check_env.js
 # HTML 自检过程产物（截图/报告，禁删但不入库）
 _shots/
 
+
+# Python sidecar 本地备份（不入库）
+src-tauri/resources/broker/*.bak*
+src-tauri/resources/broker/__pycache__/

@@ -525,6 +525,14 @@ pub struct QmtPosition {
     pub avail: i64,
     pub cost: f64,
     pub mv: f64,
+    /// 证券名称（真实客户端回读；QMT 增量回报可能为空串）。
+    pub name: String,
+    /// 现价（0 表示该通道未回传）。
+    pub price: f64,
+    /// 持仓浮动盈亏。
+    pub pnl: f64,
+    /// 当日盈亏。
+    pub day_pnl: f64,
 }
 
 /// 解析 sidecar position 事件。返回 (裸码 → 持仓条目, 是否全量)。
@@ -548,6 +556,10 @@ pub fn parse_position_event(v: &serde_json::Value) -> (Vec<(String, QmtPosition)
         if p.get("cost").is_some() || p.get("marketValue").is_some() {
             full = true;
         }
+        let name = p["name"].as_str().unwrap_or("").to_string();
+        let price = p["price"].as_f64().unwrap_or(0.0);
+        let pnl = p["pnl"].as_f64().unwrap_or(0.0);
+        let day_pnl = p["dayPnl"].as_f64().unwrap_or(0.0);
         out.push((
             code,
             QmtPosition {
@@ -555,6 +567,10 @@ pub fn parse_position_event(v: &serde_json::Value) -> (Vec<(String, QmtPosition)
                 avail: p["avail"].as_i64().unwrap_or(0),
                 cost,
                 mv,
+                name,
+                price,
+                pnl,
+                day_pnl,
             },
         ));
     }
@@ -963,5 +979,30 @@ mod tests {
         let v4 = serde_json::json!({"event":"position"});
         let (_, full4) = parse_position_event(&v4);
         assert!(!full4);
+    }
+
+    #[test]
+    fn parse_position_keeps_real_name_and_pnl() {
+        // P7 同花顺真实通道：name/price/pnl/dayPnl 必须保留到缓存
+        let v = serde_json::json!({"event":"position","positions":[
+            {"code":"600519","name":"贵州茅台","vol":1000,"avail":1000,
+             "cost":1500.0,"price":1600.0,"marketValue":1_600_000.0,
+             "pnl":100000.0,"dayPnl":5000.0}
+        ]});
+        let (items, full) = parse_position_event(&v);
+        assert!(full);
+        let pos = &items[0].1;
+        assert_eq!(pos.name, "贵州茅台");
+        assert_eq!(pos.price, 1600.0);
+        assert_eq!(pos.pnl, 100000.0);
+        assert_eq!(pos.day_pnl, 5000.0);
+
+        // 缺这些字段时安全回落到默认值（QMT 增量回报）
+        let v2 = serde_json::json!({"event":"position","positions":[
+            {"code":"000001.SZ","vol":100,"avail":100}
+        ]});
+        let (items2, _) = parse_position_event(&v2);
+        assert_eq!(items2[0].1.name, "");
+        assert_eq!(items2[0].1.price, 0.0);
     }
 }

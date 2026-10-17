@@ -200,6 +200,16 @@ pub fn run() {
             broker::client::broker_client_confirm,
             broker::client::broker_client_selfcheck,
             broker::client::broker_client_shot,
+            // P7 同花顺真实通道：四表查询 / 撤单 / 仓位 / 探测 / 透传 / 验证码
+            broker::client::broker_client_query_trades,
+            broker::client::broker_client_query_pending,
+            broker::client::broker_client_cancel_all,
+            broker::client::broker_client_position_order,
+            broker::client::broker_client_check_app,
+            broker::client::broker_client_current_page,
+            broker::client::broker_client_send_key,
+            broker::client::broker_client_click,
+            broker::client::broker_client_captcha_input,
             // P4 真实通道安全护栏（白名单 / 模拟演练 / 额度读数）
             broker::broker_live_whitelist_set,
             broker::broker_live_mark_drill,

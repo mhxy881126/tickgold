@@ -1,7 +1,7 @@
 # TickGold 后端命令 / 迁移对照清单（v2.29.0 基线）
 
 > 巨石拆分（lib.rs → db/migrations.rs、commands.rs、setup.rs 模块化）的护栏。
-> 每次后端结构调整后，必须重新核对：**命令总数 233、迁移总数 60**，逐一对照无缺失。
+> 每次后端结构调整后，必须重新核对：**命令总数 242、迁移总数 60**，逐一对照无缺失。
 > （v2.30 起命令/迁移逐步增加，历史编号未全量回填；P0 新增条目见文末对应小节。）
 > 基线：v2.27.0（149 命令 / 48 迁移）；v2.28.0 净增 21 个命令
 > （资金流 3、组合层 2、风险仪表盘 1、异动阈值 2、板块日快照 3、备份中心 7、数据治理 3）
@@ -329,6 +329,28 @@
 > 阶段3（收敛进阶）：PilotPanel 进阶设置折叠内新增「真实通道与接管」区（通道/武装状态/模拟演练三格 + 「打开接管控制台」
 > 内嵌 BrainRolloutPanel：上线向导/故障演练/影子→灰度→接管）；主驾驶舱 Cockpit.vue 移除常驻 BrainRolloutPanel 尾部块与 import，
 > 主区只保留智驾三问 + 六步作战流，藏能力换简单。
+
+> **P7 同花顺 GUI 自动化融入（移植 THSAutoTrader，模块 broker::client，实际注册总数 242）新增 9 个命令**：
+> - broker_client_query_trades / broker_client_query_pending（当日成交 / 当日挂单：先读缓存，空则向客户端发查询，结果经 broker:trades / broker:pending 事件回传）
+> - broker_client_cancel_all(kind)（一键撤单：kind=A 全撤 / X 撤买 / C 撤卖，cid=CA{ts}{kind}，真实通道截图挂起人工确认）
+> - broker_client_position_order(code, side, position, ref_price)（仓位下单：position 1 全 / 2 半 / 3 三分 / 4 四分，按可用资金换算股数，cid=POS{ts}{code}）
+> - broker_client_check_app / broker_client_current_page（同花顺下单程序进程 / 前台窗口探测，结果缓存 broker:app_state / broker:current_page）
+> - broker_client_send_key(key) / broker_client_click(x,y)（高级调试：键盘序列 / 客户区点击透传，前端默认折叠隐藏）
+> - broker_client_captcha_input(text)（复制表格遇验证码 OCR 失败时，人工输入续跑）
+>
+> 实现：sidecar_client.py 内置 ThsGuiEngine（pywinauto uia 后端，一把 GUI 互斥锁 30s 超时 429），
+> 键盘精灵闪电下单（填代码→回车→填价格/数量→买卖确认）、Ctrl+C 剪贴板读表（parse_tabular_data + 4 个 normalize）、
+> Tesseract 验证码 OCR（--tesseract，失败转人工）、仓位按钮（12092 全 / 12093 半 / 12094 三分 / 12095 四分）、
+> 全撤 30001 / 撤买 30002 / 撤卖 30003；走"模拟用户操作不破解客户端"路线，不另起 Flask/端口，全部走 stdio NDJSON。
+> 安全：沿用 P4 白名单 / 单笔 / 单日限额 / 价格偏离（Python 侧独立兜底），真实资金强制半自动截图确认，
+> 风控未武装时 dry-run 占位。配置新增 client_tesseract（broker_set_config，前端设置-券商交易可填）。
+> 数据表：本阶段无新增迁移（仍 v60）。
+> 前端：新增卡片「同花顺控制台」（components/BrokerConsole.vue，卡 id=brokerconsole，cards.ts/dock.ts/cardRegistry 注册）：
+> 资金四格 + 持仓/成交/挂单三表 + 仓位下单 + 撤买/撤卖/全撤 + 进程窗口自检 + 折叠的高级调试 + 验证码/撤单核对弹窗；
+> SignalBridge.vue 下单确认桥改为仅对 expect.code 下单截图弹窗（验证码 / 撤单页交 BrokerConsole）。
+> 验证：cargo clippy -D warnings 0 警告、cargo test broker:: 42+ 通过、前端 vue-tsc/build/vitest 全绿、
+> Python 表格解析正式单测 src-tauri/tests/python/test_sidecar_table.py 5 项、sidecar dry-run 端到端 0 error。
+> 边界：本机无同花顺客户端，真实 GUI 层未做端到端，控件 AutomationId 随客户端版本可能需真机校准（见同花顺真机校准手册）。
 
 ---
 

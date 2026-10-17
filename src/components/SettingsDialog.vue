@@ -1205,6 +1205,7 @@ async function saveBroker() {
       clientAutoConfirm: f.clientAutoConfirm,
       clientMinIntervalMs: f.clientMinIntervalMs,
       clientDryRun: f.clientDryRun,
+      clientTesseract: f.clientTesseract,
     });
     bFlash("配置已保存");
   } catch (e) {
@@ -2255,6 +2256,10 @@ async function clearL2Key(r: PluginRow) {
                     <input v-model="bForm.clientTemplateDir" type="text" spellcheck="false" placeholder="selectors.json 目录，留空用脚本内置" /></label>
                   <label class="ai-field"><span>最小操作间隔（毫秒）</span>
                     <input v-model.number="bForm.clientMinIntervalMs" type="number" min="300" step="100" /></label>
+                </div>
+                <div class="bridge-grid">
+                  <label class="ai-field"><span>Tesseract OCR 路径（可选）</span>
+                    <input v-model="bForm.clientTesseract" type="text" spellcheck="false" placeholder="tesseract.exe 路径，留空则复制表格遇验证码时转人工输入" /></label>
                 </div>
 
                 <div class="bk-switch-list">

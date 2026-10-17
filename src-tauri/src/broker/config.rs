@@ -64,6 +64,9 @@ pub struct BrokerConfig {
     /// dry-run：不连接真实客户端，sidecar 内部模拟整套事件（无客户端/开发机验证用）。
     #[serde(default = "default_client_dry_run")]
     pub client_dry_run: bool,
+    /// tesseract.exe 路径（同花顺复制表格验证码 OCR；留空则验证码转人工输入）。
+    #[serde(default)]
+    pub client_tesseract: String,
 
     // ===== P4 真实通道安全护栏（默认全部锁定，必须显式武装后才允许真实委托）=====
     /// 实盘单日累计买入金额上限（绝对值硬兜底）。真实通道「当日已提买入合计 + 本笔」不得超过；0 = 锁定。
@@ -133,6 +136,7 @@ impl Default for BrokerConfig {
             client_auto_confirm: true,
             client_min_interval_ms: 1200,
             client_dry_run: true,
+            client_tesseract: String::new(),
 
             // P4 真实通道默认全部锁定：单日上限 0、白名单空、演练未通过、未武装。
             live_max_daily_amount: 0.0,

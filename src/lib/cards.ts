@@ -47,7 +47,8 @@ export type CardId =
   | "backtest"
   | "strategyscan"
   | "reviewreport"
-  | "cockpit";
+  | "cockpit"
+  | "brokerconsole";
 
 export type Zone = "main" | "side";
 
@@ -105,6 +106,7 @@ export const CARD_META: Record<CardId, CardMeta> = {
   strategyscan: { title: "战法选股", accent: "#ff3232", kind: "chart" },
   reviewreport: { title: "盯盘复盘报告", accent: "#c9a24a", kind: "chart" },
   cockpit: { title: "今日作战流", accent: "#d4af37", kind: "chart" },
+  brokerconsole: { title: "同花顺控制台", accent: "#e8c878", kind: "chart" },
 };
 
 // ===== 卡片个性化（V1 单卡设置 / V3 场景模板）=====
