@@ -122,7 +122,8 @@ def bare_code(code):
 # ============================== Sidecar 基类 ==============================
 
 class BaseSidecar:
-    def __init__(self, vendor, account, sim, auto_confirm, min_interval_ms, template_dir):
+    def __init__(self, vendor, account, sim, auto_confirm, min_interval_ms, template_dir,
+                 whitelist=None, max_amount=0.0, max_daily=0.0):
         self.vendor = vendor
         self.account = account
         self.sim = sim
@@ -134,6 +135,12 @@ class BaseSidecar:
         # 半自动待确认：cid -> {"event":Event, "approved":bool}
         self.pending = {}
         self.pending_lock = threading.Lock()
+        # P4 真实模式独立护栏（RealSidecar 真实账户置 True；dry-run / 模拟恒为 False）
+        self.live_guarded = False
+        self.whitelist = set(whitelist or [])
+        self.max_amount = float(max_amount or 0.0)
+        self.max_daily = float(max_daily or 0.0)
+        self.live_bought_today = 0.0
 
     # 子类实现
     def connect(self):
@@ -174,6 +181,16 @@ class BaseSidecar:
             wait = self.min_interval - (now - self.last_submit_ts)
             return None, f"下单限速冷却中，请 {wait:.1f}s 后再试"
         self.last_submit_ts = now
+        # P4 真实模式 sidecar 独立护栏（与 Rust 武装闸门纵深，任一被绕过都不下单）
+        if self.live_guarded:
+            amount = price * vol
+            if self.whitelist and code not in self.whitelist:
+                return None, f"真实模式拦截：标的 {code} 不在实盘白名单（sidecar 兜底）"
+            if self.max_amount and amount > self.max_amount + 1e-6:
+                return None, f"真实模式拦截：金额 {amount:.0f} 超过单笔上限 {self.max_amount:.0f}（sidecar 兜底）"
+            if side == "BUY" and self.max_daily and self.live_bought_today + amount > self.max_daily + 1e-6:
+                return None, (f"真实模式拦截：单日累计买入将达 {self.live_bought_today + amount:.0f}，"
+                              f"超过上限 {self.max_daily:.0f}（sidecar 兜底）")
         return {"code": code, "side": side, "price": price, "vol": vol, "cid": cid}, ""
 
     # 提交（后台线程执行，避免阻塞 stdin 读循环，保证半自动可收到 confirm）
@@ -363,6 +380,13 @@ class RealSidecar(BaseSidecar):
         self.app = None
         self.win = None
         self.selectors = {}
+        # P4 真实资金模式（非模拟）：打开 sidecar 纵深护栏，并强制半自动（忽略 --auto-confirm）。
+        self.live_guarded = not self.sim
+        if self.live_guarded:
+            if self.auto_confirm:
+                log("真实资金模式：强制半自动，已忽略 --auto-confirm")
+                self.auto_confirm = False
+            log("!! 真实资金模式已启用：sidecar 将操控真实同花顺账户下单，白名单 / 单笔 / 单日限额独立生效 !!")
         # 成交/资产回读依赖真机控件表格，首版如无法可靠解析则回显中文提示，避免编造数据。
         self._load_selectors()
 
@@ -397,6 +421,28 @@ class RealSidecar(BaseSidecar):
             self.win = self.app.window(title_re=title_re)
             self.win.wait("exists enabled visible ready", timeout=8)
             checks.append({"name": "client_window", "ok": True, "msg": "已找到交易窗口"})
+            # P4 账户类型交叉校验：模拟配置必须连模拟窗口，真实配置必须连真实窗口，防止误操作真钱。
+            try:
+                win_title = self.win.window_text() or ""
+            except Exception:  # noqa: BLE001
+                win_title = ""
+            sim_window = "模拟" in win_title
+            if self.sim and not sim_window:
+                checks.append({"name": "account_type", "ok": False,
+                               "msg": f"模拟模式却连接到非模拟窗口「{win_title}」，为防误操作已拒绝"})
+                emit({"event": "selfcheck", "vendor": self.vendor, "sim": self.sim,
+                      "live": self.live_guarded, "dryRun": False, "checks": checks})
+                emit({"event": "error", "message": "模拟模式检测到真实交易窗口，已中止（请确认打开的是同花顺「模拟炒股」）"})
+                return False
+            if self.live_guarded and sim_window:
+                checks.append({"name": "account_type", "ok": False,
+                               "msg": f"真实模式却连接到模拟炒股窗口「{win_title}」，已拒绝"})
+                emit({"event": "selfcheck", "vendor": self.vendor, "sim": self.sim,
+                      "live": self.live_guarded, "dryRun": False, "checks": checks})
+                emit({"event": "error", "message": "真实模式检测到模拟炒股窗口，已中止（请打开真实交易客户端）"})
+                return False
+            checks.append({"name": "account_type", "ok": True,
+                           "msg": "模拟炒股窗口" if self.sim else "真实交易窗口"})
         except Exception as e:  # noqa: BLE001
             checks.append({"name": "client_window", "ok": False, "msg": str(e)})
             emit({"event": "selfcheck", "vendor": self.vendor, "sim": self.sim, "dryRun": False, "checks": checks})
@@ -429,7 +475,7 @@ class RealSidecar(BaseSidecar):
             emit({"event": "error", "message": "连接自检未通过（见 selfcheck 明细）"})
             return False
         emit({"event": "connected", "vendor": self.vendor, "sim": self.sim,
-              "dryRun": False, "account": self.account or "THS",
+              "live": self.live_guarded, "dryRun": False, "account": self.account or "THS",
               "mode": "auto" if self.auto_confirm else "semi"})
         threading.Thread(target=self.heartbeat_loop, daemon=True).start()
         return True
@@ -554,6 +600,9 @@ class RealSidecar(BaseSidecar):
             ok = self._click_button(r"买入|卖出|确认下单|确定")
             if not ok:
                 raise RuntimeError("未能定位最终确认按钮，请校准模板")
+            # P4 真实模式：最终确认后占用单日买入额度（sidecar 本地兜底计数，Rust 端为权威）。
+            if self.live_guarded and side == "BUY":
+                self.live_bought_today += amount
             # 成交状态以客户端成交回报/委托列表为准；真机首版由查询或人工核对推进。
             emit({"event": "note", "client_order_id": cid,
                   "message": "已在客户端点击确认，成交回报请以委托查询/成交列表为准（真机首版）"})
@@ -602,11 +651,16 @@ def main():
     ap.add_argument("--auto-confirm", action="store_true", help="全自动：自动填单并确认")
     ap.add_argument("--dry-run", action="store_true", help="不连真实客户端，内置模拟")
     ap.add_argument("--min-interval", type=int, default=1200, help="下单限速毫秒")
+    ap.add_argument("--whitelist", default="", help="真实模式标的白名单（逗号分隔 6 位代码）")
+    ap.add_argument("--max-amount", type=float, default=0.0, help="真实模式单笔金额硬上限（0=不额外限制）")
+    ap.add_argument("--max-daily", type=float, default=0.0, help="真实模式单日累计买入硬上限（0=不额外限制）")
     args = ap.parse_args()
 
+    wl = [bare_code(x) for x in args.whitelist.split(",") if bare_code(x)]
     common = dict(vendor=args.vendor, account=args.account, sim=args.sim,
                   auto_confirm=args.auto_confirm, min_interval_ms=args.min_interval,
-                  template_dir=args.template_dir)
+                  template_dir=args.template_dir,
+                  whitelist=wl, max_amount=args.max_amount, max_daily=args.max_daily)
     if args.dry_run:
         sc = DryRunSidecar(**common)
     else:

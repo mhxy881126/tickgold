@@ -64,6 +64,20 @@ pub struct BrokerConfig {
     /// dry-run：不连接真实客户端，sidecar 内部模拟整套事件（无客户端/开发机验证用）。
     #[serde(default = "default_client_dry_run")]
     pub client_dry_run: bool,
+
+    // ===== P4 真实通道安全护栏（默认全部锁定，必须显式武装后才允许真实委托）=====
+    /// 实盘单日累计买入金额上限（绝对值硬兜底）。真实通道「当日已提买入合计 + 本笔」不得超过；0 = 锁定。
+    #[serde(default)]
+    pub live_max_daily_amount: f64,
+    /// 实盘标的白名单（裸 6 位代码，统一去后缀比较）。真实通道仅允许下单白名单内标的；默认空 = 全部禁止。
+    #[serde(default)]
+    pub live_codes_whitelist: Vec<String>,
+    /// 同花顺 GUI 真实通道武装前，必须已完成模拟盘真机演练（client 真实通道强制前置，用户自我声明 + 审计）。
+    #[serde(default)]
+    pub live_sim_drill_passed: bool,
+    /// 最近一次实盘武装时间戳（Unix 秒，审计用；0 = 未武装）。
+    #[serde(default)]
+    pub live_armed_at: i64,
 }
 
 fn default_client_vendor() -> String {
@@ -119,6 +133,12 @@ impl Default for BrokerConfig {
             client_auto_confirm: true,
             client_min_interval_ms: 1200,
             client_dry_run: true,
+
+            // P4 真实通道默认全部锁定：单日上限 0、白名单空、演练未通过、未武装。
+            live_max_daily_amount: 0.0,
+            live_codes_whitelist: Vec::new(),
+            live_sim_drill_passed: false,
+            live_armed_at: 0,
         }
     }
 }
@@ -127,9 +147,10 @@ impl BrokerConfig {
     pub fn is_client(&self) -> bool {
         self.kind == "client"
     }
-    /// 同花顺模拟客户端：走 sidecar 但不碰真钱（模拟炒股虚拟资金），无需 live 开关。
-    pub fn client_is_sim(&self) -> bool {
-        self.kind == "client" && self.client_sim
+    /// P4 真实通道（会动用真实资金）：QMT 官方接口，或客户端自动化的真实账户（非模拟）。
+    /// 命中即必须通过完整实盘武装闸门与强制半自动（GUI 通道）。
+    pub fn is_live(&self) -> bool {
+        self.kind == "qmt" || (self.is_client() && !self.client_sim)
     }
 }
 
@@ -175,12 +196,29 @@ mod tests {
         assert!(c.client_dry_run, "client 默认必须 dry-run");
         assert!(c.client_auto_confirm, "模拟环境默认全自动");
         assert_eq!(c.client_min_interval_ms, 1200);
-        assert!(c.client_is_sim() == false, "kind=mock 时 client_is_sim 必须为 false");
+        assert!(!c.is_client(), "kind=mock 时 is_client 必须为 false");
         let mut c2 = BrokerConfig::default();
         c2.kind = "client".to_string();
-        assert!(c2.is_client() && c2.client_is_sim(), "kind=client 且模拟时 client_is_sim 为 true");
+        assert!(c2.is_client() && !c2.is_live(), "kind=client 且模拟时不是真实通道");
         c2.client_sim = false;
-        assert!(!c2.client_is_sim(), "client_sim=false 时不为模拟");
+        assert!(c2.is_live(), "client_sim=false 时为真实通道");
+        // P4 真实通道默认全部锁定
+        assert!(c.live_max_daily_amount == 0.0, "P4 单日累计上限默认 0 锁定");
+        assert!(c.live_codes_whitelist.is_empty(), "P4 白名单默认空=全部禁止");
+        assert!(!c.live_sim_drill_passed, "P4 模拟演练默认未通过");
+        assert_eq!(c.live_armed_at, 0, "P4 默认未武装");
+        assert!(!c.is_live(), "默认 mock 不是真实通道");
+        let mut q = BrokerConfig::default();
+        q.kind = "qmt".to_string();
+        assert!(q.is_live(), "qmt 为真实通道");
+        let mut r = BrokerConfig::default();
+        r.kind = "client".to_string();
+        r.client_sim = false;
+        assert!(r.is_live(), "client 非模拟为真实通道");
+        let mut s = BrokerConfig::default();
+        s.kind = "client".to_string();
+        s.client_sim = true;
+        assert!(!s.is_live(), "client 模拟不是真实通道");
     }
 
     #[test]

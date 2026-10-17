@@ -1,7 +1,7 @@
 # TickGold 后端命令 / 迁移对照清单（v2.29.0 基线）
 
 > 巨石拆分（lib.rs → db/migrations.rs、commands.rs、setup.rs 模块化）的护栏。
-> 每次后端结构调整后，必须重新核对：**命令总数 219、迁移总数 57**，逐一对照无缺失。
+> 每次后端结构调整后，必须重新核对：**命令总数 222、迁移总数 58**，逐一对照无缺失。
 > （v2.30 起命令/迁移逐步增加，历史编号未全量回填；P0 新增条目见文末对应小节。）
 > 基线：v2.27.0（149 命令 / 48 迁移）；v2.28.0 净增 21 个命令
 > （资金流 3、组合层 2、风险仪表盘 1、异动阈值 2、板块日快照 3、备份中心 7、数据治理 3）
@@ -277,9 +277,27 @@
 > 前端与打包：设置 → 券商交易新增「同花顺模拟」模式卡（Python/客户端路径/模板目录/限速 + 模拟交易、dry-run、自动确认三开关 + 连接自检面板）；SignalBridge 新增「下单前核对」截图确认浮层（方向/代码/价格/数量/金额/模拟盘标记 + 截图 + 确认/取消），监听 broker:client_screenshot / broker:client_note；sidecar_client.py 已在 tauri.conf.json resources 注册随安装包分发。
 > 真机联调与 selectors.json 模板录制见 docs/同花顺模拟通道·真机联调手册.md。
 
+> P4 真实通道安全护栏（模块 broker，实际注册总数 222）新增 3 个命令：
+> - broker_live_whitelist_set（设置实盘标的白名单，标准化为裸 6 位代码、去重排序；武装后改动自动解除武装）
+> - broker_live_mark_drill（标记同花顺模拟盘真机演练是否通过，client 真实通道武装前置；自我声明 + 审计）
+> - broker_live_usage（只读：武装状态 / 单笔·单日限额 / 今日已用 / 剩余 / 白名单 / 演练标记，供武装状态条）
+>
+> 武装（broker_enable_live 重写，真实通道 = QMT 或同花顺真实账户，is_live()）前置 6 项：真实通道、单笔上限>0、
+> 单日上限>0 且 ≥ 单笔、白名单非空、client 须模拟演练通过且强制半自动、风险告知 ack；任一安全参数变更（安全指纹）
+> 自动解除武装并须重新武装。
+> 下单闸门（submit_with_sig，is_live 才生效）：强制半自动（client）→ 白名单（裸 6 位）→ 强制涨跌停行情快照
+> （无快照即拒，防乌龙指）→ 单笔金额上限 → 单日累计买入上限（只统计 is_live=1 的 BUY，排除已撤/已拒）。
+> config 新增 4 字段：live_max_daily_amount / live_codes_whitelist / live_sim_drill_passed / live_armed_at（serde 默认全锁）。
+> sidecar 纵深：client.rs 向 sidecar_client.py / sidecar_qmt.py 下发 --whitelist/--max-amount/--max-daily；
+> sidecar_client.py 真实模式强制忽略 --auto-confirm、pre_check 独立白名单/限额/单日累计、连接时按窗口标题交叉校验
+> 模拟/真实账户（连错即拒绝）；sidecar_qmt.py 无护栏参数时拒绝一切下单，submit 前独立校验。
+> 前端：设置 → 券商交易「实盘委托」升级为红色高危武装向导（单笔/单日限额、白名单增删、模拟演练勾选、
+> 输入「风险确认」、武装/解除、当日额度状态条）；SignalBridge 截图确认浮层真实态强红、金额醒目、确认按钮改为「提交真实委托」。
+> 上线流程 / 资金门槛 / 风险与熔断见 docs/真实通道上线手册.md。
+
 ---
 
-## 二、数据库迁移：57 条（主库 sqlite:stock-dock.db）
+## 二、数据库迁移：58 条（主库 sqlite:stock-dock.db）
 
 | v | description |
 | --- | --- |
@@ -340,5 +358,6 @@
 | 55 | create daily_mission (P0 AI trading workflow orchestrator: six-step state machine) |
 | 56 | P1 pre-market loop: daily_mission.briefing_json + candidate_pool (six-tactic scored candidates) |
 | 57 | P2 execution loop: daily_mission.feedback_json (daily trading summary writeback) |
+| 58 | P4 broker_order.is_live (mark real vs simulated orders; live daily buy quota counts is_live=1 only) |
 
 > ai.db 另有独立版本链（当前 v4），不在此表。

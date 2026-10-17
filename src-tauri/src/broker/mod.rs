@@ -376,8 +376,14 @@ pub fn broker_set_config(
     client_auto_confirm: Option<bool>,
     client_min_interval_ms: Option<u64>,
     client_dry_run: Option<bool>,
+    // P4 真实通道安全护栏
+    live_max_daily_amount: Option<f64>,
+    live_codes_whitelist: Option<Vec<String>>,
+    live_sim_drill_passed: Option<bool>,
 ) -> Result<(), String> {
     let mut cfg = mgr.config.lock().unwrap().clone();
+    // P4：记录武装安全指纹，安全参数任何变更都将强制重新武装（fail-safe）。
+    let before_fp = safety_fingerprint(&cfg);
     if let Some(v) = kind {
         cfg.kind = v;
     }
@@ -442,56 +448,268 @@ pub fn broker_set_config(
     if let Some(v) = client_dry_run {
         cfg.client_dry_run = v;
     }
+    // P4 真实通道安全护栏字段
+    if let Some(v) = live_max_daily_amount {
+        cfg.live_max_daily_amount = v.max(0.0);
+    }
+    if let Some(v) = live_codes_whitelist {
+        cfg.live_codes_whitelist = normalize_whitelist(&v);
+    }
+    if let Some(v) = live_sim_drill_passed {
+        cfg.live_sim_drill_passed = v;
+    }
     // 安全护栏：真实通道（非模拟）强制半自动，全自动仅模拟环境允许。
     if !cfg.client_sim {
         cfg.client_auto_confirm = false;
+    }
+    // P4 安全参数变更后，若当前已武装则自动解除，强制重新走武装向导。
+    if before_fp != safety_fingerprint(&cfg) && cfg.live_enabled {
+        cfg.live_enabled = false;
+        cfg.live_armed_at = 0;
+        log::warn!("实盘安全参数已变更，自动解除武装，需重新武装");
     }
     config::save(&ai.dir(), &cfg)?;
     *mgr.config.lock().unwrap() = cfg;
     Ok(())
 }
 
+/// P4 武装安全指纹：这些参数任一变更都必须重新武装。
+fn safety_fingerprint(c: &config::BrokerConfig) -> (String, f64, f64, Vec<String>, bool, bool) {
+    let mut wl = c.live_codes_whitelist.clone();
+    wl.sort();
+    (
+        c.kind.clone(),
+        c.live_max_order_amount,
+        c.live_max_daily_amount,
+        wl,
+        c.client_sim,
+        c.live_sim_drill_passed,
+    )
+}
+
+/// 提取标的代码中的裸 6 位数字（兼容 600519 / 600519.SH / sh600519 等写法）。
+pub fn bare_code(raw: &str) -> String {
+    let digits: String = raw.chars().filter(|c| c.is_ascii_digit()).collect();
+    if digits.len() >= 6 {
+        digits[digits.len() - 6..].to_string()
+    } else {
+        digits
+    }
+}
+
+/// 白名单代码标准化为裸 6 位数字（去重排序）。
+pub fn normalize_whitelist(codes: &[String]) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out: Vec<String> = Vec::new();
+    for c in codes {
+        let b = bare_code(c.trim());
+        if b.len() == 6 && seen.insert(b.clone()) {
+            out.push(b);
+        }
+    }
+    out.sort();
+    out
+}
+
+/// 北京时区当日 00:00 对应的 UTC 毫秒（单日累计统计下界）。
+fn beijing_today_start_millis() -> i64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let bj = now + 8 * 3600;
+    let day_start_bj = bj - bj.rem_euclid(86400);
+    (day_start_bj - 8 * 3600) * 1000
+}
+
+/// P4 当日真实买入委托金额合计（is_live=1；排除已撤/已拒；created_at 为毫秒）。
+fn live_buy_amount_today(conn: &Connection) -> f64 {
+    let start = beijing_today_start_millis();
+    conn.query_row(
+        "SELECT COALESCE(SUM(price*vol),0.0) FROM broker_order
+         WHERE is_live=1 AND side='BUY' AND created_at>=?1
+           AND status NOT IN (?2, ?3)",
+        rusqlite::params![start, protocol::CANCELLED, protocol::REJECTED],
+        |r| r.get::<_, f64>(0),
+    )
+    .unwrap_or(0.0)
+}
+
+fn unix_now_sec() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// 实盘武装开关（开启真实委托）。P4：支持 QMT 与同花顺真实客户端；武装必须同时满足全部安全前置。
 #[tauri::command]
 pub fn broker_enable_live(
     ai: State<'_, crate::ai::AiState>,
     mgr: State<'_, BrokerManager>,
     enable: bool,
     ack: Option<bool>,
-app: tauri::AppHandle) -> Result<(), String> {
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     crate::license::require_pro(&app)?;
     let mut cfg = mgr.config.lock().unwrap().clone();
     if enable {
-        // P1-1 程序化交易合规护栏：实盘开通三前置条件（见 docs/合规优化路线）
-        // ① 仅 QMT 适配器可开实盘（mock 为内置模拟，不存在真实委托）
-        if cfg.kind != "qmt" {
-            return Err(
-                "实盘仅支持 QMT 适配器：请先在「券商通道」选择 QMT 实盘后再开启".to_string(),
-            );
+        // 1) 通道必须为真实通道
+        if cfg.kind == "mock" {
+            return Err("当前为模拟交易，无需也无法武装实盘".to_string());
         }
-        // ② 实盘单笔金额上限必须显式设置（0 = 实盘锁定，保留最小限额才允许放开）
+        if cfg.is_client() && cfg.client_sim {
+            return Err("同花顺当前为模拟炒股（虚拟资金），请先关闭「模拟交易」并配置真实客户端".to_string());
+        }
+        if !cfg.is_live() {
+            return Err("仅 QMT 或同花顺真实客户端可武装实盘".to_string());
+        }
+        // 2) 单笔金额上限
         if cfg.live_max_order_amount <= 0.0 {
-            return Err(
-                "实盘锁定中：请先设置「实盘单笔金额上限」（>0 元）后才能开启实盘".to_string(),
-            );
+            return Err("请先设置「实盘单笔金额上限」（>0）".to_string());
         }
-        // ③ 必须已阅读实盘风险告知书并确认（前端二次确认弹窗）
+        // 3) 单日累计买入上限
+        if cfg.live_max_daily_amount <= 0.0 {
+            return Err("请先设置「实盘单日累计买入上限」（>0）".to_string());
+        }
+        if cfg.live_max_daily_amount < cfg.live_max_order_amount {
+            return Err("单日累计上限不得小于单笔上限".to_string());
+        }
+        // 4) 白名单非空
+        if cfg.live_codes_whitelist.is_empty() {
+            return Err("请先设置实盘标的白名单（至少 1 只），真实通道仅允许白名单内标的".to_string());
+        }
+        // 5) 同花顺真实客户端：模拟演练通过 + 强制半自动
+        if cfg.is_client() {
+            if !cfg.live_sim_drill_passed {
+                return Err("同花顺真实通道须先完成模拟盘真机演练，并在武装向导中确认".to_string());
+            }
+            cfg.client_auto_confirm = false;
+        }
+        // 6) 风险告知 + 程序化交易报告义务
         if !ack.unwrap_or(false) {
-            return Err(
-                "请先阅读实盘风险告知书并确认（含程序化交易报告义务提醒）".to_string(),
+            return Err("请先阅读并确认实盘风险告知书（含程序化交易报告义务）".to_string());
+        }
+        cfg.live_enabled = true;
+        cfg.live_armed_at = unix_now_sec();
+        let wl = cfg.live_codes_whitelist.len();
+        let kind_label = cfg.kind.clone();
+        let single = cfg.live_max_order_amount;
+        let daily = cfg.live_max_daily_amount;
+        let semi = !cfg.client_auto_confirm;
+        config::save(&ai.dir(), &cfg)?;
+        *mgr.config.lock().unwrap() = cfg;
+        log::warn!(
+            "实盘已武装（{kind_label}）：单笔上限 {single:.0} 元，单日累计上限 {daily:.0} 元，白名单 {wl} 只，半自动={semi}。程序化交易须自行向交易所履行报告义务"
+        );
+        if let Ok(conn) = maindb::open_readwrite(&ai.dir()) {
+            audit(
+                &conn,
+                "LIVE-ARM",
+                "live_armed",
+                &format!("kind={kind_label} 单笔上限={single:.0} 单日上限={daily:.0} 白名单={wl}"),
+                "broker",
             );
         }
+        Ok(())
+    } else {
+        cfg.live_enabled = false;
+        cfg.live_armed_at = 0;
+        config::save(&ai.dir(), &cfg)?;
+        *mgr.config.lock().unwrap() = cfg;
+        log::warn!("实盘已解除武装");
+        if let Ok(conn) = maindb::open_readwrite(&ai.dir()) {
+            audit(&conn, "LIVE-ARM", "live_disarmed", "实盘已解除武装", "broker");
+        }
+        Ok(())
     }
-    cfg.live_enabled = enable;
+}
+
+/// P4 设置实盘白名单（标准化为裸 6 位代码，去重排序）；武装后改动自动解除武装。
+#[tauri::command]
+pub fn broker_live_whitelist_set(
+    ai: State<'_, crate::ai::AiState>,
+    mgr: State<'_, BrokerManager>,
+    codes: Vec<String>,
+    app: tauri::AppHandle,
+) -> Result<Vec<String>, String> {
+    crate::license::require_pro(&app)?;
+    let mut cfg = mgr.config.lock().unwrap().clone();
+    let wl = normalize_whitelist(&codes);
+    cfg.live_codes_whitelist = wl.clone();
+    let mut disarmed = false;
+    if cfg.live_enabled {
+        cfg.live_enabled = false;
+        cfg.live_armed_at = 0;
+        disarmed = true;
+    }
     config::save(&ai.dir(), &cfg)?;
     *mgr.config.lock().unwrap() = cfg;
-    if enable {
-        log::warn!(
-            "实盘开关已开启（QMT）。提示：按《证券市场程序化交易管理规定（试行）》，程序化交易须向交易所履行报告义务，请自行完成报告"
+    if disarmed {
+        log::warn!("实盘白名单已变更，自动解除武装");
+    }
+    Ok(wl)
+}
+
+/// P4 标记同花顺模拟盘真机演练是否通过（client 真实通道武装前置；自我声明 + 审计）。
+#[tauri::command]
+pub fn broker_live_mark_drill(
+    ai: State<'_, crate::ai::AiState>,
+    mgr: State<'_, BrokerManager>,
+    passed: bool,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    crate::license::require_pro(&app)?;
+    let mut cfg = mgr.config.lock().unwrap().clone();
+    cfg.live_sim_drill_passed = passed;
+    let mut disarmed = false;
+    if cfg.live_enabled && !passed {
+        cfg.live_enabled = false;
+        cfg.live_armed_at = 0;
+        disarmed = true;
+    }
+    config::save(&ai.dir(), &cfg)?;
+    *mgr.config.lock().unwrap() = cfg;
+    if let Ok(conn) = maindb::open_readwrite(&ai.dir()) {
+        audit(
+            &conn,
+            "LIVE-ARM",
+            "sim_drill",
+            if passed {
+                "模拟演练已确认通过"
+            } else {
+                "模拟演练标记已撤销"
+            },
+            "broker",
         );
-    } else {
-        log::info!("实盘开关已关闭");
+    }
+    if disarmed {
+        log::warn!("模拟演练标记被撤销，自动解除武装");
     }
     Ok(())
+}
+
+/// P4 实盘当日额度与武装状态读数（武装状态条用）。
+#[tauri::command]
+pub fn broker_live_usage(
+    ai: State<'_, crate::ai::AiState>,
+    mgr: State<'_, BrokerManager>,
+) -> Result<serde_json::Value, String> {
+    let cfg = mgr.config.lock().unwrap().clone();
+    let conn = maindb::open_readonly(&ai.dir())?;
+    let used = live_buy_amount_today(&conn);
+    Ok(serde_json::json!({
+        "liveEnabled": cfg.live_enabled,
+        "kind": cfg.kind,
+        "isLive": cfg.is_live(),
+        "singleLimit": cfg.live_max_order_amount,
+        "dailyLimit": cfg.live_max_daily_amount,
+        "usedToday": used,
+        "remaining": (cfg.live_max_daily_amount - used).max(0.0),
+        "whitelist": cfg.live_codes_whitelist,
+        "drillPassed": cfg.live_sim_drill_passed,
+        "armedAt": cfg.live_armed_at,
+    }))
 }
 
 #[tauri::command]
@@ -953,7 +1171,7 @@ pub(crate) async fn submit_with_sig(
         }
         "qmt" | "client" => {
             // 实盘第一级：QMT 必须显式开启实盘开关；同花顺客户端仅在真实通道（非模拟）时要求。
-            let need_live = cfg.kind == "qmt" || (cfg.is_client() && !cfg.client_is_sim());
+            let need_live = cfg.is_live();
             if need_live && !cfg.live_enabled {
                 return Err("实盘交易未启用：请先在券商设置中开启实盘开关".to_string());
             }
@@ -1026,30 +1244,66 @@ pub(crate) async fn submit_with_sig(
         return Err(reason);
     }
 
-    // 实盘第一级最小限额：默认 0 = 锁定，须用户显式设置；单笔金额超限拒绝。
-    // 同花顺模拟（client_sim）不碰真钱，不做实盘限额；真实客户端通道（P4）同样受约束。
-    let live_amount_gated = cfg.kind == "qmt" || (cfg.is_client() && !cfg.client_is_sim());
-    if live_amount_gated {
+    // ===== P4 真实通道纵深闸门（is_live：QMT 或同花顺真实客户端账户）=====
+    let is_live = cfg.is_live();
+    if is_live {
+        // 0) 同花顺真实客户端：运行时再次强制半自动（GUI 无人值守误操作双保险）。
+        if cfg.is_client() && cfg.client_auto_confirm {
+            let reason = "同花顺真实通道必须半自动，已拦截自动委托".to_string();
+            log_gate_reject(&conn, &cfg.kind, sig_id, &reason);
+            return Err(reason);
+        }
+        // 1) 标的白名单（统一裸 6 位代码比较）。
+        let bare = bare_code(&code);
+        if !cfg.live_codes_whitelist.iter().any(|w| bare_code(w) == bare) {
+            let reason = format!("标的 {code} 不在实盘白名单，真实通道已拒绝");
+            log_gate_reject(&conn, &cfg.kind, sig_id, &reason);
+            return Err(format!("{reason}（请在武装向导加入白名单）"));
+        }
+        // 2) 强制涨跌停行情快照（无行情即拒绝，乌龙指 fail-safe：gate 以涨停价为买入硬边界）。
+        if market.and_then(|m| m.limit_up).is_none()
+            || market.and_then(|m| m.limit_down).is_none()
+        {
+            let reason = "真实通道行情未就绪（缺少涨跌停价），已拒绝下单以防乌龙指".to_string();
+            log_gate_reject(&conn, &cfg.kind, sig_id, &reason);
+            return Err(format!("{reason}，请稍后重试"));
+        }
+        // 3) 单笔金额上限（0 = 锁定；超限拒绝）。
         if cfg.live_max_order_amount <= 0.0 {
-            let reason = "实盘已锁定：请先在券商设置中设置单笔金额上限".to_string();
+            let reason = "实盘已锁定：请先在武装向导中设置单笔金额上限".to_string();
             log_gate_reject(&conn, &cfg.kind, sig_id, &reason);
             return Err(reason);
         }
         let amount = price * vol as f64;
         if amount > cfg.live_max_order_amount {
             let reason = format!(
-                "单笔金额 {amount:.0} 元超过实盘上限 {:.0} 元",
+                "单笔金额 {amount:.0} 元超过实盘单笔上限 {:.0} 元",
                 cfg.live_max_order_amount
             );
             log_gate_reject(&conn, &cfg.kind, sig_id, &reason);
             return Err(reason);
+        }
+        // 4) 单日累计买入上限（仅统计真实买入委托，排除已撤/已拒）。
+        if side == "BUY" {
+            let used = live_buy_amount_today(&conn);
+            if used + amount > cfg.live_max_daily_amount {
+                let reason = format!(
+                    "单日累计买入将达 {:.0} 元（已用 {:.0} + 本笔 {:.0}），超过单日上限 {:.0} 元",
+                    used + amount,
+                    used,
+                    amount,
+                    cfg.live_max_daily_amount
+                );
+                log_gate_reject(&conn, &cfg.kind, sig_id, &reason);
+                return Err(format!("{reason}，已拦截"));
+            }
         }
     }
 
     // 写委托
     let account_id = cfg.account_id.clone();
     let kind = cfg.kind.clone();
-    protocol::insert(&conn, sig_id, &kind, &account_id, &code, &side, price, vol)?;
+    protocol::insert(&conn, sig_id, &kind, &account_id, &code, &side, price, vol, is_live)?;
     audit(
         &conn,
         sig_id,

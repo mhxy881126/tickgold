@@ -249,10 +249,13 @@ async function onBrokerSend(t: SignalTicketInfo) {
       bConnected.value = true;
     }
     if (bLive.value) {
+      const liveAmount = (Number(t.price) || 0) * (Number(t.vol) || 0);
       const ok = await confirmDialog({
-        title: "提交实盘委托",
-        message: `实盘已开启，确认向券商提交真实委托 ${t.code} ${t.vol} 股？`,
-        confirmText: "提交",
+        title: "真实资金委托 · 二次确认",
+        message:
+          `即将向券商提交真实委托：${t.code} ${t.vol} 股，参考金额约 ${liveAmount.toLocaleString("zh-CN")} 元。\n\n` +
+          "该委托受白名单 / 单笔 / 单日限额 / 涨跌停护栏约束，越界将被自动拒绝。确认提交真实委托？",
+        confirmText: "提交真实委托",
         danger: true,
       });
       if (!ok) return;
@@ -689,8 +692,13 @@ onUnmounted(() => {
     <!-- P3 同花顺客户端：半自动下单截图确认浮层 -->
     <transition name="shot-fade">
       <div v-if="pendingShot" class="shot-mask" @click.self="dismissShot">
-        <div class="shot-modal">
-          <div class="shot-modal-title">下单前核对 · 同花顺模拟</div>
+        <div class="shot-modal" :class="{ live: pendingShot.expect?.sim === false }">
+          <div class="shot-modal-title" :class="{ live: pendingShot.expect?.sim === false }">
+            {{ pendingShot.expect?.sim === false ? "下单前核对 · 真实资金委托" : "下单前核对 · 同花顺模拟" }}
+          </div>
+          <div v-if="pendingShot.expect?.sim === false" class="shot-live-banner">
+            真实资金委托：点击下方确认将在真实账户提交真实订单，资金将发生真实变动
+          </div>
           <div class="shot-expect">
             <span class="shot-tag" :class="pendingShot.expect?.side === 'SELL' ? 'sell' : 'buy'">
               {{ pendingShot.expect?.side === "SELL" ? "卖出" : "买入" }}
@@ -698,8 +706,8 @@ onUnmounted(() => {
             <span class="shot-code">{{ pendingShot.expect?.code }}</span>
             <span class="shot-fld">价格 {{ pendingShot.expect?.price }}</span>
             <span class="shot-fld">数量 {{ pendingShot.expect?.vol }}</span>
-            <span class="shot-fld">金额 {{ pendingShot.expect?.amount ? pendingShot.expect.amount.toLocaleString() : "—" }} 元</span>
-            <span class="shot-fld sim">{{ pendingShot.expect?.sim ? "模拟盘" : "真实盘" }}</span>
+            <span class="shot-fld" :class="{ 'amount-live': pendingShot.expect?.sim === false }">金额 {{ pendingShot.expect?.amount ? pendingShot.expect.amount.toLocaleString() : "—" }} 元</span>
+            <span class="shot-fld" :class="pendingShot.expect?.sim ? 'sim' : 'reallive'">{{ pendingShot.expect?.sim ? "模拟盘" : "真实盘" }}</span>
             <span v-if="pendingShot.expect?.autoConfirm" class="shot-fld">自动确认</span>
           </div>
           <div class="shot-img-wrap">
@@ -710,7 +718,7 @@ onUnmounted(() => {
           <div class="shot-tip">请核对截图中的代码 / 方向 / 价格 / 数量是否与上方一致，确认后 sidecar 才会在客户端点「确定」。</div>
           <div class="shot-actions">
             <button class="act ghost" :disabled="shotBusy" @click="onClientDecision(false)">取消委托</button>
-            <button class="act primary" :disabled="shotBusy" @click="onClientDecision(true)">{{ shotBusy ? "处理中…" : "核对无误 · 确认下单" }}</button>
+            <button class="act" :class="pendingShot.expect?.sim === false ? 'dangerlive' : 'primary'" :disabled="shotBusy" @click="onClientDecision(true)">{{ shotBusy ? "处理中…" : (pendingShot.expect?.sim === false ? "核对无误 · 提交真实委托" : "核对无误 · 确认下单") }}</button>
           </div>
         </div>
       </div>
@@ -1156,6 +1164,19 @@ onUnmounted(() => {
 .shot-mask { position: fixed; inset: 0; background: rgba(5,8,15,.72); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 1200; padding: 24px; }
 .shot-modal { width: min(560px, 94vw); max-height: 88vh; overflow: auto; background: #12161f; border: 1px solid rgba(90,160,255,.35); border-radius: 12px; padding: 16px; box-shadow: 0 18px 60px rgba(0,0,0,.6); }
 .shot-modal-title { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+.shot-modal.live {
+  border-color: rgba(242,54,69,.7);
+  background: #1a1216;
+  box-shadow: 0 18px 60px rgba(242,54,69,.22);
+}
+.shot-modal-title.live { color: #ff5a6a; }
+.shot-live-banner {
+  margin-bottom: 10px; padding: 8px 12px; border-radius: 8px;
+  background: rgba(242,54,69,.16); border: 1px solid rgba(242,54,69,.5);
+  color: #ff8a96; font-size: 12px; font-weight: 700; line-height: 1.6;
+}
+.shot-fld.reallive { color: #ff5a6a; font-weight: 700; }
+.shot-fld.amount-live { font-size: 16px; font-weight: 800; color: #ff5a6a; font-variant-numeric: tabular-nums; }
 .shot-expect { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 10px; }
 .shot-tag { padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 12px; }
 .shot-tag.buy { background: rgba(255,90,90,.18); color: #ff7a7a; }

@@ -31,6 +31,12 @@ def log(msg):
     sys.stderr.flush()
 
 
+def bare_code(raw):
+    """提取标的代码中的裸 6 位数字（兼容 600519 / 600519.SH / sh600519）。"""
+    digits = "".join(ch for ch in str(raw) if ch.isdigit())
+    return digits[-6:] if len(digits) >= 6 else digits
+
+
 # QMT 委托状态码 → TickGold 状态
 _QMT_STATUS = {
     48: "submitting",  # 未报
@@ -47,7 +53,7 @@ _QMT_STATUS = {
 
 
 class Sidecar:
-    def __init__(self, qmt_path, account_id):
+    def __init__(self, qmt_path, account_id, whitelist=None, max_amount=0.0, max_daily=0.0):
         self.qmt_path = qmt_path
         self.account_id = account_id
         self.trader = None
@@ -55,6 +61,37 @@ class Sidecar:
         # xtquant seq/order_id → client_order_id(sig_id)
         self.order_map = {}
         self.map_lock = threading.Lock()
+        # P4 真实通道纵深护栏（miniQMT 恒为真实资金）
+        self.whitelist = set(whitelist or [])
+        self.max_amount = float(max_amount or 0.0)
+        self.max_daily = float(max_daily or 0.0)
+        self.live_bought_today = 0.0
+
+    def live_guard(self, code, side, price, vol):
+        """P4 真实通道 sidecar 独立护栏；返回错误信息，空串表示通过。"""
+        bare = bare_code(code)
+        amount = price * vol
+        # QMT 恒为真实资金：未配置白名单/单笔上限时拒绝一切下单（fail-safe）。
+        if not self.whitelist:
+            return "真实通道未配置标的白名单，sidecar 拒绝下单（请先在武装向导设置并武装）"
+        if self.max_amount <= 0:
+            return "真实通道未配置单笔金额上限，sidecar 拒绝下单（请先在武装向导设置并武装）"
+        if len(bare) != 6:
+            return f"证券代码非法：{code}（应为 6 位数字）"
+        if side not in ("BUY", "SELL"):
+            return f"买卖方向非法：{side}"
+        if price <= 0:
+            return f"价格必须大于 0：{price}"
+        if vol <= 0 or vol % 100 != 0:
+            return f"数量必须为 100 的正整数倍：{vol}"
+        if bare not in self.whitelist:
+            return f"标的 {bare} 不在实盘白名单（sidecar 兜底）"
+        if amount > self.max_amount + 1e-6:
+            return f"金额 {amount:.0f} 超过单笔上限 {self.max_amount:.0f}（sidecar 兜底）"
+        if side == "BUY" and self.max_daily and self.live_bought_today + amount > self.max_daily + 1e-6:
+            return (f"单日累计买入将达 {self.live_bought_today + amount:.0f}，"
+                    f"超过上限 {self.max_daily:.0f}（sidecar 兜底）")
+        return ""
 
     # ----- 生命周期 -----
     def connect(self):
@@ -96,6 +133,12 @@ class Sidecar:
         price = float(p.get("price", 0))
         vol = int(p.get("vol", 0))
         cid = p.get("client_order_id", "")
+        # P4 下单前独立护栏（与 Rust 武装闸门纵深）
+        err = self.live_guard(code, side, price, vol)
+        if err:
+            log(f"真实通道拦截：{err}")
+            emit({"event": "error", "client_order_id": cid, "message": err})
+            return
         order_type = xtconstant.STOCK_BUY if side == "BUY" else xtconstant.STOCK_SELL
         seq = self.trader.order_stock(
             self.account, code, order_type, vol,
@@ -107,6 +150,9 @@ class Sidecar:
             return
         with self.map_lock:
             self.order_map[int(seq)] = cid
+        # P4 受理后占用单日买入额度（sidecar 本地兜底，Rust 端为权威）。
+        if side == "BUY":
+            self.live_bought_today += price * vol
 
     def cancel(self, p):
         # 优先用 broker_order_id；否则用 client_order_id 反查 seq
@@ -243,9 +289,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--qmt", required=True)
     ap.add_argument("--account", required=True)
+    ap.add_argument("--whitelist", default="", help="真实模式标的白名单（逗号分隔 6 位代码）")
+    ap.add_argument("--max-amount", type=float, default=0.0, help="真实模式单笔金额硬上限")
+    ap.add_argument("--max-daily", type=float, default=0.0, help="真实模式单日累计买入硬上限")
     args = ap.parse_args()
 
-    sc = Sidecar(args.qmt, args.account)
+    wl = [bare_code(x) for x in args.whitelist.split(",") if bare_code(x)]
+    sc = Sidecar(args.qmt, args.account,
+                 whitelist=wl, max_amount=args.max_amount, max_daily=args.max_daily)
     if not sc.connect():
         # 连接失败：短暂等待后退出，Rust 侧通过进程退出感知
         time.sleep(0.5)

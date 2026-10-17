@@ -25,9 +25,13 @@ import {
   mockSeedPosition,
   mockReset,
   brokerClientSelfcheck,
+  brokerLiveWhitelistSet,
+  brokerLiveMarkDrill,
+  brokerLiveUsage,
   type BrokerStatus,
   type BrokerConfigFull,
   type ClientSelfcheck,
+  type LiveUsage,
 } from "../broker/api";
 import {
   pluginList,
@@ -995,6 +999,167 @@ function toggleClientAuto() {
   if (!bForm.value || !bForm.value.clientSim) return;
   bForm.value.clientAutoConfirm = !bForm.value.clientAutoConfirm;
 }
+
+// ===== P4 实盘武装向导 =====
+const liveUsage = ref<LiveUsage | null>(null);
+const wlInput = ref("");
+const armAckText = ref("");
+const armBusy = ref(false);
+const armError = ref("");
+const armErrorOk = ref(false);
+const isLiveChannel = computed(() => {
+  const f = bForm.value;
+  return !!f && (f.kind === "qmt" || (f.kind === "client" && !f.clientSim));
+});
+const wlList = computed<string[]>(() => bForm.value?.liveCodesWhitelist ?? []);
+function bFmtMoney(n: number) {
+  return `${(Number(n) || 0).toLocaleString("zh-CN", { maximumFractionDigits: 0 })} 元`;
+}
+function bare6(raw: string) {
+  const d = (raw || "").replace(/\D/g, "");
+  return d.length >= 6 ? d.slice(-6) : d;
+}
+async function refreshLiveUsage() {
+  if (!isLiveChannel.value) {
+    liveUsage.value = null;
+    return;
+  }
+  try {
+    liveUsage.value = await brokerLiveUsage();
+  } catch {
+    liveUsage.value = null;
+  }
+}
+async function bAddWhitelist() {
+  if (!bForm.value) return;
+  const code = bare6(wlInput.value);
+  if (!/^\d{6}$/.test(code)) {
+    bFlash("请输入 6 位数字证券代码");
+    return;
+  }
+  if (bForm.value.liveCodesWhitelist.includes(code)) {
+    bFlash("该代码已在白名单");
+    wlInput.value = "";
+    return;
+  }
+  try {
+    const next = await brokerLiveWhitelistSet([...bForm.value.liveCodesWhitelist, code]);
+    bForm.value.liveCodesWhitelist = next;
+    wlInput.value = "";
+    bFlash(`已加入白名单 ${code}（武装后改动将自动解除武装）`);
+    await refreshLiveUsage();
+  } catch (e) {
+    bFlash(String(e));
+  }
+}
+async function bRemoveWhitelist(code: string) {
+  if (!bForm.value) return;
+  try {
+    const next = await brokerLiveWhitelistSet(
+      bForm.value.liveCodesWhitelist.filter((c) => c !== code),
+    );
+    bForm.value.liveCodesWhitelist = next;
+    bFlash(`已移出白名单 ${code}（若已武装将自动解除）`);
+    await refreshLiveUsage();
+  } catch (e) {
+    bFlash(String(e));
+  }
+}
+async function bToggleDrill() {
+  if (!bForm.value) return;
+  const next = !bForm.value.liveSimDrillPassed;
+  if (next) {
+    const ok = await confirmDialog({
+      title: "确认模拟演练已完成",
+      danger: true,
+      confirmText: "我已完成模拟演练",
+      message:
+        "请确认你已在同花顺「模拟炒股」中完成真机演练：登录、半自动连续成功若干笔、撤单、资产/持仓回报均正常。\n\n勾选后才可武装真实通道。确认勾选？",
+    });
+    if (!ok) return;
+  }
+  try {
+    await brokerLiveMarkDrill(next);
+    bForm.value.liveSimDrillPassed = next;
+    bFlash(next ? "模拟演练已标记通过" : "已撤销模拟演练标记");
+    await refreshLiveUsage();
+  } catch (e) {
+    bFlash(String(e));
+  }
+}
+async function bSaveLiveLimits() {
+  if (!bForm.value) return;
+  const single = Number(bForm.value.liveMaxOrderAmount);
+  const daily = Number(bForm.value.liveMaxDailyAmount);
+  if (!(single >= 0) || !(daily >= 0)) {
+    bFlash("限额须为不小于 0 的数字");
+    return;
+  }
+  if (single > 0 || daily > 0) {
+    const ok = await confirmDialog({
+      title: "保存实盘限额",
+      danger: true,
+      confirmText: "保存限额",
+      message: `单笔上限 ${single.toLocaleString("zh-CN")} 元、单日累计买入上限 ${daily.toLocaleString("zh-CN")} 元。\n\n任一为 0 时实盘保持锁定；修改安全参数后若已武装将自动解除。确认保存？`,
+    });
+    if (!ok) return;
+  }
+  try {
+    await brokerSetConfig({ liveMaxOrderAmount: single, liveMaxDailyAmount: daily });
+    bFlash("实盘限额已保存");
+    await refreshLiveUsage();
+  } catch (e) {
+    bFlash(String(e));
+  }
+}
+async function bArm() {
+  if (!bForm.value) return;
+  armError.value = "";
+  armErrorOk.value = false;
+  if (!license.isPro) {
+    armError.value = "真实通道接入为 Pro 订阅功能，请先订阅后武装";
+    return;
+  }
+  if (armAckText.value.trim() !== "风险确认") {
+    armError.value = "请在确认框输入「风险确认」四个字";
+    return;
+  }
+  armBusy.value = true;
+  try {
+    await brokerEnableLive(true, true);
+    bForm.value.liveEnabled = true;
+    armAckText.value = "";
+    armError.value = "实盘已武装：真实通道进入半自动，仅白名单标的、限额内可下单";
+    armErrorOk.value = true;
+    await refreshBStatus();
+    await refreshLiveUsage();
+  } catch (e) {
+    armError.value = String(e);
+    armErrorOk.value = false;
+    bForm.value.liveEnabled = false;
+  } finally {
+    armBusy.value = false;
+  }
+}
+async function bDisarm() {
+  const ok = await confirmDialog({
+    title: "解除实盘武装",
+    confirmText: "解除武装",
+    message: "解除后真实通道将停止接受任何真实委托，直到重新武装。确认解除？",
+  });
+  if (!ok) return;
+  try {
+    await brokerEnableLive(false, false);
+    if (bForm.value) bForm.value.liveEnabled = false;
+    armError.value = "实盘已解除武装";
+    armErrorOk.value = true;
+    await refreshBStatus();
+    await refreshLiveUsage();
+  } catch (e) {
+    armError.value = String(e);
+    armErrorOk.value = false;
+  }
+}
 async function refreshBStatus() {
   try {
     bStatus.value = await brokerGetStatus();
@@ -1008,6 +1173,7 @@ async function loadBrokerTab() {
     await refreshBStatus();
     await bRefreshSelfcheck();
     brokerLoaded.value = true;
+    await refreshLiveUsage();
   } catch (e) {
     bFlash(`加载失败：${e}`);
   }
@@ -1031,6 +1197,7 @@ async function saveBroker() {
       maxDrawdownLimitPct: f.maxDrawdownLimitPct,
       consecutiveLossLimit: f.consecutiveLossLimit,
       liveMaxOrderAmount: f.liveMaxOrderAmount,
+      liveMaxDailyAmount: f.liveMaxDailyAmount,
       clientVendor: f.clientVendor,
       clientSim: f.clientSim,
       clientPath: f.clientPath,
@@ -1064,34 +1231,6 @@ async function bDisconnect() {
     bFlash(String(e));
   }
 }
-async function toggleLive(v: boolean) {
-  if (v && !license.isPro) {
-    bFlash("QMT 实盘接入为 Pro 订阅功能，请先订阅后开启");
-    if (bForm.value) bForm.value.liveEnabled = false;
-    return;
-  }
-  if (v) {
-    // P1-1 实盘风险告知书 + 程序化交易报告义务（二次确认）
-    const ok = await confirmDialog({
-      title: "实盘风险告知书",
-      message:
-        "开启实盘前请逐条确认：\n\n① 实盘委托将产生真实资金变动，风险自担；\n② 本软件的自动/半自动交易属于程序化交易，按《证券市场程序化交易管理规定（试行）》，你须自行向交易所履行程序化交易报告义务；\n③ 建议先在模拟盘充分验证策略后再启用实盘；\n④ 单笔金额上限已设置（>0 元）方可开启。\n\n确认已阅读并接受上述条款？",
-      confirmText: "已阅读并确认",
-      danger: true,
-    });
-    if (!ok) {
-      if (bForm.value) bForm.value.liveEnabled = false;
-      return;
-    }
-  }
-  try {
-    await brokerEnableLive(v, v); // ack=true 仅在开启时生效；关闭无需确认
-    await refreshBStatus();
-    bFlash(v ? "实盘已开启（QMT），请谨慎操作" : "实盘已关闭");
-  } catch (e) {
-    bFlash(String(e));
-  }
-}
 // v3.0.0-rc 一键急停：封新委托 + 停自动执行 + 撤全部条件单 / 在途委托 + 断通道
 async function bEmergencyHalt() {
   const ok = await confirmDialog({
@@ -1115,31 +1254,6 @@ async function bReleaseKill() {
     await brokerReleaseKill();
     await refreshBStatus();
     bFlash("Kill Switch 已解除");
-  } catch (e) {
-    bFlash(String(e));
-  }
-}
-// 实盘单笔金额上限：默认 0 = 锁定；设置 >0 放开实盘委托，须 danger 二次确认
-async function bSaveLiveLimit() {
-  if (!bForm.value) return;
-  const amount = Number(bForm.value.liveMaxOrderAmount);
-  if (!(amount >= 0) || Number.isNaN(amount)) {
-    bFlash("单笔金额上限须为不小于 0 的数字");
-    return;
-  }
-  if (amount > 0) {
-    const ok = await confirmDialog({
-      title: "放开实盘限额",
-      danger: true,
-      confirmText: "设置并放开",
-      message:
-        `单笔金额上限设为 ${amount.toLocaleString("zh-CN")} 元后，已确认信号将可能提交真实委托，单笔成交金额不得超过该上限。\n\n设为 0 则实盘重新锁定。确认设置？`,
-    });
-    if (!ok) return;
-  }
-  try {
-    await brokerSetConfig({ liveMaxOrderAmount: amount });
-    bFlash(amount > 0 ? `实盘单笔上限已设为 ${amount.toLocaleString("zh-CN")} 元` : "实盘已锁定（上限 0）");
   } catch (e) {
     bFlash(String(e));
   }
@@ -2218,31 +2332,88 @@ async function clearL2Key(r: PluginRow) {
                   <div class="section-sub">客户端模拟炒股为虚拟资金，不提交真实委托；关闭「模拟交易」开关即进入真实通道（后续版本开放）。</div>
                 </div>
               </div>
-              <div v-else-if="bForm" class="bk-live-card" :class="{ on: bForm.liveEnabled }">
-                <div>
-                  <div class="bk-live-title">{{ bForm.liveEnabled ? '🔴 实盘已开启' : '⚪ 实盘关闭' }}</div>
-                  <div class="section-sub">{{ bForm.liveEnabled ? '信号确认后会提交真实委托，资金有风险' : '开启后已确认信号可能提交真实委托' }}</div>
+              <div v-else-if="bForm && isLiveChannel" class="bk-arm" :class="{ armed: bForm.liveEnabled }">
+                <!-- 武装状态条 -->
+                <div class="bk-arm-status">
+                  <div class="bk-arm-status-l">
+                    <div class="bk-live-title">{{ bForm.liveEnabled ? '🔴 实盘已武装' : '⚪ 实盘未武装（锁定）' }}</div>
+                    <div class="section-sub">
+                      {{ bForm.liveEnabled
+                        ? '真实通道运行中：每笔需人工截图确认，仅限白名单标的、限额内委托'
+                        : '出厂即锁定，依次完成下方各项并武装后，真实委托才会被提交' }}
+                    </div>
+                  </div>
+                  <button v-if="!bForm.liveEnabled" type="button" class="logs-btn danger" :disabled="armBusy" @click="bArm">武装实盘</button>
+                  <button v-else type="button" class="logs-btn" @click="bDisarm">解除武装</button>
                 </div>
-                <button type="button" class="switch" :class="{ on: bForm.liveEnabled }" @click="toggleLive(!bForm.liveEnabled)">
-                  <span class="knob"></span>
-                </button>
-              </div>
+                <div v-if="armError" class="bk-arm-msg" :class="{ ok: armErrorOk }">{{ armError }}</div>
 
-              <!-- 实盘单笔金额上限（仅 QMT，默认 0 = 锁定） -->
-              <template v-if="bForm && bForm.kind === 'qmt'">
-                <div class="section-title" style="margin-top:16px">实盘单笔金额上限</div>
-                <div class="section-sub">
-                  硬兜底：单笔委托金额（价格 × 数量）超过上限一律拒绝；<b>0 = 实盘锁定</b>，须显式设置正数后已确认信号才能提交真实委托。
+                <!-- 武装后当日额度 -->
+                <div v-if="bForm.liveEnabled && liveUsage" class="bk-arm-usage">
+                  <div class="bk-usage-item"><span>今日已用买入</span><b class="live-red">{{ bFmtMoney(liveUsage.usedToday) }}</b></div>
+                  <div class="bk-usage-item"><span>今日剩余额度</span><b class="live-amber">{{ bFmtMoney(liveUsage.remaining) }}</b></div>
+                  <div class="bk-usage-item"><span>单日上限</span><b>{{ bFmtMoney(liveUsage.dailyLimit) }}</b></div>
+                  <div class="bk-usage-item"><span>白名单</span><b>{{ liveUsage.whitelist.length }} 只</b></div>
                 </div>
-                <div class="mock-cash-row">
-                  <label class="mock-cash-lb">上限（元）</label>
-                  <input v-model.number="bForm.liveMaxOrderAmount" type="number" min="0" step="1000" class="mock-cash-in" />
-                  <button type="button" class="mock-cash-preset" @click="bForm.liveMaxOrderAmount = 10000">1万</button>
-                  <button type="button" class="mock-cash-preset" @click="bForm.liveMaxOrderAmount = 50000">5万</button>
-                  <button type="button" class="mock-cash-preset" @click="bForm.liveMaxOrderAmount = 100000">10万</button>
-                  <button type="button" class="logs-btn danger" @click="bSaveLiveLimit">保存限额</button>
+
+                <!-- ① 单笔上限 -->
+                <div class="bk-arm-step">
+                  <div class="bk-arm-step-h">① 单笔金额上限（元）</div>
+                  <div class="mock-cash-row">
+                    <input v-model.number="bForm.liveMaxOrderAmount" type="number" min="0" step="1000" class="mock-cash-in" />
+                    <button type="button" class="mock-cash-preset" @click="bForm.liveMaxOrderAmount = 10000">1万</button>
+                    <button type="button" class="mock-cash-preset" @click="bForm.liveMaxOrderAmount = 50000">5万</button>
+                    <button type="button" class="mock-cash-preset" @click="bForm.liveMaxOrderAmount = 100000">10万</button>
+                  </div>
+                  <div class="section-sub">单笔委托金额（价格 × 数量）超过上限一律拒绝；<b>0 = 实盘锁定</b>。</div>
                 </div>
-              </template>
+
+                <!-- ② 单日累计上限 -->
+                <div class="bk-arm-step">
+                  <div class="bk-arm-step-h">② 单日累计买入上限（元）</div>
+                  <div class="mock-cash-row">
+                    <input v-model.number="bForm.liveMaxDailyAmount" type="number" min="0" step="10000" class="mock-cash-in" />
+                    <button type="button" class="mock-cash-preset" @click="bForm.liveMaxDailyAmount = 50000">5万</button>
+                    <button type="button" class="mock-cash-preset" @click="bForm.liveMaxDailyAmount = 200000">20万</button>
+                    <button type="button" class="mock-cash-preset" @click="bForm.liveMaxDailyAmount = 500000">50万</button>
+                    <button type="button" class="logs-btn danger" @click="bSaveLiveLimits">保存限额</button>
+                  </div>
+                  <div class="section-sub">单日真实买入累计（不含已撤/已拒）超过上限即拒绝，次日重置。</div>
+                </div>
+
+                <!-- ③ 白名单 -->
+                <div class="bk-arm-step">
+                  <div class="bk-arm-step-h">③ 实盘标的白名单（至少 1 只）</div>
+                  <div class="mock-cash-row">
+                    <input v-model="wlInput" type="text" maxlength="6" class="mock-cash-in" placeholder="6 位代码，如 600519" @keyup.enter="bAddWhitelist" />
+                    <button type="button" class="mock-cash-preset" @click="bAddWhitelist">添加</button>
+                  </div>
+                  <div class="bk-wl-tags">
+                    <span v-for="c in wlList" :key="c" class="bk-wl-tag">{{ c }}<i title="移出" @click="bRemoveWhitelist(c)">×</i></span>
+                    <span v-if="!wlList.length" class="section-sub">（空）真实通道将拒绝所有标的</span>
+                  </div>
+                </div>
+
+                <!-- ④ 同花顺真实通道：模拟演练 + 半自动提示 -->
+                <div v-if="bForm.kind === 'client'" class="bk-arm-step">
+                  <div class="bk-arm-step-h">④ 同花顺模拟演练</div>
+                  <label class="bk-drill">
+                    <input type="checkbox" :checked="bForm.liveSimDrillPassed" @change="bToggleDrill" />
+                    <span>我已在同花顺「模拟炒股」完成真机演练（登录、半自动连续成功、撤单、资产/持仓回报正常）</span>
+                  </label>
+                  <div class="section-sub live-amber">同花顺真实通道强制半自动：每笔都需人工点确认，自动确认已永久禁用。</div>
+                </div>
+
+                <!-- ⑤/④ 风险告知 -->
+                <div class="bk-arm-step">
+                  <div class="bk-arm-step-h">{{ bForm.kind === 'client' ? '⑤' : '④' }} 风险告知与确认</div>
+                  <div class="bk-arm-notice">
+                    实盘委托将产生真实资金变动，风险自担；按《证券市场程序化交易管理规定（试行）》，你须自行向交易所履行程序化交易报告义务；
+                    无实时涨跌停行情时将拒绝下单，防止乌龙指。请确认已充分了解风险。
+                  </div>
+                  <input v-model="armAckText" type="text" class="mock-cash-in bk-arm-ack" placeholder="请输入「风险确认」四个字" @input="armError=''; armErrorOk=false" />
+                </div>
+              </div>
 
               <!-- 账户级风控阈值（全通道唯一事实源；模拟 / 条件单 / 自动机器人 / 实盘共用） -->
               <template v-if="bForm">
@@ -2801,6 +2972,68 @@ async function clearL2Key(r: PluginRow) {
 .bk-live-card.on { border-color: #f23645; background: rgba(242,54,69,.08); }
 .bk-live-card.disabled { opacity: 0.6; }
 .bk-live-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+
+/* P4 实盘武装向导 */
+.live-red { color: #ff5a6a; }
+.live-amber { color: #ffb13d; }
+.bk-arm {
+  margin-top: 10px; padding: 14px; border-radius: 10px;
+  border: 1px solid rgba(242,54,69,.45);
+  background: linear-gradient(180deg, rgba(242,54,69,.10), rgba(242,54,69,.04));
+}
+.bk-arm.armed {
+  border-color: #f23645;
+  background: linear-gradient(180deg, rgba(242,54,69,.16), rgba(242,54,69,.06));
+  box-shadow: 0 0 0 1px rgba(242,54,69,.25) inset;
+}
+.bk-arm-status { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.bk-arm-status .bk-live-title { color: #ff5a6a; }
+.bk-arm-msg {
+  margin-top: 8px; padding: 7px 10px; border-radius: 8px;
+  background: rgba(242,54,69,.14); border: 1px solid rgba(242,54,69,.45);
+  color: #ff8a96; font-size: 12px; font-weight: 600; line-height: 1.5;
+}
+.bk-arm-msg.ok {
+  background: rgba(45,212,140,.12); border-color: rgba(45,212,140,.4);
+  color: #37d67a;
+}
+.bk-arm-usage {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  margin-top: 12px;
+}
+.bk-usage-item {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(242,54,69,.25);
+  background: rgba(0,0,0,.18);
+}
+.bk-usage-item span { font-size: 11px; color: var(--text-dim); }
+.bk-usage-item b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.bk-arm-step {
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px dashed rgba(255,255,255,.08);
+}
+.bk-arm-step-h { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.bk-wl-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.bk-wl-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 8px; font-size: 12px; font-variant-numeric: tabular-nums;
+  border-radius: 6px; border: 1px solid rgba(242,54,69,.4);
+  background: rgba(242,54,69,.12); color: #ff8a96;
+}
+.bk-wl-tag i {
+  font-style: normal; cursor: pointer; color: var(--text-dim);
+  width: 14px; height: 14px; line-height: 13px; text-align: center;
+  border-radius: 50%;
+}
+.bk-wl-tag i:hover { color: #fff; background: #f23645; }
+.bk-drill { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.6; cursor: pointer; }
+.bk-drill input { margin-top: 3px; accent-color: #f23645; }
+.bk-arm-notice {
+  font-size: 12px; line-height: 1.7; color: var(--text-dim);
+  padding: 10px 12px; border-radius: 8px; margin-bottom: 8px;
+  border: 1px solid rgba(242,54,69,.3); background: rgba(242,54,69,.08);
+}
+.bk-arm-ack { width: 100%; max-width: 260px; }
 .bk-advanced summary {
   cursor: pointer; font-size: 13px; color: var(--accent-2);
   padding: 8px 0; user-select: none;

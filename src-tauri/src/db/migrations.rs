@@ -1,5 +1,5 @@
 // 主库迁移清单（v2.27 巨石拆分：从 lib.rs 抽出）。
-// 追加式：只许新增版本，禁止改动已发布条目。共 57 条（v1..v57）。
+// 追加式：只许新增版本，禁止改动已发布条目。共 58 条（v1..v58）。
 // 数量护栏见 src-tauri/INVENTORY.md；改动后需与之一致。
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -924,6 +924,12 @@ pub fn migrations() -> Vec<Migration> {
                             version: 57,
                             description: "P2 execution loop: daily_mission.feedback_json (end-of-day execution feedback summary)",
                             sql: "ALTER TABLE daily_mission ADD COLUMN feedback_json TEXT NOT NULL DEFAULT '{}';",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 58,
+                            description: "P4 live trading guard: broker_order.is_live (mark real-money orders for daily amount cap)",
+                            sql: "ALTER TABLE broker_order ADD COLUMN is_live INTEGER NOT NULL DEFAULT 0;",
                             kind: MigrationKind::Up,
                         },
     ]

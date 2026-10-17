@@ -36,18 +36,38 @@ pub fn build_args(cfg: &BrokerConfig) -> Vec<String> {
         args.push("--template-dir".to_string());
         args.push(cfg.client_template_dir.trim().to_string());
     }
+    // P4 真实通道纵深：把白名单 / 单笔 / 单日限额下发给 sidecar，
+    // Python 端独立兜底（即使 Rust 闸门被绕过，sidecar 也拒绝越界下单）。
+    if cfg.is_live() {
+        args.push("--whitelist".to_string());
+        args.push(cfg.live_codes_whitelist.join(","));
+        args.push("--max-amount".to_string());
+        args.push(format!("{:.0}", cfg.live_max_order_amount));
+        args.push("--max-daily".to_string());
+        args.push(format!("{:.0}", cfg.live_max_daily_amount));
+    }
     args
 }
 
 /// sidecar 启动即发的 connect 帧参数。
 pub fn connect_params(cfg: &BrokerConfig) -> Value {
-    json!({
+    let mut v = json!({
         "vendor": cfg.client_vendor,
         "account": cfg.account_id,
         "sim": cfg.client_sim,
         "dryRun": cfg.client_dry_run,
         "autoConfirm": cfg.client_auto_confirm,
-    })
+    });
+    // P4 真实通道：连接帧携带武装护栏，供 sidecar 自检与独立兜底。
+    if cfg.is_live() {
+        if let Some(o) = v.as_object_mut() {
+            o.insert("live".to_string(), json!(true));
+            o.insert("whitelist".to_string(), json!(cfg.live_codes_whitelist));
+            o.insert("maxAmount".to_string(), json!(cfg.live_max_order_amount));
+            o.insert("maxDaily".to_string(), json!(cfg.live_max_daily_amount));
+        }
+    }
+    v
 }
 
 /// 半自动确认桥：人工核对下单前截图后，确认/拒绝在客户端挂起的委托。

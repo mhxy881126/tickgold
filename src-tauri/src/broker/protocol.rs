@@ -43,6 +43,7 @@ pub struct BrokerOrderInfo {
     pub filled_vol: i64,
     pub filled_avg_price: f64,
     pub error_msg: String,
+    pub is_live: i64,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -62,6 +63,7 @@ fn row_to_info(r: &rusqlite::Row) -> rusqlite::Result<BrokerOrderInfo> {
         filled_vol: r.get("filled_vol")?,
         filled_avg_price: r.get("filled_avg_price")?,
         error_msg: r.get("error_msg")?,
+        is_live: r.get("is_live")?,
         created_at: r.get("created_at")?,
         updated_at: r.get("updated_at")?,
     })
@@ -78,14 +80,15 @@ pub fn insert(
     side: &str,
     price: f64,
     vol: i64,
+    is_live: bool,
 ) -> Result<i64, String> {
     let now = now_millis();
     conn.execute(
         "INSERT INTO broker_order
            (sig_id,broker_kind,broker_account,code,side,price,vol,status,
-            filled_vol,filled_avg_price,error_msg,created_at,updated_at)
-         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,0,0,'',?9,?9)",
-        rusqlite::params![sig_id, kind, account, code, side, price, vol, SUBMITTING, now],
+            filled_vol,filled_avg_price,error_msg,is_live,created_at,updated_at)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,0,0,'',?9,?10,?10)",
+        rusqlite::params![sig_id, kind, account, code, side, price, vol, SUBMITTING, is_live as i64, now],
     )
     .map_err(|e| format!("写入券商委托失败: {e}"))?;
     Ok(conn.last_insert_rowid())
@@ -172,7 +175,7 @@ mod tests {
                 id INTEGER PRIMARY KEY AUTOINCREMENT, sig_id TEXT UNIQUE, broker_kind TEXT,
                 broker_account TEXT, broker_order_id TEXT, code TEXT, side TEXT, price REAL,
                 vol INTEGER, status TEXT, filled_vol INTEGER, filled_avg_price REAL,
-                error_msg TEXT, created_at INTEGER, updated_at INTEGER);",
+                error_msg TEXT, is_live INTEGER NOT NULL DEFAULT 0, created_at INTEGER, updated_at INTEGER);",
         )
         .unwrap();
         conn
@@ -181,7 +184,7 @@ mod tests {
     #[test]
     fn full_lifecycle_transitions() {
         let c = memdb();
-        insert(&c, "SG1", "mock", "", "600519", "BUY", 100.0, 200).unwrap();
+        insert(&c, "SG1", "mock", "", "600519", "BUY", 100.0, 200, false).unwrap();
         assert!(update(&c, "SG1", SUBMITTED, None, None, Some("BID1"), None).is_ok());
         assert!(update(&c, "SG1", PART_FILLED, Some(100), Some(100.0), None, None).is_ok());
         assert!(update(&c, "SG1", FILLED, Some(200), Some(100.0), None, None).is_ok());
@@ -195,8 +198,8 @@ mod tests {
     #[test]
     fn duplicate_sig_rejected() {
         let c = memdb();
-        insert(&c, "SG1", "mock", "", "X", "BUY", 1.0, 100).unwrap();
-        assert!(insert(&c, "SG1", "mock", "", "X", "BUY", 1.0, 100).is_err());
+        insert(&c, "SG1", "mock", "", "X", "BUY", 1.0, 100, false).unwrap();
+        assert!(insert(&c, "SG1", "mock", "", "X", "BUY", 1.0, 100, false).is_err());
     }
 
     #[test]

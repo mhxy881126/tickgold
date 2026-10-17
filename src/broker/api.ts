@@ -69,6 +69,10 @@ export interface BrokerConfigPatch {
   clientAutoConfirm?: boolean;
   clientMinIntervalMs?: number;
   clientDryRun?: boolean;
+  // P4 真实通道安全护栏
+  liveMaxDailyAmount?: number;
+  liveCodesWhitelist?: string[];
+  liveSimDrillPassed?: boolean;
 }
 
 export function brokerGetStatus() {
@@ -99,6 +103,11 @@ export interface BrokerConfigFull {
   clientAutoConfirm: boolean;
   clientMinIntervalMs: number;
   clientDryRun: boolean;
+  // P4 真实通道安全护栏
+  liveMaxDailyAmount: number;
+  liveCodesWhitelist: string[];
+  liveSimDrillPassed: boolean;
+  liveArmedAt: number;
 }
 
 export function brokerGetConfig() {
@@ -128,11 +137,40 @@ export function brokerSetConfig(patch: BrokerConfigPatch) {
     clientAutoConfirm: patch.clientAutoConfirm ?? null,
     clientMinIntervalMs: patch.clientMinIntervalMs ?? null,
     clientDryRun: patch.clientDryRun ?? null,
+    liveMaxDailyAmount: patch.liveMaxDailyAmount ?? null,
+    liveCodesWhitelist: patch.liveCodesWhitelist ?? null,
+    liveSimDrillPassed: patch.liveSimDrillPassed ?? null,
   });
 }
 
 export function brokerEnableLive(enable: boolean, ack: boolean) {
   return invoke<void>("broker_enable_live", { enable, ack });
+}
+
+// P4 真实通道安全护栏
+export interface LiveUsage {
+  liveEnabled: boolean;
+  kind: string;
+  isLive: boolean;
+  singleLimit: number;
+  dailyLimit: number;
+  usedToday: number;
+  remaining: number;
+  whitelist: string[];
+  drillPassed: boolean;
+  armedAt: number;
+}
+
+export function brokerLiveWhitelistSet(codes: string[]) {
+  return invoke<string[]>("broker_live_whitelist_set", { codes });
+}
+
+export function brokerLiveMarkDrill(passed: boolean) {
+  return invoke<void>("broker_live_mark_drill", { passed });
+}
+
+export function brokerLiveUsage() {
+  return invoke<LiveUsage>("broker_live_usage");
 }
 
 export function brokerConnect() {

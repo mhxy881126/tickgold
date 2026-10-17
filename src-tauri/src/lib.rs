@@ -199,6 +199,10 @@ pub fn run() {
             broker::client::broker_client_confirm,
             broker::client::broker_client_selfcheck,
             broker::client::broker_client_shot,
+            // P4 真实通道安全护栏（白名单 / 模拟演练 / 额度读数）
+            broker::broker_live_whitelist_set,
+            broker::broker_live_mark_drill,
+            broker::broker_live_usage,
             // ===== v2.23 本地条件单 =====
             broker::conditional::co_list,
             broker::conditional::co_create,
