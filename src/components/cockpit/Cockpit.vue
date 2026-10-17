@@ -11,6 +11,7 @@ import {
 } from "../../stores/workflow";
 
 import BrainRolloutPanel from "./BrainRolloutPanel.vue";
+import PilotPanel from "./PilotPanel.vue";
 
 const wf = useWorkflowStore();
 onMounted(() => {
@@ -257,6 +258,9 @@ const killOn = computed(() => wf.killSwitch);
         <span>{{ wf.killSwitch ? "解除熔断" : "一键熔断" }}</span>
       </button>
     </div>
+
+    <!-- P6 一键智驾：模拟盘全自动入口 + 三问面板 -->
+    <PilotPanel />
 
     <!-- 六步进度条 -->
     <div class="flow-head">

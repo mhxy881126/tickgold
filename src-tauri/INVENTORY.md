@@ -323,6 +323,9 @@
 > 执行风控仍走 autoexec 现有闸门（硬止损/日亏/回撤/连亏），风控档位三档映射 steady（-7%/80%/5%/20%）/
 > aggressive（-8%/90%/6%/25%）/ defensive（-4%/60%/3%/12%）。
 > 数据表：迁移 v60 新增 pilot_config（单行配置）+ pilot_daily_log（按交易日运行日志）。
+> 前端（阶段2）：src/ai/pilot.ts（6 命令封装 + 风控档位元数据 + minuteToHm）+ stores/pilot.ts（Pinia：3s 轮询 status、mock 降级、
+> 仅 mode=off 可写进阶设置）+ cockpit/PilotPanel.vue（账户条下方一键智驾面板：一键开始/暂停/停止 + 「三问」今日小结
+> 买了什么/赚亏多少/为什么动 + 进阶设置折叠，深色金融视觉与驾驶舱一致）。
 
 ---
 
