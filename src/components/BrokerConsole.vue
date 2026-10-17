@@ -8,6 +8,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { confirmDialog } from "../composables/useDialog";
 import { useActions } from "../composables/useActions";
 import {
+  brokerGetConfig,
   brokerGetStatus,
   brokerSetConfig,
   brokerConnect,
@@ -33,11 +34,12 @@ import {
   type ClientShot,
 } from "../broker/api";
 
-type TabKey = "position" | "trades" | "pending";
+type TabKey = "position" | "trades" | "pending" | "api";
 const TABS: { k: TabKey; t: string }[] = [
   { k: "position", t: "持仓" },
   { k: "trades", t: "当日成交" },
   { k: "pending", t: "当日挂单" },
+  { k: "api", t: "API 控制台" },
 ];
 const tab = ref<TabKey>("position");
 
@@ -137,8 +139,128 @@ async function refreshTab() {
   if (!connected.value) return;
   if (tab.value === "position") await loadPositions();
   else if (tab.value === "trades") await loadTrades();
-  else await loadPending();
+  else if (tab.value === "pending") await loadPending();
 }
+
+// ===== P10-3 API 控制台：展示 THSAutoTrader 兼容 REST 接口，curl 示例 + 一键调用 + JSON 预览 =====
+interface ApiEndpoint {
+  key: string;
+  path: string;
+  desc: string;
+  group: string;
+  params: { name: string; ph: string; options?: { v: string; t: string }[] }[];
+}
+const APIS: ApiEndpoint[] = [
+  { key: "health", path: "/health", desc: "服务存活探测", group: "探测", params: [] },
+  { key: "checkTradingApp", path: "/check_trading_app", desc: "同花顺下单程序进程探测", group: "探测", params: [] },
+  { key: "currentPage", path: "/current_page", desc: "当前前台窗口信息（句柄/标题）", group: "探测", params: [] },
+  { key: "balance", path: "/balance", desc: "账户资金（现金/市值/盈亏）", group: "查询", params: [] },
+  { key: "position", path: "/position", desc: "持仓列表", group: "查询", params: [] },
+  { key: "todayTrades", path: "/today_trades", desc: "当日成交流水", group: "查询", params: [] },
+  { key: "pendingOrders", path: "/pending_orders", desc: "当日挂单（未成交委托）", group: "查询", params: [] },
+  {
+    key: "xiadan", path: "/xiadan", desc: "闪电下单（THSAutoTrader 同款）", group: "下单",
+    params: [
+      { name: "code", ph: "代码 600519" },
+      { name: "status", ph: "1=买入 2=卖出", options: [{ v: "1", t: "买入" }, { v: "2", t: "卖出" }] },
+      { name: "amount", ph: "数量（可选）" },
+      { name: "price", ph: "价格（可选）" },
+    ],
+  },
+  {
+    key: "confirmOrder", path: "/confirm_order", desc: "用最近一次下单上下文按仓位确认", group: "下单",
+    params: [{ name: "position", ph: "1=全仓 2=半仓 3=1/3 4=1/4", options: [{ v: "1", t: "全仓" }, { v: "2", t: "半仓" }, { v: "3", t: "1/3" }, { v: "4", t: "1/4" }] }],
+  },
+  {
+    key: "cancelAll", path: "/cancel_all_orders", desc: "一键撤单（全撤/撤买/撤卖）", group: "下单",
+    params: [{ name: "type", ph: "A=全撤 X=撤买 C=撤卖", options: [{ v: "A", t: "全撤" }, { v: "X", t: "撤买" }, { v: "C", t: "撤卖" }] }],
+  },
+  { key: "sendKey", path: "/send_key", desc: "键盘精灵：向同花顺发送按键序列", group: "调试", params: [{ name: "key", ph: "如 F4 或 600519 ENTER 21 ENTER" }] },
+  { key: "click", path: "/click", desc: "坐标点击（客户区相对坐标）", group: "调试", params: [{ name: "x", ph: "x" }, { name: "y", ph: "y" }] },
+];
+const apiCfg = ref<{ port: number; token: string }>({ port: 0, token: "" });
+const apiForm = reactive<Record<string, Record<string, string>>>({
+  xiadan: { code: "", status: "1", amount: "", price: "" },
+  confirmOrder: { position: "2" },
+  cancelAll: { type: "A" },
+  sendKey: { key: "" },
+  click: { x: "", y: "" },
+});
+const apiResult = ref<{ endpoint: string; ok: boolean; text: string } | null>(null);
+const apiBusy = ref<string | null>(null);
+const apiHealth = ref<"unknown" | "ok" | "fail">("unknown");
+async function loadApiCfg() {
+  try {
+    const c = await brokerGetConfig();
+    apiCfg.value = { port: c.clientApiPort ?? 0, token: c.clientApiToken ?? "" };
+  } catch {
+    /* ignore */
+  }
+}
+function apiBase(): string | null {
+  if (!apiCfg.value.port || apiCfg.value.port <= 0) return null;
+  return `http://127.0.0.1:${apiCfg.value.port}`;
+}
+function apiUrl(ep: ApiEndpoint): string {
+  const base = apiBase();
+  if (!base) return "";
+  const q: string[] = [];
+  for (const p of ep.params) {
+    const v = (apiForm[ep.key]?.[p.name] ?? "").trim();
+    if (v !== "") q.push(`${p.name}=${encodeURIComponent(v)}`);
+  }
+  const qs = q.length ? "?" + q.join("&") : "";
+  const tok = apiCfg.value.token.trim();
+  const tq = tok ? (qs ? "&" : "?") + `token=${encodeURIComponent(tok)}` : "";
+  return `${base}${ep.path}${qs}${tq}`;
+}
+function apiCurl(ep: ApiEndpoint): string {
+  return `curl "${apiUrl(ep)}"`;
+}
+async function apiCall(ep: ApiEndpoint) {
+  const base = apiBase();
+  if (!base) {
+    flash("请先在设置中开启 HTTP API 服务并连接通道");
+    return;
+  }
+  if (apiBusy.value) return;
+  apiBusy.value = ep.key;
+  try {
+    const r = await fetch(apiUrl(ep));
+    const txt = await r.text();
+    let ok = r.ok;
+    let pretty = txt;
+    try {
+      pretty = JSON.stringify(JSON.parse(txt), null, 2);
+      const j = JSON.parse(txt);
+      if (j && typeof j === "object" && j.status === "error") ok = false;
+    } catch {
+      /* 非 JSON 原样展示 */
+    }
+    apiResult.value = { endpoint: ep.path, ok, text: pretty };
+  } catch (e) {
+    apiResult.value = { endpoint: ep.path, ok: false, text: `请求失败：${e}` };
+  } finally {
+    apiBusy.value = null;
+  }
+}
+async function apiPing() {
+  const base = apiBase();
+  if (!base) {
+    apiHealth.value = "fail";
+    flash("API 服务未开启：设置 → 券商交易 → 同花顺客户端 → 启用 API 服务");
+    return;
+  }
+  apiHealth.value = "unknown";
+  try {
+    const r = await fetch(`${base}/health`);
+    if (r.ok) apiHealth.value = "ok";
+    else apiHealth.value = "fail";
+  } catch {
+    apiHealth.value = "fail";
+  }
+}
+const API_GROUPS = ["探测", "查询", "下单", "调试"];
 
 // ===== P8 一键演练（dry-run）：未连接时一键切到同花顺 dry-run 通道并展示虚拟数据 =====
 const drillBusy = ref(false);
@@ -324,6 +446,7 @@ let tick: ReturnType<typeof setInterval> | undefined;
 const unlisteners: UnlistenFn[] = [];
 onMounted(() => {
   void refresh();
+  void loadApiCfg();
   tick = setInterval(() => {
     void loadStatus();
     void loadAsset();
@@ -431,8 +554,60 @@ onBeforeUnmount(() => {
       </template>
     </div>
 
+    <!-- API 控制台（独立于连接状态：API 服务开启即可用） -->
+    <div v-if="tab === 'api'" class="bc-api">
+      <div class="api-head">
+        <div class="api-addr">
+          <span class="api-dot" :class="apiHealth"></span>
+          <span class="api-base">{{ apiBase() || "API 服务未开启" }}</span>
+          <span v-if="apiCfg.token" class="api-tag">令牌保护</span>
+          <span v-else class="api-tag ghost">本机免密</span>
+        </div>
+        <div class="api-actions">
+          <button class="bc-btn" :disabled="apiBusy === 'health'" @click="apiPing">
+            {{ apiHealth === "unknown" ? "健康检查" : apiHealth === "ok" ? "服务正常 · 再查" : "检查服务" }}
+          </button>
+          <button class="bc-btn" :disabled="apiBusy !== null" @click="loadApiCfg">刷新配置</button>
+        </div>
+      </div>
+      <div v-if="!apiBase()" class="api-tip">
+        未开启 HTTP API 服务：设置 → 券商交易 → 同花顺客户端 → 「HTTP API 服务」打开并保存配置，然后连接通道。开启后本页即可一键调用全部接口。
+      </div>
+      <template v-else>
+        <div class="api-group" v-for="g in API_GROUPS" :key="g">
+          <div class="api-group-title">{{ g }}</div>
+          <div v-for="ep in APIS.filter((e) => e.group === g)" :key="ep.key" class="api-card">
+            <div class="api-card-head">
+              <code class="api-path">{{ ep.path }}</code>
+              <span class="api-desc">{{ ep.desc }}</span>
+              <span class="api-spacer"></span>
+              <button class="bc-btn" :disabled="apiBusy !== null" @click="apiCall(ep)">
+                {{ apiBusy === ep.key ? "调用中…" : "调用" }}
+              </button>
+            </div>
+            <div v-if="ep.params.length" class="api-params">
+              <template v-for="p in ep.params" :key="p.name">
+                <select v-if="p.options" v-model="apiForm[ep.key][p.name]" class="api-in">
+                  <option v-for="o in p.options" :key="o.v" :value="o.v">{{ o.t }}</option>
+                </select>
+                <input v-else v-model="apiForm[ep.key][p.name]" class="api-in" :placeholder="p.ph" spellcheck="false" />
+              </template>
+            </div>
+            <code class="api-curl" :title="apiCurl(ep)">{{ apiCurl(ep) }}</code>
+          </div>
+        </div>
+        <div v-if="apiResult" class="api-result" :class="{ bad: !apiResult.ok }">
+          <div class="api-result-head">
+            <span>{{ apiResult.endpoint }}</span>
+            <span class="api-result-state">{{ apiResult.ok ? "✓ 成功" : "✗ 失败" }}</span>
+          </div>
+          <pre class="api-json">{{ apiResult.text }}</pre>
+        </div>
+      </template>
+    </div>
+
     <!-- 未连接空态 -->
-    <div v-if="!connected" class="bc-empty">
+    <div v-else-if="!connected" class="bc-empty">
       <div class="be-icon">🔌</div>
       <div class="be-title">客户端通道未连接</div>
       <div class="be-desc">连接真实同花顺客户端前，可以先一键演练：自动切换 dry-run 通道并展示完整的虚拟账户数据（持仓 / 成交 / 挂单 / 资金），不碰真实客户端、不碰真钱。</div>
@@ -712,6 +887,39 @@ onBeforeUnmount(() => {
 .bc-drill-btn:hover { filter: brightness(1.08); }
 .bc-drill-btn:disabled { opacity: .55; cursor: default; }
 
+.bc-api { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.api-head { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.api-addr { display: flex; align-items: center; gap: 7px; font-weight: 600; color: var(--text, #e6ecf5); }
+.api-base { font-variant-numeric: tabular-nums; }
+.api-dot { width: 8px; height: 8px; border-radius: 50%; background: #4a5565; flex-shrink: 0; }
+.api-dot.ok { background: #26d07c; box-shadow: 0 0 6px rgba(38, 208, 124, 0.6); }
+.api-dot.fail { background: #f23645; box-shadow: 0 0 6px rgba(242, 54, 69, 0.6); }
+.api-tag { color: #ffb13d; border: 1px solid rgba(255, 177, 61, 0.5); border-radius: 4px; padding: 0 5px; font-size: 10px; }
+.api-tag.ghost { color: var(--text-dim, #97a0b2); border-color: var(--border, #2a3344); }
+.api-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
+.api-tip { padding: 10px 12px; border-radius: 7px; background: rgba(255, 177, 61, 0.08); border: 1px solid rgba(255, 177, 61, 0.35); color: var(--text-dim, #97a0b2); font-size: 11px; line-height: 1.6; }
+.api-group-title { margin: 4px 0 2px; font-size: 11px; color: var(--text-dim, #7c8798); font-weight: 600; letter-spacing: 0.5px; }
+.api-card { border: 1px solid var(--border, #2a3344); border-radius: 7px; padding: 6px 9px; background: rgba(255, 255, 255, 0.02); }
+.api-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.api-path { color: var(--accent, #e8c878); font-size: 12px; font-weight: 600; }
+.api-desc { color: var(--text-dim, #97a0b2); font-size: 11px; }
+.api-spacer { flex: 1; }
+.api-params { display: flex; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
+.api-in {
+  background: #141b28; border: 1px solid var(--border, #2a3344); border-radius: 5px;
+  color: var(--text, #e6ecf5); font-size: 11px; padding: 3px 7px; min-width: 90px; max-width: 180px;
+}
+.api-in:focus { outline: none; border-color: var(--accent, #e8c878); }
+.api-curl {
+  display: block; margin-top: 5px; font-size: 10px; color: var(--text-dim, #7c8798);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: all;
+}
+.api-result { border: 1px solid var(--border, #2a3344); border-radius: 7px; overflow: hidden; }
+.api-result.bad { border-color: rgba(242, 54, 69, 0.5); }
+.api-result-head { display: flex; align-items: center; gap: 8px; padding: 5px 9px; font-size: 11px; color: var(--text-dim, #97a0b2); background: rgba(255, 255, 255, 0.03); }
+.api-result-state { margin-left: auto; color: #26d07c; font-weight: 600; }
+.api-result.bad .api-result-state { color: #ff7a85; }
+.api-json { margin: 0; padding: 8px 10px; font-size: 10px; line-height: 1.5; color: #9fd0a4; background: #0c111b; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
 .bc-table-wrap { flex: 1; min-height: 0; overflow: auto; }
 .bc-table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: auto; }
 .bc-table th {
