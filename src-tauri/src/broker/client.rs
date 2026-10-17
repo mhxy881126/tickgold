@@ -44,6 +44,15 @@ pub fn build_args(cfg: &BrokerConfig) -> Vec<String> {
         args.push("--tesseract".to_string());
         args.push(cfg.client_tesseract.trim().to_string());
     }
+    // P10-1 HTTP API 服务：端口 >0 时开启（仅 127.0.0.1），令牌可选。
+    if cfg.client_api_port > 0 {
+        args.push("--api-port".to_string());
+        args.push(cfg.client_api_port.to_string());
+        if !cfg.client_api_token.trim().is_empty() {
+            args.push("--api-token".to_string());
+            args.push(cfg.client_api_token.trim().to_string());
+        }
+    }
     // P4 真实通道纵深：把白名单 / 单笔 / 单日限额下发给 sidecar，
     // Python 端独立兜底（即使 Rust 闸门被绕过，sidecar 也拒绝越界下单）。
     if cfg.is_live() {

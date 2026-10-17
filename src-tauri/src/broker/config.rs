@@ -68,6 +68,14 @@ pub struct BrokerConfig {
     #[serde(default)]
     pub client_tesseract: String,
 
+    // ===== P10-1 HTTP API 服务（对齐 THSAutoTrader 接口；默认关闭，仅本机） =====
+    /// HTTP API 服务端口（0=关闭；开启后仅监听 127.0.0.1）。
+    #[serde(default)]
+    pub client_api_port: u16,
+    /// HTTP API 访问令牌（留空=本机免密；设置后所有请求需携带）。
+    #[serde(default)]
+    pub client_api_token: String,
+
     // ===== P4 真实通道安全护栏（默认全部锁定，必须显式武装后才允许真实委托）=====
     /// 实盘单日累计买入金额上限（绝对值硬兜底）。真实通道「当日已提买入合计 + 本笔」不得超过；0 = 锁定。
     #[serde(default)]
@@ -137,6 +145,8 @@ impl Default for BrokerConfig {
             client_min_interval_ms: 1200,
             client_dry_run: true,
             client_tesseract: String::new(),
+            client_api_port: 0,
+            client_api_token: String::new(),
 
             // P4 真实通道默认全部锁定：单日上限 0、白名单空、演练未通过、未武装。
             live_max_daily_amount: 0.0,
@@ -200,6 +210,8 @@ mod tests {
         assert!(c.client_dry_run, "client 默认必须 dry-run");
         assert!(c.client_auto_confirm, "模拟环境默认全自动");
         assert_eq!(c.client_min_interval_ms, 1200);
+        assert_eq!(c.client_api_port, 0, "HTTP API 服务默认必须关闭");
+        assert!(c.client_api_token.is_empty(), "API 令牌默认为空");
         assert!(!c.is_client(), "kind=mock 时 is_client 必须为 false");
         let mut c2 = BrokerConfig {
             kind: "client".to_string(),

@@ -1311,6 +1311,8 @@ async function saveBroker() {
       clientMinIntervalMs: f.clientMinIntervalMs,
       clientDryRun: f.clientDryRun,
       clientTesseract: f.clientTesseract,
+      clientApiPort: f.clientApiPort,
+      clientApiToken: f.clientApiToken,
     });
     bFlash("配置已保存");
   } catch (e) {
@@ -2412,6 +2414,27 @@ async function clearL2Key(r: PluginRow) {
                     <span class="bk-probe-badge" :class="bProbeClass('clientTesseract')">{{ bProbeText('clientTesseract') }}</span>
                     <span v-if="bProbeItem('clientTesseract')" class="bk-probe-hint">{{ bProbeHint('clientTesseract') }}</span>
                   </label>
+                </div>
+
+                <div class="section-title" style="margin-top:16px">HTTP API 服务（THSAutoTrader 兼容）</div>
+                <div class="section-sub">连接通道后在本机开放 REST 接口，供你的脚本 / EasyUp 平台 / Excel 宏调用下单与查询；仅监听 127.0.0.1，不绕过任何风控。</div>
+                <div class="bk-switch-list">
+                  <div class="bk-switch-row">
+                    <div>
+                      <div class="bk-sw-title">启用 API 服务</div>
+                      <div class="section-sub">端口必须为 1024–65535；开启后连接通道即生效</div>
+                    </div>
+                    <button type="button" class="switch" :class="{ on: bForm.clientApiPort > 0 }" @click="bForm.clientApiPort = bForm.clientApiPort > 0 ? 0 : 5000"><span class="knob"></span></button>
+                  </div>
+                </div>
+                <div class="bridge-grid">
+                  <label class="ai-field"><span>端口（默认 5000）</span>
+                    <input v-model.number="bForm.clientApiPort" type="number" min="1024" max="65535" step="1" :disabled="bForm.clientApiPort <= 0" /></label>
+                  <label class="ai-field"><span>访问令牌（可选）</span>
+                    <input v-model="bForm.clientApiToken" type="text" spellcheck="false" placeholder="留空=本机免密；设置后需 ?token= 或 Bearer 头" :disabled="bForm.clientApiPort <= 0" /></label>
+                </div>
+                <div v-if="bForm.clientApiPort > 0" class="bk-probe-hint" style="margin:6px 0 0">
+                  API 地址：<code>http://127.0.0.1:{{ bForm.clientApiPort }}</code>{{ bForm.clientApiToken ? "（令牌保护）" : "（本机免密）" }} · 示例：curl http://127.0.0.1:{{ bForm.clientApiPort }}/balance
                 </div>
 
                 <div class="bk-switch-list">

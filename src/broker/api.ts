@@ -73,6 +73,8 @@ export interface BrokerConfigPatch {
   clientMinIntervalMs?: number;
   clientDryRun?: boolean;
   clientTesseract?: string;
+  clientApiPort?: number;
+  clientApiToken?: string;
   // P4 真实通道安全护栏
   liveMaxDailyAmount?: number;
   liveCodesWhitelist?: string[];
@@ -108,6 +110,8 @@ export interface BrokerConfigFull {
   clientMinIntervalMs: number;
   clientDryRun: boolean;
   clientTesseract: string;
+  clientApiPort: number;
+  clientApiToken: string;
   // P4 真实通道安全护栏
   liveMaxDailyAmount: number;
   liveCodesWhitelist: string[];
@@ -143,6 +147,8 @@ export function brokerSetConfig(patch: BrokerConfigPatch) {
     clientMinIntervalMs: patch.clientMinIntervalMs ?? null,
     clientDryRun: patch.clientDryRun ?? null,
     clientTesseract: patch.clientTesseract ?? null,
+    clientApiPort: patch.clientApiPort ?? null,
+    clientApiToken: patch.clientApiToken ?? null,
     liveMaxDailyAmount: patch.liveMaxDailyAmount ?? null,
     liveCodesWhitelist: patch.liveCodesWhitelist ?? null,
     liveSimDrillPassed: patch.liveSimDrillPassed ?? null,

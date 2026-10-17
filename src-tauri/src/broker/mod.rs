@@ -443,6 +443,9 @@ pub fn broker_set_config(
     client_min_interval_ms: Option<u64>,
     client_dry_run: Option<bool>,
     client_tesseract: Option<String>,
+    // P10-1 HTTP API 服务
+    client_api_port: Option<u16>,
+    client_api_token: Option<String>,
     // P4 真实通道安全护栏
     live_max_daily_amount: Option<f64>,
     live_codes_whitelist: Option<Vec<String>>,
@@ -517,6 +520,12 @@ pub fn broker_set_config(
     }
     if let Some(v) = client_tesseract {
         cfg.client_tesseract = v;
+    }
+    if let Some(v) = client_api_port {
+        cfg.client_api_port = v;
+    }
+    if let Some(v) = client_api_token {
+        cfg.client_api_token = v;
     }
     // P4 真实通道安全护栏字段
     if let Some(v) = live_max_daily_amount {
