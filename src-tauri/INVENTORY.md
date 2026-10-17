@@ -326,6 +326,9 @@
 > 前端（阶段2）：src/ai/pilot.ts（6 命令封装 + 风控档位元数据 + minuteToHm）+ stores/pilot.ts（Pinia：3s 轮询 status、mock 降级、
 > 仅 mode=off 可写进阶设置）+ cockpit/PilotPanel.vue（账户条下方一键智驾面板：一键开始/暂停/停止 + 「三问」今日小结
 > 买了什么/赚亏多少/为什么动 + 进阶设置折叠，深色金融视觉与驾驶舱一致）。
+> 阶段3（收敛进阶）：PilotPanel 进阶设置折叠内新增「真实通道与接管」区（通道/武装状态/模拟演练三格 + 「打开接管控制台」
+> 内嵌 BrainRolloutPanel：上线向导/故障演练/影子→灰度→接管）；主驾驶舱 Cockpit.vue 移除常驻 BrainRolloutPanel 尾部块与 import，
+> 主区只保留智驾三问 + 六步作战流，藏能力换简单。
 
 ---
 

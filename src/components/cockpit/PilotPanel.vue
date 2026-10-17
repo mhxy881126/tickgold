@@ -6,12 +6,15 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { minuteToHm, RISK_PROFILE_META, type PilotStatus } from "../../ai/pilot";
 import { usePilotStore } from "../../stores/pilot";
 import { useWorkflowStore } from "../../stores/workflow";
+import { brokerLiveUsage, type LiveUsage } from "../../broker/api";
+import BrainRolloutPanel from "./BrainRolloutPanel.vue";
 
 const pilot = usePilotStore();
 const wf = useWorkflowStore();
 
 onMounted(() => {
   pilot.refresh();
+  refreshLiveUsage();
 });
 onUnmounted(() => {
   pilot.stopPolling();
@@ -84,6 +87,38 @@ const formCash = ref(100_000);
 const formScanTarget = ref(15);
 const formSchedule = ref(true);
 const dirty = ref(false);
+
+// ===== 真实通道与接管（P4/P5 高级能力收敛于此，保持主入口简单） =====
+const live = ref<LiveUsage | null>(null);
+const liveError = ref("");
+const showBrain = ref(false);
+
+async function refreshLiveUsage() {
+  try {
+    live.value = await brokerLiveUsage();
+  } catch {
+    live.value = null;
+    liveError.value = "非 Tauri 环境：真实通道状态不可用（模拟盘智驾不受影响）";
+  }
+}
+
+const liveArmedText = computed(() => {
+  const l = live.value;
+  if (!l) return "—";
+  if (l.liveEnabled && l.armedAt > 0) return "已武装";
+  return "未武装";
+});
+const liveArmedClass = computed(() => {
+  const l = live.value;
+  if (!l) return "idle";
+  return l.liveEnabled && l.armedAt > 0 ? "on" : "off";
+});
+const channelKindText = computed(() => {
+  const k = live.value?.kind ?? "";
+  if (k.includes("qmt")) return "QMT";
+  if (k.includes("client")) return "同花顺";
+  return "模拟盘";
+});
 
 function openSettings() {
   showSettings.value = !showSettings.value;
@@ -252,7 +287,7 @@ function fmtPnl(n: number) {
       </div>
     </div>
 
-    <!-- 进阶设置（折叠）：真实通道安全细节藏在这里，保持入口简单 -->
+    <!-- 进阶设置（折叠）：智驾参数 + 真实通道安全细节都藏在这里，保持主入口简单 -->
     <div class="pp-settings">
       <button class="pp-fold" @click="openSettings">
         <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
@@ -261,8 +296,8 @@ function fmtPnl(n: number) {
             d="M12 15.5 4 7.5 5.4 6.1l6.6 6.6 6.6-6.6 1.4 1.4-8 8z"
           />
         </svg>
-        <span>进阶设置：风控档位 / 虚拟资金 / 调度</span>
-        <span class="dim">（真实通道武装、白名单、演练、接管见上线向导）</span>
+        <span>进阶设置</span>
+        <span class="dim">风控档位 / 虚拟资金 / 调度 / 真实通道与接管</span>
       </button>
       <div v-if="showSettings" class="pp-form">
         <div class="pp-form-grid">
@@ -322,6 +357,46 @@ function fmtPnl(n: number) {
           <button v-else class="pp-btn solid" :disabled="pilot.busy || !dirty" @click="doSaveSettings">
             {{ pilot.busy ? "保存中…" : "保存智驾设置" }}
           </button>
+        </div>
+
+        <!-- 真实通道与接管（高级）：武装 / 白名单 / 演练 / 接管收敛入口 -->
+        <div class="pp-live">
+          <div class="pp-live-head">
+            <span class="pp-live-title">真实通道与接管</span>
+            <span class="pp-live-note dim">智驾本身仅限模拟盘；接真实券商需在此完成武装</span>
+          </div>
+
+          <div class="pp-live-status">
+            <div class="pls-cell">
+              <span class="pls-k">通道</span>
+              <span class="pls-v">{{ live ? channelKindText : "—" }}</span>
+            </div>
+            <div class="pls-cell">
+              <span class="pls-k">武装状态</span>
+              <span class="pls-v" :class="liveArmedClass">{{ liveArmedText }}</span>
+            </div>
+            <div class="pls-cell">
+              <span class="pls-k">模拟演练</span>
+              <span class="pls-v" :class="live?.drillPassed ? 'on' : 'idle'">
+                {{ live ? (live.drillPassed ? "已通过" : "未演练") : "—" }}
+              </span>
+            </div>
+            <div class="pls-cell" v-if="live?.liveEnabled">
+              <span class="pls-k">今日额度</span>
+              <span class="pls-v mono">{{ fmtMoney(live.remaining) }} / {{ fmtMoney(live.dailyLimit) }}</span>
+            </div>
+          </div>
+
+          <p v-if="liveError" class="pp-live-err dim">{{ liveError }}</p>
+
+          <div class="pp-live-actions">
+            <button class="pp-btn ghost" :disabled="pilot.busy" @click="showBrain = !showBrain">
+              {{ showBrain ? "收起接管控制台" : "打开接管控制台" }}
+            </button>
+            <span class="pp-live-hint dim">含上线向导（武装/白名单）、故障演练、影子→灰度→接管</span>
+          </div>
+
+          <BrainRolloutPanel v-if="showBrain" />
         </div>
       </div>
     </div>
@@ -503,10 +578,37 @@ function fmtPnl(n: number) {
 .pp-cbx { width: 16px; height: 16px; accent-color: var(--accent); }
 .pp-form-foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 10px; }
 
+/* 真实通道与接管（高级收敛区） */
+.pp-live {
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.pp-live-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.pp-live-title { font-size: 12px; font-weight: 800; color: var(--text); }
+.pp-live-note { font-size: 10px; }
+.pp-live-status {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.pls-cell {
+  display: flex; flex-direction: column; gap: 3px;
+  border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px;
+  background: var(--bg-card);
+}
+.pls-k { font-size: 10px; color: var(--text-dim); }
+.pls-v { font-size: 12.5px; font-weight: 700; color: var(--text); }
+.pls-v.on { color: var(--down); }
+.pls-v.off { color: #e8c878; }
+.pls-v.idle { color: var(--text-dim); }
+.pp-live-err { margin: 0; font-size: 10.5px; line-height: 1.5; }
+.pp-live-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pp-live-hint { font-size: 10.5px; line-height: 1.5; }
+
 @media (max-width: 860px) {
   .pp-questions { grid-template-columns: 1fr; }
   .pp-run-line { grid-template-columns: 1fr; }
   .pp-form-grid { grid-template-columns: 1fr; }
+  .pp-live-status { grid-template-columns: 1fr 1fr; }
   .pp-hero { flex-direction: column; align-items: stretch; }
 }
 </style>
