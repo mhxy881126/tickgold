@@ -239,6 +239,14 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
                 *m.current_page_cache.lock().unwrap() = serde_json::json!({});
             }
         }
+        "fatal_error" => {
+            // sidecar 启动即失败（失效 venv / 缺依赖）：置未连接并把原因透传前端。
+            if let Some(m) = try_manager(app) {
+                m.connected.store(false, Ordering::SeqCst);
+                *m.sidecar.lock().unwrap() = None;
+            }
+            let _ = app.emit("broker:sidecar_error", v.clone());
+        }
         "selfcheck" => {
             if let Some(m) = try_manager(app) {
                 *m.client_selfcheck.lock().unwrap() = v.clone();
@@ -792,6 +800,12 @@ pub async fn broker_connect(
             Ok("模拟通道已连接".to_string())
         }
         "qmt" => {
+            if !cfg.qmt_path.trim().is_empty() && !Path::new(&cfg.qmt_path).is_dir() {
+                return Err(format!(
+                    "未找到 QMT 数据目录（userdata_mini）：{}。请先在本机启动一次 miniQMT 客户端（会生成该目录），或在「一键自检」后点探测自动填入正确路径",
+                    cfg.qmt_path
+                ));
+            }
             let script = resolve_script_path(&app)?;
             let handle = sidecar::spawn(
                 app.clone(),

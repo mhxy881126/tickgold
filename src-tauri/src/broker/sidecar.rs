@@ -87,6 +87,9 @@ pub async fn spawn_generic(
     // 后台读取 stdout：逐行解析，转发事件 + 驱动状态机。
     let app2 = app.clone();
     let dir2 = dir.to_path_buf();
+    // stderr 缓冲（进程秒退时把原因带给前端，避免"点击无效"）。
+    let err_buf: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let err_buf2 = err_buf.clone();
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
         while let Ok(Some(line)) = lines.next_line().await {
@@ -103,14 +106,34 @@ pub async fn spawn_generic(
         }
         log::warn!("sidecar stdout 已结束（进程退出）");
         let _ = app2.emit("broker:sidecar", json!({ "event": "disconnected" }));
+        // 若进程带 stderr 退出（启动即失败，如失效 venv / 缺依赖），把原因透传前端。
+        let tail = {
+            let buf = err_buf.lock().await;
+            buf.iter().rev().take(6).cloned().collect::<Vec<_>>()
+        };
+        if !tail.is_empty() {
+            let detail = tail.iter().rev().cloned().collect::<Vec<_>>().join(" | ");
+            let _ = app2.emit(
+                "broker:sidecar_error",
+                json!({
+                    "message": format!("交易通道进程已退出：{detail}"),
+                    "fatal": true,
+                }),
+            );
+        }
     });
 
-    // stderr 落日志
+    // stderr 落日志 + 缓冲（尾部用于进程退出归因）。
     if let Some(err) = stderr {
         tokio::spawn(async move {
             let mut lines = BufReader::new(err).lines();
             while let Ok(Some(l)) = lines.next_line().await {
                 log::info!("[sidecar] {l}");
+                let mut buf = err_buf2.lock().await;
+                buf.push(l);
+                if buf.len() > 40 {
+                    buf.remove(0);
+                }
             }
         });
     }

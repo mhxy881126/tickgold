@@ -65,6 +65,7 @@ fn exists_dir(p: &str) -> bool {
 }
 
 /// 枚举 dir 下以 prefix 开头的一级子目录，返回其中命中 file 的第一个完整路径。
+#[allow(dead_code)]
 fn scan_dir_for(dir: &str, prefix: &str, file: &str) -> Option<String> {
     let d = Path::new(dir);
     if !d.is_dir() {
@@ -99,31 +100,108 @@ fn local_appdata() -> String {
     std::env::var("LOCALAPPDATA").unwrap_or_else(|_| "C:\\Users\\Public".into())
 }
 
+/// 试运行 python：确认解释器真的可执行（防失效 venv / 坏安装）。
+fn python_runnable(p: &str) -> bool {
+    if !exists(p) {
+        return false;
+    }
+    Command::new(p)
+        .arg("-c")
+        .arg("import sys;print(sys.executable)")
+        .output()
+        .map(|o| o.status.success() && !o.stdout.is_empty())
+        .unwrap_or(false)
+}
+
+/// 扫描 dir 下 Python3* 一级目录中的真实 python.exe（跳过 venv 内嵌解释器）。
+fn scan_python_exe(dir: &str) -> Option<String> {
+    let d = Path::new(dir);
+    if !d.is_dir() {
+        return None;
+    }
+    let rd = std::fs::read_dir(d).ok()?;
+    for ent in rd.flatten() {
+        let p = ent.path();
+        let name = ent.file_name().to_string_lossy().to_string();
+        if !p.is_dir() || !name.starts_with("Python3") {
+            continue;
+        }
+        // 跳过 <Python3x>\Lib\venv\scripts\... 这类 venv 内嵌解释器
+        if p.join("Lib").join("venv").is_dir() {
+            continue;
+        }
+        let cand = p.join("python.exe");
+        if cand.is_file() {
+            return Some(cand.to_string_lossy().to_string());
+        }
+    }
+    None
+}
+
 fn probe_python(configured: &str) -> PathProbe {
     if exists(configured) {
-        return PathProbe::ok("pythonPath", "Python 路径", configured);
+        if python_runnable(configured) {
+            return PathProbe::ok("pythonPath", "Python 路径", configured);
+        }
+        return PathProbe::missing(
+            "pythonPath",
+            "Python 路径",
+            configured,
+            "该 Python 无法运行（可能是失效的虚拟环境，缺少 pyvenv.cfg）：请点「自动探测」换用可用解释器，或手动填写",
+        );
     }
     let base = local_appdata();
-    let mut sug = scan_dir_for(&format!("{}\\Programs\\Python", base), "Python3", "python.exe")
-        .or_else(|| scan_dir_for("C:\\", "Python3", "python.exe"))
-        .or_else(|| find_in_path("python.exe"))
-        .or_else(|| find_in_path("python3.exe"));
-    if sug.is_none() {
-        // 尝试 py 启动器解析
-        if let Ok(out) = Command::new("py").arg("-3.12").arg("-c").arg("import sys;print(sys.executable)")
+    // 候选顺序：py 启动器（3.12/3.11/3.10）→ 真实安装 python.exe → PATH
+    let mut cands: Vec<String> = Vec::new();
+    for ver in ["-3.12", "-3.11", "-3.10"] {
+        if let Ok(out) = Command::new("py")
+            .arg(ver)
+            .arg("-c")
+            .arg("import sys;print(sys.executable)")
             .output()
         {
             if out.status.success() {
                 let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 if exists(&s) {
-                    sug = Some(s);
+                    cands.push(s);
                 }
             }
         }
     }
+    if let Some(p) = scan_python_exe(&format!("{}\\Programs\\Python", base)) {
+        cands.push(p);
+    }
+    if let Some(p) = scan_python_exe("C:\\") {
+        cands.push(p);
+    }
+    for e in ["python.exe", "python3.exe"] {
+        if let Some(p) = find_in_path(e) {
+            cands.push(p);
+        }
+    }
+    let mut sug: Option<String> = None;
+    for c in cands {
+        if sug.as_deref() == Some(c.as_str()) {
+            continue;
+        }
+        if python_runnable(&c) {
+            sug = Some(c);
+            break;
+        }
+    }
     match sug {
-        Some(s) => PathProbe::empty("pythonPath", "Python 路径", &s, "未配置；已自动找到可用解释器，点「自动填入」即可"),
-        None => PathProbe::missing("pythonPath", "Python 路径", configured, "未找到 python.exe：请安装 Python 3.10–3.12 后重试，或手动填写完整路径"),
+        Some(s) => PathProbe::empty(
+            "pythonPath",
+            "Python 路径",
+            &s,
+            "未配置；已自动找到可用解释器，点「自动填入」即可（推荐 3.10–3.12）",
+        ),
+        None => PathProbe::missing(
+            "pythonPath",
+            "Python 路径",
+            configured,
+            "未找到可用 python.exe：请安装 Python 3.10–3.12（若已有虚拟环境失效请重装/重建），再点「自动探测」",
+        ),
     }
 }
 
@@ -182,7 +260,12 @@ fn probe_tesseract(configured: &str) -> PathProbe {
             return PathProbe::empty("clientTesseract", "Tesseract OCR 路径", &c, "未配置；已找到 tesseract.exe，点「自动填入」即可（复制表格验证码可自动识别）");
         }
     }
-    PathProbe::empty("clientTesseract", "Tesseract OCR 路径", "", "未找到 tesseract.exe（可选）：不装也能用，复制表格遇验证码时会在控制台弹图由你手动输入")
+    PathProbe::empty(
+        "clientTesseract",
+        "Tesseract OCR 路径",
+        "",
+        "未找到 tesseract.exe（可选）：不装也能用，遇验证码时控制台会弹图由你手动输入；需自动识别请安装 UB-Mannheim/tesseract（github.com/UB-Mannheim/tesseract 下载 Windows 安装包）后点「自动探测」，或手动填写 tesseract.exe 绝对路径",
+    )
 }
 
 /// 券商路径一键自检：mode = mock / qmt / client；缺省用当前配置模式。

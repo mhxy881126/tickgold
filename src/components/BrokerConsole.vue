@@ -351,6 +351,13 @@ onMounted(() => {
       cancelShot.value = shot;
     }
   }).then((u) => unlisteners.push(u));
+  // 连接 / 断开事件：状态实时联动，不再等 6s 轮询。
+  listen<{ event?: string }>("broker:sidecar", (ev) => {
+    const e = ev.payload?.event;
+    if (e === "connected" || e === "disconnected") {
+      void refresh();
+    }
+  }).then((u) => unlisteners.push(u));
 });
 onBeforeUnmount(() => {
   if (tick) clearInterval(tick);

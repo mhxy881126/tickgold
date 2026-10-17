@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, reactive, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import { listen, emit as tauriEmit } from "@tauri-apps/api/event";
+import { listen, emit as tauriEmit, type UnlistenFn } from "@tauri-apps/api/event";
 import { openInAppBrowser } from "../utils/openInApp";
 import { useTheme, type ThemeId } from "../composables/useTheme";
 import { useAccessibility } from "../composables/useAccessibility";
@@ -830,7 +830,11 @@ const histYears = ref(5);
 const histCustom = ref("");
 const histLastFailures = ref<string[]>([]);
 let histPoll: ReturnType<typeof setInterval> | undefined;
-onUnmounted(stopHistPoll);
+onUnmounted(() => {
+  stopHistPoll();
+  unlistenBroker?.();
+  unlistenBroker = null;
+});
 
 const histPercent = computed(() => {
   const p = histProgress.value;
@@ -989,13 +993,51 @@ function bFlash(m: string) {
 }
 // P3 同花顺客户端通道：连接自检结果
 const bSelfcheck = ref<ClientSelfcheck | null>(null);
+const bConnectBusy = ref(false);
+const bDisconnectBusy = ref(false);
+const bSelfcheckBusy = ref(false);
 async function bRefreshSelfcheck() {
+  bSelfcheckBusy.value = true;
   try {
     const sc = await brokerClientSelfcheck();
     bSelfcheck.value = sc && (sc.vendor || (sc.checks && sc.checks.length)) ? sc : null;
-  } catch {
+    if (!sc || !(sc.vendor || (sc.checks && sc.checks.length))) {
+      bFlash("自检无结果：通道未连接或 sidecar 未运行，请先点「连接通道」");
+    }
+  } catch (e) {
     bSelfcheck.value = null;
+    bFlash(`自检失败：${e}`);
+  } finally {
+    bSelfcheckBusy.value = false;
   }
+}
+// broker:sidecar / broker:sidecar_error 实时联动（连接结果不再靠轮询猜）
+let unlistenBroker: (() => void) | null = null;
+async function ensureBrokerListener() {
+  if (unlistenBroker) return;
+  const offs: UnlistenFn[] = [];
+  offs.push(
+    await listen("broker:sidecar", (ev) => {
+      const e = (ev.payload as { event?: string })?.event;
+      if (e === "connected") {
+        bMsg.value = "";
+        void refreshBStatus();
+        void bRefreshSelfcheck();
+        bFlash("交易通道已连接");
+      } else if (e === "disconnected") {
+        void refreshBStatus();
+        bFlash("交易通道已断开");
+      }
+    })
+  );
+  offs.push(
+    await listen("broker:sidecar_error", (ev) => {
+      const payload = ev.payload as { message?: string; fatal?: boolean };
+      bFlash(payload.message ?? "交易通道异常");
+      if (payload.fatal) void refreshBStatus();
+    })
+  );
+  unlistenBroker = () => offs.forEach((u) => u());
 }
 // P8 券商路径一键自检（本机探测，不依赖 sidecar）
 const bProbe = ref<ProbeResult | null>(null);
@@ -1231,6 +1273,7 @@ async function refreshBStatus() {
 }
 async function loadBrokerTab() {
   try {
+    void ensureBrokerListener();
     bForm.value = await brokerGetConfig();
     await refreshBStatus();
     await bRefreshSelfcheck();
@@ -1275,6 +1318,8 @@ async function saveBroker() {
   }
 }
 async function bConnect() {
+  if (bConnectBusy.value) return;
+  bConnectBusy.value = true;
   try {
     bFlash(await brokerConnect());
     // sidecar 连接后异步推送自检（dry-run 秒级，真机起客户端较慢），稍候拉取，亦可手动刷新。
@@ -1283,15 +1328,21 @@ async function bConnect() {
     await bRefreshSelfcheck();
   } catch (e) {
     bFlash(String(e));
+  } finally {
+    bConnectBusy.value = false;
   }
 }
 async function bDisconnect() {
+  if (bDisconnectBusy.value) return;
+  bDisconnectBusy.value = true;
   try {
     await brokerDisconnect();
     await refreshBStatus();
     bFlash("已断开");
   } catch (e) {
     bFlash(String(e));
+  } finally {
+    bDisconnectBusy.value = false;
   }
 }
 // v3.0.0-rc 一键急停：封新委托 + 停自动执行 + 撤全部条件单 / 在途委托 + 断通道
@@ -2320,8 +2371,8 @@ async function clearL2Key(r: PluginRow) {
               <template v-if="bForm && bForm.kind === 'qmt'">
                 <div class="section-title" style="margin-top:20px">连接</div>
                 <div class="bk-actions">
-                  <button type="button" class="logs-btn primary big" @click="bConnect">连接通道</button>
-                  <button type="button" class="logs-btn" @click="bDisconnect">断开</button>
+                  <button type="button" class="logs-btn primary big" :disabled="bConnectBusy" @click="bConnect">{{ bConnectBusy ? "连接中…" : "连接通道" }}</button>
+                  <button type="button" class="logs-btn" :disabled="bDisconnectBusy" @click="bDisconnect">{{ bDisconnectBusy ? "断开中…" : "断开" }}</button>
                 </div>
               </template>
 
@@ -2389,9 +2440,9 @@ async function clearL2Key(r: PluginRow) {
 
                 <div class="bk-actions" style="margin-top:12px">
                   <button type="button" class="logs-btn primary" @click="saveBroker">保存配置</button>
-                  <button type="button" class="logs-btn primary big" @click="bConnect">连接通道</button>
-                  <button type="button" class="logs-btn" @click="bDisconnect">断开</button>
-                  <button type="button" class="logs-btn" @click="bRefreshSelfcheck">刷新自检</button>
+                  <button type="button" class="logs-btn primary big" :disabled="bConnectBusy" @click="bConnect">{{ bConnectBusy ? "连接中…" : "连接通道" }}</button>
+                  <button type="button" class="logs-btn" :disabled="bDisconnectBusy" @click="bDisconnect">{{ bDisconnectBusy ? "断开中…" : "断开" }}</button>
+                  <button type="button" class="logs-btn" :disabled="bSelfcheckBusy" @click="bRefreshSelfcheck">{{ bSelfcheckBusy ? "自检中…" : "刷新自检" }}</button>
                 </div>
 
                 <div v-if="bSelfcheck" class="bk-selfcheck">
