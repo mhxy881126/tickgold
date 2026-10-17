@@ -61,6 +61,14 @@ export interface BrokerConfigPatch {
   maxDrawdownLimitPct?: number;
   consecutiveLossLimit?: number;
   liveMaxOrderAmount?: number;
+  // P3 客户端自动化通道（同花顺模拟）
+  clientVendor?: string;
+  clientSim?: boolean;
+  clientPath?: string;
+  clientTemplateDir?: string;
+  clientAutoConfirm?: boolean;
+  clientMinIntervalMs?: number;
+  clientDryRun?: boolean;
 }
 
 export function brokerGetStatus() {
@@ -83,6 +91,14 @@ export interface BrokerConfigFull {
   maxDrawdownLimitPct: number;
   consecutiveLossLimit: number;
   liveMaxOrderAmount: number;
+  // P3 客户端自动化通道
+  clientVendor: string;
+  clientSim: boolean;
+  clientPath: string;
+  clientTemplateDir: string;
+  clientAutoConfirm: boolean;
+  clientMinIntervalMs: number;
+  clientDryRun: boolean;
 }
 
 export function brokerGetConfig() {
@@ -105,6 +121,13 @@ export function brokerSetConfig(patch: BrokerConfigPatch) {
     maxDrawdownLimitPct: patch.maxDrawdownLimitPct ?? null,
     consecutiveLossLimit: patch.consecutiveLossLimit ?? null,
     liveMaxOrderAmount: patch.liveMaxOrderAmount ?? null,
+    clientVendor: patch.clientVendor ?? null,
+    clientSim: patch.clientSim ?? null,
+    clientPath: patch.clientPath ?? null,
+    clientTemplateDir: patch.clientTemplateDir ?? null,
+    clientAutoConfirm: patch.clientAutoConfirm ?? null,
+    clientMinIntervalMs: patch.clientMinIntervalMs ?? null,
+    clientDryRun: patch.clientDryRun ?? null,
   });
 }
 
@@ -159,6 +182,54 @@ export function brokerEmergencyHalt() {
 
 export function brokerReleaseKill() {
   return invoke<void>("broker_release_kill");
+}
+
+// ===== P3 客户端自动化通道（同花顺模拟）=====
+
+export interface ClientSelfcheckItem {
+  name: string;
+  ok: boolean;
+  msg?: string;
+}
+
+export interface ClientSelfcheck {
+  vendor?: string;
+  sim?: boolean;
+  dryRun?: boolean;
+  mode?: string;
+  checks?: ClientSelfcheckItem[];
+}
+
+export interface ClientShotExpect {
+  code?: string;
+  side?: string;
+  price?: number;
+  vol?: number;
+  amount?: number;
+  sim?: boolean;
+  autoConfirm?: boolean;
+}
+
+export interface ClientShot {
+  client_order_id?: string;
+  shot?: string;
+  expect?: ClientShotExpect;
+  message?: string;
+}
+
+/** 半自动确认桥：人工核对截图后确认 / 拒绝在客户端挂起的委托。 */
+export function brokerClientConfirm(sigId: string, approved: boolean) {
+  return invoke<void>("broker_client_confirm", { sigId, approved });
+}
+
+/** 读取最近一次连接自检结果（connect 时由 sidecar 推送并缓存）。 */
+export function brokerClientSelfcheck() {
+  return invoke<ClientSelfcheck>("broker_client_selfcheck");
+}
+
+/** 读取指定委托（或最近一张）下单前截图。 */
+export function brokerClientShot(sigId?: string | null) {
+  return invoke<ClientShot | null>("broker_client_shot", { sigId: sigId ?? null });
 }
 
 export interface FillResult {

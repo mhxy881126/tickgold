@@ -41,6 +41,45 @@ pub struct BrokerConfig {
     /// 实盘单笔金额上限（绝对值硬兜底）；0 = 实盘锁定，须显式设置才放开。
     #[serde(default)]
     pub live_max_order_amount: f64,
+
+    // ===== P3 客户端自动化通道（kind="client"）：同花顺模拟/真实客户端 UI 自动化 =====
+    /// 客户端厂商：ths（同花顺）；预留 eastmoney（东方财富）。
+    #[serde(default = "default_client_vendor")]
+    pub client_vendor: String,
+    /// 是否模拟环境（同花顺模拟炒股，虚拟资金）。true=不碰真钱、无需 live_enabled；false=真实账户（后续 P4）。
+    #[serde(default = "default_client_sim")]
+    pub client_sim: bool,
+    /// 客户端 / 独立下单程序路径（如 xiadan.exe）。
+    #[serde(default)]
+    pub client_path: String,
+    /// 控件/图像模板目录（随客户端版本校准）。
+    #[serde(default)]
+    pub client_template_dir: String,
+    /// true=全自动：自动填单并点确认（模拟环境默认）；false=半自动：仅填单，截图等待人工确认。
+    #[serde(default = "default_client_auto_confirm")]
+    pub client_auto_confirm: bool,
+    /// 相邻下单最小间隔（毫秒）限速冷却，防止 UI 自动化连发。
+    #[serde(default = "default_client_min_interval")]
+    pub client_min_interval_ms: u64,
+    /// dry-run：不连接真实客户端，sidecar 内部模拟整套事件（无客户端/开发机验证用）。
+    #[serde(default = "default_client_dry_run")]
+    pub client_dry_run: bool,
+}
+
+fn default_client_vendor() -> String {
+    "ths".to_string()
+}
+fn default_client_sim() -> bool {
+    true
+}
+fn default_client_auto_confirm() -> bool {
+    true
+}
+fn default_client_min_interval() -> u64 {
+    1200
+}
+fn default_client_dry_run() -> bool {
+    true
 }
 
 fn default_daily_loss() -> f64 {
@@ -71,7 +110,26 @@ impl Default for BrokerConfig {
             max_drawdown_limit_pct: 20.0,
             consecutive_loss_limit: 3,
             live_max_order_amount: 0.0,
+
+            // P3 客户端自动化通道默认：同花顺模拟、模拟环境、全自动、dry-run、限速 1.2s。
+            client_vendor: "ths".to_string(),
+            client_sim: true,
+            client_path: String::new(),
+            client_template_dir: String::new(),
+            client_auto_confirm: true,
+            client_min_interval_ms: 1200,
+            client_dry_run: true,
         }
+    }
+}
+
+impl BrokerConfig {
+    pub fn is_client(&self) -> bool {
+        self.kind == "client"
+    }
+    /// 同花顺模拟客户端：走 sidecar 但不碰真钱（模拟炒股虚拟资金），无需 live 开关。
+    pub fn client_is_sim(&self) -> bool {
+        self.kind == "client" && self.client_sim
     }
 }
 
@@ -107,6 +165,22 @@ mod tests {
         let c = BrokerConfig::default();
         assert_eq!(c.kind, "mock");
         assert!(!c.live_enabled, "实盘必须默认关闭");
+    }
+
+    #[test]
+    fn client_defaults_are_safe_sim() {
+        let c = BrokerConfig::default();
+        assert_eq!(c.client_vendor, "ths");
+        assert!(c.client_sim, "client 默认必须是模拟环境（不碰真钱）");
+        assert!(c.client_dry_run, "client 默认必须 dry-run");
+        assert!(c.client_auto_confirm, "模拟环境默认全自动");
+        assert_eq!(c.client_min_interval_ms, 1200);
+        assert!(c.client_is_sim() == false, "kind=mock 时 client_is_sim 必须为 false");
+        let mut c2 = BrokerConfig::default();
+        c2.kind = "client".to_string();
+        assert!(c2.is_client() && c2.client_is_sim(), "kind=client 且模拟时 client_is_sim 为 true");
+        c2.client_sim = false;
+        assert!(!c2.client_is_sim(), "client_sim=false 时不为模拟");
     }
 
     #[test]

@@ -1,5 +1,6 @@
 // 券商对接编排：BrokerManager（配置 / 模拟账户 / sidecar / 紧急停止），Tauri 命令，
 // 委托状态机推进、signal_audit 审计、事件广播。合规：只处理 confirmed 单、实盘默认关、风控前置。
+pub mod client;
 pub mod conditional;
 pub mod config;
 pub mod portfolio;
@@ -31,6 +32,10 @@ pub struct BrokerManager {
     pub position_cache: Mutex<std::collections::HashMap<String, risk::QmtPosition>>,
     /// 持仓是否已完成首次全量同步（空仓账户缓存亦为空，须以此区分"尚未同步"）。
     pub position_synced: AtomicBool,
+    /// P3 客户端自动化通道：最近一次连接自检结果（selfcheck 事件）。
+    pub client_selfcheck: Mutex<serde_json::Value>,
+    /// P3 客户端自动化通道：最近下单前截图（cid, 事件），仅保留最近若干张。
+    pub client_shots: Mutex<Vec<(String, serde_json::Value)>>,
 }
 
 impl BrokerManager {
@@ -49,6 +54,8 @@ impl BrokerManager {
             )),
             position_cache: Mutex::new(std::collections::HashMap::new()),
             position_synced: AtomicBool::new(false),
+            client_selfcheck: Mutex::new(serde_json::json!({})),
+            client_shots: Mutex::new(Vec::new()),
         }
     }
 
@@ -120,9 +127,9 @@ fn with_suffix(code: &str) -> String {
     }
 }
 
-/// 解析 sidecar 脚本路径：优先打包资源目录，其次源码目录（开发态）。
-fn resolve_script_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let rel = Path::new("broker").join("sidecar_qmt.py");
+/// 解析 broker 目录下指定 sidecar 脚本：优先打包资源目录，其次源码目录（开发态）。
+fn resolve_script_named(app: &AppHandle, file_name: &str) -> Result<PathBuf, String> {
+    let rel = Path::new("broker").join(file_name);
     if let Ok(res) = app.path().resource_dir() {
         let p = res.join("resources").join(&rel);
         if p.exists() {
@@ -133,7 +140,7 @@ fn resolve_script_path(app: &AppHandle) -> Result<PathBuf, String> {
             return Ok(p2);
         }
     }
-    // 开发态候选：src-tauri/resources/broker/sidecar_qmt.py
+    // 开发态候选：src-tauri/resources/broker/<file_name>
     for cand in [
         PathBuf::from("src-tauri/resources").join(&rel),
         PathBuf::from("../src-tauri/resources").join(&rel),
@@ -142,7 +149,12 @@ fn resolve_script_path(app: &AppHandle) -> Result<PathBuf, String> {
             return Ok(cand);
         }
     }
-    Err("未找到 sidecar_qmt.py（资源未打包？）".to_string())
+    Err(format!("未找到 {file_name}（资源未打包？）"))
+}
+
+/// QMT sidecar 路径（保留原调用）。
+fn resolve_script_path(app: &AppHandle) -> Result<PathBuf, String> {
+    resolve_script_named(app, "sidecar_qmt.py")
 }
 
 // ===== sidecar 回报统一处理（第 2 步联调，框架已就绪）=====
@@ -195,8 +207,32 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
                 *m.asset_cache.lock().unwrap() = serde_json::json!({});
             }
         }
+        "selfcheck" => {
+            if let Some(m) = try_manager(app) {
+                *m.client_selfcheck.lock().unwrap() = v.clone();
+            }
+            let _ = app.emit("broker:client_selfcheck", v.clone());
+        }
+        "screenshot" => {
+            if let Some(m) = try_manager(app) {
+                let cid = v["client_order_id"].as_str().unwrap_or("").to_string();
+                let mut shots = m.client_shots.lock().unwrap();
+                shots.retain(|(c, _)| c != &cid);
+                shots.push((cid, v.clone()));
+                // 仅保留最近 12 张，避免真机截图 base64 长期占用内存。
+                let n = shots.len();
+                if n > 12 {
+                    shots.drain(0..n - 12);
+                }
+            }
+            let _ = app.emit("broker:client_screenshot", v.clone());
+        }
+        "note" => {
+            // sidecar 文本提示（如已点确认、真机首版回报说明）转发给前端。
+            let _ = app.emit("broker:client_note", v.clone());
+        }
         "asset" => {
-            // 缓存最近一次资产回报，broker_query_asset（QMT）直接读缓存
+            // 缓存最近一次资产回报，broker_query_asset（QMT/客户端）直接读缓存
             if let Some(m) = try_manager(app) {
                 *m.asset_cache.lock().unwrap() = v.clone();
             }
@@ -332,6 +368,14 @@ pub fn broker_set_config(
     max_drawdown_limit_pct: Option<f64>,
     consecutive_loss_limit: Option<i32>,
     live_max_order_amount: Option<f64>,
+    // P3 客户端自动化通道
+    client_vendor: Option<String>,
+    client_sim: Option<bool>,
+    client_path: Option<String>,
+    client_template_dir: Option<String>,
+    client_auto_confirm: Option<bool>,
+    client_min_interval_ms: Option<u64>,
+    client_dry_run: Option<bool>,
 ) -> Result<(), String> {
     let mut cfg = mgr.config.lock().unwrap().clone();
     if let Some(v) = kind {
@@ -375,6 +419,32 @@ pub fn broker_set_config(
     }
     if let Some(v) = live_max_order_amount {
         cfg.live_max_order_amount = v;
+    }
+    // P3 客户端自动化通道字段
+    if let Some(v) = client_vendor {
+        cfg.client_vendor = v;
+    }
+    if let Some(v) = client_sim {
+        cfg.client_sim = v;
+    }
+    if let Some(v) = client_path {
+        cfg.client_path = v;
+    }
+    if let Some(v) = client_template_dir {
+        cfg.client_template_dir = v;
+    }
+    if let Some(v) = client_auto_confirm {
+        cfg.client_auto_confirm = v;
+    }
+    if let Some(v) = client_min_interval_ms {
+        cfg.client_min_interval_ms = v;
+    }
+    if let Some(v) = client_dry_run {
+        cfg.client_dry_run = v;
+    }
+    // 安全护栏：真实通道（非模拟）强制半自动，全自动仅模拟环境允许。
+    if !cfg.client_sim {
+        cfg.client_auto_confirm = false;
     }
     config::save(&ai.dir(), &cfg)?;
     *mgr.config.lock().unwrap() = cfg;
@@ -454,6 +524,27 @@ pub async fn broker_connect(
             .await?;
             *mgr.sidecar.lock().unwrap() = Some(handle);
             Ok("QMT sidecar 已启动，等待客户端连接确认…".to_string())
+        }
+        "client" => {
+            let script = resolve_script_named(&app, "sidecar_client.py")?;
+            let args = crate::broker::client::build_args(&cfg);
+            let params = crate::broker::client::connect_params(&cfg);
+            let handle = sidecar::spawn_generic(
+                app.clone(),
+                &dir,
+                &cfg.python_path,
+                &script.to_string_lossy(),
+                &args,
+                params,
+            )
+            .await?;
+            *mgr.sidecar.lock().unwrap() = Some(handle);
+            let msg = if cfg.client_dry_run {
+                "同花顺客户端 sidecar（dry-run）已启动，等待连接自检…"
+            } else {
+                "同花顺客户端 sidecar 已启动，等待连接自检…"
+            };
+            Ok(msg.to_string())
         }
         other => Err(format!("未知券商适配器：{other}")),
     }
@@ -860,9 +951,10 @@ pub(crate) async fn submit_with_sig(
             let mk = market_snapshot_of(&code, &_name).await;
             (account, mk)
         }
-        "qmt" => {
-            // 实盘第一级：必须由用户在设置中显式开启实盘开关。
-            if !cfg.live_enabled {
+        "qmt" | "client" => {
+            // 实盘第一级：QMT 必须显式开启实盘开关；同花顺客户端仅在真实通道（非模拟）时要求。
+            let need_live = cfg.kind == "qmt" || (cfg.is_client() && !cfg.client_is_sim());
+            if need_live && !cfg.live_enabled {
                 return Err("实盘交易未启用：请先在券商设置中开启实盘开关".to_string());
             }
             // 账户快照取 sidecar 最近一次回报缓存；guard 在任何 await 前 drop（future 须 Send）。
@@ -879,11 +971,11 @@ pub(crate) async fn submit_with_sig(
                 )
             };
             let (Some(cash), Some(market_value)) = (cash, market_value) else {
-                return Err("QMT 资产数据尚未同步，请连接通道后稍后重试".to_string());
+                return Err("交易通道资产数据尚未同步，请连接通道后稍后重试".to_string());
             };
             if !pos_synced {
                 // 全量回报（哪怕空仓账户的空数组）到达前一律拒绝，保持安全。
-                return Err("QMT 持仓数据尚未同步，请连接通道后稍后重试".to_string());
+                return Err("交易通道持仓数据尚未同步，请连接通道后稍后重试".to_string());
             }
             let positions = pos_cache
                 .iter()
@@ -935,7 +1027,9 @@ pub(crate) async fn submit_with_sig(
     }
 
     // 实盘第一级最小限额：默认 0 = 锁定，须用户显式设置；单笔金额超限拒绝。
-    if cfg.kind == "qmt" {
+    // 同花顺模拟（client_sim）不碰真钱，不做实盘限额；真实客户端通道（P4）同样受约束。
+    let live_amount_gated = cfg.kind == "qmt" || (cfg.is_client() && !cfg.client_is_sim());
+    if live_amount_gated {
         if cfg.live_max_order_amount <= 0.0 {
             let reason = "实盘已锁定：请先在券商设置中设置单笔金额上限".to_string();
             log_gate_reject(&conn, &cfg.kind, sig_id, &reason);
@@ -981,7 +1075,7 @@ pub(crate) async fn submit_with_sig(
                 mock_run(&app2, &dir2, &sig_id2, &code2, &side2, price, vol).await;
             });
         }
-        "qmt" => {
+        "qmt" | "client" => {
             let req = sidecar::request(
                 &format!("submit-{sig_id}"),
                 "submit",
@@ -1001,7 +1095,7 @@ pub(crate) async fn submit_with_sig(
                 .map(|h| h.stdin.clone());
             match stdin {
                 Some(s) => sidecar::send_to(&s, req).await?,
-                None => return Err("QMT sidecar 未运行".to_string()),
+                None => return Err("交易 sidecar 未运行".to_string()),
             }
         }
         _ => {}
@@ -1275,7 +1369,7 @@ pub async fn broker_cancel(
             );
             Ok(())
         }
-        "qmt" => {
+        "qmt" | "client" => {
             let req = sidecar::request(
                 &format!("cancel-{sig_id}"),
                 "cancel",
@@ -1289,7 +1383,7 @@ pub async fn broker_cancel(
                 .map(|h| h.stdin.clone());
             match stdin {
                 Some(s) => sidecar::send_to(&s, req).await,
-                None => Err("QMT sidecar 未运行".to_string()),
+                None => Err("交易 sidecar 未运行".to_string()),
             }
         }
         _ => Ok(()),
@@ -1322,7 +1416,7 @@ pub async fn broker_query_asset(
                 "dayPnl": round2(s.day_pnl),
             }))
         }
-        "qmt" => {
+        "qmt" | "client" => {
             // 优先返回 sidecar 最近一次 asset 回报缓存
             let cached = mgr.asset_cache.lock().unwrap().clone();
             if !cached.as_object().map(|o| o.is_empty()).unwrap_or(true) {
@@ -1340,9 +1434,9 @@ pub async fn broker_query_asset(
                 if let Err(e) = sidecar::send_to(&s, req).await {
                     return Ok(serde_json::json!({ "note": format!("资产查询失败：{e}") }));
                 }
-                Ok(serde_json::json!({ "note": "正在向 QMT 查询资产…" }))
+                Ok(serde_json::json!({ "note": "正在向客户端查询资产…" }))
             } else {
-                Ok(serde_json::json!({ "note": "QMT 未连接，暂无资产数据" }))
+                Ok(serde_json::json!({ "note": "客户端未连接，暂无资产数据" }))
             }
         }
         _ => Ok(serde_json::json!({ "note": "暂不支持该券商的资产查询" })),
@@ -1370,7 +1464,7 @@ pub async fn broker_query_position(
                 .collect();
             Ok(serde_json::json!({ "positions": arr }))
         }
-        "qmt" => {
+        "qmt" | "client" => {
             if !mgr.position_synced.load(Ordering::SeqCst) {
                 // 未同步：主动向 sidecar 查询，前端下次轮询即可拿到回报
                 let stdin = mgr
@@ -1384,7 +1478,7 @@ pub async fn broker_query_position(
                         sidecar::request("query-position", "query_position", serde_json::json!({}));
                     let _ = sidecar::send_to(&s, req).await;
                 }
-                return Ok(serde_json::json!({ "note": "正在向 QMT 查询持仓…" }));
+                return Ok(serde_json::json!({ "note": "正在向客户端查询持仓…" }));
             }
             let cache = mgr.position_cache.lock().unwrap();
             let arr: Vec<_> = cache
@@ -1492,7 +1586,7 @@ pub async fn emergency_halt(app: &AppHandle) -> Result<serde_json::Value, String
         .map(|h| h.stdin.clone());
     if let Some(stdin) = &qmt_stdin {
         for (sig_id, broker) in &in_flight {
-            if broker == "qmt" {
+            if broker == "qmt" || broker == "client" {
                 let req = sidecar::request(
                     &format!("halt-cancel-{sig_id}"),
                     "cancel",

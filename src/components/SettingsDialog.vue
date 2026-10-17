@@ -24,8 +24,10 @@ import {
   brokerReleaseKill,
   mockSeedPosition,
   mockReset,
+  brokerClientSelfcheck,
   type BrokerStatus,
   type BrokerConfigFull,
+  type ClientSelfcheck,
 } from "../broker/api";
 import {
   pluginList,
@@ -978,6 +980,21 @@ const seedForm = reactive({ code: "", vol: 1000, price: 10 });
 function bFlash(m: string) {
   bMsg.value = m;
 }
+// P3 同花顺客户端通道：连接自检结果
+const bSelfcheck = ref<ClientSelfcheck | null>(null);
+async function bRefreshSelfcheck() {
+  try {
+    const sc = await brokerClientSelfcheck();
+    bSelfcheck.value = sc && (sc.vendor || (sc.checks && sc.checks.length)) ? sc : null;
+  } catch {
+    bSelfcheck.value = null;
+  }
+}
+// 真实通道（非模拟）强制半自动，自动确认仅模拟环境可开
+function toggleClientAuto() {
+  if (!bForm.value || !bForm.value.clientSim) return;
+  bForm.value.clientAutoConfirm = !bForm.value.clientAutoConfirm;
+}
 async function refreshBStatus() {
   try {
     bStatus.value = await brokerGetStatus();
@@ -989,6 +1006,7 @@ async function loadBrokerTab() {
   try {
     bForm.value = await brokerGetConfig();
     await refreshBStatus();
+    await bRefreshSelfcheck();
     brokerLoaded.value = true;
   } catch (e) {
     bFlash(`加载失败：${e}`);
@@ -1013,6 +1031,13 @@ async function saveBroker() {
       maxDrawdownLimitPct: f.maxDrawdownLimitPct,
       consecutiveLossLimit: f.consecutiveLossLimit,
       liveMaxOrderAmount: f.liveMaxOrderAmount,
+      clientVendor: f.clientVendor,
+      clientSim: f.clientSim,
+      clientPath: f.clientPath,
+      clientTemplateDir: f.clientTemplateDir,
+      clientAutoConfirm: f.clientAutoConfirm,
+      clientMinIntervalMs: f.clientMinIntervalMs,
+      clientDryRun: f.clientDryRun,
     });
     bFlash("配置已保存");
   } catch (e) {
@@ -1022,7 +1047,10 @@ async function saveBroker() {
 async function bConnect() {
   try {
     bFlash(await brokerConnect());
+    // sidecar 连接后异步推送自检（dry-run 秒级，真机起客户端较慢），稍候拉取，亦可手动刷新。
+    await new Promise((r) => setTimeout(r, 2200));
     await refreshBStatus();
+    await bRefreshSelfcheck();
   } catch (e) {
     bFlash(String(e));
   }
@@ -2040,6 +2068,9 @@ async function clearL2Key(r: PluginRow) {
                     <template v-if="bForm && bForm.kind === 'mock'">
                       ⚪ 模拟交易 · 已就绪（本地虚拟资金，无需连接）
                     </template>
+                    <template v-else-if="bForm && bForm.kind === 'client'">
+                      {{ bStatus?.connected ? "● 同花顺模拟已连接" : "○ 同花顺模拟未连接" }}
+                    </template>
                     <template v-else>
                       {{ bStatus?.connected ? "● QMT 已连接" : "○ QMT 未连接" }}
                     </template>
@@ -2064,6 +2095,11 @@ async function clearL2Key(r: PluginRow) {
                   <input v-model="bForm.kind" type="radio" value="qmt" />
                   <div class="bk-mode-name">QMT 实盘</div>
                   <div class="bk-mode-desc">连接本机 miniQMT + xtquant，可提交真实委托</div>
+                </label>
+                <label class="bk-mode-card" :class="{ on: bForm.kind === 'client' }">
+                  <input v-model="bForm.kind" type="radio" value="client" />
+                  <div class="bk-mode-name">同花顺模拟</div>
+                  <div class="bk-mode-desc">操控本机同花顺模拟炒股客户端，虚拟资金练手；默认 dry-run 空跑，不碰真钱</div>
                 </label>
               </div>
 
@@ -2091,6 +2127,66 @@ async function clearL2Key(r: PluginRow) {
                 </div>
               </template>
 
+              <!-- 同花顺客户端通道（P3）：参数 / 开关 / 连接 / 自检 -->
+              <template v-if="bForm && bForm.kind === 'client'">
+                <div class="section-title" style="margin-top:16px">同花顺客户端参数</div>
+                <div class="bridge-grid">
+                  <label class="ai-field"><span>Python 路径</span>
+                    <input v-model="bForm.pythonPath" type="text" spellcheck="false" placeholder="python.exe（3.10–3.12，装 pywinauto/pyautogui/pillow）" /></label>
+                  <label class="ai-field"><span>同花顺客户端路径（可选）</span>
+                    <input v-model="bForm.clientPath" type="text" spellcheck="false" placeholder="xiadan.exe / 模拟炒股可执行文件，留空自动探测" /></label>
+                </div>
+                <div class="bridge-grid">
+                  <label class="ai-field"><span>控件模板目录（可选）</span>
+                    <input v-model="bForm.clientTemplateDir" type="text" spellcheck="false" placeholder="selectors.json 目录，留空用脚本内置" /></label>
+                  <label class="ai-field"><span>最小操作间隔（毫秒）</span>
+                    <input v-model.number="bForm.clientMinIntervalMs" type="number" min="300" step="100" /></label>
+                </div>
+
+                <div class="bk-switch-list">
+                  <div class="bk-switch-row">
+                    <div>
+                      <div class="bk-sw-title">模拟交易（虚拟资金）</div>
+                      <div class="section-sub">建议保持开启，下单走同花顺模拟炒股，不碰真钱</div>
+                    </div>
+                    <button type="button" class="switch" :class="{ on: bForm.clientSim }" @click="bForm.clientSim = !bForm.clientSim"><span class="knob"></span></button>
+                  </div>
+                  <div class="bk-switch-row">
+                    <div>
+                      <div class="bk-sw-title">dry-run 空跑（不操控客户端）</div>
+                      <div class="section-sub">开启后 sidecar 内置虚拟账户模拟全流程，便于联调；关闭才会真正操控同花顺</div>
+                    </div>
+                    <button type="button" class="switch" :class="{ on: bForm.clientDryRun }" @click="bForm.clientDryRun = !bForm.clientDryRun"><span class="knob"></span></button>
+                  </div>
+                  <div class="bk-switch-row">
+                    <div>
+                      <div class="bk-sw-title">自动确认（全自动）</div>
+                      <div class="section-sub">关闭则每笔下单前弹「截图确认桥」人工核对；仅模拟环境允许开启</div>
+                    </div>
+                    <button type="button" class="switch" :class="{ on: bForm.clientAutoConfirm, disabled: !bForm.clientSim }" @click="toggleClientAuto"><span class="knob"></span></button>
+                  </div>
+                </div>
+
+                <div class="bk-actions" style="margin-top:12px">
+                  <button type="button" class="logs-btn primary" @click="saveBroker">保存配置</button>
+                  <button type="button" class="logs-btn primary big" @click="bConnect">连接通道</button>
+                  <button type="button" class="logs-btn" @click="bDisconnect">断开</button>
+                  <button type="button" class="logs-btn" @click="bRefreshSelfcheck">刷新自检</button>
+                </div>
+
+                <div v-if="bSelfcheck" class="bk-selfcheck">
+                  <div class="bk-sc-head">
+                    <span class="bk-sc-title">连接自检</span>
+                    <span class="bk-sc-mode">{{ bSelfcheck.vendor }} · {{ bSelfcheck.dryRun ? "dry-run 空跑" : bSelfcheck.sim ? "模拟交易" : "真实通道" }} · {{ bSelfcheck.mode }}</span>
+                  </div>
+                  <div v-for="(it, i) in bSelfcheck.checks" :key="i" class="bk-sc-item" :class="{ bad: !it.ok }">
+                    <span class="bk-sc-ico">{{ it.ok ? "✓" : "✗" }}</span>
+                    <span class="bk-sc-name">{{ it.name }}</span>
+                    <span v-if="it.msg" class="bk-sc-msg">{{ it.msg }}</span>
+                  </div>
+                </div>
+              </template>
+
               <!-- 模拟账户总资金（自定义，不写死100万） -->
               <template v-if="bForm && bForm.kind === 'mock'">
                 <div class="section-title" style="margin-top:20px">模拟账户总资金</div>
@@ -2114,6 +2210,12 @@ async function clearL2Key(r: PluginRow) {
                 <div>
                   <div class="bk-live-title">⚪ 当前为模拟模式</div>
                   <div class="section-sub">模拟交易不涉及真实委托。如需实盘，请先在上方选择「QMT 实盘」</div>
+                </div>
+              </div>
+              <div v-else-if="bForm && bForm.kind === 'client' && bForm.clientSim" class="bk-live-card disabled">
+                <div>
+                  <div class="bk-live-title">🧪 同花顺模拟 · 无需实盘开关</div>
+                  <div class="section-sub">客户端模拟炒股为虚拟资金，不提交真实委托；关闭「模拟交易」开关即进入真实通道（后续版本开放）。</div>
                 </div>
               </div>
               <div v-else-if="bForm" class="bk-live-card" :class="{ on: bForm.liveEnabled }">
@@ -2680,7 +2782,7 @@ async function clearL2Key(r: PluginRow) {
   background: rgba(242,54,69,.12); border: 1px solid rgba(242,54,69,.4);
   color: #f23645; font-size: 12px; display: flex; align-items: center; justify-content: space-between;
 }
-.bk-mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.bk-mode-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
 .bk-mode-card {
   border: 1px solid var(--border); border-radius: 10px; padding: 12px;
   cursor: pointer; transition: all .15s; display: block;
@@ -2819,4 +2921,18 @@ async function clearL2Key(r: PluginRow) {
 .ai-lock-title { font-size: 16px; font-weight: 800; color: #fff; }
 .ai-lock-sub { margin: 10px 0 18px; font-size: 12.5px; color: #9fb3d1; line-height: 1.8; max-width: 430px; }
 
+
+.bk-switch-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.bk-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; }
+.bk-sw-title { font-size: 12px; font-weight: 600; }
+.bk-selfcheck { margin-top: 12px; border: 1px solid rgba(90,160,255,0.25); border-radius: 8px; padding: 10px 12px; background: rgba(90,160,255,0.05); }
+.bk-sc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.bk-sc-title { font-weight: 600; }
+.bk-sc-mode { font-size: 11px; opacity: .7; }
+.bk-sc-item { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; font-size: 12px; }
+.bk-sc-ico { color: #37d67a; font-weight: 700; }
+.bk-sc-item.bad .bk-sc-ico { color: #ff5a5a; }
+.bk-sc-name { font-weight: 600; }
+.bk-sc-msg { opacity: .7; }
+.switch.disabled { opacity: .45; cursor: not-allowed; }
 </style>

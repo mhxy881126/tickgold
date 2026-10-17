@@ -1,7 +1,7 @@
 # TickGold 后端命令 / 迁移对照清单（v2.29.0 基线）
 
 > 巨石拆分（lib.rs → db/migrations.rs、commands.rs、setup.rs 模块化）的护栏。
-> 每次后端结构调整后，必须重新核对：**命令总数 216、迁移总数 57**，逐一对照无缺失。
+> 每次后端结构调整后，必须重新核对：**命令总数 219、迁移总数 57**，逐一对照无缺失。
 > （v2.30 起命令/迁移逐步增加，历史编号未全量回填；P0 新增条目见文末对应小节。）
 > 基线：v2.27.0（149 命令 / 48 迁移）；v2.28.0 净增 21 个命令
 > （资金流 3、组合层 2、风险仪表盘 1、异动阈值 2、板块日快照 3、备份中心 7、数据治理 3）
@@ -171,6 +171,9 @@
 | 140 | conditional::co_update |
 | 141 | conditional::co_cancel |
 | 142 | conditional::co_cancel_all |
+| 217 | client::broker_client_confirm（P3 同花顺模拟半自动确认/拒绝） |
+| 218 | client::broker_client_selfcheck（P3 读取连接自检） |
+| 219 | client::broker_client_shot（P3 读取下单前截图） |
 
 ### plugin 模块：11 个
 
@@ -260,6 +263,19 @@
 > - workflow_feedback（第⑤步收盘：停自动执行→settle 结算→聚合当日信号/成交/胜率/持仓/现金/盈亏→写 feedback_json，连续推进 4→5→6；幂等）
 > - workflow_p2_products（只读回显：重开驾驶舱取回 mission/feedback/running/killSwitch）
 > 一键熔断复用既有 broker_emergency_halt / broker_release_kill，不新增命令。
+
+> P3 同花顺客户端自动化通道（模块 broker::client，实际注册总数 219）新增 3 个命令：
+> - broker_client_confirm（半自动确认桥：人工核对截图后向 sidecar 发 confirm/reject，确认才在客户端点「确定」）
+> - broker_client_selfcheck（读取 sidecar 连接自检：Python 版本 / pywinauto / 客户端路径 / 模拟或 dry-run 模式）
+> - broker_client_shot（读取某笔委托下单前截图，供确认桥展示；不传 sig_id 取最近一张）
+>
+> 通道实现：新增 Python sidecar `resources/broker/sidecar_client.py`（NDJSON 协议与 sidecar_qmt 对齐），
+> 由 `sidecar::spawn_generic` 统一托管；broker config 新增 7 个 client_* 字段，默认 vendor=ths、sim=true、
+> auto_confirm=true、dry_run=true、min_interval=1200ms（模拟环境安全默认）。submit/cancel/query_asset/
+> query_position/emergency_halt 均扩展为 qmt|client 双分支；模拟 client 不要求 live_enabled、不做实盘金额上限。
+> 真实客户端通道（client_sim=false）强制半自动、留待 P4 开放。
+> 前端与打包：设置 → 券商交易新增「同花顺模拟」模式卡（Python/客户端路径/模板目录/限速 + 模拟交易、dry-run、自动确认三开关 + 连接自检面板）；SignalBridge 新增「下单前核对」截图确认浮层（方向/代码/价格/数量/金额/模拟盘标记 + 截图 + 确认/取消），监听 broker:client_screenshot / broker:client_note；sidecar_client.py 已在 tauri.conf.json resources 注册随安装包分发。
+> 真机联调与 selectors.json 模板录制见 docs/同花顺模拟通道·真机联调手册.md。
 
 ---
 

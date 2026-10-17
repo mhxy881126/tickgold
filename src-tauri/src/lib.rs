@@ -195,6 +195,10 @@ pub fn run() {
             broker::broker_release_kill,
             broker::mock_seed_position,
             broker::mock_reset,
+            // P3 客户端自动化通道（同花顺模拟）
+            broker::client::broker_client_confirm,
+            broker::client::broker_client_selfcheck,
+            broker::client::broker_client_shot,
             // ===== v2.23 本地条件单 =====
             broker::conditional::co_list,
             broker::conditional::co_create,

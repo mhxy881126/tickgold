@@ -22,7 +22,9 @@ import {
   brokerGetStatus,
   brokerListOrders,
   brokerCancel,
+  brokerClientConfirm,
   type BrokerOrderInfo,
+  type ClientShot,
 } from "../broker/api";
 
 const TABS = [
@@ -276,6 +278,28 @@ async function onBrokerCancel(t: SignalTicketInfo) {
   }
 }
 
+// ===== P3 同花顺客户端：半自动下单截图确认桥 =====
+const pendingShot = ref<ClientShot | null>(null);
+const shotBusy = ref(false);
+async function onClientDecision(approved: boolean) {
+  const shot = pendingShot.value;
+  if (!shot || !shot.client_order_id || shotBusy.value) return;
+  shotBusy.value = true;
+  try {
+    await brokerClientConfirm(shot.client_order_id, approved);
+    flash(approved ? "已在客户端确认下单" : "已取消该笔委托");
+    pendingShot.value = null;
+    await loadOrders();
+  } catch (e) {
+    flash(String(e));
+  } finally {
+    shotBusy.value = false;
+  }
+}
+function dismissShot() {
+  if (!shotBusy.value) pendingShot.value = null;
+}
+
 // ===== 券商唤起 =====
 const brokerPath = ref("");
 const orderTpl = ref("");
@@ -388,6 +412,15 @@ onMounted(() => {
   for (const ev of ["signal:updated", "signal:new"]) {
     listen(ev, () => void load()).then((u) => unlisteners.push(u));
   }
+  // P3 客户端自动化：半自动下单截图确认桥 + 操作提示
+  listen<ClientShot>("broker:client_screenshot", (ev) => {
+    const shot = ev.payload;
+    // 自动确认模式下 sidecar 不发截图；收到截图即说明处于半自动，需人工核对。
+    if (shot && shot.client_order_id) pendingShot.value = shot;
+  }).then((u) => unlisteners.push(u));
+  listen<{ message?: string }>("broker:client_note", (ev) => {
+    if (ev.payload?.message) flash(ev.payload.message);
+  }).then((u) => unlisteners.push(u));
 });
 onUnmounted(() => {
   clearInterval(timer);
@@ -642,7 +675,7 @@ onUnmounted(() => {
               :class="{ primary: !bLive, dangerlive: bLive }"
               :disabled="busy === t.id"
               @click="onBrokerSend(t)"
-            >{{ busy === t.id ? "处理中…" : bLive ? "实盘发送" : bKind === "qmt" ? "QMT 发送" : "模拟发送" }}</button>
+            >{{ busy === t.id ? "处理中…" : bLive ? "实盘发送" : bKind === "qmt" ? "QMT 发送" : bKind === "client" ? "同花顺模拟发送" : "模拟发送" }}</button>
           </div>
 
           <div class="sig-actions">
@@ -652,6 +685,36 @@ onUnmounted(() => {
         </template>
       </div>
     </div>
+
+    <!-- P3 同花顺客户端：半自动下单截图确认浮层 -->
+    <transition name="shot-fade">
+      <div v-if="pendingShot" class="shot-mask" @click.self="dismissShot">
+        <div class="shot-modal">
+          <div class="shot-modal-title">下单前核对 · 同花顺模拟</div>
+          <div class="shot-expect">
+            <span class="shot-tag" :class="pendingShot.expect?.side === 'SELL' ? 'sell' : 'buy'">
+              {{ pendingShot.expect?.side === "SELL" ? "卖出" : "买入" }}
+            </span>
+            <span class="shot-code">{{ pendingShot.expect?.code }}</span>
+            <span class="shot-fld">价格 {{ pendingShot.expect?.price }}</span>
+            <span class="shot-fld">数量 {{ pendingShot.expect?.vol }}</span>
+            <span class="shot-fld">金额 {{ pendingShot.expect?.amount ? pendingShot.expect.amount.toLocaleString() : "—" }} 元</span>
+            <span class="shot-fld sim">{{ pendingShot.expect?.sim ? "模拟盘" : "真实盘" }}</span>
+            <span v-if="pendingShot.expect?.autoConfirm" class="shot-fld">自动确认</span>
+          </div>
+          <div class="shot-img-wrap">
+            <img v-if="pendingShot.shot" :src="pendingShot.shot" alt="下单窗口截图" class="shot-img" />
+            <div v-else class="shot-noimg">暂无截图（dry-run 占位或客户端未返回画面）</div>
+          </div>
+          <div v-if="pendingShot.message" class="shot-msg">{{ pendingShot.message }}</div>
+          <div class="shot-tip">请核对截图中的代码 / 方向 / 价格 / 数量是否与上方一致，确认后 sidecar 才会在客户端点「确定」。</div>
+          <div class="shot-actions">
+            <button class="act ghost" :disabled="shotBusy" @click="onClientDecision(false)">取消委托</button>
+            <button class="act primary" :disabled="shotBusy" @click="onClientDecision(true)">{{ shotBusy ? "处理中…" : "核对无误 · 确认下单" }}</button>
+          </div>
+        </div>
+      </div>
+    </transition>
 
     <transition name="toast">
       <div v-if="toastMsg" class="sb-toast">{{ toastMsg }}</div>
@@ -1089,4 +1152,23 @@ onUnmounted(() => {
 .bk-st-rejected .bk-state { color: #ff5a6a; }
 .act.dangerlive { background: #ff3b46; border-color: #ff3b46; color: #fff; font-weight: 700; }
 .act.ghost { background: transparent; }
+
+.shot-mask { position: fixed; inset: 0; background: rgba(5,8,15,.72); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 1200; padding: 24px; }
+.shot-modal { width: min(560px, 94vw); max-height: 88vh; overflow: auto; background: #12161f; border: 1px solid rgba(90,160,255,.35); border-radius: 12px; padding: 16px; box-shadow: 0 18px 60px rgba(0,0,0,.6); }
+.shot-modal-title { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+.shot-expect { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 10px; }
+.shot-tag { padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 12px; }
+.shot-tag.buy { background: rgba(255,90,90,.18); color: #ff7a7a; }
+.shot-tag.sell { background: rgba(45,212,140,.18); color: #37d67a; }
+.shot-code { font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+.shot-fld { font-size: 12px; opacity: .85; }
+.shot-fld.sim { color: #ffb13d; }
+.shot-img-wrap { border: 1px solid rgba(255,255,255,.1); border-radius: 8px; overflow: hidden; background: #0b0e14; }
+.shot-img { display: block; width: 100%; height: auto; }
+.shot-noimg { padding: 28px; text-align: center; opacity: .5; font-size: 12px; }
+.shot-msg { margin-top: 8px; font-size: 12px; opacity: .8; }
+.shot-tip { margin-top: 8px; font-size: 11px; opacity: .6; line-height: 1.6; }
+.shot-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+.shot-fade-enter-active, .shot-fade-leave-active { transition: opacity .18s; }
+.shot-fade-enter-from, .shot-fade-leave-to { opacity: 0; }
 </style>

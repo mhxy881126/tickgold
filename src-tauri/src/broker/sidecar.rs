@@ -36,14 +36,15 @@ pub struct SidecarHandle {
     pub stdin: Arc<Mutex<ChildStdin>>,
 }
 
-/// 启动 sidecar，发送 connect，并拉起后台回报读取任务。
-pub async fn spawn(
+/// 启动 sidecar 核心：以给定命令行参数拉起 Python 脚本，发送 connect，并拉起后台回报读取任务。
+/// qmt / client 两类脚本共用本函数；差异仅在 extra_args 与 connect_params。
+pub async fn spawn_generic(
     app: AppHandle,
     dir: &Path,
     python_path: &str,
     script_path: &str,
-    qmt_path: &str,
-    account: &str,
+    extra_args: &[String],
+    connect_params: Value,
 ) -> Result<SidecarHandle, String> {
     if python_path.trim().is_empty() {
         return Err("未配置 Python 路径（设置 - 券商交易）".to_string());
@@ -57,10 +58,7 @@ pub async fn spawn(
 
     let mut cmd = tokio::process::Command::new(python_path);
     cmd.arg(script_path)
-        .arg("--qmt")
-        .arg(qmt_path)
-        .arg("--account")
-        .arg(account)
+        .args(extra_args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -83,16 +81,8 @@ pub async fn spawn(
         stdin: stdin.clone(),
     };
 
-    // connect 请求
-    send_to(
-        &stdin,
-        request(
-            "connect",
-            "connect",
-            json!({ "qmt": qmt_path, "account": account }),
-        ),
-    )
-    .await?;
+    // connect 请求（参数由各通道决定）
+    send_to(&stdin, request("connect", "connect", connect_params)).await?;
 
     // 后台读取 stdout：逐行解析，转发事件 + 驱动状态机。
     let app2 = app.clone();
@@ -125,7 +115,26 @@ pub async fn spawn(
         });
     }
 
-    // 连接结果由后台任务经 broker:sidecar(connected/error) 事件回传，
-    // 避免在无 QMT 环境长时间阻塞命令。
+    // 连接结果由后台任务经 broker:sidecar(connected/error/selfcheck) 事件回传，
+    // 避免在无客户端环境长时间阻塞命令。
     Ok(handle)
+}
+
+/// 启动 QMT sidecar（保留原签名，内部走通用 spawn_generic）。
+pub async fn spawn(
+    app: AppHandle,
+    dir: &Path,
+    python_path: &str,
+    script_path: &str,
+    qmt_path: &str,
+    account: &str,
+) -> Result<SidecarHandle, String> {
+    let extra = vec![
+        "--qmt".to_string(),
+        qmt_path.to_string(),
+        "--account".to_string(),
+        account.to_string(),
+    ];
+    let params = json!({ "qmt": qmt_path, "account": account });
+    spawn_generic(app, dir, python_path, script_path, &extra, params).await
 }

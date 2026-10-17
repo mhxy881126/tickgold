@@ -27,6 +27,7 @@
     ],
     "resources": {
       "resources/broker/sidecar_qmt.py": "resources/broker/sidecar_qmt.py",
+      "resources/broker/sidecar_client.py": "resources/broker/sidecar_client.py",
       "resources/plugins/bias-indicator/main.js": "resources/plugins/bias-indicator/main.js",
       "resources/plugins/bias-indicator/plugin.json": "resources/plugins/bias-indicator/plugin.json",
       "resources/plugins/bias-indicator/ui.js": "resources/plugins/bias-indicator/ui.js",
