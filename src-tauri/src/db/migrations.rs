@@ -1,5 +1,5 @@
 // 主库迁移清单（v2.27 巨石拆分：从 lib.rs 抽出）。
-// 追加式：只许新增版本，禁止改动已发布条目。共 58 条（v1..v58）。
+// 追加式：只许新增版本，禁止改动已发布条目。共 59 条（v1..v59）。
 // 数量护栏见 src-tauri/INVENTORY.md；改动后需与之一致。
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -930,6 +930,52 @@ pub fn migrations() -> Vec<Migration> {
                             version: 58,
                             description: "P4 live trading guard: broker_order.is_live (mark real-money orders for daily amount cap)",
                             sql: "ALTER TABLE broker_order ADD COLUMN is_live INTEGER NOT NULL DEFAULT 0;",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 59,
+                            description: "P5 model takeover: brain_rollout state machine (rule/shadow/canary/live) + shadow_decision comparison log",
+                            sql: "CREATE TABLE IF NOT EXISTS brain_rollout (
+                              id INTEGER PRIMARY KEY CHECK (id=1),
+                              stage TEXT NOT NULL DEFAULT 'rule',
+                              requested_stage TEXT NOT NULL DEFAULT '',
+                              request_json TEXT NOT NULL DEFAULT '{}',
+                              status TEXT NOT NULL DEFAULT 'active',
+                              gray_pct REAL NOT NULL DEFAULT 10,
+                              small_position_pct REAL NOT NULL DEFAULT 5,
+                              shadow_min_samples INTEGER NOT NULL DEFAULT 100,
+                              shadow_min_agree_pct REAL NOT NULL DEFAULT 60,
+                              fail_count INTEGER NOT NULL DEFAULT 0,
+                              approved_at INTEGER NOT NULL DEFAULT 0,
+                              approve_note TEXT NOT NULL DEFAULT '',
+                              rollback_reason TEXT NOT NULL DEFAULT '',
+                              updated_at INTEGER NOT NULL DEFAULT 0
+                            );
+                            INSERT OR IGNORE INTO brain_rollout(id) VALUES(1);
+                            CREATE TABLE IF NOT EXISTS shadow_decision (
+                              id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              trade_date TEXT NOT NULL,
+                              ts TEXT NOT NULL,
+                              created_at INTEGER NOT NULL,
+                              code TEXT NOT NULL,
+                              name TEXT NOT NULL DEFAULT '',
+                              strategy TEXT NOT NULL DEFAULT '',
+                              side TEXT NOT NULL DEFAULT '',
+                              rule_label TEXT NOT NULL DEFAULT '',
+                              rule_conf REAL NOT NULL DEFAULT 0,
+                              rule_model TEXT NOT NULL DEFAULT '',
+                              shadow_label TEXT NOT NULL DEFAULT '',
+                              shadow_conf REAL NOT NULL DEFAULT 0,
+                              shadow_model TEXT NOT NULL DEFAULT '',
+                              shadow_ok INTEGER NOT NULL DEFAULT 0,
+                              agree INTEGER NOT NULL DEFAULT 0,
+                              executed_brain TEXT NOT NULL DEFAULT 'rule',
+                              rule_infer_ms INTEGER NOT NULL DEFAULT 0,
+                              shadow_infer_ms INTEGER NOT NULL DEFAULT 0,
+                              features_json TEXT NOT NULL DEFAULT '{}'
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_shadow_decision_created ON shadow_decision(created_at);
+                            CREATE INDEX IF NOT EXISTS idx_shadow_decision_date ON shadow_decision(trade_date);",
                             kind: MigrationKind::Up,
                         },
     ]

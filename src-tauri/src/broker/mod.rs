@@ -1261,9 +1261,7 @@ pub(crate) async fn submit_with_sig(
             return Err(format!("{reason}（请在武装向导加入白名单）"));
         }
         // 2) 强制涨跌停行情快照（无行情即拒绝，乌龙指 fail-safe：gate 以涨停价为买入硬边界）。
-        if market.and_then(|m| m.limit_up).is_none()
-            || market.and_then(|m| m.limit_down).is_none()
-        {
+        if !risk::limit_prices_ready(market) {
             let reason = "真实通道行情未就绪（缺少涨跌停价），已拒绝下单以防乌龙指".to_string();
             log_gate_reject(&conn, &cfg.kind, sig_id, &reason);
             return Err(format!("{reason}，请稍后重试"));

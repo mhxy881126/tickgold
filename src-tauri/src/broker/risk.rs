@@ -321,6 +321,12 @@ pub fn gate(
     )
 }
 
+/// 真实通道下单前的行情 fail-safe：必须同时具备涨停价与跌停价，缺任一则视为行情未就绪，
+/// 一律拒绝下单（防止数量级乌龙指，gate 以涨停价为买入硬边界）。
+pub fn limit_prices_ready(market: Option<MarketSnapshot>) -> bool {
+    matches!(market, Some(m) if m.limit_up.is_some() && m.limit_down.is_some())
+}
+
 /// A 股代码去交易所后缀（600519.SH → 600519；无后缀原样返回）。
 pub fn strip_suffix(code: &str) -> String {
     match code.split_once('.') {

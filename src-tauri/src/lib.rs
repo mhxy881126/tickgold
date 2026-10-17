@@ -203,6 +203,12 @@ pub fn run() {
             broker::broker_live_whitelist_set,
             broker::broker_live_mark_drill,
             broker::broker_live_usage,
+            // ===== P5 模型接管：状态机 / 影子 / 灰度 / 回退 =====
+            ai::brain_rollout::brain_rollout_get,
+            ai::brain_rollout::brain_rollout_request,
+            ai::brain_rollout::brain_rollout_approve,
+            ai::brain_rollout::brain_rollout_rollback,
+            ai::drill::drill_run_all,
             // ===== v2.23 本地条件单 =====
             broker::conditional::co_list,
             broker::conditional::co_create,

@@ -730,6 +730,8 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
             Err(_) => continue,
         };
         ensure_rule_model(&conn);
+        // P5 模型接管状态（每轮读一次）：rule 阶段维持原 brain_mode，其余按状态机双脑决策。
+        let rollout = crate::ai::brain_rollout::load(&conn);
 
         // 账户级闸门每轮只算一次（日亏/回撤/连亏），BUY 定 vol 之前先行判定。
         let today = today_dashed();
@@ -855,15 +857,114 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
             } else {
                 None
             };
-            let d = fastbrain::fast_decide(
-                pack,
-                &cfg.brain_mode,
-                &cfg.laya_url,
-                cloud,
-                Some(&cfg.indicators_enabled),
-                Some(&cfg.weight_overrides),
-            )
-            .await;
+            // ===== P5 模型接管：规则脑基线 + 影子脑（shadow/canary/live）=====
+            let rstage = rollout.stage.clone();
+            let (d, laya_exec) = if rstage == "rule" {
+                let dd = fastbrain::fast_decide(
+                    pack,
+                    &cfg.brain_mode,
+                    &cfg.laya_url,
+                    cloud,
+                    Some(&cfg.indicators_enabled),
+                    Some(&cfg.weight_overrides),
+                )
+                .await;
+                (dd, false)
+            } else {
+                // 规则脑基线（始终计算）
+                let rt = std::time::Instant::now();
+                let rule_d = fastbrain::fast_decide(
+                    pack.clone(),
+                    "rule",
+                    &cfg.laya_url,
+                    None,
+                    Some(&cfg.indicators_enabled),
+                    Some(&cfg.weight_overrides),
+                )
+                .await;
+                let rule_ms = rt.elapsed().as_millis() as i64;
+                // 影子脑（laya）；不可达/超时时 fast_decide 内部降级规则脑，mode 回 rule
+                let st = std::time::Instant::now();
+                let shadow_d = fastbrain::fast_decide(
+                    pack.clone(),
+                    "laya",
+                    &cfg.laya_url,
+                    None,
+                    Some(&cfg.indicators_enabled),
+                    Some(&cfg.weight_overrides),
+                )
+                .await;
+                let shadow_ms = st.elapsed().as_millis() as i64;
+                let shadow_ok = shadow_d.mode == "laya";
+                let fjson = features.to_string();
+                crate::ai::brain_rollout::record_shadow(
+                    &conn,
+                    &crate::ai::brain_rollout::ShadowRec {
+                        code: &item.code,
+                        name: &item.name,
+                        strategy: &item.strategy,
+                        side,
+                        rule_label: &rule_d.label,
+                        rule_conf: rule_d.confidence,
+                        rule_model: &rule_d.model_version,
+                        shadow_label: &shadow_d.label,
+                        shadow_conf: shadow_d.confidence,
+                        shadow_model: &shadow_d.model_version,
+                        shadow_ok,
+                        executed_brain: "rule",
+                        rule_infer_ms: rule_ms,
+                        shadow_infer_ms: shadow_ms,
+                        features_json: &fjson,
+                    },
+                );
+                let mut final_d = rule_d.clone();
+                let mut laya = false;
+                match rstage.as_str() {
+                    "canary" => {
+                        // 按标的代码确定性分流：同一只票始终走同一脑
+                        let pick = crate::ai::brain_rollout::pick_exec_brain(
+                            "canary",
+                            rollout.gray_pct,
+                            &item.code,
+                        );
+                        if pick == "laya" {
+                            if shadow_ok {
+                                final_d = shadow_d;
+                                laya = true;
+                                crate::ai::brain_rollout::note_success(&conn);
+                            } else {
+                                // 分到 laya 但影子脑不可用：安全降级规则脑并累计失败
+                                crate::ai::brain_rollout::note_failure(&conn);
+                            }
+                        }
+                    }
+                    "live" => {
+                        if shadow_ok {
+                            final_d = shadow_d;
+                            laya = true;
+                            crate::ai::brain_rollout::note_success(&conn);
+                        } else {
+                            // 接管阶段影子脑不可用：降级规则脑并累计失败，连续失败自动回退
+                            crate::ai::brain_rollout::note_failure(&conn);
+                        }
+                    }
+                    _ => {
+                        // shadow：影子只记录不执行，规则脑照常执行
+                        if shadow_ok {
+                            crate::ai::brain_rollout::note_success(&conn);
+                        }
+                    }
+                }
+                (final_d, laya)
+            };
+            // 灰度/接管由 laya 执行的买入信号：强制小仓位（只收紧单票上限，绝不放宽）
+            let eff_bcfg = if laya_exec {
+                let mut bc = bcfg.clone();
+                bc.max_single_pct = bc.max_single_pct.min(rollout.small_position_pct);
+                bc
+            } else {
+                bcfg.clone()
+            };
 
             match d.label.as_str() {
                 crate::ai::fastbrain::LABEL_WATCH_UP if pos.is_none() => {
@@ -887,7 +988,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                             item,
                             q,
                             &cfg,
-                            &bcfg,
+                            &eff_bcfg,
                             total_asset,
                             cash,
                             total_pos_pct,
@@ -895,7 +996,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                             Ok(msg) => {
                                 log_decision(&conn, item, &d, "executed", &features, false);
                                 emit_signal(&app, &data_dir, item, &d, "executed", &msg, &features);
-                                let budget = total_asset * bcfg.max_single_pct / 100.0;
+                                let budget = total_asset * eff_bcfg.max_single_pct / 100.0;
                                 bridge_push(
                                     &app,
                                     &conn,
@@ -945,7 +1046,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                                 item,
                                 q,
                                 &cfg,
-                                &bcfg,
+                                &eff_bcfg,
                                 total_asset,
                                 cash,
                                 total_pos_pct,
@@ -981,7 +1082,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                                 "快脑买入观察信号，请人工确认",
                                 &features,
                             );
-                            let budget = total_asset * bcfg.max_single_pct / 100.0;
+                            let budget = total_asset * eff_bcfg.max_single_pct / 100.0;
                             bridge_push(
                                 &app,
                                 &conn,

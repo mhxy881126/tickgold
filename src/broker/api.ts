@@ -347,3 +347,93 @@ export interface RiskSnapshot {
 export function riskSnapshot() {
   return invoke<RiskSnapshot>("risk_snapshot");
 }
+
+// ===== P5 模型接管（影子 / 灰度 / 接管 / 回退）=====
+
+/** 大脑接管状态机四阶段：rule 规则脑 → shadow 影子对比 → canary 灰度 → live 模型接管。 */
+export interface BrainRollout {
+  stage: string; // rule / shadow / canary / live
+  requestedStage: string; // 空串 = 无待审批
+  requestJson: string;
+  status: string; // active / pending
+  grayPct: number; // 灰度比例 0-100
+  smallPositionPct: number; // 灰度/接管时单票小仓位上限 %
+  shadowMinSamples: number; // 影子达标所需最少样本
+  shadowMinAgreePct: number; // 影子达标所需一致率 %
+  failCount: number; // 连续失败计数（达 5 自动回退）
+  approvedAt: number;
+  approveNote: string;
+  rollbackReason: string;
+  updatedAt: number;
+}
+
+export interface ShadowStats {
+  samples: number;
+  shadowOkSamples: number;
+  layaAvailable: boolean;
+  agreePct: number;
+  disagreePct: number;
+  ruleP50Ms: number;
+  ruleP99Ms: number;
+  shadowP50Ms: number;
+  shadowP99Ms: number;
+  meetsCanary: boolean;
+}
+
+export interface RolloutView extends BrainRollout {
+  stats: ShadowStats;
+}
+
+export function brainRolloutGet() {
+  return invoke<RolloutView>("brain_rollout_get");
+}
+
+export interface BrainRolloutRequest {
+  target: string;
+  grayPct?: number;
+  smallPositionPct?: number;
+  shadowMinSamples?: number;
+  shadowMinAgreePct?: number;
+  note?: string;
+}
+
+export function brainRolloutRequest(args: BrainRolloutRequest) {
+  return invoke<RolloutView>("brain_rollout_request", {
+    target: args.target,
+    grayPct: args.grayPct ?? null,
+    smallPositionPct: args.smallPositionPct ?? null,
+    shadowMinSamples: args.shadowMinSamples ?? null,
+    shadowMinAgreePct: args.shadowMinAgreePct ?? null,
+    note: args.note ?? null,
+  });
+}
+
+export function brainRolloutApprove(approve: boolean) {
+  return invoke<RolloutView>("brain_rollout_approve", { approve });
+}
+
+export function brainRolloutRollback(reason?: string) {
+  return invoke<RolloutView>("brain_rollout_rollback", { reason: reason ?? null });
+}
+
+// ===== P5 故障注入与急停演练 =====
+
+export interface DrillItem {
+  kind: string; // model_timeout / network_down / sidecar_crash / quote_stale / kill_switch
+  name: string;
+  pass: boolean;
+  evidence: string;
+}
+
+export interface DrillReport {
+  armed: boolean;
+  passed: number;
+  total: number;
+  allPass: boolean;
+  items: DrillItem[];
+  ranAt: number;
+}
+
+export function drillRunAll() {
+  return invoke<DrillReport>("drill_run_all");
+}

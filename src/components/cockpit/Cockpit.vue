@@ -10,6 +10,8 @@ import {
   type SignalRow,
 } from "../../stores/workflow";
 
+import BrainRolloutPanel from "./BrainRolloutPanel.vue";
+
 const wf = useWorkflowStore();
 onMounted(() => {
   wf.loadToday();
@@ -688,6 +690,9 @@ const killOn = computed(() => wf.killSwitch);
         </div>
       </aside>
     </div>
+
+    <!-- P5 模型接管控制台：影子 / 灰度 / 接管 / 回退 + 故障演练 -->
+    <BrainRolloutPanel />
   </div>
 </template>
 

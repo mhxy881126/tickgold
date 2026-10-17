@@ -1,7 +1,7 @@
 # TickGold 后端命令 / 迁移对照清单（v2.29.0 基线）
 
 > 巨石拆分（lib.rs → db/migrations.rs、commands.rs、setup.rs 模块化）的护栏。
-> 每次后端结构调整后，必须重新核对：**命令总数 222、迁移总数 58**，逐一对照无缺失。
+> 每次后端结构调整后，必须重新核对：**命令总数 227、迁移总数 59**，逐一对照无缺失。
 > （v2.30 起命令/迁移逐步增加，历史编号未全量回填；P0 新增条目见文末对应小节。）
 > 基线：v2.27.0（149 命令 / 48 迁移）；v2.28.0 净增 21 个命令
 > （资金流 3、组合层 2、风险仪表盘 1、异动阈值 2、板块日快照 3、备份中心 7、数据治理 3）
@@ -295,9 +295,24 @@
 > 输入「风险确认」、武装/解除、当日额度状态条）；SignalBridge 截图确认浮层真实态强红、金额醒目、确认按钮改为「提交真实委托」。
 > 上线流程 / 资金门槛 / 风险与熔断见 docs/真实通道上线手册.md。
 
+> **P5 模型接管（影子→灰度→接管）与故障演练**（模块 ai::brain_rollout、ai::drill，实际注册总数 227）新增 5 个命令：
+> - brain_rollout_get（只读：四阶段状态机 + 影子统计 ShadowStats：样本数 / 影子可用 / 一致率 / 规则·影子耗时 p50·p99 / 达标判定）
+> - brain_rollout_request（申请进入下一阶段：rule→shadow→canary→live 只能逐级；shadow→canary 校验样本数 + 一致率双门槛，canary→live 校验实盘已武装；可携带灰度比例 / 小仓位 / 达标阈值；Pro）
+> - brain_rollout_approve（审批 pending 申请；live 审批二次校验实盘武装；Pro）
+> - brain_rollout_rollback（一键回退规则脑，不强制 Pro，随时可用）
+> - drill_run_all（仅模拟 / 未武装环境可运行的故障演练：模型超时 / 断网 / sidecar 崩溃 / 行情陈旧 / 一键急停 5 项，真实调用降级路径并写审计）
+>
+> 状态机：rule（规则脑，维持原 brain_mode，含 cloud_llm）→ shadow（AI 并行只记录到 shadow_decision，规则脑照常执行）
+> → canary（按标的 code 哈希确定性灰度分流，同票始终同脑；laya 执行的买入强制小仓位 max_single_pct=min(原值,small_position_pct)，
+> 只收紧不放宽；laya 不可用/超时一律降级规则脑并累计失败）→ live（全量 AI 执行）；canary/live 连续失败 5 次自动回退规则脑。
+> 风控 fail-safe 提取为 risk::limit_prices_ready（真实下单必须同时具备涨停价与跌停价，缺任一即拒），broker submit 与演练共用。
+> 前端：cockpit/BrainRolloutPanel.vue（四阶段流水线 / 影子统计 / 灰度参数 / 申请·审批·回退 / 演练面板）+
+> cockpit/LaunchWizard.vue（三道选择上线向导：模拟盘 / 半自动实盘 / 全自动接管，含前置 checklist、风控确认、故障演练）。
+> 影子达标默认 ≥100 样本且一致率 ≥60%；真正的 laya_sidecar 未启动前影子脑不可用（shadow_ok=0），启动 sidecar 后即开始攒样本。
+
 ---
 
-## 二、数据库迁移：58 条（主库 sqlite:stock-dock.db）
+## 二、数据库迁移：59 条（主库 sqlite:stock-dock.db）
 
 | v | description |
 | --- | --- |
@@ -359,5 +374,6 @@
 | 56 | P1 pre-market loop: daily_mission.briefing_json + candidate_pool (six-tactic scored candidates) |
 | 57 | P2 execution loop: daily_mission.feedback_json (daily trading summary writeback) |
 | 58 | P4 broker_order.is_live (mark real vs simulated orders; live daily buy quota counts is_live=1 only) |
+| 59 | P5 brain_rollout (rule→shadow→canary→live state machine) + shadow_decision (shadow vs rule decision log) |
 
 > ai.db 另有独立版本链（当前 v4），不在此表。
