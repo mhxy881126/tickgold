@@ -197,8 +197,10 @@ mod tests {
         assert!(c.client_auto_confirm, "模拟环境默认全自动");
         assert_eq!(c.client_min_interval_ms, 1200);
         assert!(!c.is_client(), "kind=mock 时 is_client 必须为 false");
-        let mut c2 = BrokerConfig::default();
-        c2.kind = "client".to_string();
+        let mut c2 = BrokerConfig {
+            kind: "client".to_string(),
+            ..Default::default()
+        };
         assert!(c2.is_client() && !c2.is_live(), "kind=client 且模拟时不是真实通道");
         c2.client_sim = false;
         assert!(c2.is_live(), "client_sim=false 时为真实通道");
@@ -208,15 +210,21 @@ mod tests {
         assert!(!c.live_sim_drill_passed, "P4 模拟演练默认未通过");
         assert_eq!(c.live_armed_at, 0, "P4 默认未武装");
         assert!(!c.is_live(), "默认 mock 不是真实通道");
-        let mut q = BrokerConfig::default();
-        q.kind = "qmt".to_string();
+        let q = BrokerConfig {
+            kind: "qmt".to_string(),
+            ..Default::default()
+        };
         assert!(q.is_live(), "qmt 为真实通道");
-        let mut r = BrokerConfig::default();
-        r.kind = "client".to_string();
+        let mut r = BrokerConfig {
+            kind: "client".to_string(),
+            ..Default::default()
+        };
         r.client_sim = false;
         assert!(r.is_live(), "client 非模拟为真实通道");
-        let mut s = BrokerConfig::default();
-        s.kind = "client".to_string();
+        let mut s = BrokerConfig {
+            kind: "client".to_string(),
+            ..Default::default()
+        };
         s.client_sim = true;
         assert!(!s.is_live(), "client 模拟不是真实通道");
     }
