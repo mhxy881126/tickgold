@@ -49,6 +49,105 @@ struct ThemeAgg {
     leader: Option<(String, String, u32)>,
 }
 
+/// P8 演示态势包（教学 dry-run）：内置演示涨停/炸板数据，明确标注非真实行情。
+#[allow(clippy::type_complexity)]
+fn build_demo_briefing(trade_date: &str) -> Value {
+    // (code, name, boards, industry, pct%, fund亿, first_seal, turnover%, broken)
+    let d: Vec<(&str, &str, u32, &str, f64, f64, i64, f64, u32)> = vec![
+        ("600519", "贵州茅台", 1, "白酒", 10.0, 45.2, 92500, 1.2, 0),
+        ("300750", "宁德时代", 2, "锂电池", 20.0, 38.6, 93100, 3.4, 0),
+        ("601127", "赛力斯", 3, "汽车整车", 33.1, 25.9, 93500, 5.1, 0),
+        ("300308", "中际旭创", 4, "光模块", 44.0, 30.1, 94100, 7.5, 0),
+        ("000977", "浪潮信息", 2, "算力", 19.5, 18.3, 100200, 6.8, 1),
+        ("002230", "科大讯飞", 1, "AI应用", 10.0, 12.7, 101500, 4.2, 0),
+    ];
+    let mut ladder_map: BTreeMap<u32, i64> = BTreeMap::new();
+    let mut themes: HashMap<String, ThemeAgg> = HashMap::new();
+    let mut high: Vec<Value> = Vec::new();
+    for (code, name, boards, industry, pct, fund_yi, first_seal, turnover, broken) in &d {
+        *ladder_map.entry((*boards).max(1)).or_insert(0) += 1;
+        let e = themes
+            .entry((*industry).to_string())
+            .or_insert(ThemeAgg { count: 0, max_boards: 0, leader: None });
+        e.count += 1;
+        if *boards > e.max_boards {
+            e.max_boards = *boards;
+            e.leader = Some(((*code).to_string(), (*name).to_string(), *boards));
+        }
+        if *boards >= 2 {
+            high.push(json!({
+                "code": code, "name": name, "boards": boards,
+                "fundYi": fund_yi, "industry": industry,
+                "firstSeal": first_seal, "turnover": turnover, "pct": pct, "broken": broken,
+            }));
+        }
+    }
+    high.sort_by(|a, b| {
+        b["boards"]
+            .as_u64()
+            .unwrap_or(0)
+            .cmp(&a["boards"].as_u64().unwrap_or(0))
+    });
+    let ladder: Vec<Value> = ladder_map
+        .iter()
+        .map(|(b, n)| json!({ "boards": b, "count": n }))
+        .collect();
+    let theme_arr: Vec<Value> = themes
+        .iter()
+        .map(|(name, a)| {
+            let leader = a.leader.as_ref().map(|(c, n, b)| json!({ "code": c, "name": n, "boards": b }));
+            json!({ "name": name, "count": a.count, "maxBoards": a.max_boards, "leader": leader })
+        })
+        .collect();
+    json!({
+        "tradeDate": trade_date,
+        "rawDate": today_yyyymmdd(),
+        "limitUp": 6,
+        "broken": 1,
+        "brokenRate": 14.3,
+        "maxBoards": 4,
+        "ladder": ladder,
+        "themes": theme_arr,
+        "highStocks": high,
+        "degraded": vec!["demo"],
+        "collectedAt": now_millis(),
+    })
+}
+
+/// P8 演示候选池（教学 dry-run）：直接构造六只演示股候选，走同一打分/落库路径。
+#[allow(clippy::type_complexity)]
+fn demo_hits() -> Vec<TacticHit> {
+    // code, name, price, pct%, boards, fund亿, first_seal, broken, turnover%, industry, tactics
+    let d: Vec<(&str, &str, f64, f64, u32, f64, i64, u32, f64, &str, Vec<&str>)> = vec![
+        ("300308", "中际旭创", 186.4, 44.0, 4, 30.1, 94100, 0, 7.5, "光模块", vec!["高标连板", "龙头共振", "题材驱动"]),
+        ("601127", "赛力斯", 138.0, 33.1, 3, 25.9, 93500, 0, 5.1, "汽车整车", vec!["龙头共振", "连板梯队"]),
+        ("300750", "宁德时代", 268.5, 20.0, 2, 38.6, 93100, 0, 3.4, "锂电池", vec!["潜龙出海", "题材驱动"]),
+        ("000977", "浪潮信息", 52.3, 19.5, 2, 18.3, 100200, 1, 6.8, "算力", vec!["潜龙出海", "题材驱动"]),
+        ("600519", "贵州茅台", 1520.0, 10.0, 1, 45.2, 92500, 0, 1.2, "白酒", vec!["龙头共振"]),
+        ("002230", "科大讯飞", 48.6, 10.0, 1, 12.7, 101500, 0, 4.2, "AI应用", vec!["题材驱动"]),
+    ];
+    d.into_iter()
+        .map(|(code, name, price, pct, boards, fund, first_seal, broken, turnover, industry, tactics)| TacticHit {
+            code: code.to_string(),
+            name: name.to_string(),
+            price,
+            pct,
+            amount: fund * 1e8,
+            turnover,
+            volume_ratio: 1.8,
+            speed5: 2.4,
+            main_net: fund * 0.42 * 1e8,
+            boards,
+            fund: fund * 1e8,
+            first_seal,
+            broken,
+            industry: industry.to_string(),
+            tactics: tactics.into_iter().map(|s| s.to_string()).collect(),
+            reasons: vec!["演示数据（非真实行情）".to_string()],
+        })
+        .collect()
+}
+
 /// 聚合当日涨停池 / 炸板池为「战场态势包」。任一数据源失败降级为空并标记，不整体报错。
 async fn build_briefing(trade_date: &str) -> Value {
     let raw = today_yyyymmdd();
@@ -398,10 +497,15 @@ fn mission_from_state(date: &str, st: &MissionState) -> Value {
 pub async fn workflow_collect(
     state: State<'_, AiState>,
     trade_date: Option<String>,
+    demo: Option<bool>,
 ) -> Result<Value, String> {
     let date = trade_date.unwrap_or_else(workflow::today_str);
     let dir = state.dir().clone();
-    let briefing = build_briefing(&date).await;
+    let briefing = if demo.unwrap_or(false) {
+        build_demo_briefing(&date)
+    } else {
+        build_briefing(&date).await
+    };
     let c = open_readwrite(&dir)?;
     let mut st = require_step(&c, &date, 0, "采集")?;
     save_briefing(&c, &date, &briefing)?;
@@ -421,15 +525,20 @@ pub async fn workflow_collect(
 pub async fn workflow_analyze(
     state: State<'_, AiState>,
     trade_date: Option<String>,
+    demo: Option<bool>,
 ) -> Result<Value, String> {
     let date = trade_date.unwrap_or_else(workflow::today_str);
     let dir = state.dir().clone();
-    let req = StrategyScanReq {
-        tactics: Vec::new(),
-        limit: Some(CANDIDATE_LIMIT),
-        theme: String::new(),
+    let mut hits = if demo.unwrap_or(false) {
+        demo_hits()
+    } else {
+        let req = StrategyScanReq {
+            tactics: Vec::new(),
+            limit: Some(CANDIDATE_LIMIT),
+            theme: String::new(),
+        };
+        scan(&req).await.map_err(|e| format!("六战法选股失败: {e}"))?
     };
-    let mut hits = scan(&req).await.map_err(|e| format!("六战法选股失败: {e}"))?;
     hits.sort_by(|a, b| {
         score_hit(b)
             .partial_cmp(&score_hit(a))

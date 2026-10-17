@@ -246,12 +246,12 @@ async fn run_scan(app: AppHandle, dir: PathBuf) -> Result<Value, String> {
     // 2) 按当前步自动补齐缺失的盘前步骤（step 语义：0 采集 / 1 分析 / 2 计划 / 3 确认）。
     let step = current_step(&conn, &date);
     if step < 1 {
-        let _ = crate::ai::workflow_p1::workflow_collect(app.state::<AiState>(), None)
+        let _ = crate::ai::workflow_p1::workflow_collect(app.state::<AiState>(), None, None)
             .await
             .map_err(|e| format!("智驾采集失败: {e}"))?;
     }
     if step < 2 {
-        let _ = crate::ai::workflow_p1::workflow_analyze(app.state::<AiState>(), None)
+        let _ = crate::ai::workflow_p1::workflow_analyze(app.state::<AiState>(), None, None)
             .await
             .map_err(|e| format!("智驾分析失败: {e}"))?;
     }

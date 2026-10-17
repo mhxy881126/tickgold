@@ -28,7 +28,10 @@ import {
   brokerLiveWhitelistSet,
   brokerLiveMarkDrill,
   brokerLiveUsage,
+  brokerProbePaths,
   type BrokerStatus,
+  type ProbeResult,
+  type PathProbe,
   type BrokerConfigFull,
   type ClientSelfcheck,
   type LiveUsage,
@@ -994,6 +997,65 @@ async function bRefreshSelfcheck() {
     bSelfcheck.value = null;
   }
 }
+// P8 券商路径一键自检（本机探测，不依赖 sidecar）
+const bProbe = ref<ProbeResult | null>(null);
+const bProbeBusy = ref(false);
+async function bProbeRun() {
+  if (!bForm.value) return;
+  bProbeBusy.value = true;
+  try {
+    bProbe.value = await brokerProbePaths(bForm.value.kind);
+  } catch (e) {
+    bProbe.value = null;
+    bFlash(`路径自检失败：${e}`);
+  } finally {
+    bProbeBusy.value = false;
+  }
+}
+function bProbeItem(field: string): PathProbe | null {
+  return bProbe.value?.probes.find((p) => p.field === field) ?? null;
+}
+function bProbeClass(field: string): string {
+  const p = bProbeItem(field);
+  if (!p) return "";
+  return p.status === "ok" ? "ok" : p.status === "empty" ? "warn" : "bad";
+}
+function bProbeText(field: string): string {
+  const p = bProbeItem(field);
+  if (!p) return "未检查";
+  if (p.status === "ok") return "✓ 可用";
+  if (p.status === "empty") return "⚠ 未配置";
+  return "✗ 路径无效";
+}
+function bProbeHint(field: string): string {
+  return bProbeItem(field)?.hint ?? "";
+}
+/** 探测当前模式全部路径；某字段有建议值则自动填入。 */
+async function bProbeFill(field: string) {
+  if (!bForm.value || bProbeBusy.value) return;
+  bProbeBusy.value = true;
+  try {
+    bProbe.value = await brokerProbePaths(bForm.value.kind);
+    const p = bProbe.value?.probes.find((x) => x.field === field);
+    if (p && p.status !== "ok" && p.suggested) {
+      (bForm.value as unknown as Record<string, unknown>)[field] = p.suggested;
+      bFlash(`已填入自动探测路径：${p.suggested}`);
+    } else if (p && p.status === "ok") {
+      bFlash(`${p.label} 已可用`);
+    } else if (p) {
+      bFlash(`${p.label}：${p.hint}`);
+    }
+  } catch (e) {
+    bFlash(`路径探测失败：${e}`);
+  } finally {
+    bProbeBusy.value = false;
+  }
+}
+const bProbeSummary = computed(() => {
+  const s = bProbe.value?.summary;
+  return s ? `路径自检：${s.ok} 项可用 · ${s.bad} 项待处理` : "";
+});
+
 // 真实通道（非模拟）强制半自动，自动确认仅模拟环境可开
 function toggleClientAuto() {
   if (!bForm.value || !bForm.value.clientSim) return;
@@ -2198,6 +2260,15 @@ async function clearL2Key(r: PluginRow) {
                 </div>
               </div>
 
+              <!-- P8 一键自检路径 -->
+              <div class="bk-probe-bar">
+                <button type="button" class="logs-btn primary" :disabled="bProbeBusy" @click="bProbeRun">
+                  {{ bProbeBusy ? "探测中…" : "一键自检路径" }}
+                </button>
+                <span v-if="bProbeSummary" class="bk-probe-summary" :class="{ bad: (bProbe?.summary.bad ?? 0) > 0 }">{{ bProbeSummary }}</span>
+                <span v-else class="bk-probe-tip">点「一键自检」检查本机 Python / 客户端 / OCR 路径是否可用，缺什么可直接自动填入</span>
+              </div>
+
               <!-- 第一步：选模式 -->
               <div class="section-title" style="margin-top:20px">选择交易模式</div>
               <div v-if="bForm" class="bk-mode-grid">
@@ -2223,9 +2294,21 @@ async function clearL2Key(r: PluginRow) {
                 <div class="section-title" style="margin-top:16px">QMT 连接参数</div>
                 <div class="bridge-grid">
                   <label class="ai-field"><span>Python 路径</span>
-                    <input v-model="bForm.pythonPath" type="text" spellcheck="false" placeholder="python.exe（已装 xtquant）" /></label>
+                    <div class="bk-probe-row">
+                      <input v-model="bForm.pythonPath" type="text" spellcheck="false" placeholder="python.exe（已装 xtquant）" />
+                      <button type="button" class="bk-probe-btn" @click="bProbeFill('pythonPath')" title="自动探测本机 python.exe 并填入">探测</button>
+                    </div>
+                    <span class="bk-probe-badge" :class="bProbeClass('pythonPath')">{{ bProbeText('pythonPath') }}</span>
+                    <span v-if="bProbeItem('pythonPath')" class="bk-probe-hint">{{ bProbeHint('pythonPath') }}</span>
+                  </label>
                   <label class="ai-field"><span>userdata_mini 路径</span>
-                    <input v-model="bForm.qmtPath" type="text" spellcheck="false" placeholder="miniQMT userdata_mini" /></label>
+                    <div class="bk-probe-row">
+                      <input v-model="bForm.qmtPath" type="text" spellcheck="false" placeholder="miniQMT userdata_mini" />
+                      <button type="button" class="bk-probe-btn" @click="bProbeFill('qmtPath')" title="自动探测 QMT 数据目录并填入">探测</button>
+                    </div>
+                    <span class="bk-probe-badge" :class="bProbeClass('qmtPath')">{{ bProbeText('qmtPath') }}</span>
+                    <span v-if="bProbeItem('qmtPath')" class="bk-probe-hint">{{ bProbeHint('qmtPath') }}</span>
+                  </label>
                 </div>
                 <div class="bridge-grid">
                   <label class="ai-field"><span>资金账号</span>
@@ -2247,9 +2330,21 @@ async function clearL2Key(r: PluginRow) {
                 <div class="section-title" style="margin-top:16px">同花顺客户端参数</div>
                 <div class="bridge-grid">
                   <label class="ai-field"><span>Python 路径</span>
-                    <input v-model="bForm.pythonPath" type="text" spellcheck="false" placeholder="python.exe（3.10–3.12，装 pywinauto/pyautogui/pillow）" /></label>
+                    <div class="bk-probe-row">
+                      <input v-model="bForm.pythonPath" type="text" spellcheck="false" placeholder="python.exe（3.10–3.12，装 pywinauto/pyautogui/pillow）" />
+                      <button type="button" class="bk-probe-btn" @click="bProbeFill('pythonPath')" title="自动探测本机 python.exe 并填入">探测</button>
+                    </div>
+                    <span class="bk-probe-badge" :class="bProbeClass('pythonPath')">{{ bProbeText('pythonPath') }}</span>
+                    <span v-if="bProbeItem('pythonPath')" class="bk-probe-hint">{{ bProbeHint('pythonPath') }}</span>
+                  </label>
                   <label class="ai-field"><span>同花顺客户端路径（可选）</span>
-                    <input v-model="bForm.clientPath" type="text" spellcheck="false" placeholder="xiadan.exe / 模拟炒股可执行文件，留空自动探测" /></label>
+                    <div class="bk-probe-row">
+                      <input v-model="bForm.clientPath" type="text" spellcheck="false" placeholder="xiadan.exe / 模拟炒股可执行文件，留空自动探测" />
+                      <button type="button" class="bk-probe-btn" @click="bProbeFill('clientPath')" title="自动探测同花顺下单程序并填入">探测</button>
+                    </div>
+                    <span class="bk-probe-badge" :class="bProbeClass('clientPath')">{{ bProbeText('clientPath') }}</span>
+                    <span v-if="bProbeItem('clientPath')" class="bk-probe-hint">{{ bProbeHint('clientPath') }}</span>
+                  </label>
                 </div>
                 <div class="bridge-grid">
                   <label class="ai-field"><span>控件模板目录（可选）</span>
@@ -2259,7 +2354,13 @@ async function clearL2Key(r: PluginRow) {
                 </div>
                 <div class="bridge-grid">
                   <label class="ai-field"><span>Tesseract OCR 路径（可选）</span>
-                    <input v-model="bForm.clientTesseract" type="text" spellcheck="false" placeholder="tesseract.exe 路径，留空则复制表格遇验证码时转人工输入" /></label>
+                    <div class="bk-probe-row">
+                      <input v-model="bForm.clientTesseract" type="text" spellcheck="false" placeholder="tesseract.exe 路径，留空则复制表格遇验证码时转人工输入" />
+                      <button type="button" class="bk-probe-btn" @click="bProbeFill('clientTesseract')" title="自动探测 tesseract.exe 并填入">探测</button>
+                    </div>
+                    <span class="bk-probe-badge" :class="bProbeClass('clientTesseract')">{{ bProbeText('clientTesseract') }}</span>
+                    <span v-if="bProbeItem('clientTesseract')" class="bk-probe-hint">{{ bProbeHint('clientTesseract') }}</span>
+                  </label>
                 </div>
 
                 <div class="bk-switch-list">
@@ -2937,6 +3038,20 @@ async function clearL2Key(r: PluginRow) {
 .bk-chip.on { color: #26d07c; border-color: #26d07c; }
 .bk-chip.kill { color: #ff5a6a; border-color: #ff5a6a; font-weight: 700; }
 .bk-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.bk-probe-row { display: flex; gap: 6px; align-items: center; }
+.bk-probe-row input { flex: 1; min-width: 0; }
+.bk-probe-btn { background: var(--bg-input, #0e1117); border: 1px solid var(--border, #2a3344); border-radius: 6px; color: var(--accent, #4d9fff); padding: 5px 10px; font-size: 11px; cursor: pointer; white-space: nowrap; }
+.bk-probe-btn:hover { border-color: var(--accent, #4d9fff); }
+.bk-probe-btn:disabled { opacity: .5; cursor: default; }
+.bk-probe-badge { font-size: 10.5px; padding: 1px 8px; border-radius: 10px; width: fit-content; }
+.bk-probe-badge.ok { color: #35d07f; background: rgba(53, 208, 127, .12); }
+.bk-probe-badge.warn { color: #f5b84c; background: rgba(245, 184, 76, .12); }
+.bk-probe-badge.bad { color: #ff6b6b; background: rgba(255, 107, 107, .12); }
+.bk-probe-hint { font-size: 10px; color: var(--text-dim, #97a0b2); }
+.bk-probe-bar { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.bk-probe-summary { font-size: 11.5px; color: var(--text, #e6ecf5); }
+.bk-probe-summary.bad { color: #ff6b6b; }
+.bk-probe-tip { font-size: 11px; color: var(--text-dim, #97a0b2); }
 .mock-cash-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .mock-cash-lb { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
 .mock-cash-in { width: 150px; height: 30px; padding: 0 8px; border-radius: 6px;

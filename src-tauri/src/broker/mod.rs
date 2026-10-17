@@ -5,6 +5,7 @@ pub mod conditional;
 pub mod config;
 pub mod portfolio;
 pub mod protocol;
+pub mod probe;
 pub mod risk;
 pub mod sidecar;
 

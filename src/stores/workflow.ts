@@ -557,6 +557,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
       } else {
         const r = await invoke<{ mission: Mission; briefing: Briefing }>("workflow_collect", {
           tradeDate: todayStr(),
+          demo: demoMode.value,
         });
         mission.value = r.mission;
         briefing.value = r.briefing;
@@ -579,7 +580,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
       } else {
         const r = await invoke<{ mission: Mission; candidates: Candidate[]; total: number }>(
           "workflow_analyze",
-          { tradeDate: todayStr() },
+          { tradeDate: todayStr(), demo: demoMode.value },
         );
         mission.value = r.mission;
         candidates.value = r.candidates ?? [];
@@ -921,6 +922,20 @@ export const useWorkflowStore = defineStore("workflow", () => {
     }
   }
 
+  // P8 一键演示：用内置演示数据跑通 采集→分析→计划，让新手看到完整效果（不接真实行情）。
+  const demoMode = ref(false);
+  async function runDemo() {
+    if (busy.value) return;
+    demoMode.value = true;
+    try {
+      await collect();
+      await analyze();
+      await planGenerate();
+    } finally {
+      demoMode.value = false;
+    }
+  }
+
   async function reset() {
     busy.value = true;
     error.value = "";
@@ -986,6 +1001,8 @@ export const useWorkflowStore = defineStore("workflow", () => {
     analyze,
     planGenerate,
     planConfirm,
+    demoMode,
+    runDemo,
     reset,
   };
 });

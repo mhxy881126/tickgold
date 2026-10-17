@@ -1,7 +1,7 @@
 # TickGold 后端命令 / 迁移对照清单（v2.29.0 基线）
 
 > 巨石拆分（lib.rs → db/migrations.rs、commands.rs、setup.rs 模块化）的护栏。
-> 每次后端结构调整后，必须重新核对：**命令总数 242、迁移总数 60**，逐一对照无缺失。
+> 每次后端结构调整后，必须重新核对：**命令总数 243、迁移总数 60**，逐一对照无缺失。
 > （v2.30 起命令/迁移逐步增加，历史编号未全量回填；P0 新增条目见文末对应小节。）
 > 基线：v2.27.0（149 命令 / 48 迁移）；v2.28.0 净增 21 个命令
 > （资金流 3、组合层 2、风险仪表盘 1、异动阈值 2、板块日快照 3、备份中心 7、数据治理 3）
@@ -351,6 +351,19 @@
 > 验证：cargo clippy -D warnings 0 警告、cargo test broker:: 42+ 通过、前端 vue-tsc/build/vitest 全绿、
 > Python 表格解析正式单测 src-tauri/tests/python/test_sidecar_table.py 5 项、sidecar dry-run 端到端 0 error。
 > 边界：本机无同花顺客户端，真实 GUI 层未做端到端，控件 AutomationId 随客户端版本可能需真机校准（见同花顺真机校准手册）。
+
+> **P8 新手易用性改造（模块 broker::probe、ai::workflow_p1，实际注册总数 243）新增 1 个命令**：
+> - broker_probe_paths(mode)（一键自检路径：mode=mock/qmt/client，探测 python.exe / qmt userdata_mini / 同花顺 xiadan.exe / tesseract.exe
+>   常见安装位置，每条返回 status=ok/empty/missing + suggested + hint，供设置-券商交易逐框状态徽章与顶部一键自检条）
+>
+> 实现：src-tauri/src/broker/probe.rs（broker_live_usage 之后注册）；workflow_p1.rs 新增 build_demo_briefing / demo_hits（演示态势包 6 股、
+> 演示候选走同一打分落库路径，degraded=["demo"] 明确标注非真实行情），workflow_collect / workflow_analyze 增加 demo: Option<bool> 参数，
+> pilot.rs 调用补 None 兼容。
+> 前端：SettingsDialog.vue 每个路径框加「探测」按钮 + 状态徽章（✓可用 / ⚠未配置 / ✗无效）+ 顶部「一键自检路径」条；
+> BrokerConsole.vue 空态加「一键演练（dry-run）」（clientSim+clientDryRun 虚拟四表）与「去设置连接」；
+> Cockpit.vue 采集步加「一键演示」（demo 数据跑通采集→分析→计划前三步）。
+> 数据表：本阶段无新增迁移（仍 v60）。
+> 验证：cargo check / clippy -D warnings 0 警告、cargo test 通过、vue-tsc 0 错、vitest 710 passed、vite build 成功。
 
 ---
 

@@ -92,6 +92,12 @@ async function doReset() {
   await wf.reset();
   selected.value = null;
 }
+// P8 一键演示：内置演示数据跑通 采集→分析→计划，看完整效果（不接真实行情）
+async function doDemo() {
+  if (wf.busy) return;
+  await wf.runDemo();
+  selected.value = null;
+}
 
 function fmtMoney(n: number) {
   return n.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
@@ -637,6 +643,9 @@ const killOn = computed(() => wf.killSwitch);
             <button v-if="view.index === 0" class="btn-primary" :disabled="wf.busy" @click="doCollect">
               {{ wf.busy ? "采集中…（拉取涨停/炸板池）" : "采集完成，开始 AI 分析" }}
             </button>
+            <button v-if="view.index === 0" class="btn-demo" :disabled="wf.busy" @click="doDemo">
+              {{ wf.busy ? "演示中…" : "一键演示（演示数据跑通前 3 步）" }}
+            </button>
             <button v-else-if="view.index === 1" class="btn-primary" :disabled="wf.busy" @click="doAnalyze">
               {{ wf.busy ? "分析中…（六战法扫描）" : "分析完成，生成作战计划" }}
             </button>
@@ -886,6 +895,16 @@ const killOn = computed(() => wf.killSwitch);
   background: transparent; border: 1px solid var(--border-light);
 }
 .btn-ghost:hover { background: var(--bg-hover); }
+.btn-demo {
+  flex: 0 0 auto; padding: 11px 16px; border-radius: 9px; cursor: pointer;
+  font-size: 13px; font-weight: 700; color: #1a1306;
+  background: linear-gradient(135deg, #b8860b, #e8c878);
+  border: none;
+  transition: filter 0.15s, transform 0.05s;
+}
+.btn-demo:hover { filter: brightness(1.08); }
+.btn-demo:active { transform: translateY(1px); }
+.btn-demo:disabled { opacity: 0.55; cursor: not-allowed; }
 .confirmed-ok { color: var(--down); font-weight: 700; font-size: 12.5px; }
 
 .done-hero { text-align: center; padding: 14px 8px; }

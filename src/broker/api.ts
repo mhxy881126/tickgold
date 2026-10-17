@@ -382,6 +382,30 @@ export function brokerClientCaptchaInput(text: string) {
   return invoke<void>("broker_client_captcha_input", { text });
 }
 
+// ===== P8 券商路径一键自检 =====
+
+export interface PathProbe {
+  field: string;
+  label: string;
+  /** ok（可用）/ empty（未配置但有建议）/ missing（无效且无建议） */
+  status: string;
+  configured: string;
+  exists: boolean;
+  suggested: string;
+  hint: string;
+}
+
+export interface ProbeResult {
+  mode: string;
+  probes: PathProbe[];
+  summary: { ok: number; bad: number };
+}
+
+/** 本机探测券商相关路径（python / qmt / 同花顺 / tesseract），mode 缺省用当前配置。 */
+export function brokerProbePaths(mode?: string | null) {
+  return invoke<ProbeResult>("broker_probe_paths", { mode: mode ?? null });
+}
+
 export interface FillResult {
   orderId: string;
   amount: number;

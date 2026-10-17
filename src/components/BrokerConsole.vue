@@ -6,8 +6,11 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { confirmDialog } from "../composables/useDialog";
+import { useActions } from "../composables/useActions";
 import {
   brokerGetStatus,
+  brokerSetConfig,
+  brokerConnect,
   brokerQueryAsset,
   brokerQueryPosition,
   brokerClientQueryTrades,
@@ -135,6 +138,33 @@ async function refreshTab() {
   if (tab.value === "position") await loadPositions();
   else if (tab.value === "trades") await loadTrades();
   else await loadPending();
+}
+
+// ===== P8 一键演练（dry-run）：未连接时一键切到同花顺 dry-run 通道并展示虚拟数据 =====
+const drillBusy = ref(false);
+async function onDrillRun() {
+  drillBusy.value = true;
+  try {
+    // 切到同花顺客户端通道 + 模拟 + dry-run（不碰真客户端/真钱）
+    await brokerSetConfig({ kind: "client", clientSim: true, clientDryRun: true });
+    await brokerConnect();
+    await refresh();
+    flash("dry-run 演练已启动：下方展示虚拟账户数据（未连接真实客户端）");
+  } catch (e) {
+    flash(`演练启动失败：${e}`);
+  } finally {
+    drillBusy.value = false;
+  }
+}
+function goSettings() {
+  try {
+    const a = useActions()
+      .list()
+      .find((x) => x.id === "app.settings");
+    a?.run();
+  } catch {
+    /* ignore */
+  }
 }
 
 // ===== 自检：进程 / 窗口 =====
@@ -398,7 +428,13 @@ onBeforeUnmount(() => {
     <div v-if="!connected" class="bc-empty">
       <div class="be-icon">🔌</div>
       <div class="be-title">客户端通道未连接</div>
-      <div class="be-desc">请在「设置 - 券商交易」选择同花顺客户端通道并连接；dry-run 模式可离线演练整套流程。</div>
+      <div class="be-desc">连接真实同花顺客户端前，可以先一键演练：自动切换 dry-run 通道并展示完整的虚拟账户数据（持仓 / 成交 / 挂单 / 资金），不碰真实客户端、不碰真钱。</div>
+      <div class="bc-drill-row">
+        <button class="bc-drill-btn" :disabled="drillBusy" @click="onDrillRun">
+          {{ drillBusy ? "演练启动中…" : "一键演练（dry-run）" }}
+        </button>
+        <button class="bc-drill-btn ghost" @click="goSettings">去设置连接</button>
+      </div>
     </div>
 
     <!-- 表格区 -->
@@ -655,7 +691,19 @@ onBeforeUnmount(() => {
 }
 .be-icon { font-size: 26px; }
 .be-title { font-size: 13px; font-weight: 600; color: var(--text, #e0e6f0); }
-.be-desc { font-size: 10.5px; line-height: 1.6; max-width: 280px; }
+.be-desc { font-size: 10.5px; line-height: 1.6; max-width: 300px; }
+.bc-drill-row { display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
+.bc-drill-btn {
+  background: linear-gradient(135deg, #b8860b, #e8c878); color: #1a1306;
+  border: none; border-radius: 8px; padding: 9px 18px; font-size: 12px; font-weight: 600;
+  cursor: pointer;
+}
+.bc-drill-btn.ghost {
+  background: transparent; color: var(--text-dim, #8892a8);
+  border: 1px solid var(--border, #2a3344);
+}
+.bc-drill-btn:hover { filter: brightness(1.08); }
+.bc-drill-btn:disabled { opacity: .55; cursor: default; }
 
 .bc-table-wrap { flex: 1; min-height: 0; overflow: auto; }
 .bc-table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: auto; }
