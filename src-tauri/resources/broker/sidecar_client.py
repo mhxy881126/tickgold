@@ -733,7 +733,7 @@ class ThsGuiEngine:
         self.client_path = client_path or ""
         self.title_re = title_re or r"网上股票交易系统|同花顺|模拟炒股|交易系统"
         self.tesseract_cmd = tesseract_cmd
-        self.log = log_fn or (lambda m: None)
+        log = log_fn or (lambda m: None)
         self.main_win = None
         # GUI 全局互斥锁：同花顺窗口焦点/当前页面是唯一共享资源，所有操作串行。
         self.gui_lock = threading.Lock()
@@ -826,7 +826,7 @@ class ThsGuiEngine:
                 return win
             time.sleep(delay)
         if last:
-            self.log(f"窗口查找降级异常：{last}")
+            log(f"窗口查找降级异常：{last}")
         return None
 
     def find_dialog(self, retries=6, delay=0.5):
@@ -1164,7 +1164,7 @@ class ThsGuiEngine:
         try:
             img = captcha_el.capture_as_image()
         except Exception as e:  # noqa: BLE001
-            self.log(f"验证码截图失败：{e}")
+            log(f"验证码截图失败：{e}")
             return ""
         # P12-10 ddddocr：专为验证码训练，自动内置模型（首次加载约几百 ms，之后复用）
         def _classify(data: bytes) -> str:
@@ -1184,7 +1184,7 @@ class ThsGuiEngine:
             if _txt:
                 return _txt
         except Exception as e:  # noqa: BLE001
-            self.log(f"ddddocr 识别失败：{e}")
+            log(f"ddddocr 识别失败：{e}")
         # ② 预处理增强：灰度 → 放大 2 倍 → 自动对比度 → 二值化（同花顺蓝底模糊数字常见）
         try:
             from PIL import ImageOps
@@ -1196,8 +1196,8 @@ class ThsGuiEngine:
             if _txt2:
                 return _txt2
         except Exception as e2:  # noqa: BLE001
-            self.log(f"OCR 预处理增强失败：{e2}")
-        self.log("ddddocr 未识别出数字（原始 + 预处理均失败）")
+            log(f"OCR 预处理增强失败：{e2}")
+        log("ddddocr 未识别出数字（原始 + 预处理均失败）")
         try:
             import pytesseract
             if self.tesseract_cmd:
@@ -1205,7 +1205,7 @@ class ThsGuiEngine:
             txt = pytesseract.image_to_string(img, config="--psm 6 digits")
             return "".join(filter(str.isdigit, txt or ""))
         except Exception as e:  # noqa: BLE001
-            self.log(f"OCR 不可用/失败：{e}")
+            log(f"OCR 不可用/失败：{e}")
             return ""
 
     def _find_table_uia(self, win, list_cid):
@@ -1834,7 +1834,7 @@ class RealSidecar(BaseSidecar):
                 self._maybe_hide()
 
     def do_query_trades(self):
-        self.log("[trades] 查询开始")
+        log("[trades] 查询开始")
         try:
             with self.engine.locked():
                 win = self._win()
@@ -1845,7 +1845,7 @@ class RealSidecar(BaseSidecar):
                 for path in (["查询", "成交查询"], ["成交查询"], ["查询", "当日成交"], ["当日成交"], ["成交流水"]):
                     node = self.engine.tree_path(win, CID_QUERY_TREE_ROOT, path)
                     if node is not None:
-                        self.log(f"[trades] 命中查询节点：{'/'.join(path)}")
+                        log(f"[trades] 命中查询节点：{'/'.join(path)}")
                         break
                 if node is None:
                     raise RuntimeError("未找到查询树中的成交查询节点（客户端版本菜单可能不同）")
@@ -1859,12 +1859,12 @@ class RealSidecar(BaseSidecar):
                 rows = parse_tabular_data(tsv, required_headers=("证券代码",))
                 trades = [t for t in (normalize_trade(r) for r in rows) if t]
                 if not trades:
-                    self.log(f"[trades] 当日成交 0 条（表头={rows[0] if rows else ''}）")
+                    log(f"[trades] 当日成交 0 条（表头={rows[0] if rows else ''}）")
                 emit({"event": "trades", "trades": trades, "full": True, "source": "ths",
                       "note": "" if trades else "当日暂无成交记录"})
                 self._hide_ok = True
         except Exception as e:  # noqa: BLE001
-            self.log(f"[trades] 读取失败：{e}")
+            log(f"[trades] 读取失败：{e}")
             emit({"event": "trades", "trades": [], "full": True, "note": f"当日成交读取失败：{e}"})
         finally:
             self._restore_fg()
@@ -1873,7 +1873,7 @@ class RealSidecar(BaseSidecar):
                 self._maybe_hide()
 
     def do_query_pending(self):
-        self.log("[pending] 查询开始")
+        log("[pending] 查询开始")
         try:
             with self.engine.locked():
                 win = self._win()
@@ -1884,7 +1884,7 @@ class RealSidecar(BaseSidecar):
                 for path in (["查询", "委托查询"], ["委托查询"], ["查询", "当日委托"], ["当日委托"]):
                     node = self.engine.tree_path(win, CID_QUERY_TREE_ROOT, path)
                     if node is not None:
-                        self.log(f"[pending] 命中查询节点：{'/'.join(path)}")
+                        log(f"[pending] 命中查询节点：{'/'.join(path)}")
                         break
                 if node is None:
                     raise RuntimeError("未找到查询树中的委托查询节点（客户端版本菜单可能不同）")
@@ -1898,12 +1898,12 @@ class RealSidecar(BaseSidecar):
                 rows = parse_tabular_data(tsv, required_headers=("证券代码",))
                 orders = [o for o in (normalize_pending(r) for r in rows) if o]
                 if not orders:
-                    self.log(f"[pending] 挂单 0 条（表头={rows[0] if rows else ''}）")
+                    log(f"[pending] 挂单 0 条（表头={rows[0] if rows else ''}）")
                 emit({"event": "pending", "orders": orders, "full": True, "source": "ths",
                       "note": "" if orders else "当前无挂单"})
                 self._hide_ok = True
         except Exception as e:  # noqa: BLE001
-            self.log(f"[pending] 读取失败：{e}")
+            log(f"[pending] 读取失败：{e}")
             emit({"event": "pending", "orders": [], "full": True, "note": f"挂单读取失败：{e}"})
         finally:
             self._restore_fg()
