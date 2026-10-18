@@ -293,3 +293,71 @@ pub fn broker_probe_paths(
         "summary": { "ok": ok, "bad": probes.len() - ok },
     }))
 }
+
+/// P12-11 验证码 OCR 引擎管理：探测 / 安装 / 卸载 ddddocr（sidecar 同款 Python 环境）。
+/// action: "status"（探测已装版本）/ "install"（pip 安装或升级）/ "uninstall"（pip 卸载）
+#[tauri::command]
+pub fn broker_ocr_engine(
+    action: String,
+    mgr: State<'_, BrokerManager>,
+) -> Result<serde_json::Value, String> {
+    let cfg = mgr.config.lock().unwrap().clone();
+    let py = if cfg.python_path.trim().is_empty() {
+        probe_python("").configured
+    } else {
+        cfg.python_path.clone()
+    };
+    if py.trim().is_empty() {
+        return Err("未找到可用的 python.exe：请先配置 Python 路径".into());
+    }
+    let run = |args: &[&str]| -> (bool, String) {
+        match Command::new(&py).args(args).output() {
+            Ok(o) => {
+                let mut s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                let e = String::from_utf8_lossy(&o.stderr).trim().to_string();
+                if !e.is_empty() {
+                    if !s.is_empty() {
+                        s.push('\n');
+                    }
+                    s.push_str(&e);
+                }
+                (o.status.success(), s)
+            }
+            Err(e) => (false, format!("无法启动 Python：{e}")),
+        }
+    };
+    match action.as_str() {
+        "status" => {
+            let (ok, out) = run(&["-c", "import importlib.metadata as m;print(m.version('ddddocr'))"]);
+            let (version, error) = if ok {
+                (out, String::new())
+            } else {
+                (String::new(), out)
+            };
+            Ok(serde_json::json!({
+                "engine": "ddddocr",
+                "installed": ok,
+                "version": version,
+                "error": error,
+                "python": py,
+            }))
+        }
+        "install" => {
+            let (ok, out) = run(&["-m", "pip", "install", "-U", "ddddocr"]);
+            if ok {
+                Ok(serde_json::json!({ "ok": true, "message": "ddddocr 已安装/升级", "detail": out }))
+            } else {
+                Err(format!("ddddocr 安装失败：{out}"))
+            }
+        }
+        "uninstall" => {
+            let (ok, out) = run(&["-m", "pip", "uninstall", "-y", "ddddocr"]);
+            if ok {
+                Ok(serde_json::json!({ "ok": true, "message": "ddddocr 已卸载", "detail": out }))
+            } else {
+                Err(format!("ddddocr 卸载失败：{out}"))
+            }
+        }
+        _ => Err(format!("未知动作：{action}")),
+    }
+}

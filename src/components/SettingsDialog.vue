@@ -20,6 +20,7 @@ import {
   brokerEnableLive,
   brokerConnect,
   brokerDisconnect,
+  brokerOcrEngine,
   brokerEmergencyHalt,
   brokerReleaseKill,
   mockSeedPosition,
@@ -30,6 +31,7 @@ import {
   brokerLiveUsage,
   brokerProbePaths,
   type BrokerStatus,
+  type BrokerOcrStatus,
   type ProbeResult,
   type PathProbe,
   type BrokerConfigFull,
@@ -1087,6 +1089,27 @@ function bProbeText(field: string): string {
 function bProbeHint(field: string): string {
   return bProbeItem(field)?.hint ?? "";
 }
+// P12-11 OCR 引擎管理（ddddocr 探测/安装/卸载）
+const bOcrStatus = ref<BrokerOcrStatus | null>(null);
+const bOcrBusy = ref(false);
+async function bOcrManage(action: "status" | "install" | "uninstall") {
+  if (bOcrBusy.value) return;
+  bOcrBusy.value = true;
+  try {
+    const r = await brokerOcrEngine(action);
+    if (action === "status") {
+      bOcrStatus.value = r;
+      bFlash(r.installed ? `内置引擎 ddddocr v${r.version} 已就绪` : "内置引擎未安装：点「安装 / 升级」即可启用自动识别");
+    } else {
+      bFlash(r.message || "完成");
+    }
+  } catch (e) {
+    bFlash(String(e));
+  } finally {
+    bOcrBusy.value = false;
+  }
+}
+
 /** 探测当前模式全部路径；某字段有建议值则自动填入。 */
 async function bProbeFill(field: string) {
   if (!bForm.value || bProbeBusy.value) return;
@@ -1313,6 +1336,7 @@ async function loadBrokerTab() {
     await refreshBStatus();
     await bRefreshSelfcheck();
     brokerLoaded.value = true;
+    void bOcrManage("status");
     await refreshLiveUsage();
   } catch (e) {
     bFlash(`加载失败：${e}`);
@@ -1362,13 +1386,22 @@ async function bConnect() {
     if (!bForm.value) throw new Error("配置未加载");
     await saveBroker();
     bSidecarErr.value = "";
-    bFlash(await brokerConnect());
+    const startMsg = await brokerConnect();
     // sidecar 连接后异步推送自检（dry-run 秒级，真机起客户端较慢），稍候拉取，亦可手动刷新。
     await new Promise((r) => setTimeout(r, 2200));
     await refreshBStatus();
     await bRefreshSelfcheck();
+    // P12-11 明确提示连接结果：成功 / 失败原因 / 未确认
+    if (bStatus.value?.connected) {
+      const kind = bStatus.value.kind === "mock" ? "本地模拟盘" : bStatus.value.clientSim ? "同花顺模拟盘" : "同花顺实盘";
+      bFlash(`连接成功：${kind}通道已就绪`);
+    } else if (bSidecarErr.value) {
+      bFlash(`连接失败：${bSidecarErr.value}`);
+    } else {
+      bFlash(`${startMsg} 自检尚未确认，请查看下方自检详情或点「刷新自检」`);
+    }
   } catch (e) {
-    bFlash(String(e));
+    bFlash(`连接失败：${e}`);
   } finally {
     bConnectBusy.value = false;
   }
@@ -2415,14 +2448,26 @@ async function clearL2Key(r: PluginRow) {
                 <div class="bridge-grid">
                   <label class="ai-field"><span>最小操作间隔（毫秒）</span>
                     <input v-model.number="bForm.clientMinIntervalMs" type="number" min="300" step="100" /></label>
-                  <label class="ai-field"><span>Tesseract OCR 路径（可选）</span>
-                    <div class="bk-probe-row">
-                      <input v-model="bForm.clientTesseract" type="text" spellcheck="false" placeholder="tesseract.exe 路径，留空则复制表格遇验证码时转人工输入" />
-                      <button type="button" class="bk-probe-btn" @click="bProbeFill('clientTesseract')" title="自动探测 tesseract.exe 并填入">探测</button>
+                  <div class="bk-ocr-block">
+                    <div class="bk-sw-title" style="margin-top:0">验证码自动识别（OCR）</div>
+                    <div class="bk-ocr-builtin" :class="{ off: bOcrStatus && !bOcrStatus.installed }">
+                      {{ bOcrStatus ? (bOcrStatus.installed ? `✓ 内置引擎 ddddocr v${bOcrStatus.version} 已启用：复制表格遇验证码自动识别并提交` : "⚠ 内置引擎未安装：点下方「安装 / 升级」启用自动识别") : "检测 OCR 引擎中…" }}
                     </div>
-                    <span class="bk-probe-badge" :class="bProbeClass('clientTesseract')">{{ bProbeText('clientTesseract') }}</span>
-                    <span v-if="bProbeItem('clientTesseract')" class="bk-probe-hint">{{ bProbeHint('clientTesseract') }}</span>
-                  </label>
+                    <div class="bk-ocr-actions">
+                      <button type="button" class="bk-probe-btn" :disabled="bOcrBusy" @click="bOcrManage('status')">探测引擎</button>
+                      <button type="button" class="bk-probe-btn" :disabled="bOcrBusy" @click="bOcrManage('install')">安装 / 升级</button>
+                      <button type="button" class="bk-probe-btn danger" :disabled="bOcrBusy || !bOcrStatus?.installed" @click="bOcrManage('uninstall')">卸载</button>
+                    </div>
+                    <div class="bk-probe-hint">内置引擎（ddddocr）点「安装 / 升级」即自动下载到 Python 环境，无需手动下载安装包；tesseract 仅作增强回退，可选。</div>
+                    <label class="ai-field" style="margin-top:8px"><span>Tesseract OCR 路径（可选 · 增强回退）</span>
+                      <div class="bk-probe-row">
+                        <input v-model="bForm.clientTesseract" type="text" spellcheck="false" placeholder="tesseract.exe 路径，留空即可（内置引擎已够用）" />
+                        <button type="button" class="bk-probe-btn" @click="bProbeFill('clientTesseract')" title="自动探测 tesseract.exe 并填入">探测</button>
+                      </div>
+                      <span class="bk-probe-badge" :class="bProbeClass('clientTesseract') === 'ok' ? 'ok' : ''">{{ bProbeItem('clientTesseract')?.status === 'ok' ? '✓ 已配置' : '未安装（可选回退）' }}</span>
+                      <span v-if="bProbeItem('clientTesseract')" class="bk-probe-hint">{{ bProbeHint('clientTesseract') }}</span>
+                    </label>
+                  </div>
                 </div>
 
                 <div class="section-title" style="margin-top:16px">HTTP API 服务（THSAutoTrader 兼容）</div>
@@ -3348,6 +3393,12 @@ async function clearL2Key(r: PluginRow) {
 .ai-lock-sub { margin: 10px 0 18px; font-size: 12.5px; color: #9fb3d1; line-height: 1.8; max-width: 430px; }
 
 
+.bk-ocr-block { padding: 8px 10px; border: 1px solid var(--border, #2a3040); border-radius: 8px; margin-top: 8px; }
+.bk-ocr-builtin { font-size: 12px; color: #7ed49a; margin-top: 4px; }
+.bk-ocr-builtin.off { color: var(--warn, #e8a33d); }
+.bk-ocr-actions { display: flex; gap: 8px; margin-top: 8px; }
+.bk-probe-badge:not(.ok):not(.warn):not(.bad) { color: var(--text-dim, #8a94a6); border-color: var(--border, #2a3040); }
+.bk-ocr-actions .danger { color: var(--danger, #e5484d); }
 .bk-switch-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .bk-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; }
 .bk-sw-title { font-size: 12px; font-weight: 600; }

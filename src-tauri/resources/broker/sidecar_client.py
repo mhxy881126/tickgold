@@ -43,6 +43,7 @@ TickGold 客户端自动化 sidecar（P3）：以 stdio NDJSON(JSON-RPC) 操控�
 import argparse
 import base64
 import contextlib
+import io
 import json
 import os
 import re
@@ -841,13 +842,52 @@ class ThsGuiEngine:
             time.sleep(delay)
         return None
 
+    def _pw_capture(self, hwnd):
+        """PrintWindow 截取窗口内容为 PIL Image（不依赖屏幕可见/前台，窗口隐藏也能截）。
+        PW_RENDERFULLCONTENT=2 连子窗口一起渲染。失败返回 None。"""
+        try:
+            import ctypes
+            import win32gui
+            import win32ui
+            from PIL import Image
+            rect = win32gui.GetWindowRect(hwnd)
+            w, h = max(1, rect[2] - rect[0]), max(1, rect[3] - rect[1])
+            hwnd_dc = win32gui.GetWindowDC(hwnd)
+            mfc = win32ui.CreateDCFromHandle(hwnd_dc)
+            save = mfc.CreateCompatibleDC()
+            bmp = win32ui.CreateBitmap()
+            bmp.CreateCompatibleBitmap(mfc, w, h)
+            save.SelectObject(bmp)
+            res = ctypes.windll.user32.PrintWindow(hwnd, save.GetSafeHdc(), 2)
+            info = bmp.GetInfo()
+            data = bmp.GetBitmapBits(True)
+            img = Image.frombuffer("RGB", (info["bmWidth"], info["bmHeight"]), data, "raw", "BGRX", 0, 1)
+            win32gui.DeleteObject(bmp.GetHandle())
+            save.DeleteDC()
+            mfc.DeleteDC()
+            win32gui.ReleaseDC(hwnd, hwnd_dc)
+            return img if res else None
+        except Exception:  # noqa: BLE001
+            return None
+
     def activate(self, win=None):
-        """激活交易窗口到前台（最小化先还原，SetForegroundWindow 失败则 pywinauto 兜底）。"""
+        """激活交易窗口到前台（最小化先还原，SetForegroundWindow 失败则 pywinauto 兜底）。
+        P12-12：激活前记录当前前台窗口，供查询结束后还原（避免 xiadan 一直霸占前台）。"""
         import win32con
         import win32gui
+        try:
+            self._prev_fg = win32gui.GetForegroundWindow()
+        except Exception:  # noqa: BLE001
+            self._prev_fg = 0
         target = win if win is not None else self.find_main_window()
         if target is None:
             raise RuntimeError("未找到交易窗口，请先启动并登录同花顺独立交易端（非精简模式）")
+        # P12-13 隐形模式：查询间窗口被隐藏，操作前先显示
+        try:
+            if not win32gui.IsWindowVisible(target.handle):
+                win32gui.ShowWindow(target.handle, win32con.SW_SHOW)
+        except Exception:  # noqa: BLE001
+            pass
         target.click_input()
         try:
             hwnd = target.handle
@@ -1018,12 +1058,19 @@ class ThsGuiEngine:
         cur = self.find_id(win, root_cid)
         if cur is None:
             return None
+        def _match(child, name):
+            try:
+                t = child.window_text() or ""
+            except Exception:  # noqa: BLE001
+                return False
+            return name == t or name in t or t.replace(" ", "") == name.replace(" ", "")
+
         for name in names:
             nxt = None
             for coll in (cur.children(), cur.descendants()):
                 for child in coll:
                     try:
-                        if child.window_text() == name:
+                        if _match(child, name):
                             nxt = child
                             break
                     except Exception:  # noqa: BLE001
@@ -1110,16 +1157,127 @@ class ThsGuiEngine:
             raise RuntimeError("验证码输入错误")
 
     def _ocr_captcha(self, captcha_el):
+        """验证码识别：优先 ddddocr（轻量验证码专用、数字稳定，无 tesseract 依赖），pytesseract 回退。
+        P12-11b：修复 io 未导入 NameError；增加灰度/放大/二值化预处理提升模糊彩底数字识别率。
+        P12-13e：截图恢复 capture_as_image（屏幕截图最可靠，此前实测识别成功）。
+        PrintWindow 仅留给未启用的屏幕外隐形方案。"""
+        try:
+            img = captcha_el.capture_as_image()
+        except Exception as e:  # noqa: BLE001
+            self.log(f"验证码截图失败：{e}")
+            return ""
+        # P12-10 ddddocr：专为验证码训练，自动内置模型（首次加载约几百 ms，之后复用）
+        def _classify(data: bytes) -> str:
+            import ddddocr
+            _ocr = ddddocr.DdddOcr(show_ad=False)
+            _res = _ocr.classification(data)
+            return "".join(filter(str.isdigit, _res or ""))
+
+        def _encode(img_, fmt="PNG") -> bytes:
+            _buf = io.BytesIO()
+            img_.save(_buf, format=fmt)
+            return _buf.getvalue()
+
+        # ① 原始截图
+        try:
+            _txt = _classify(_encode(img))
+            if _txt:
+                return _txt
+        except Exception as e:  # noqa: BLE001
+            self.log(f"ddddocr 识别失败：{e}")
+        # ② 预处理增强：灰度 → 放大 2 倍 → 自动对比度 → 二值化（同花顺蓝底模糊数字常见）
+        try:
+            from PIL import ImageOps
+            g = img.convert("L")
+            g = g.resize((g.width * 2, g.height * 2), getattr(__import__("PIL.Image", fromlist=["Image"]), "LANCZOS"))
+            g = ImageOps.autocontrast(g)
+            g = g.point(lambda p: 255 if p > 140 else 0)
+            _txt2 = _classify(_encode(g))
+            if _txt2:
+                return _txt2
+        except Exception as e2:  # noqa: BLE001
+            self.log(f"OCR 预处理增强失败：{e2}")
+        self.log("ddddocr 未识别出数字（原始 + 预处理均失败）")
         try:
             import pytesseract
             if self.tesseract_cmd:
                 pytesseract.pytesseract.tesseract_cmd = self.tesseract_cmd
-            img = captcha_el.capture_as_image()
             txt = pytesseract.image_to_string(img, config="--psm 6 digits")
             return "".join(filter(str.isdigit, txt or ""))
         except Exception as e:  # noqa: BLE001
             self.log(f"OCR 不可用/失败：{e}")
             return ""
+
+    def _find_table_uia(self, win, list_cid):
+        """定位表格控件：先按 list_cid；找不到则扫描窗口内所有 List/DataGrid，
+        取含可见 ListItem 行最多的一个（成交/挂单页控件 ID 可能不同）。"""
+        el = self.find_id(win, list_cid)
+        if el is not None:
+            return el
+        best, best_n = None, 0
+        for ctype in ("List", "DataGrid"):
+            try:
+                cands = win.descendants(control_type=ctype)
+            except Exception:  # noqa: BLE001
+                cands = []
+            for cand in cands:
+                try:
+                    n = len(
+                        [
+                            i for i in cand.descendants(control_type="ListItem")
+                            if i.window_text() and i.window_text().strip()
+                        ]
+                    )
+                except Exception:  # noqa: BLE001
+                    n = 0
+                if n > best_n:
+                    best, best_n = cand, n
+        return best
+
+    def read_table_uia(self, win, list_cid=CID_LIST, max_rows=300):
+        """UI Automation 直接枚举表格行（不走剪贴板，绕开复制验证码）。
+
+        返回 TSV 文本（首行为表头，供 parse_tabular_data 解析）；控件不可读 / 无数据返回 None。
+        表头列数推断自第一行，数据行与表头列数不一致时跳过（合并单元格 / 空行）。
+        P12-12：list_cid 未命中时自动扫描窗口内表格控件。
+        """
+        el = self._find_table_uia(win, list_cid)
+        if el is None:
+            return None
+        rows = None
+        for ctype in ("ListItem", "DataItem", "Text"):
+            try:
+                items = [
+                    it for it in el.descendants(control_type=ctype)
+                    if it.window_text() and it.window_text().strip()
+                ]
+            except Exception:  # noqa: BLE001
+                items = []
+            if items:
+                rows = [it.window_text().strip() for it in items[:max_rows]]
+                break
+        if not rows:
+            return None
+        header = rows[0].split("\t")
+        if len(header) < 2:
+            header = [h for h in re.split(r" {2,}", rows[0]) if h]
+        ncols = len(header)
+        out = ["\t".join(header)]
+        for raw in rows[1:]:
+            parts = raw.split("\t")
+            if len(parts) != ncols:
+                parts = [p for p in re.split(r" {2,}", raw.strip()) if p]
+            if len(parts) != ncols:
+                parts = raw.split()
+            if len(parts) == ncols:
+                out.append("\t".join(parts))
+            else:
+                continue  # 行不齐（空行/合并单元格）跳过
+        if len(out) <= 1:
+            # P12-13 只有表头：页面正确但无数据行 → 返回空表头（不再回退剪贴板复制，
+            # 避免空表也触发验证码弹窗；页面没切过去时控件读不到仍会走 copy 回退）
+            return "\n".join(out)
+        return "\n".join(out)
 
     def copy_table(self, win, list_cid=CID_LIST, wait=3.0):
         """点击表格内容区→清剪贴板→Ctrl+C→轮询读取 TSV，期间自动处理验证码。
@@ -1277,6 +1435,25 @@ class RealSidecar(BaseSidecar):
         self.main_win = win
         return win
 
+    def _maybe_hide(self):
+        """P12-13d 止损：SW_HIDE 隐藏主窗口会导致同花顺进程退出（实测），已禁用。
+        隐形方案改走「屏幕外移动」，验证可行后启用；当前查询完仅还原前台。"""
+        pass
+
+    def _restore_fg(self):
+        """还原查询前的活动窗口（best-effort，失败无害）。"""
+        hwnd = getattr(self, "_prev_fg", 0)
+        if not hwnd:
+            return
+        try:
+            import win32con
+            import win32gui
+            if win32gui.IsWindow(hwnd):
+                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                win32gui.SetForegroundWindow(hwnd)
+        except Exception:  # noqa: BLE001
+            pass
+
     def _win_shot(self, win):
         try:
             from PIL import ImageGrab
@@ -1308,8 +1485,24 @@ class RealSidecar(BaseSidecar):
             if not text:
                 raise RuntimeError("验证码未输入，已取消复制")
             self.engine.submit_manual_captcha(win, text)
-            time.sleep(0.4)
-            return self.engine.copy_table(win)  # 人工通过后重试一次
+            time.sleep(0.5)
+            # P12-9 验证码通过后，当次 Ctrl+C 的复制已被放行 → 直接读剪贴板。
+            # 严禁再次 Ctrl+C：同花顺对每次复制都重新弹验证码，重发只会再次弹窗。
+            try:
+                data = self.engine.get_clipboard(retries=6)
+            except Exception:  # noqa: BLE001
+                data = None
+            if isinstance(data, str) and data.strip():
+                return data
+            # 剪贴板为空（验证码通过但复制未完成/被取消）→ 重试一次复制
+            try:
+                return self.engine.copy_table(win)
+            except CaptchaRequiredError:
+                # P12-9 仍弹验证码（输错 / 同花顺多次拦截）：放弃并提示，不再无限弹窗
+                raise RuntimeError(
+                    "同花顺再次要求验证码（可能输错或复制被多次拦截），已停止自动复制，"
+                    "请确认同花顺弹窗后点「刷新」重试"
+                )
 
     def resolve_captcha(self, text):
         with self.captcha_lock:
@@ -1427,6 +1620,7 @@ class RealSidecar(BaseSidecar):
         code = bare_code(p.get("code", ""))
         side = p.get("side", "BUY")
         position = int(p.get("position", 0) or 0)
+        vol = int(p.get("vol", 0) or 0)  # P12-10 自定义股数（>0 时忽略仓位档）
         ref_price = p.get("ref_price", p.get("refPrice", 0))
         if not re.fullmatch(r"\d{6}", code):
             emit({"event": "error", "client_order_id": cid, "message": f"证券代码非法：{code}"})
@@ -1456,7 +1650,16 @@ class RealSidecar(BaseSidecar):
                 avail = int(float(str(avail_txt).replace(",", ""))) if avail_txt else 0
                 if not avail:
                     raise RuntimeError("可用数量为 0，无法按仓位下单")
-                if position in (1, 2, 3, 4):
+                if vol > 0:
+                    # P12-10 自定义股数：直接输入数量框（A 股一手=100）
+                    if vol < 100 or vol % 100 != 0:
+                        raise RuntimeError("股数需为 100 的整数倍（一手=100 股）")
+                    if vol > avail:
+                        raise RuntimeError(f"自定义股数 {vol} 超过可用 {avail}")
+                    self.engine.input_id(dialog, CID_ORDER_AMT, str(vol))
+                    time.sleep(0.2)
+                    order_vol = vol
+                elif position in (1, 2, 3, 4):
                     order_vol = (avail // position // 100) * 100
                     if order_vol < 100:
                         raise RuntimeError(f"按仓位计算后不足 100 股（{order_vol}），无法下单")
@@ -1596,8 +1799,14 @@ class RealSidecar(BaseSidecar):
                 asset = normalize_balance(raw)
                 asset.update({"event": "asset", "full": True, "source": "ths", "raw": raw})
                 emit(asset)
+                self._hide_ok = True
         except Exception as e:  # noqa: BLE001
             emit({"event": "asset", "note": f"资金读取失败：{e}"})
+        finally:
+            self._restore_fg()
+            if getattr(self, "_hide_ok", False):
+                self._hide_ok = False
+                self._maybe_hide()
 
     def do_query_position(self):
         try:
@@ -1608,49 +1817,99 @@ class RealSidecar(BaseSidecar):
                 time.sleep(0.3)
                 self.engine.send_key("F4")   # F4 后默认持仓页
                 time.sleep(0.4)
-                tsv = self._copy_with_captcha(win)
+                # P12-9 优先 UI Automation 控件读表（无复制验证码）；控件不可读再回退剪贴板
+                tsv = self.engine.read_table_uia(win)
+                if tsv is None:
+                    tsv = self._copy_with_captcha(win)
                 rows = parse_tabular_data(tsv, required_headers=("证券代码",))
                 positions = normalize_position(rows)
                 emit({"event": "position", "positions": positions, "full": True, "source": "ths"})
+                self._hide_ok = True
         except Exception as e:  # noqa: BLE001
             emit({"event": "position", "positions": [], "full": True, "note": f"持仓读取失败：{e}"})
+        finally:
+            self._restore_fg()
+            if getattr(self, "_hide_ok", False):
+                self._hide_ok = False
+                self._maybe_hide()
 
     def do_query_trades(self):
+        self.log("[trades] 查询开始")
         try:
             with self.engine.locked():
                 win = self._win()
                 self.engine.activate(win)
                 self.engine.send_key("F4")
                 time.sleep(0.3)
-                node = self.engine.tree_path(win, CID_QUERY_TREE_ROOT, ["查询[F4]", "当日成交"])
+                node = None
+                for path in (["查询", "成交查询"], ["成交查询"], ["查询", "当日成交"], ["当日成交"], ["成交流水"]):
+                    node = self.engine.tree_path(win, CID_QUERY_TREE_ROOT, path)
+                    if node is not None:
+                        self.log(f"[trades] 命中查询节点：{'/'.join(path)}")
+                        break
                 if node is None:
-                    raise RuntimeError("未找到“查询[F4] → 当日成交”")
+                    raise RuntimeError("未找到查询树中的成交查询节点（客户端版本菜单可能不同）")
                 node.click_input()
                 time.sleep(0.3)
                 self.engine.send_key("F5")
                 time.sleep(0.3)
-                tsv = self._copy_with_captcha(win)
+                tsv = self.engine.read_table_uia(win)
+                if tsv is None:
+                    tsv = self._copy_with_captcha(win)
                 rows = parse_tabular_data(tsv, required_headers=("证券代码",))
                 trades = [t for t in (normalize_trade(r) for r in rows) if t]
-                emit({"event": "trades", "trades": trades, "full": True, "source": "ths"})
+                if not trades:
+                    self.log(f"[trades] 当日成交 0 条（表头={rows[0] if rows else ''}）")
+                emit({"event": "trades", "trades": trades, "full": True, "source": "ths",
+                      "note": "" if trades else "当日暂无成交记录"})
+                self._hide_ok = True
         except Exception as e:  # noqa: BLE001
+            self.log(f"[trades] 读取失败：{e}")
             emit({"event": "trades", "trades": [], "full": True, "note": f"当日成交读取失败：{e}"})
+        finally:
+            self._restore_fg()
+            if getattr(self, "_hide_ok", False):
+                self._hide_ok = False
+                self._maybe_hide()
 
     def do_query_pending(self):
+        self.log("[pending] 查询开始")
         try:
             with self.engine.locked():
                 win = self._win()
                 self.engine.activate(win)
-                self.engine.send_key("F3")
+                self.engine.send_key("F4")
+                time.sleep(0.3)
+                node = None
+                for path in (["查询", "委托查询"], ["委托查询"], ["查询", "当日委托"], ["当日委托"]):
+                    node = self.engine.tree_path(win, CID_QUERY_TREE_ROOT, path)
+                    if node is not None:
+                        self.log(f"[pending] 命中查询节点：{'/'.join(path)}")
+                        break
+                if node is None:
+                    raise RuntimeError("未找到查询树中的委托查询节点（客户端版本菜单可能不同）")
+                node.click_input()
                 time.sleep(0.3)
                 self.engine.send_key("F5")
                 time.sleep(0.3)
-                tsv = self._copy_with_captcha(win)
+                tsv = self.engine.read_table_uia(win)
+                if tsv is None:
+                    tsv = self._copy_with_captcha(win)
                 rows = parse_tabular_data(tsv, required_headers=("证券代码",))
                 orders = [o for o in (normalize_pending(r) for r in rows) if o]
-                emit({"event": "pending", "orders": orders, "full": True, "source": "ths"})
+                if not orders:
+                    self.log(f"[pending] 挂单 0 条（表头={rows[0] if rows else ''}）")
+                emit({"event": "pending", "orders": orders, "full": True, "source": "ths",
+                      "note": "" if orders else "当前无挂单"})
+                self._hide_ok = True
         except Exception as e:  # noqa: BLE001
+            self.log(f"[pending] 读取失败：{e}")
             emit({"event": "pending", "orders": [], "full": True, "note": f"挂单读取失败：{e}"})
+        finally:
+            self._restore_fg()
+            if getattr(self, "_hide_ok", False):
+                self._hide_ok = False
+                self._maybe_hide()
 
     # ---------- 探测 / 透传（高级调试） ----------
     def do_check_app(self):
@@ -1963,6 +2222,18 @@ def main():
     ap.add_argument("--api-port", type=int, default=0, help="HTTP API 服务端口（0=关闭，默认 5000 语义）")
     ap.add_argument("--api-token", default="", help="HTTP API 访问令牌（留空=本机免密）")
     args = ap.parse_args()
+
+    # P12-9 单实例保护：API 端口已被占用说明已有 sidecar 在运行，直接退出避免双实例抢同花顺窗口
+    if (args.api_port or 0) > 0:
+        import socket as _socket
+        _probe = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        _probe.settimeout(1.0)
+        try:
+            _probe.bind(("127.0.0.1", args.api_port))
+            _probe.close()
+        except OSError:
+            print("[sidecar] API 端口", args.api_port, "已被占用，检测到已有实例，本实例退出", file=sys.stderr)
+            sys.exit(0)
 
     wl = [bare_code(x) for x in args.whitelist.split(",") if bare_code(x)]
     common = dict(vendor=args.vendor, account=args.account, sim=args.sim,

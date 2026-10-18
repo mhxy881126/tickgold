@@ -156,32 +156,47 @@ async fn client_stdin(
         .ok_or_else(|| "客户端 sidecar 未运行".to_string())
 }
 
-/// 当日成交：优先返回缓存；缓存为空时向 sidecar 查询，前端下次轮询取回报。
+/// 当日成交：P12-7 每次调用都向 sidecar 请求最新（2.5s 节流），并返回最近一次回报缓存；
+/// 失败帧不覆盖缓存，前端保留旧值并收到错误提示。
 #[tauri::command]
 pub async fn broker_client_query_trades(
     mgr: State<'_, BrokerManager>,
 ) -> Result<Value, String> {
+    let s = client_stdin(&mgr).await?;
+    if crate::broker::query_throttled(&mgr, "trades") {
+        sidecar::send_to(
+            &s,
+            sidecar::request("query-trades", "query_trades", json!({})),
+        )
+        .await?;
+    }
     let cached = mgr.trades_cache.lock().unwrap().clone();
     if cached.get("trades").is_some() {
-        return Ok(cached);
+        Ok(cached)
+    } else {
+        Ok(json!({ "note": "正在向客户端查询当日成交…" }))
     }
-    let s = client_stdin(&mgr).await?;
-    sidecar::send_to(&s, sidecar::request("query-trades", "query_trades", json!({}))).await?;
-    Ok(json!({ "note": "正在向客户端查询当日成交…" }))
 }
 
-/// 当日挂单（未成交委托）：同上。
+/// 当日挂单（未成交委托）：P12-7 同 trades，每次调用都请求最新（节流）并返回缓存。
 #[tauri::command]
 pub async fn broker_client_query_pending(
     mgr: State<'_, BrokerManager>,
 ) -> Result<Value, String> {
+    let s = client_stdin(&mgr).await?;
+    if crate::broker::query_throttled(&mgr, "pending") {
+        sidecar::send_to(
+            &s,
+            sidecar::request("query-pending", "query_pending", json!({})),
+        )
+        .await?;
+    }
     let cached = mgr.pending_cache.lock().unwrap().clone();
     if cached.get("orders").is_some() {
-        return Ok(cached);
+        Ok(cached)
+    } else {
+        Ok(json!({ "note": "正在向客户端查询当日挂单…" }))
     }
-    let s = client_stdin(&mgr).await?;
-    sidecar::send_to(&s, sidecar::request("query-pending", "query_pending", json!({}))).await?;
-    Ok(json!({ "note": "正在向客户端查询当日挂单…" }))
 }
 
 /// 一键撤单：kind = A(全撤) / X(撤买) / C(撤卖)。
@@ -211,6 +226,7 @@ pub async fn broker_client_position_order(
     side: String,
     position: i64,
     ref_price: f64,
+    vol: i64,
 ) -> Result<String, String> {
     let s = client_stdin(&mgr).await?;
     let cid = format!("POS{}{}", now_millis(), code);
@@ -225,6 +241,7 @@ pub async fn broker_client_position_order(
                 "side": side,
                 "position": position,
                 "ref_price": ref_price,
+                "vol": vol,
             }),
         ),
     )

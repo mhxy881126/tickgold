@@ -216,6 +216,8 @@ pub fn run() {
             broker::broker_live_usage,
             // P8 券商路径一键自检（本机探测，不依赖 sidecar）
             broker::probe::broker_probe_paths,
+            // P12-11 OCR 引擎管理（ddddocr 探测/安装/卸载）
+            broker::probe::broker_ocr_engine,
             // ===== P5 模型接管：状态机 / 影子 / 灰度 / 回退 =====
             ai::brain_rollout::brain_rollout_get,
             ai::brain_rollout::brain_rollout_request,

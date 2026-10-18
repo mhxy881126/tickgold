@@ -197,6 +197,18 @@ export function brokerConnect() {
   return invoke<string>("broker_connect");
 }
 
+/** P12-11 OCR 引擎管理：status=探测 / install=安装升级 / uninstall=卸载（ddddocr） */
+export interface BrokerOcrStatus {
+  engine: string;
+  installed: boolean;
+  version: string;
+  error?: string;
+  python: string;
+}
+export function brokerOcrEngine(action: "status" | "install" | "uninstall") {
+  return invoke<BrokerOcrStatus & { message?: string; ok?: boolean }>("broker_ocr_engine", { action });
+}
+
 export function brokerDisconnect() {
   return invoke<void>("broker_disconnect");
 }
@@ -380,12 +392,14 @@ export function brokerClientPositionOrder(
   side: string,
   position: number,
   refPrice: number,
+  vol: number,
 ) {
   return invoke<string>("broker_client_position_order", {
     code,
     side,
     position,
     refPrice,
+    vol,
   });
 }
 

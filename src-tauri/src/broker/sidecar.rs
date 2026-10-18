@@ -66,6 +66,8 @@ pub async fn spawn_generic(
 
     let mut cmd = tokio::process::Command::new(python_path);
     cmd.arg("-u") // 无缓冲输出
+        .env("PYTHONIOENCODING", "utf-8") // P12-8 强制 UTF-8 输出，杜绝 stdout 文件 GBK 乱码
+        .env("PYTHONUTF8", "1")
         .arg(script_path)
         .args(extra_args)
         .stdin(Stdio::piped())

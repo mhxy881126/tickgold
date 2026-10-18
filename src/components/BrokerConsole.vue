@@ -3,7 +3,7 @@
 // 账户资金 / 持仓 / 当日成交 / 当日挂单 四表，一键撤单（全撤/撤买/撤卖），
 // 仓位下单（全/半/1/3/1/4 档），进程窗口自检，键盘/点击高级调试，人工验证码。
 // 真实通道：Python 侧强制半自动，下单/撤单均截图挂起，由人工核对后才在客户端落键。
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { confirmDialog } from "../composables/useDialog";
 import { useActions } from "../composables/useActions";
@@ -91,6 +91,23 @@ async function markChannel(m: "sim" | "live") {
 }
 
 const toastMsg = ref("");
+// P12-7 实盘数据读取失败提示（sidecar note 帧 → 前端可见）
+const queryErr = ref("");
+// P12-7 最近一次数据刷新成功时刻（实时感）
+const lastSync = ref("");
+// P12-8 探测标题显示清洗：去掉控制字符与装饰符号（如 ◆○◇），防乱码/字体缺失
+function cleanTitle(t: string | undefined | null): string {
+  if (!t) return "";
+  return t
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, "") // 控制字符
+    .replace(/[◆◇○●■□▲△★☆€£¥§©®™]+/g, "") // 装饰符号
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function fmtClock(ts: number): string {
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+}
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 function flash(m: string) {
   toastMsg.value = m;
@@ -131,36 +148,56 @@ async function loadStatus() {
 }
 async function loadAsset() {
   try {
-    asset.value = await brokerQueryAsset();
-  } catch {
-    /* 未连接时不阻断 */
+    const r = await brokerQueryAsset();
+    // P12-9 资产查询失败（note-only 返回，无 cash）合并进统一错误条，避免与持仓错误重复堆叠
+    if (r && typeof r === "object" && "note" in r && !("cash" in r)) {
+      queryErr.value = String(r.note ?? "资产查询失败");
+    }
+    asset.value = r;
+  } catch (e) {
+    queryErr.value = String(e);
   }
 }
 async function loadPositions() {
   try {
     const r = await brokerQueryPosition();
     if (r.positions) positions.value = r.positions;
-  } catch {
-    /* ignore */
+    if (r.note && !r.positions) queryErr.value = r.note;
+    lastSync.value = fmtClock(Date.now());
+  } catch (e) {
+    queryErr.value = String(e);
   }
 }
 async function loadTrades() {
   try {
     const r = await brokerClientQueryTrades();
     if (r.trades) trades.value = r.trades;
-  } catch {
-    /* ignore */
+    if (r.note && !r.trades) queryErr.value = r.note;
+    lastSync.value = fmtClock(Date.now());
+  } catch (e) {
+    queryErr.value = String(e);
   }
 }
 async function loadPending() {
   try {
     const r = await brokerClientQueryPending();
     if (r.orders) pending.value = r.orders;
-  } catch {
-    /* ignore */
+    if (r.note && !r.orders) queryErr.value = r.note;
+    lastSync.value = fmtClock(Date.now());
+  } catch (e) {
+    queryErr.value = String(e);
   }
 }
 async function refresh() {
+  if (loading.value) return; // P12-8 防重入：上一轮查询未完成时跳过，避免与同花顺窗口操作叠加
+  if (captchaShot.value) {
+    flash("请先完成验证码输入，再刷新");
+    return;
+  }
+  if (captchaCooling()) {
+    flash("验证码流程冷却中，请稍候再刷新（避免反复弹窗）…");
+    return;
+  }
   loading.value = true;
   await loadStatus();
   await loadAsset();
@@ -170,9 +207,10 @@ async function refresh() {
     await loadPending();
   }
   loading.value = false;
+  lastSync.value = fmtClock(Date.now());
 }
 async function refreshTab() {
-  if (!connected.value) return;
+  if (!connected.value || loading.value) return; // P12-8 防重入
   if (tab.value === "position") await loadPositions();
   else if (tab.value === "trades") await loadTrades();
   else if (tab.value === "pending") await loadPending();
@@ -378,6 +416,7 @@ const posForm = reactive({
   side: "BUY",
   position: 2,
   refPrice: "",
+  vol: "", // P12-10 自定义股数（>0 时优先于仓位档，position 置 0）
 });
 const POSITIONS = [
   { v: 1, t: "全仓" },
@@ -386,12 +425,17 @@ const POSITIONS = [
   { v: 4, t: "1/4 仓" },
 ];
 const posBusy = ref(false);
+// P12-10 输入股数后切换到自定义档（position=0，优先股数）
+function onVolInput() {
+  if (posForm.vol) posForm.position = 0;
+}
 // P12-6 持仓行「下单」快捷带入：代码 + 现价 填入仓位下单表单
-function fillPosFromRow(p: BrokerPosition) {
+function fillPosFromRow(p: BrokerPosition, side: "BUY" | "SELL" = "BUY") {
   posForm.code = p.code ?? "";
   posForm.refPrice = p.price ? String(p.price) : "";
-  posForm.side = "BUY";
-  flash(`已带入 ${p.code}（现价 ${p.price ?? "--"}），选好仓位档位后点「填单」`);
+  posForm.side = side;
+  posForm.vol = "";
+  flash(`已带入 ${p.code}（现价 ${p.price ?? "--"}），选好仓位档位或输入股数后点「填单」`);
   document
     .querySelector(".bc-posbox")
     ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -403,14 +447,17 @@ const posLocked = computed(
 async function onPositionOrder() {
   const code = posForm.code.trim();
   const refPrice = parseFloat(posForm.refPrice);
+  const vol = parseInt(posForm.vol, 10) || 0;
   if (!/^\d{6}$/.test(code)) return flash("请填写 6 位股票代码");
   if (!(refPrice > 0)) return flash("请填写参考价（用于资金护栏与金额估算）");
+  if (vol > 0 && (vol < 100 || vol % 100 !== 0)) return flash("股数需为 100 的整数倍（一手=100 股）");
+  const volDesc = vol > 0 ? `${vol} 股` : `「${POSITIONS.find((p) => p.v === posForm.position)?.t}」`;
   if (liveNow.value) {
     const ok = await confirmDialog({
-      title: "真实资金 · 仓位下单",
+      title: "真实资金 · 下单",
       message:
-        `即将在同花顺真实账户以「${POSITIONS.find((p) => p.v === posForm.position)?.t}」${posForm.side === "BUY" ? "买入" : "卖出"} ${code}。\n\n` +
-        "系统会先按可用资金换算股数并截图，由你核对后才会点「确定」。确认继续？",
+        `即将在同花顺真实账户以${volDesc}${posForm.side === "BUY" ? "买入" : "卖出"} ${code}。\n\n` +
+        "系统会先换算股数并截图，由你核对后才会点「确定」。确认继续？",
       confirmText: "去核对下单",
       danger: true,
     });
@@ -421,10 +468,11 @@ async function onPositionOrder() {
     const cid = await brokerClientPositionOrder(
       code,
       posForm.side,
-      posForm.position,
+      vol > 0 ? 0 : posForm.position,
       refPrice,
+      vol,
     );
-    flash(`已按仓位填单（${cid}），请到下单核对弹窗确认`);
+    flash(`已填单（${cid}），请到下单核对弹窗确认`);
   } catch (e) {
     flash(String(e));
   } finally {
@@ -469,6 +517,17 @@ async function onClick() {
 // ===== 人工验证码 / 撤单截图确认（来自 broker:client_screenshot）=====
 const captchaShot = ref<ClientShot | null>(null);
 const captchaText = ref("");
+// P12-9 验证码提交后冷却（毫秒时间戳）：防止提交后立即自动重查又触发验证码
+const captchaCooldownUntil = ref(0);
+function captchaCooling(): boolean {
+  return Date.now() < captchaCooldownUntil.value;
+}
+// P12-9 同花顺验证码频繁：出现验证码类失败后长冷却 2 分钟，避免轮询反复弹窗
+watch(queryErr, (m) => {
+  if (m && /验证码/.test(m)) {
+    captchaCooldownUntil.value = Date.now() + 120_000;
+  }
+});
 const cancelShot = ref<ClientShot | null>(null);
 const shotBusy = ref(false);
 async function onCaptchaSubmit() {
@@ -479,8 +538,11 @@ async function onCaptchaSubmit() {
     await brokerClientCaptchaInput(text);
     captchaShot.value = null;
     captchaText.value = "";
-    flash("验证码已提交，正在继续读取表格");
+    // P12-9 提交后冷却 30s，避免轮询立即重查再次触发验证码弹窗
+    captchaCooldownUntil.value = Date.now() + 30_000;
+    flash("验证码已提交，30 秒内不再自动查询，请稍候");
   } catch (e) {
+    captchaCooldownUntil.value = Date.now() + 30_000;
     flash(String(e));
   } finally {
     shotBusy.value = false;
@@ -511,6 +573,9 @@ onMounted(() => {
   void refresh();
   void loadApiCfg();
   tick = setInterval(() => {
+    // P12-9 验证码等待中暂停自动查询：验证码等待期 sidecar 持有窗口锁，避免撞锁报「操作串行」；
+    // 验证码失败后长冷却同样暂停，避免轮询反复触发同花顺验证码弹窗
+    if (captchaShot.value || captchaCooling()) return;
     void loadStatus();
     void loadAsset();
     if (connected.value) void refreshTab();
@@ -527,6 +592,14 @@ onMounted(() => {
   listen("broker:sidecar_error", (ev) => {
     const p = ev.payload as { message?: string };
     sidecarErr.value = p?.message ?? "交易通道异常";
+  }).then((u) => unlisteners.push(u));
+  // P12-7 读取失败（持仓/成交/挂单/资产）错误透传：显示原因 + 提示会自动重试
+  listen("broker:client_note", (ev) => {
+    const p = ev.payload as { note?: string; message?: string };
+    const msg = p?.note || p?.message || "";
+    if (!msg) return;
+    queryErr.value = msg;
+    flash(msg);
   }).then((u) => unlisteners.push(u));
   listen<ClientCurrentPage>("broker:current_page", (ev) => {
     if (ev.payload) currentPage.value = ev.payload;
@@ -583,7 +656,7 @@ onBeforeUnmount(() => {
       </template>
       <template v-if="currentPage.found !== undefined">
         <span class="sc-item">窗口：<b :class="currentPage.found ? 'ok' : 'bad'">{{ currentPage.found ? "已找到" : "未找到" }}</b></span>
-        <span v-if="currentPage.title" class="sc-item sc-title">{{ currentPage.title }}</span>
+        <span v-if="cleanTitle(currentPage.title)" class="sc-item sc-title">{{ cleanTitle(currentPage.title) }}</span>
       </template>
     </div>
 
@@ -606,8 +679,9 @@ onBeforeUnmount(() => {
         <div class="ba-v" :class="pnlCls(asset?.dayPnl)">{{ fmtMoney(asset?.dayPnl) }}</div>
       </div>
     </div>
-    <div v-if="asset?.note" class="bc-note">{{ connected ? asset.note : "未连接，无法获取资产（请先连接通道，或点下方「一键演练」）" }}</div>
-
+    <!-- P12-9 主区两栏：左 表格 / 右 仓位下单 -->
+    <div class="bc-main">
+    <div class="bc-left">
     <!-- Tabs -->
     <div class="bc-tabs">
       <button
@@ -695,8 +769,9 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
     <div v-else-if="!connected" class="bc-empty">
       <div v-if="sidecarErr" class="bc-sidecar-err">连接失败：{{ sidecarErr }}</div>
       <div class="be-icon">🔌</div>
-      <div class="be-title">客户端通道未连接</div>
-      <div class="be-desc">连接真实同花顺客户端前，可以先一键演练：自动切换 dry-run 通道并展示完整的虚拟账户数据（持仓 / 成交 / 挂单 / 资金），不碰真实客户端、不碰真钱。</div>
+      <div class="be-title">未连接交易通道</div>
+      <div class="be-desc"><b>本地模拟演练</b>：内置虚拟账户、不碰真钱，先熟悉流程；<b>实盘交易</b>：连接你的同花顺客户端，真实下单（经确认桥人工核对）。</div>
+      <div class="be-desc be-desc2">可以先点下方「一键演练」体验全部功能；连接真实同花顺，到「设置 → 券商交易」选择通道后点「保存并连接」。</div>
       <div class="bc-drill-row">
         <button class="bc-drill-btn" :disabled="drillBusy" @click="onDrillRun">
           {{ drillBusy ? "演练启动中…" : "一键演练（dry-run）" }}
@@ -707,6 +782,8 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
 
     <!-- 表格区 -->
     <div v-else class="bc-table-wrap">
+      <div v-if="queryErr" class="bc-query-err">⚠ {{ queryErr }}（自动重试中…）</div>
+      <div v-if="lastSync" class="bc-last-sync">数据更新于 {{ lastSync }} · 每 6 秒自动刷新</div>
       <!-- 持仓 -->
       <table v-if="tab === 'position'" class="bc-table">
         <thead>
@@ -716,7 +793,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
           </tr>
         </thead>
         <tbody>
-          <tr v-if="!positions.length"><td colspan="8" class="bc-row-empty">暂无持仓</td></tr>
+          <tr v-if="!positions.length"><td colspan="9" class="bc-row-empty">{{ queryErr ? "读取失败（见上方提示），正在自动重试…" : "暂无持仓" }}</td></tr>
           <tr v-for="p in positions" :key="p.code">
             <td class="mono">{{ p.code }}</td>
             <td>{{ p.name || "--" }}</td>
@@ -726,7 +803,10 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
             <td class="r mono">{{ fmtNum(p.price) }}</td>
             <td class="r mono">{{ fmtMoney(p.marketValue) }}</td>
             <td class="r mono" :class="pnlCls(p.pnl)">{{ fmtMoney(p.pnl) }}</td>
-            <td><button class="bp-pos-btn" @click="fillPosFromRow(p)">下单</button></td>
+            <td class="bc-act">
+              <button class="bp-pos-btn buy" @click="fillPosFromRow(p, 'BUY')">买</button>
+              <button class="bp-pos-btn sell" @click="fillPosFromRow(p, 'SELL')">卖</button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -740,7 +820,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
           </tr>
         </thead>
         <tbody>
-          <tr v-if="!trades.length"><td colspan="7" class="bc-row-empty">暂无当日成交</td></tr>
+          <tr v-if="!trades.length"><td colspan="7" class="bc-row-empty">{{ queryErr ? "读取失败（见上方提示），正在自动重试…" : "暂无当日成交" }}</td></tr>
           <tr v-for="(t, i) in trades" :key="i">
             <td class="mono">{{ t.time || "--" }}</td>
             <td class="mono">{{ t.code }}</td>
@@ -762,7 +842,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
           </tr>
         </thead>
         <tbody>
-          <tr v-if="!pending.length"><td colspan="8" class="bc-row-empty">暂无当日挂单</td></tr>
+          <tr v-if="!pending.length"><td colspan="8" class="bc-row-empty">{{ queryErr ? "读取失败（见上方提示），正在自动重试…" : "暂无当日挂单" }}</td></tr>
           <tr v-for="(o, i) in pending" :key="i">
             <td class="mono">{{ o.time || "--" }}</td>
             <td class="mono">{{ o.code }}</td>
@@ -776,8 +856,10 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
         </tbody>
       </table>
     </div>
+    </div>
 
-    <!-- 仓位下单 -->
+    <!-- 仓位下单（右栏） -->
+    <div class="bc-right">
     <div v-if="connected" class="bc-posbox">
       <div class="bp-title">
         仓位下单
@@ -788,7 +870,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
         <span class="bp-step">① 选方向</span>
         <span class="bp-step">② 填 6 位代码</span>
         <span class="bp-step">③ 填参考价</span>
-        <span class="bp-step">④ 选仓位档位</span>
+        <span class="bp-step">④ 选仓位档位 或 填股数</span>
         <span class="bp-step">⑤ 点填单</span>
       </div>
       <div class="bp-row">
@@ -806,7 +888,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
             :key="p.v"
             class="bp-seg-btn"
             :class="{ on: posForm.position === p.v }"
-            @click="posForm.position = p.v"
+            @click="posForm.position = p.v; posForm.vol = ''"
           >{{ p.t }}</button>
         </div>
         <button
@@ -816,20 +898,34 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
           @click="onPositionOrder"
           :title="posLocked ? '实盘未武装：请到设置完成武装后再下单' : ''"
         >
-          {{ posBusy ? "填单中…" : posLocked ? "实盘未武装 · 先到设置武装" : liveNow ? "填单 · 需确认" : "按仓位填单" }}
+          {{ posBusy ? "填单中…" : posLocked ? "实盘未武装 · 先到设置武装" : liveNow ? "填单 · 需确认" : "填单" }}
         </button>
       </div>
-      <div class="bp-help">
-        <b>怎么用：</b>参考价仅用于金额估算与资金护栏，实际以同花顺下单窗口盘口价为准（可从上方持仓行点「下单」自动带入）；全仓=按可用资金全部买入，半仓 / 1/3 / 1/4 依次减半；卖出按持仓比例换算。填单后同花顺会弹出下单窗口，应用再弹「截图确认桥」，核对无误后点确认才落键。
+      <div class="bp-row">
+        <input
+          v-model="posForm.vol"
+          placeholder="股数（100 的整数倍，选填；填入后优先于仓位档）"
+          type="number"
+          step="100"
+          min="100"
+          @input="onVolInput"
+        />
       </div>
+      <details class="bp-help">
+        <summary><b>怎么用？</b>（点击展开）</summary>
+        参考价仅用于金额估算与资金护栏，实际以同花顺下单窗口盘口价为准（可从上方持仓行点「买/卖」自动带入）；全仓=按可用资金全部买入，半仓 / 1/3 / 1/4 依次减半；卖出按持仓比例换算。也可以直接输入股数（100 的整数倍）精确下单，输入股数后优先于仓位档。填单后同花顺会弹出下单窗口，应用再弹「截图确认桥」，核对无误后点确认才落键。
+      </details>
       <div v-if="posLocked" class="bp-lock">
         ⚠ 实盘未武装（出厂锁定）：请到「设置 → 券商交易 → 实盘与风控」完成武装（单笔上限 + 白名单 + 演练确认）后，这里才能填单。当前点「填单」会被系统拒绝。
       </div>
     </div>
+    </div>
+    </div>
 
-    <!-- 高级调试（折叠） -->
+    <!-- 高级调试（折叠，日常用不到） -->
     <details v-if="connected" class="bc-adv">
-      <summary>高级调试（键盘 / 点击透传，真机校准用）</summary>
+      <summary>高级功能 · 键盘 / 坐标调试（脚本校准用，日常买卖用不到）</summary>
+      <div class="adv-note">给「写自动化脚本 / 校准按钮坐标」的开发者用的：点「发送」会真的往同花顺窗口按按键或点击，日常交易不需要，误用可能打断同花顺操作，谨慎使用。</div>
       <div class="adv-row">
         <input v-model="keySeq" placeholder="键盘序列，如 F4 或 600519 ENTER 21 ENTER" spellcheck="false" />
         <button class="bc-btn" :disabled="advBusy" @click="onSendKey">发送</button>
@@ -938,7 +1034,14 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
   border-radius: 6px; padding: 2px 8px;
 }
 .bp-help { margin-top: 8px; font-size: 11px; color: var(--text-dim, #9aa5b8); line-height: 1.6; }
-.bp-help b { color: var(--text, #e6ecf5); }
+.bp-help summary { cursor: pointer; color: var(--text, #e6ecf5); display: inline-block; }
+.bp-help summary b { color: var(--text, #e6ecf5); }
+.bc-query-err {
+  margin-bottom: 6px; font-size: 11px; color: #ffb46b;
+  background: rgba(242,54,69,.12); border: 1px solid rgba(242,54,69,.4);
+  border-radius: 6px; padding: 4px 10px;
+}
+.bc-last-sync { margin-bottom: 6px; font-size: 10px; color: var(--text-dim, #7c8798); }
 .bp-lock {
   margin-top: 8px; font-size: 11px; color: #ffb46b; line-height: 1.6;
   background: rgba(242,54,69,.1); border: 1px solid rgba(242,54,69,.4);
@@ -993,6 +1096,20 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
 .sc-item b.bad { color: #ff7a85; }
 .sc-title { color: var(--text, #e6ecf5); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.bc-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 10px;
+  align-items: start;
+  flex: 1;
+  min-height: 0;
+}
+@media (max-width: 980px) {
+  .bc-main { grid-template-columns: 1fr; }
+}
+.bc-left { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.bc-right { display: flex; flex-direction: column; gap: 8px; }
+.bc-right .bc-posbox { position: sticky; top: 0; }
 .bc-asset {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1030,6 +1147,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
 }
 .bc-tab.on { color: var(--accent, #e8c878); border-bottom-color: var(--accent, #e8c878); font-weight: 600; }
 
+.be-desc2 { margin-top: 8px; color: var(--text-dim, #8a94a6); }
 .bc-empty {
   flex: 1; display: flex; flex-direction: column;
   align-items: center; justify-content: center;
@@ -1137,6 +1255,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
   color: var(--text-dim, #97a0b2);
 }
 .bc-adv summary { cursor: pointer; font-size: 11px; outline: none; }
+.adv-note { margin-top: 6px; font-size: 11px; color: var(--text-dim, #9aa5b8); line-height: 1.6; }
 .adv-row { display: flex; gap: 6px; margin-top: 7px; }
 .adv-row input {
   flex: 1; min-width: 0;

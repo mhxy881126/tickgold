@@ -44,6 +44,8 @@ pub struct BrokerManager {
     pub pending_cache: Mutex<serde_json::Value>,
     pub app_state_cache: Mutex<serde_json::Value>,
     pub current_page_cache: Mutex<serde_json::Value>,
+    /// P12-8 实盘查询节流：按查询类型分键（asset/position/trades/pending），互不吞并。
+    pub last_query_at: Mutex<std::collections::HashMap<String, u64>>,
 }
 
 impl BrokerManager {
@@ -69,6 +71,7 @@ impl BrokerManager {
             pending_cache: Mutex::new(serde_json::json!({})),
             app_state_cache: Mutex::new(serde_json::json!({})),
             current_page_cache: Mutex::new(serde_json::json!({})),
+            last_query_at: Mutex::new(std::collections::HashMap::new()),
         }
     }
 
@@ -287,14 +290,24 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
         }
         "trades" => {
             // P7 同花顺真实通道：当日成交全量回报缓存并转发。
+            // P12-7 失败帧（带 note）不覆盖缓存：保留旧数据并转发错误，下次轮询继续重查。
             if let Some(m) = try_manager(app) {
+                if v.get("note").is_some() {
+                    let _ = app.emit("broker:client_note", v.clone());
+                    return;
+                }
                 *m.trades_cache.lock().unwrap() = v.clone();
             }
             let _ = app.emit("broker:trades", v.clone());
         }
         "pending" => {
             // P7 当日挂单（未成交委托）全量回报缓存并转发。
+            // P12-7 失败帧（带 note）不覆盖缓存：保留旧数据并转发错误。
             if let Some(m) = try_manager(app) {
+                if v.get("note").is_some() {
+                    let _ = app.emit("broker:client_note", v.clone());
+                    return;
+                }
                 *m.pending_cache.lock().unwrap() = v.clone();
             }
             let _ = app.emit("broker:pending", v.clone());
@@ -313,13 +326,23 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
         }
         "asset" => {
             // 缓存最近一次资产回报，broker_query_asset（QMT/客户端）直接读缓存
+            // P12-7 失败帧（带 note）不覆盖缓存：保留旧数据并转发错误。
             if let Some(m) = try_manager(app) {
+                if v.get("note").is_some() {
+                    let _ = app.emit("broker:client_note", v.clone());
+                    return;
+                }
                 *m.asset_cache.lock().unwrap() = v.clone();
             }
         }
         "position" => {
             // 全量回报替换缓存；单只增量 upsert（vol=0 移除）。
+            // P12-7 失败帧（带 note）不覆盖缓存、不置 synced：保留旧数据并转发错误，下次轮询继续重查。
             if let Some(m) = try_manager(app) {
+                if v.get("note").is_some() {
+                    let _ = app.emit("broker:client_note", v.clone());
+                    return;
+                }
                 let (items, full) = risk::parse_position_event(v);
                 let mut cache = m.position_cache.lock().unwrap();
                 if full {
@@ -1748,6 +1771,22 @@ pub async fn broker_cancel(
     }
 }
 
+/// P12-8 查询节流判定：同类型查询距上次发出至少 2.5s；放行时记录本次时间。
+pub(crate) fn query_throttled(
+    mgr: &tauri::State<'_, BrokerManager>,
+    key: &str,
+) -> bool {
+    let now = crate::ai::now_millis() as u64;
+    let mut m = mgr.last_query_at.lock().unwrap();
+    let last = m.get(key).copied().unwrap_or(0);
+    if now.saturating_sub(last) >= 2500 {
+        m.insert(key.to_string(), now);
+        true
+    } else {
+        false
+    }
+}
+
 #[tauri::command]
 pub async fn broker_query_asset(
     ai: State<'_, crate::ai::AiState>,
@@ -1775,12 +1814,8 @@ pub async fn broker_query_asset(
             }))
         }
         "qmt" | "client" => {
-            // 优先返回 sidecar 最近一次 asset 回报缓存
-            let cached = mgr.asset_cache.lock().unwrap().clone();
-            if !cached.as_object().map(|o| o.is_empty()).unwrap_or(true) {
-                return Ok(cached);
-            }
-            // 缓存为空：向 sidecar 发一次 query_asset，前端下次轮询即可拿到回报
+            // P12-7 每次查询都向 sidecar 请求最新（2.5s 节流），返回最近一次回报缓存；
+            // 失败帧不覆盖缓存，前端可继续看到旧值并收到错误提示。
             let stdin = mgr
                 .sidecar
                 .lock()
@@ -1788,13 +1823,21 @@ pub async fn broker_query_asset(
                 .as_ref()
                 .map(|h| h.stdin.clone());
             if let Some(s) = stdin {
-                let req = sidecar::request("query-asset", "query_asset", serde_json::json!({}));
-                if let Err(e) = sidecar::send_to(&s, req).await {
-                    return Ok(serde_json::json!({ "note": format!("资产查询失败：{e}") }));
+                if query_throttled(&mgr, "asset") {
+                    let req =
+                        sidecar::request("query-asset", "query_asset", serde_json::json!({}));
+                    if let Err(e) = sidecar::send_to(&s, req).await {
+                        return Ok(serde_json::json!({ "note": format!("资产查询失败：{e}") }));
+                    }
                 }
-                Ok(serde_json::json!({ "note": "正在向客户端查询资产…" }))
             } else {
-                Ok(serde_json::json!({ "note": "客户端未连接，暂无资产数据" }))
+                return Ok(serde_json::json!({ "note": "客户端未连接，暂无资产数据" }));
+            }
+            let cached = mgr.asset_cache.lock().unwrap().clone();
+            if !cached.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+                Ok(cached)
+            } else {
+                Ok(serde_json::json!({ "note": "正在向客户端查询资产…" }))
             }
         }
         _ => Ok(serde_json::json!({ "note": "暂不支持该券商的资产查询" })),
@@ -1823,20 +1866,20 @@ pub async fn broker_query_position(
             Ok(serde_json::json!({ "positions": arr }))
         }
         "qmt" | "client" => {
-            if !mgr.position_synced.load(Ordering::SeqCst) {
-                // 未同步：主动向 sidecar 查询，前端下次轮询即可拿到回报
-                let stdin = mgr
-                    .sidecar
-                    .lock()
-                    .unwrap()
-                    .as_ref()
-                    .map(|h| h.stdin.clone());
-                if let Some(s) = stdin {
+            // P12-7 每次查询都向 sidecar 请求最新（2.5s 节流），并返回最近一次回报缓存；
+            // 失败帧不置 synced、不覆盖缓存，下次轮询继续重查，前端可见错误提示。
+            let stdin = mgr
+                .sidecar
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|h| h.stdin.clone());
+            if let Some(s) = stdin {
+                if query_throttled(&mgr, "position") {
                     let req =
                         sidecar::request("query-position", "query_position", serde_json::json!({}));
                     let _ = sidecar::send_to(&s, req).await;
                 }
-                return Ok(serde_json::json!({ "note": "正在向客户端查询持仓…" }));
             }
             let cache = mgr.position_cache.lock().unwrap();
             let arr: Vec<_> = cache
