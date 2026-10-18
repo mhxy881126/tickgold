@@ -1118,6 +1118,19 @@ function toggleClientAuto() {
   if (!bForm.value || !bForm.value.clientSim) return;
   bForm.value.clientAutoConfirm = !bForm.value.clientAutoConfirm;
 }
+// P12 通道二选一：同花顺模拟（虚拟资金）/ 实盘（真实资金），都走同花顺客户端
+function bPickChannel(ch: "sim" | "live") {
+  if (!bForm.value) return;
+  bForm.value.kind = "client";
+  bForm.value.clientSim = ch === "sim";
+  bForm.value.clientDryRun = false; // 两通道都真操控同花顺客户端
+  if (ch === "sim") {
+    bForm.value.clientAutoConfirm = true; // 模拟盘默认全自动
+  } else {
+    bForm.value.clientAutoConfirm = false; // 实盘强制确认桥
+  }
+  bFlash(ch === "sim" ? "已选同花顺模拟：连接后操作模拟盘虚拟资金（请先打开客户端登录模拟账户）" : "已选实盘：真实委托需人工确认，未武装前不会提交");
+}
 
 // ===== P4 实盘武装向导 =====
 const liveUsage = ref<LiveUsage | null>(null);
@@ -2319,7 +2332,7 @@ async function clearL2Key(r: PluginRow) {
                       ⚪ 模拟交易 · 已就绪（本地虚拟资金，无需连接）
                     </template>
                     <template v-else-if="bForm && bForm.kind === 'client'">
-                      {{ bStatus?.connected ? "● 同花顺模拟已连接" : "○ 同花顺模拟未连接" }}
+                      {{ bStatus?.connected ? (bForm.clientSim ? "● 同花顺模拟已连接" : "● 实盘通道已连接") : (bForm.clientSim ? "○ 同花顺模拟未连接" : "○ 实盘通道未连接") }}
                     </template>
                     <template v-else>
                       {{ bStatus?.connected ? "● QMT 已连接" : "○ QMT 未连接" }}
@@ -2346,25 +2359,33 @@ async function clearL2Key(r: PluginRow) {
                 <span v-else class="bk-probe-tip">点「一键自检」检查本机 Python / 客户端 / OCR 路径是否可用，缺什么可直接自动填入</span>
               </div>
 
-              <!-- 第一步：选模式 -->
-              <div class="section-title" style="margin-top:20px">选择交易模式</div>
+              <!-- 第一步：选通道（两卡：同花顺模拟 / 实盘） -->
+              <div class="section-title" style="margin-top:20px">选择通道</div>
               <div v-if="bForm" class="bk-mode-grid">
-                <label class="bk-mode-card" :class="{ on: bForm.kind === 'mock' }">
-                  <input v-model="bForm.kind" type="radio" value="mock" />
-                  <div class="bk-mode-name">模拟交易</div>
-                  <div class="bk-mode-desc">无需券商环境，本地虚拟资金，适合练手联调</div>
-                </label>
-                <label class="bk-mode-card" :class="{ on: bForm.kind === 'qmt' }">
-                  <input v-model="bForm.kind" type="radio" value="qmt" />
-                  <div class="bk-mode-name">QMT 实盘</div>
-                  <div class="bk-mode-desc">连接本机 miniQMT + xtquant，可提交真实委托</div>
-                </label>
-                <label class="bk-mode-card" :class="{ on: bForm.kind === 'client' }">
-                  <input v-model="bForm.kind" type="radio" value="client" />
+                <label class="bk-mode-card" :class="{ on: bForm.kind === 'client' && bForm.clientSim }" @click="bPickChannel('sim')">
                   <div class="bk-mode-name">同花顺模拟</div>
-                  <div class="bk-mode-desc">操控本机同花顺模拟炒股客户端，虚拟资金练手；默认 dry-run 空跑，不碰真钱</div>
+                  <div class="bk-mode-desc">操控本机同花顺模拟炒股账户，虚拟资金，可提交模拟委托</div>
+                </label>
+                <label class="bk-mode-card" :class="{ on: bForm.kind === 'client' && !bForm.clientSim }" @click="bPickChannel('live')">
+                  <div class="bk-mode-name">实盘</div>
+                  <div class="bk-mode-desc">操控本机同花顺真实资金账户，委托需人工确认，真实资金</div>
                 </label>
               </div>
+              <details class="bk-advanced" style="margin-top:10px">
+                <summary>其他模式（本地模拟交易 / QMT 实盘，一般无需使用）</summary>
+                <div v-if="bForm" class="bk-mode-grid" style="margin-top:10px">
+                  <label class="bk-mode-card" :class="{ on: bForm.kind === 'mock' }">
+                    <input v-model="bForm.kind" type="radio" value="mock" />
+                    <div class="bk-mode-name">本地模拟交易</div>
+                    <div class="bk-mode-desc">无需券商环境，本地虚拟资金，适合练手联调</div>
+                  </label>
+                  <label class="bk-mode-card" :class="{ on: bForm.kind === 'qmt' }">
+                    <input v-model="bForm.kind" type="radio" value="qmt" />
+                    <div class="bk-mode-name">QMT 实盘</div>
+                    <div class="bk-mode-desc">连接本机 miniQMT + xtquant，可提交真实委托</div>
+                  </label>
+                </div>
+              </details>
 
               <!-- QMT 配置（选了 QMT 才显示） -->
               <template v-if="bForm && bForm.kind === 'qmt'">
@@ -2402,14 +2423,25 @@ async function clearL2Key(r: PluginRow) {
                 </div>
               </template>
 
-              <!-- 同花顺客户端通道（P3）：参数 / 开关 / 连接 / 自检 -->
+              <!-- 同花顺客户端通道（P3/P12）：程序路径必填，其余参数折叠 -->
               <template v-if="bForm && bForm.kind === 'client'">
-                <div class="section-title" style="margin-top:16px">同花顺客户端参数</div>
+                <div class="section-title" style="margin-top:20px">同花顺客户端程序路径</div>
                 <div class="bk-auto-summary">
                   <span class="bk-auto-dot"></span>
                   <span v-if="bProbeSummary" class="bk-probe-summary" :class="{ bad: (bProbe?.summary.bad ?? 0) > 0 }">{{ bProbeSummary }}</span>
-                  <span v-else class="bk-auto-tip">已按本机自动探测结果配置，一般无需改动；点下方「参数细节」可查看/修改</span>
+                  <span v-else class="bk-auto-tip">点「一键自检」自动探测本机 xiadan.exe；一般无需手动填写</span>
                 </div>
+                <div class="bridge-grid">
+                  <label class="ai-field"><span>同花顺客户端路径（xiadan.exe）</span>
+                    <div class="bk-probe-row">
+                      <input v-model="bForm.clientPath" type="text" spellcheck="false" placeholder="xiadan.exe / 模拟炒股可执行文件，留空自动探测" />
+                      <button type="button" class="bk-probe-btn" @click="bProbeFill('clientPath')" title="自动探测同花顺下单程序并填入">探测</button>
+                    </div>
+                    <span class="bk-probe-badge" :class="bProbeClass('clientPath')">{{ bProbeText('clientPath') }}</span>
+                    <span v-if="bProbeItem('clientPath')" class="bk-probe-hint">{{ bProbeHint('clientPath') }}</span>
+                  </label>
+                </div>
+
                 <details class="bk-advanced" style="margin-top:8px">
                 <summary>参数细节（一般无需改动）</summary>
                 <div class="bridge-grid">
@@ -2421,22 +2453,12 @@ async function clearL2Key(r: PluginRow) {
                     <span class="bk-probe-badge" :class="bProbeClass('pythonPath')">{{ bProbeText('pythonPath') }}</span>
                     <span v-if="bProbeItem('pythonPath')" class="bk-probe-hint">{{ bProbeHint('pythonPath') }}</span>
                   </label>
-                  <label class="ai-field"><span>同花顺客户端路径（可选）</span>
-                    <div class="bk-probe-row">
-                      <input v-model="bForm.clientPath" type="text" spellcheck="false" placeholder="xiadan.exe / 模拟炒股可执行文件，留空自动探测" />
-                      <button type="button" class="bk-probe-btn" @click="bProbeFill('clientPath')" title="自动探测同花顺下单程序并填入">探测</button>
-                    </div>
-                    <span class="bk-probe-badge" :class="bProbeClass('clientPath')">{{ bProbeText('clientPath') }}</span>
-                    <span v-if="bProbeItem('clientPath')" class="bk-probe-hint">{{ bProbeHint('clientPath') }}</span>
-                  </label>
-                </div>
-                <div class="bridge-grid">
                   <label class="ai-field"><span>控件模板目录（可选）</span>
                     <input v-model="bForm.clientTemplateDir" type="text" spellcheck="false" placeholder="selectors.json 目录，留空用脚本内置" /></label>
-                  <label class="ai-field"><span>最小操作间隔（毫秒）</span>
-                    <input v-model.number="bForm.clientMinIntervalMs" type="number" min="300" step="100" /></label>
                 </div>
                 <div class="bridge-grid">
+                  <label class="ai-field"><span>最小操作间隔（毫秒）</span>
+                    <input v-model.number="bForm.clientMinIntervalMs" type="number" min="300" step="100" /></label>
                   <label class="ai-field"><span>Tesseract OCR 路径（可选）</span>
                     <div class="bk-probe-row">
                       <input v-model="bForm.clientTesseract" type="text" spellcheck="false" placeholder="tesseract.exe 路径，留空则复制表格遇验证码时转人工输入" />
@@ -2446,8 +2468,6 @@ async function clearL2Key(r: PluginRow) {
                     <span v-if="bProbeItem('clientTesseract')" class="bk-probe-hint">{{ bProbeHint('clientTesseract') }}</span>
                   </label>
                 </div>
-
-                </details>
 
                 <div class="section-title" style="margin-top:16px">HTTP API 服务（THSAutoTrader 兼容）</div>
                 <div class="section-sub">连接通道后在本机开放 REST 接口，供你的脚本 / EasyUp 平台 / Excel 宏调用下单与查询；仅监听 127.0.0.1，不绕过任何风控。<span style="color:var(--warn,#e8a33d)">注意：开启 API 端口后，360 安全卫士 / 腾讯电脑管家可能拦截通道进程导致无法连接；若提示「通道进程被终止」，请先关闭本服务或把 TickGold 加入安全软件信任区。</span></div>
@@ -2473,15 +2493,15 @@ async function clearL2Key(r: PluginRow) {
                 <div class="bk-switch-list">
                   <div class="bk-switch-row">
                     <div>
-                      <div class="bk-sw-title">模拟交易（虚拟资金）</div>
-                      <div class="section-sub">建议保持开启，下单走同花顺模拟炒股，不碰真钱</div>
+                      <div class="bk-sw-title">同花顺模拟（虚拟资金）</div>
+                      <div class="section-sub">选中「选择通道-同花顺模拟」时保持开启，下单走模拟盘，不碰真钱</div>
                     </div>
                     <button type="button" class="switch" :class="{ on: bForm.clientSim }" @click="bForm.clientSim = !bForm.clientSim"><span class="knob"></span></button>
                   </div>
                   <div class="bk-switch-row">
                     <div>
                       <div class="bk-sw-title">dry-run 空跑（不操控客户端）</div>
-                      <div class="section-sub">开启后 sidecar 内置虚拟账户模拟全流程，便于联调；关闭才会真正操控同花顺</div>
+                      <div class="section-sub">开启后 sidecar 内置虚拟账户模拟全流程，不操控同花顺；关闭才真正操控客户端</div>
                     </div>
                     <button type="button" class="switch" :class="{ on: bForm.clientDryRun }" @click="bForm.clientDryRun = !bForm.clientDryRun"><span class="knob"></span></button>
                   </div>
@@ -2493,6 +2513,7 @@ async function clearL2Key(r: PluginRow) {
                     <button type="button" class="switch" :class="{ on: bForm.clientAutoConfirm, disabled: !bForm.clientSim }" @click="toggleClientAuto"><span class="knob"></span></button>
                   </div>
                 </div>
+                </details>
 
                 <div class="bk-actions" style="margin-top:12px">
                   <button type="button" class="logs-btn primary big" :disabled="bConnectBusy" @click="bConnect">{{ bConnectBusy ? "连接中…" : "保存并连接" }}</button>
@@ -2537,13 +2558,13 @@ async function clearL2Key(r: PluginRow) {
               <div v-if="bForm && bForm.kind === 'mock'" class="bk-live-card disabled">
                 <div>
                   <div class="bk-live-title">⚪ 当前为模拟模式</div>
-                  <div class="section-sub">模拟交易不涉及真实委托。如需实盘，请先在上方选择「QMT 实盘」</div>
+                  <div class="section-sub">模拟交易不涉及真实委托。如需实盘，请在上方「选择通道」选「实盘」</div>
                 </div>
               </div>
               <div v-else-if="bForm && bForm.kind === 'client' && bForm.clientSim" class="bk-live-card disabled">
                 <div>
                   <div class="bk-live-title">🧪 同花顺模拟 · 无需实盘开关</div>
-                  <div class="section-sub">客户端模拟炒股为虚拟资金，不提交真实委托；关闭「模拟交易」开关即进入真实通道（后续版本开放）。</div>
+                  <div class="section-sub">客户端模拟炒股为虚拟资金，不提交真实委托；真实资金请在上方「选择通道」选「实盘」并按流程武装。</div>
                 </div>
               </div>
               <div v-else-if="bForm && isLiveChannel" class="bk-arm" :class="{ armed: bForm.liveEnabled }">

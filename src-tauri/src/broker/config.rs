@@ -120,7 +120,7 @@ fn default_consecutive() -> i32 {
 impl Default for BrokerConfig {
     fn default() -> Self {
         BrokerConfig {
-            kind: "mock".to_string(),
+            kind: "client".to_string(),
             live_enabled: false,
             python_path: String::new(),
             qmt_path: String::new(),
@@ -136,14 +136,14 @@ impl Default for BrokerConfig {
             consecutive_loss_limit: 3,
             live_max_order_amount: 0.0,
 
-            // P3 客户端自动化通道默认：同花顺模拟、模拟环境、全自动、dry-run、限速 1.2s。
+            // P3 客户端自动化通道默认：同花顺模拟、模拟环境、全自动、真操控模拟盘（非空跑）、限速 1.2s。
             client_vendor: "ths".to_string(),
             client_sim: true,
             client_path: String::new(),
             client_template_dir: String::new(),
             client_auto_confirm: true,
             client_min_interval_ms: 1200,
-            client_dry_run: true,
+            client_dry_run: false,
             client_tesseract: String::new(),
             client_api_port: 0,
             client_api_token: String::new(),
@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn defaults_are_safe() {
         let c = BrokerConfig::default();
-        assert_eq!(c.kind, "mock");
+        assert_eq!(c.kind, "client");
         assert!(!c.live_enabled, "实盘必须默认关闭");
     }
 
@@ -207,12 +207,12 @@ mod tests {
         let c = BrokerConfig::default();
         assert_eq!(c.client_vendor, "ths");
         assert!(c.client_sim, "client 默认必须是模拟环境（不碰真钱）");
-        assert!(c.client_dry_run, "client 默认必须 dry-run");
+        assert!(!c.client_dry_run, "client 默认真操控同花顺模拟盘（非空跑）");
         assert!(c.client_auto_confirm, "模拟环境默认全自动");
         assert_eq!(c.client_min_interval_ms, 1200);
         assert_eq!(c.client_api_port, 0, "HTTP API 服务默认必须关闭");
         assert!(c.client_api_token.is_empty(), "API 令牌默认为空");
-        assert!(!c.is_client(), "kind=mock 时 is_client 必须为 false");
+        assert!(c.is_client(), "默认通道为同花顺模拟（client）");
         let mut c2 = BrokerConfig {
             kind: "client".to_string(),
             ..Default::default()
@@ -257,7 +257,7 @@ mod tests {
         save(&dir, &c).unwrap();
         let loaded = load(&dir);
         assert_eq!(loaded.account_id, "ACC123");
-        assert_eq!(loaded.kind, "mock");
+        assert_eq!(loaded.kind, "client");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -267,7 +267,7 @@ mod tests {
             std::env::temp_dir().join(format!("tickgold-broker-missing-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        assert_eq!(load(&dir).kind, "mock");
+        assert_eq!(load(&dir).kind, "client");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
