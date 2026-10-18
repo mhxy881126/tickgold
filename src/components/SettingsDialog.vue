@@ -999,10 +999,21 @@ const bSelfcheckBusy = ref(false);
 async function bRefreshSelfcheck() {
   bSelfcheckBusy.value = true;
   try {
+    // 未连接：先做本机路径自检（Python / 客户端 / OCR，不依赖 sidecar），让「刷新自检」点一下就有结果
+    if (!bStatus.value?.connected && bForm.value) {
+      bProbe.value = await brokerProbePaths(bForm.value.kind);
+      const sum = bProbeSummary.value;
+      if (sum) {
+        bFlash(sum + (bProbe.value?.summary.bad ? "；修复后点「保存并连接」即可连接" : "；点「保存并连接」即可开始"));
+      } else {
+        bFlash("自检无结果：请先点「保存并连接」连接通道");
+      }
+      return;
+    }
     const sc = await brokerClientSelfcheck();
     bSelfcheck.value = sc && (sc.vendor || (sc.checks && sc.checks.length)) ? sc : null;
     if (!sc || !(sc.vendor || (sc.checks && sc.checks.length))) {
-      bFlash("自检无结果：通道未连接或 sidecar 未运行，请先点「连接通道」");
+      bFlash("连接自检无结果：通道未连接或 sidecar 未运行，请先点「保存并连接」");
     }
   } catch (e) {
     bSelfcheck.value = null;
