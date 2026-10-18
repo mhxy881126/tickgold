@@ -2450,7 +2450,7 @@ async function clearL2Key(r: PluginRow) {
                 </details>
 
                 <div class="section-title" style="margin-top:16px">HTTP API 服务（THSAutoTrader 兼容）</div>
-                <div class="section-sub">连接通道后在本机开放 REST 接口，供你的脚本 / EasyUp 平台 / Excel 宏调用下单与查询；仅监听 127.0.0.1，不绕过任何风控。</div>
+                <div class="section-sub">连接通道后在本机开放 REST 接口，供你的脚本 / EasyUp 平台 / Excel 宏调用下单与查询；仅监听 127.0.0.1，不绕过任何风控。<span style="color:var(--warn,#e8a33d)">注意：开启 API 端口后，360 安全卫士 / 腾讯电脑管家可能拦截通道进程导致无法连接；若提示「通道进程被终止」，请先关闭本服务或把 TickGold 加入安全软件信任区。</span></div>
                 <div class="bk-switch-list">
                   <div class="bk-switch-row">
                     <div>

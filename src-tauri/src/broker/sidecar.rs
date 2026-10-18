@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin};
 use tokio::sync::Mutex;
 
@@ -38,6 +38,9 @@ pub struct SidecarHandle {
 
 /// 启动 sidecar 核心：以给定命令行参数拉起 Python 脚本，发送 connect，并拉起后台回报读取任务。
 /// qmt / client 两类脚本共用本函数；差异仅在 extra_args 与 connect_params。
+///
+/// 说明：必须使用 python.exe（而非 pythonw.exe）。pythonw 属 GUI 子系统，
+/// 其 stdout/stderr 句柄无效，sidecar 的 NDJSON 帧无法送达 Rust，会被误判为断开。
 pub async fn spawn_generic(
     app: AppHandle,
     dir: &Path,
@@ -56,14 +59,23 @@ pub async fn spawn_generic(
         return Err(format!("sidecar 脚本不存在：{script_path}"));
     }
 
+    let out_path = std::env::temp_dir().join("tickgold_sidecar_out.ndjson");
+    let err_path = std::env::temp_dir().join("tickgold_sidecar_err.log");
+    let out_file = std::fs::File::create(&out_path).map_err(|e| format!("创建 sidecar 输出文件失败: {e}"))?;
+    let err_file = std::fs::File::create(&err_path).map_err(|e| format!("创建 sidecar 错误文件失败: {e}"))?;
+
     let mut cmd = tokio::process::Command::new(python_path);
-    cmd.arg(script_path)
+    cmd.arg("-u") // 无缓冲输出
+        .arg(script_path)
         .args(extra_args)
         .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        // Windows GUI 主进程下 tokio 的 piped stdout 无法被子进程继承
+        // （已实测：stdout 立即 EOF、一帧不达，而 stdin 正常），故 stdout/stderr
+        // 重定向到临时文件，由下方读取任务轮询文件增量。
+        .stdout(Stdio::from(out_file))
+        .stderr(Stdio::from(err_file))
         .kill_on_drop(true);
-    // 仅 Windows：不弹控制台窗口（tokio Command 内置 creation_flags）。
+    // 仅 Windows：不弹控制台窗口。
     #[cfg(windows)]
     {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -72,8 +84,6 @@ pub async fn spawn_generic(
 
     let mut child = cmd.spawn().map_err(|e| format!("启动 sidecar 失败: {e}"))?;
     let child_stdin = child.stdin.take().ok_or("无法获取 sidecar stdin")?;
-    let stdout = child.stdout.take().ok_or("无法获取 sidecar stdout")?;
-    let stderr = child.stderr.take();
 
     let stdin = Arc::new(Mutex::new(child_stdin));
     let handle = SidecarHandle {
@@ -84,55 +94,132 @@ pub async fn spawn_generic(
     // connect 请求（参数由各通道决定）
     send_to(&stdin, request("connect", "connect", connect_params)).await?;
 
-    // 后台读取 stdout：逐行解析，转发事件 + 驱动状态机。
+    // 后台读取：轮询 stdout 文件增量，逐行解析并转发事件 / 驱动状态机；
+    // 同时轮询 stderr 文件缓冲尾部（进程秒退归因用）。
     let app2 = app.clone();
     let dir2 = dir.to_path_buf();
-    // stderr 缓冲（进程秒退时把原因带给前端，避免"点击无效"）。
     let err_buf: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let err_buf2 = err_buf.clone();
+    let out_path2 = out_path.clone();
+    let err_path2 = err_path.clone();
+    let child2 = handle.child.clone();
     tokio::spawn(async move {
-        let mut lines = BufReader::new(stdout).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            if line.trim().is_empty() {
-                continue;
-            }
-            match serde_json::from_str::<Value>(&line) {
-                Ok(v) => {
-                    let _ = app2.emit("broker:sidecar", v.clone());
-                    crate::broker::apply_sidecar_event(&app2, &dir2, &v);
+        use std::io::{Read as _, Seek as _, SeekFrom};
+        let mut pos: u64 = 0;
+        let mut err_pos: u64 = 0;
+        let mut pending = String::new();
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            // 1) stdout 文件增量
+            if let Ok(meta) = std::fs::metadata(&out_path2) {
+                let len = meta.len();
+                if len > pos {
+                    if let Ok(mut f) = std::fs::File::open(&out_path2) {
+                        if f.seek(SeekFrom::Start(pos)).is_ok() {
+                            let mut chunk = vec![0u8; (len - pos) as usize];
+                            if f.read_exact(&mut chunk).is_ok() {
+                                pos = len;
+                                pending.push_str(&String::from_utf8_lossy(&chunk));
+                                while let Some(idx) = pending.find('\n') {
+                                    let line = pending[..idx].trim().to_string();
+                                    pending = pending[idx + 1..].to_string();
+                                    if line.is_empty() {
+                                        continue;
+                                    }
+                                    match serde_json::from_str::<Value>(&line) {
+                                        Ok(v) => {
+                                            let _ = app2.emit("broker:sidecar", v.clone());
+                                            crate::broker::apply_sidecar_event(&app2, &dir2, &v);
+                                        }
+                                        Err(e) => log::warn!("sidecar 帧解析失败（{e}）: {line}"),
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-                Err(e) => log::warn!("sidecar 帧解析失败（{e}）: {line}"),
             }
-        }
-        log::warn!("sidecar stdout 已结束（进程退出）");
-        let _ = app2.emit("broker:sidecar", json!({ "event": "disconnected" }));
-        // 若进程带 stderr 退出（启动即失败，如失效 venv / 缺依赖），把原因透传前端。
-        let tail = {
-            let buf = err_buf.lock().await;
-            buf.iter().rev().take(6).cloned().collect::<Vec<_>>()
-        };
-        if !tail.is_empty() {
-            let detail = tail.iter().rev().cloned().collect::<Vec<_>>().join(" | ");
-            let _ = app2.emit(
-                "broker:sidecar_error",
-                json!({
-                    "message": format!("交易通道进程已退出：{detail}"),
-                    "fatal": true,
-                }),
-            );
+            // 2) stderr 文件增量（缓冲尾部）
+            if let Ok(meta) = std::fs::metadata(&err_path2) {
+                let len = meta.len();
+                if len > err_pos {
+                    if let Ok(mut f) = std::fs::File::open(&err_path2) {
+                        if f.seek(SeekFrom::Start(err_pos)).is_ok() {
+                            let mut chunk = vec![0u8; (len - err_pos) as usize];
+                            if f.read_exact(&mut chunk).is_ok() {
+                                err_pos = len;
+                                let s = String::from_utf8_lossy(&chunk);
+                                log::info!("[sidecar] {s}");
+                                let mut buf = err_buf2.lock().await;
+                                for l in s.lines() {
+                                    buf.push(l.to_string());
+                                }
+                                while buf.len() > 40 {
+                                    buf.remove(0);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // 3) 进程退出检测 → 处理残留帧并宣告断开
+            let exited = {
+                let mut c = child2.lock().await;
+                matches!(c.try_wait(), Ok(Some(_)))
+            };
+            if exited {
+                if !pending.trim().is_empty() {
+                    if let Ok(v) = serde_json::from_str::<Value>(pending.trim()) {
+                        let _ = app2.emit("broker:sidecar", v.clone());
+                        crate::broker::apply_sidecar_event(&app2, &dir2, &v);
+                    }
+                }
+                let _ = app2.emit("broker:sidecar", json!({ "event": "disconnected" }));
+                let tail = {
+                    let buf = err_buf2.lock().await;
+                    buf.iter().rev().take(6).cloned().collect::<Vec<_>>()
+                };
+                if !tail.is_empty() {
+                    let detail = tail.iter().rev().cloned().collect::<Vec<_>>().join(" | ");
+                    let _ = app2.emit(
+                        "broker:sidecar_error",
+                        json!({
+                            "message": format!("交易通道进程已退出：{detail}"),
+                            "fatal": true,
+                        }),
+                    );
+                }
+                break;
+            }
         }
     });
 
-    // stderr 落日志 + 缓冲（尾部用于进程退出归因）。
-    if let Some(err) = stderr {
+    // 快速死亡检测：spawn 后 3 秒内进程退出且无任何 stderr 归因
+    // → 高度疑似被安全软件（360 / 腾讯电脑管家）拦截（已确认：其会终止
+    // 「未知签名应用派生的、监听 TCP 端口的子进程」），给出可操作提示。
+    {
+        let app2 = app.clone();
+        let child2 = handle.child.clone();
+        let err_buf3 = err_buf.clone();
         tokio::spawn(async move {
-            let mut lines = BufReader::new(err).lines();
-            while let Ok(Some(l)) = lines.next_line().await {
-                log::info!("[sidecar] {l}");
-                let mut buf = err_buf2.lock().await;
-                buf.push(l);
-                if buf.len() > 40 {
-                    buf.remove(0);
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            let exited = {
+                let mut c = child2.lock().await;
+                matches!(c.try_wait(), Ok(Some(_)))
+            };
+            if exited {
+                let tail = {
+                    let buf = err_buf3.lock().await;
+                    buf.iter().rev().take(6).cloned().collect::<Vec<_>>()
+                };
+                if tail.is_empty() {
+                    let _ = app2.emit(
+                        "broker:sidecar_error",
+                        json!({
+                            "message": "交易通道进程在启动后立即被终止（无任何报错输出）。已确认：360 安全卫士 / 腾讯电脑管家会拦截本应用派生的进程，请将其加入「信任区 / 白名单」后重试；若开启了 HTTP API 服务端口，请先在券商交易设置中关闭（或加白名单）。",
+                            "fatal": true,
+                        }),
+                    );
                 }
             }
         });
