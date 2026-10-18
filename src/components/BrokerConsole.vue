@@ -200,6 +200,7 @@ async function refresh() {
     flash("验证码流程冷却中，请稍候再刷新（避免反复弹窗）…");
     return;
   }
+  queryErr.value = ""; // P12-14c 手动刷新清除上次错误，主动重新尝试（不再自动重试）
   loading.value = true;
   await loadStatus();
   await loadAsset();
@@ -581,6 +582,7 @@ onMounted(() => {
     if (captchaShot.value || captchaCooling()) return;
     void loadStatus();
     if (!autoRefresh.value) return;
+    if (queryErr.value) return; // P12-14c 读取失败后停止自动重试，手动「刷新」恢复
     void loadAsset();
     if (connected.value) void refreshTab();
   }, 30000);
@@ -830,7 +832,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
           </tr>
         </thead>
         <tbody>
-          <tr v-if="!trades.length"><td colspan="7" class="bc-row-empty">{{ queryErr ? "读取失败（见上方提示），正在自动重试…" : "暂无当日成交" }}</td></tr>
+          <tr v-if="!trades.length"><td colspan="7" class="bc-row-empty">{{ queryErr ? "读取失败（见上方提示），已停止自动重试，请点「刷新」重试" : "暂无当日成交" }}</td></tr>
           <tr v-for="(t, i) in trades" :key="i">
             <td class="mono">{{ t.time || "--" }}</td>
             <td class="mono">{{ t.code }}</td>
@@ -852,7 +854,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
           </tr>
         </thead>
         <tbody>
-          <tr v-if="!pending.length"><td colspan="8" class="bc-row-empty">{{ queryErr ? "读取失败（见上方提示），正在自动重试…" : "暂无当日挂单" }}</td></tr>
+          <tr v-if="!pending.length"><td colspan="8" class="bc-row-empty">{{ queryErr ? "读取失败（见上方提示），已停止自动重试，请点「刷新」重试" : "暂无当日挂单" }}</td></tr>
           <tr v-for="(o, i) in pending" :key="i">
             <td class="mono">{{ o.time || "--" }}</td>
             <td class="mono">{{ o.code }}</td>

@@ -1833,6 +1833,27 @@ class RealSidecar(BaseSidecar):
                 self._hide_ok = False
                 self._maybe_hide()
 
+    def _find_nav_item(self, win, label):
+        """全窗口扫描左侧导航项（「成交查询/委托查询」不在查询树根下，需整窗找 TreeItem/Button）。"""
+        import pywinauto
+        try:
+            w = pywinauto.Desktop(backend="uia").window(handle=win.handle)
+            for ctype in ("TreeItem", "Button", "Text"):
+                try:
+                    for el in w.descendants(control_type=ctype):
+                        try:
+                            t = (el.window_text() or "").strip()
+                        except Exception:  # noqa: BLE001
+                            continue
+                        if t == label:
+                            log(f"[nav] 全窗口命中导航项：{label}（{ctype}）")
+                            return el
+                except Exception:  # noqa: BLE001
+                    continue
+        except Exception as e:  # noqa: BLE001
+            log(f"[nav] 扫描异常：{e}")
+        return None
+
     def do_query_trades(self):
         log("[trades] 查询开始")
         try:
@@ -1848,7 +1869,10 @@ class RealSidecar(BaseSidecar):
                         log(f"[trades] 命中查询节点：{'/'.join(path)}")
                         break
                 if node is None:
-                    raise RuntimeError("未找到查询树中的成交查询节点（客户端版本菜单可能不同）")
+                    log("[trades] 查询树未命中，改全窗口扫描导航「成交查询」")
+                    node = self._find_nav_item(win, "成交查询")
+                if node is None:
+                    raise RuntimeError("未找到成交查询导航节点（客户端版本菜单可能不同）")
                 node.click_input()
                 time.sleep(0.3)
                 self.engine.send_key("F5")
@@ -1887,7 +1911,10 @@ class RealSidecar(BaseSidecar):
                         log(f"[pending] 命中查询节点：{'/'.join(path)}")
                         break
                 if node is None:
-                    raise RuntimeError("未找到查询树中的委托查询节点（客户端版本菜单可能不同）")
+                    log("[pending] 查询树未命中，改全窗口扫描导航「委托查询」")
+                    node = self._find_nav_item(win, "委托查询")
+                if node is None:
+                    raise RuntimeError("未找到委托查询导航节点（客户端版本菜单可能不同）")
                 node.click_input()
                 time.sleep(0.3)
                 self.engine.send_key("F5")
