@@ -37,8 +37,8 @@ import {
 type TabKey = "position" | "trades" | "pending" | "api";
 const TABS: { k: TabKey; t: string }[] = [
   { k: "position", t: "持仓" },
-  { k: "trades", t: "当日成交" },
-  { k: "pending", t: "当日挂单" },
+  { k: "trades", t: "成交查询" },
+  { k: "pending", t: "委托查询" },
   { k: "api", t: "API 控制台" },
 ];
 const tab = ref<TabKey>("position");
@@ -95,6 +95,8 @@ const toastMsg = ref("");
 const queryErr = ref("");
 // P12-7 最近一次数据刷新成功时刻（实时感）
 const lastSync = ref("");
+// P12-14 自动定时刷新开关：默认关（防频繁操作同花顺弹验证码），手动刷新始终可用
+const autoRefresh = ref(false);
 // P12-8 探测标题显示清洗：去掉控制字符与装饰符号（如 ◆○◇），防乱码/字体缺失
 function cleanTitle(t: string | undefined | null): string {
   if (!t) return "";
@@ -575,11 +577,13 @@ onMounted(() => {
   tick = setInterval(() => {
     // P12-9 验证码等待中暂停自动查询：验证码等待期 sidecar 持有窗口锁，避免撞锁报「操作串行」；
     // 验证码失败后长冷却同样暂停，避免轮询反复触发同花顺验证码弹窗
+    // P12-14 自动刷新默认关：未开启时只探测连接状态，不操作同花顺窗口（防频繁弹窗）
     if (captchaShot.value || captchaCooling()) return;
     void loadStatus();
+    if (!autoRefresh.value) return;
     void loadAsset();
     if (connected.value) void refreshTab();
-  }, 6000);
+  }, 30000);
   listen<{ trades?: BrokerTrade[] }>("broker:trades", (ev) => {
     if (ev.payload?.trades) trades.value = ev.payload.trades;
   }).then((u) => unlisteners.push(u));
@@ -647,6 +651,12 @@ onBeforeUnmount(() => {
       <span class="bc-spacer"></span>
       <button class="bc-btn" :disabled="loading" @click="onCheckApp">探测客户端</button>
       <button class="bc-btn" :disabled="loading" @click="refresh">刷新</button>
+      <button
+        class="bc-btn"
+        :class="{ 'bc-toggle-on': autoRefresh }"
+        :title="autoRefresh ? '自动刷新已开启（每 30 秒）' : '自动刷新已关闭：手动点「刷新」或切换标签拉取，避免频繁弹出验证码'"
+        @click="autoRefresh = !autoRefresh"
+      >{{ autoRefresh ? "自动刷新·开" : "自动刷新·关" }}</button>
     </div>
 
     <!-- 自检结果 -->
@@ -783,7 +793,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
     <!-- 表格区 -->
     <div v-else class="bc-table-wrap">
       <div v-if="queryErr" class="bc-query-err">⚠ {{ queryErr }}（自动重试中…）</div>
-      <div v-if="lastSync" class="bc-last-sync">数据更新于 {{ lastSync }} · 每 6 秒自动刷新</div>
+      <div v-if="lastSync" class="bc-last-sync">数据更新于 {{ lastSync }} · {{ autoRefresh ? "每 30 秒自动刷新" : "手动刷新" }}</div>
       <!-- 持仓 -->
       <table v-if="tab === 'position'" class="bc-table">
         <thead>
@@ -1067,6 +1077,11 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
 .bc-warn { color: #ffb13d; border: 1px dashed rgba(255, 177, 61, 0.6); border-radius: 4px; padding: 0 6px; font-size: 10px; }
 .bc-unclear { color: #8b949e; font-size: 10px; }
 .bc-btn.mini { padding: 1px 8px; font-size: 10px; }
+.bc-btn.bc-toggle-on {
+  border-color: #4a9eff;
+  color: #4a9eff;
+  background: rgba(74, 158, 255, 0.12);
+}
 .bc-spacer { flex: 1; }
 .bc-btn {
   border: 1px solid var(--border, #2a3344);
