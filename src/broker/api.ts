@@ -7,6 +7,9 @@ export interface BrokerStatus {
   connected: boolean;
   killSwitch: boolean;
   accountId: string;
+  clientSim: boolean;
+  /** P12-2 实际窗口类型：true=模拟窗口 / false=真实窗口 / null=未知（识别失败） */
+  windowSim: boolean | null;
 }
 
 export interface BrokerOrderInfo {
@@ -75,6 +78,8 @@ export interface BrokerConfigPatch {
   clientTesseract?: string;
   clientApiPort?: number;
   clientApiToken?: string;
+  /** P12-2 通道手动标注：识别失败时用户指定 "sim" / "live" */
+  clientChannelManual?: string | null;
   // P4 真实通道安全护栏
   liveMaxDailyAmount?: number;
   liveCodesWhitelist?: string[];
@@ -112,6 +117,8 @@ export interface BrokerConfigFull {
   clientTesseract: string;
   clientApiPort: number;
   clientApiToken: string;
+  /** P12-2 通道手动标注：识别失败时用户指定 "sim" / "live" */
+  clientChannelManual: string | null;
   // P4 真实通道安全护栏
   liveMaxDailyAmount: number;
   liveCodesWhitelist: string[];
@@ -149,6 +156,7 @@ export function brokerSetConfig(patch: BrokerConfigPatch) {
     clientTesseract: patch.clientTesseract ?? null,
     clientApiPort: patch.clientApiPort ?? null,
     clientApiToken: patch.clientApiToken ?? null,
+    clientChannelManual: patch.clientChannelManual ?? null,
     liveMaxDailyAmount: patch.liveMaxDailyAmount ?? null,
     liveCodesWhitelist: patch.liveCodesWhitelist ?? null,
     liveSimDrillPassed: patch.liveSimDrillPassed ?? null,

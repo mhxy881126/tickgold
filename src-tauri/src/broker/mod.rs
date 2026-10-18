@@ -35,6 +35,8 @@ pub struct BrokerManager {
     pub position_synced: AtomicBool,
     /// P3 客户端自动化通道：最近一次连接自检结果（selfcheck 事件）。
     pub client_selfcheck: Mutex<serde_json::Value>,
+    /// P12-2 通道识别：sidecar 探测到的实际窗口类型（Some(true)=模拟窗口 / Some(false)=真实窗口 / None=未知）。
+    pub client_window_sim: Mutex<Option<bool>>,
     /// P3 客户端自动化通道：最近下单前截图（cid, 事件），仅保留最近若干张。
     pub client_shots: Mutex<Vec<(String, serde_json::Value)>>,
     /// P7 同花顺真实通道：当日成交 / 挂单 / 进程窗口 / 当前窗口缓存（最近一次全量回报）。
@@ -61,6 +63,7 @@ impl BrokerManager {
             position_cache: Mutex::new(std::collections::HashMap::new()),
             position_synced: AtomicBool::new(false),
             client_selfcheck: Mutex::new(serde_json::json!({})),
+            client_window_sim: Mutex::new(None),
             client_shots: Mutex::new(Vec::new()),
             trades_cache: Mutex::new(serde_json::json!({})),
             pending_cache: Mutex::new(serde_json::json!({})),
@@ -230,6 +233,8 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
         "disconnected" => {
             if let Some(m) = try_manager(app) {
                 m.connected.store(false, Ordering::SeqCst);
+                // P12-2 断开后窗口识别缓存一并作废
+                *m.client_window_sim.lock().unwrap() = None;
                 // 断开后缓存作废，重连由 connected 分支重新全量查询
                 m.position_synced.store(false, Ordering::SeqCst);
                 *m.asset_cache.lock().unwrap() = serde_json::json!({});
@@ -250,6 +255,15 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
         "selfcheck" => {
             if let Some(m) = try_manager(app) {
                 *m.client_selfcheck.lock().unwrap() = v.clone();
+                // P12-2 通道识别：sidecar 报告实际窗口类型（true=模拟窗口 / false=真实窗口 / null=未知）
+                match v.get("window_sim") {
+                    Some(serde_json::Value::Bool(b)) => {
+                        *m.client_window_sim.lock().unwrap() = Some(*b);
+                    }
+                    _ => {
+                        *m.client_window_sim.lock().unwrap() = None;
+                    }
+                }
             }
             let _ = app.emit("broker:client_selfcheck", v.clone());
         }
@@ -405,6 +419,8 @@ pub fn broker_get_status(mgr: State<'_, BrokerManager>) -> serde_json::Value {
         "connected": mgr.connected.load(Ordering::SeqCst),
         "killSwitch": mgr.kill_switch.load(Ordering::SeqCst),
         "accountId": cfg.account_id,
+        "clientSim": cfg.client_sim,
+        "windowSim": *mgr.client_window_sim.lock().unwrap(),
     })
 }
 
@@ -446,6 +462,8 @@ pub fn broker_set_config(
     // P10-1 HTTP API 服务
     client_api_port: Option<u16>,
     client_api_token: Option<String>,
+    // P12-2 通道手动标注（识别失败时用户指定 sim/live）
+    client_channel_manual: Option<String>,
     // P4 真实通道安全护栏
     live_max_daily_amount: Option<f64>,
     live_codes_whitelist: Option<Vec<String>>,
@@ -526,6 +544,9 @@ pub fn broker_set_config(
     }
     if let Some(v) = client_api_token {
         cfg.client_api_token = v;
+    }
+    if let Some(v) = client_channel_manual {
+        cfg.client_channel_manual = Some(v);
     }
     // P4 真实通道安全护栏字段
     if let Some(v) = live_max_daily_amount {

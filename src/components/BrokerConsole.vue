@@ -54,6 +54,29 @@ const currentPage = ref<ClientCurrentPage>({});
 const loading = ref(false);
 const connected = computed(() => status.value?.connected === true);
 const isLive = computed(() => status.value?.liveEnabled === true);
+// P12-2 通道识别：实际窗口(sidecar) > 手动标注(配置记忆) > 配置判定，冲突时黄色警示。
+const channelLive = computed(() => isLive.value || status.value?.clientSim === false);
+const windowSim = computed(() => status.value?.windowSim ?? null);
+const manualMark = ref<string | null>(null);
+const chanConflict = computed(() => {
+  if (!connected.value || windowSim.value === null) return false;
+  return channelLive.value === windowSim.value; // 配置与窗口相反（实盘配置遇模拟窗口 / 模拟配置遇实盘窗口）
+});
+function chanBadge(): string {
+  if (!connected.value) return "";
+  if (windowSim.value !== null) return windowSim.value ? "模拟盘" : "真实盘";
+  if (manualMark.value) return manualMark.value === "live" ? "真实盘" : "模拟盘";
+  return channelLive.value ? "真实盘" : "模拟盘";
+}
+async function markChannel(m: "sim" | "live") {
+  try {
+    await brokerSetConfig({ clientChannelManual: m });
+    manualMark.value = m;
+    flash(m === "sim" ? "已记忆：当前窗口为模拟盘（虚拟资金，不碰真钱）" : "已记忆：当前窗口为实盘（真实资金，下单需人工确认）");
+  } catch {
+    flash("记忆失败，请稍后重试");
+  }
+}
 
 const toastMsg = ref("");
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -446,6 +469,9 @@ async function onCancelConfirm(approved: boolean) {
 let tick: ReturnType<typeof setInterval> | undefined;
 const unlisteners: UnlistenFn[] = [];
 onMounted(() => {
+  brokerGetConfig()
+    .then((cfg) => (manualMark.value = cfg.clientChannelManual ?? null))
+    .catch(() => {});
   void refresh();
   void loadApiCfg();
   tick = setInterval(() => {
@@ -502,8 +528,13 @@ onBeforeUnmount(() => {
       <span class="bc-dot" :class="{ on: connected }"></span>
       <span class="bc-conn">{{ connected ? "客户端已连接" : "客户端未连接" }}</span>
       <span v-if="connected && status?.accountId" class="bc-acct">· {{ status.accountId }}</span>
-      <span v-if="isLive" class="bc-live">真实盘</span>
-      <span v-else-if="connected" class="bc-sim">模拟盘</span>
+      <span v-if="chanBadge()" class="bc-live" :class="{ sim: chanBadge() === '模拟盘' }">{{ chanBadge() }}</span>
+      <span v-if="chanConflict" class="bc-warn" title="连接到的客户端窗口与所选通道不一致，请核对后再操作">通道与窗口不符</span>
+      <template v-if="connected && windowSim === null && !manualMark">
+        <span class="bc-unclear">窗口类型未知</span>
+        <button class="bc-btn mini" @click="markChannel('sim')">标为模拟盘</button>
+        <button class="bc-btn mini danger" @click="markChannel('live')">标为实盘</button>
+      </template>
       <span class="bc-spacer"></span>
       <button class="bc-btn" :disabled="loading" @click="onCheckApp">探测客户端</button>
       <button class="bc-btn" :disabled="loading" @click="refresh">刷新</button>
@@ -810,6 +841,10 @@ onBeforeUnmount(() => {
 .bc-acct { color: var(--text-dim, #7c8798); font-size: 11px; }
 .bc-live { color: #fff; background: #f23645; border-radius: 4px; padding: 0 6px; font-size: 10px; font-weight: 700; }
 .bc-sim { color: #ffb13d; border: 1px solid rgba(255, 177, 61, 0.5); border-radius: 4px; padding: 0 6px; font-size: 10px; }
+.bc-live.sim { background: #7a5c12; } /* 实际窗口为模拟盘：黄褐色底 */
+.bc-warn { color: #ffb13d; border: 1px dashed rgba(255, 177, 61, 0.6); border-radius: 4px; padding: 0 6px; font-size: 10px; }
+.bc-unclear { color: #8b949e; font-size: 10px; }
+.bc-btn.mini { padding: 1px 8px; font-size: 10px; }
 .bc-spacer { flex: 1; }
 .bc-btn {
   border: 1px solid var(--border, #2a3344);

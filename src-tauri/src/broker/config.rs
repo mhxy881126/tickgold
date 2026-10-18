@@ -75,6 +75,9 @@ pub struct BrokerConfig {
     /// HTTP API 访问令牌（留空=本机免密；设置后所有请求需携带）。
     #[serde(default)]
     pub client_api_token: String,
+    /// P12-2 通道手动标注：窗口类型识别失败时用户手动指定 "sim"/"live"（None=自动识别/未标注）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_channel_manual: Option<String>,
 
     // ===== P4 真实通道安全护栏（默认全部锁定，必须显式武装后才允许真实委托）=====
     /// 实盘单日累计买入金额上限（绝对值硬兜底）。真实通道「当日已提买入合计 + 本笔」不得超过；0 = 锁定。
@@ -147,6 +150,7 @@ impl Default for BrokerConfig {
             client_tesseract: String::new(),
             client_api_port: 0,
             client_api_token: String::new(),
+            client_channel_manual: None,
 
             // P4 真实通道默认全部锁定：单日上限 0、白名单空、演练未通过、未武装。
             live_max_daily_amount: 0.0,

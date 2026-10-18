@@ -261,9 +261,10 @@ class DryRunSidecar(BaseSidecar):
             {"name": "templates", "ok": True, "msg": "dry-run 内置模板"},
             {"name": "resolution", "ok": True, "msg": "1920x1080@100%"},
         ]
-        emit({"event": "selfcheck", "vendor": self.vendor, "sim": self.sim, "dryRun": True, "checks": checks})
+        emit({"event": "selfcheck", "vendor": self.vendor, "sim": self.sim, "dryRun": True,
+              "window_sim": None, "checks": checks})
         emit({"event": "connected", "vendor": self.vendor, "sim": self.sim,
-              "dryRun": True, "account": self.account or "SIM",
+              "dryRun": True, "window_sim": None, "account": self.account or "SIM",
               "mode": "auto" if self.auto_confirm else "semi"})
         threading.Thread(target=self.heartbeat_loop, daemon=True).start()
         return True
@@ -1149,6 +1150,8 @@ class RealSidecar(BaseSidecar):
             except Exception:  # noqa: BLE001
                 win_title = ""
             sim_window = "模拟" in win_title
+            # P12-2 通道识别：窗口标题含「模拟」判为模拟炒股窗口，否则真实交易窗口；标题未知则上报 None。
+            window_sim = bool(sim_window) if win_title else None
             # P4 账户类型交叉校验：模拟配置必须连模拟窗口，真实配置必须连真实窗口，防止误操作真钱。
             if self.sim and not sim_window:
                 checks.append({"name": "account_type", "ok": False,
@@ -1175,12 +1178,14 @@ class RealSidecar(BaseSidecar):
 
         page = self.safe_page()
         emit({"event": "selfcheck", "vendor": self.vendor, "sim": self.sim,
-              "live": self.live_guarded, "dryRun": False, "checks": checks, "page": page})
+              "live": self.live_guarded, "dryRun": False, "window_sim": window_sim,
+              "checks": checks, "page": page})
         if not all(c["ok"] for c in checks if c["name"] in ("client_window",)):
             emit({"event": "error", "message": "连接自检未通过（见 selfcheck 明细）"})
             return False
         emit({"event": "connected", "vendor": self.vendor, "sim": self.sim,
-              "live": self.live_guarded, "dryRun": False, "account": self.account or "THS",
+              "live": self.live_guarded, "dryRun": False, "window_sim": window_sim,
+              "account": self.account or "THS",
               "mode": "auto" if self.auto_confirm else "semi", "page": page})
         threading.Thread(target=self.heartbeat_loop, daemon=True).start()
         return True
