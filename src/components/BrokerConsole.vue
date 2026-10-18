@@ -68,6 +68,14 @@ function chanBadge(): string {
   if (manualMark.value) return manualMark.value === "live" ? "真实盘" : "模拟盘";
   return channelLive.value ? "真实盘" : "模拟盘";
 }
+// P12-3 下单区随通道：实盘（配置为实盘通道 或 实际窗口为真实交易窗口）→ 确认桥 + 红标
+const liveNow = computed(() => channelLive.value || windowSim.value === false);
+function channelTag(): { label: string; cls: string; hint: string } {
+  if (liveNow.value) {
+    return { label: "实盘", cls: "live", hint: "真实资金 · 填单后经确认桥人工核对，不会自动提交" };
+  }
+  return { label: "模拟盘", cls: "sim", hint: "虚拟资金 · 默认全自动下单，不碰真钱" };
+}
 async function markChannel(m: "sim" | "live") {
   try {
     await brokerSetConfig({ clientChannelManual: m });
@@ -369,7 +377,7 @@ async function onPositionOrder() {
   const refPrice = parseFloat(posForm.refPrice);
   if (!/^\d{6}$/.test(code)) return flash("请填写 6 位股票代码");
   if (!(refPrice > 0)) return flash("请填写参考价（用于资金护栏与金额估算）");
-  if (isLive.value) {
+  if (liveNow.value) {
     const ok = await confirmDialog({
       title: "真实资金 · 仓位下单",
       message:
@@ -581,6 +589,7 @@ onBeforeUnmount(() => {
         :class="{ on: tab === t.k }"
         @click="tab = t.k; refreshTab()"
       >{{ t.t }}</button>
+      <span v-if="connected" class="ct-mini" :class="liveNow ? 'live' : 'sim'">{{ liveNow ? "实盘账户" : "模拟盘账户" }}</span>
       <span class="bc-spacer"></span>
       <!-- 挂单页：撤单操作 -->
       <template v-if="tab === 'pending'">
@@ -729,7 +738,11 @@ onBeforeUnmount(() => {
 
     <!-- 仓位下单 -->
     <div v-if="connected" class="bc-posbox">
-      <div class="bp-title">仓位下单（键盘精灵自动填单）</div>
+      <div class="bp-title">
+        仓位下单
+        <span class="ct-tag" :class="channelTag().cls">{{ channelTag().label }}</span>
+      </div>
+      <div class="bp-hint" :class="channelTag().cls">{{ channelTag().hint }}</div>
       <div class="bp-row">
         <select v-model="posForm.side">
           <option value="BUY">买入</option>
@@ -748,8 +761,8 @@ onBeforeUnmount(() => {
             @click="posForm.position = p.v"
           >{{ p.t }}</button>
         </div>
-        <button class="bp-submit" :disabled="posBusy" @click="onPositionOrder">
-          {{ posBusy ? "填单中…" : "按仓位填单" }}
+        <button class="bp-submit" :class="{ live: liveNow }" :disabled="posBusy" @click="onPositionOrder">
+          {{ posBusy ? "填单中…" : liveNow ? "填单 · 需确认" : "按仓位填单" }}
         </button>
       </div>
     </div>
@@ -842,6 +855,16 @@ onBeforeUnmount(() => {
 .bc-live { color: #fff; background: #f23645; border-radius: 4px; padding: 0 6px; font-size: 10px; font-weight: 700; }
 .bc-sim { color: #ffb13d; border: 1px solid rgba(255, 177, 61, 0.5); border-radius: 4px; padding: 0 6px; font-size: 10px; }
 .bc-live.sim { background: #7a5c12; } /* 实际窗口为模拟盘：黄褐色底 */
+.ct-tag { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 0 6px; vertical-align: 1px; }
+.ct-tag.live { color: #fff; background: #f23645; }
+.ct-tag.sim { color: #ffb13d; border: 1px solid rgba(255, 177, 61, 0.5); }
+.bp-hint { margin: 2px 0 8px; font-size: 11px; color: #8b949e; }
+.bp-hint.live { color: #ff7a85; }
+.bp-hint.sim { color: #d8b26a; }
+.bp-submit.live { background: rgba(242, 54, 69, 0.9); border-color: #f23645; color: #fff; }
+.ct-mini { font-size: 10px; color: #8b949e; margin-right: 8px; }
+.ct-mini.live { color: #ff7a85; }
+.ct-mini.sim { color: #ffb13d; }
 .bc-warn { color: #ffb13d; border: 1px dashed rgba(255, 177, 61, 0.6); border-radius: 4px; padding: 0 6px; font-size: 10px; }
 .bc-unclear { color: #8b949e; font-size: 10px; }
 .bc-btn.mini { padding: 1px 8px; font-size: 10px; }
