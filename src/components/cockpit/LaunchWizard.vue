@@ -166,7 +166,7 @@ onMounted(load);
         <div v-if="path === 'paper'" class="check-block">
           <ul class="cb-list">
             <li>模拟通道默认就绪，无需武装、无需真钱。</li>
-            <li>可在「券商设置」选择同花顺模拟或内置模拟。</li>
+            <li>可在「券商设置」选择本地模拟或实盘（同花顺客户端）。</li>
             <li>建议先在模型接管控制台开启「影子对比」，观察 AI 与规则脑差异。</li>
           </ul>
         </div>

@@ -275,7 +275,7 @@ async function refresh() {
   }
   const live = status.value?.liveEnabled === true;
   if (live) {
-    // 实盘模式：资产由券商侧回报（QMT sidecar），未回报时保持 "--"
+    // 实盘模式：资产由券商侧回报（同花顺通道），未回报时保持 "--"
     try {
       asset.value = await brokerQueryAsset();
     } catch {
@@ -386,7 +386,7 @@ onBeforeUnmount(() => {
             <div class="dm-v dm-status">
               <template v-if="isLive">
                 <span class="da-dot" :class="{ on: status?.connected }"></span>
-                {{ status?.connected ? "QMT 已连接" : "QMT 未连接" }}
+                {{ status?.connected ? "实盘已连接" : "实盘未连接" }}
                 <span class="da-acct">· {{ status?.accountId }}</span>
               </template>
               <template v-else>

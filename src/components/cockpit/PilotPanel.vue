@@ -115,9 +115,8 @@ const liveArmedClass = computed(() => {
 });
 const channelKindText = computed(() => {
   const k = live.value?.kind ?? "";
-  if (k.includes("qmt")) return "QMT";
-  if (k.includes("client")) return "同花顺";
-  return "模拟盘";
+  if (k.includes("client")) return "实盘";
+  return "本地模拟";
 });
 
 function openSettings() {

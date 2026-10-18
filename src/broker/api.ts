@@ -258,6 +258,23 @@ export interface ClientSelfcheck {
   checks?: ClientSelfcheckItem[];
 }
 
+// P12-4 下单前硬校验详情（由 sidecar hard_validate 回传）
+export interface ValidationCheck {
+  name: string;       // "可用资金" | "可用持仓" | "T+1 冻结"
+  ok: boolean | null; // true=通过 false=不通过 null=未读取
+  need?: number;
+  avail?: number;
+  frozen?: number;
+  note?: string;
+}
+export interface ValidationDetail {
+  amount: number;
+  commission: number;
+  stamp: number;
+  ok: boolean;
+  checks: ValidationCheck[];
+}
+
 export interface ClientShotExpect {
   code?: string;
   side?: string;
@@ -269,6 +286,7 @@ export interface ClientShotExpect {
   captcha?: boolean; // 复制表格验证码（需人工输入）
   cancelPage?: boolean; // 撤单页面核对
   position?: string; // 仓位下单档位文案
+  validation?: ValidationDetail; // P12-4 下单前硬校验结果
 }
 
 export interface ClientShot {

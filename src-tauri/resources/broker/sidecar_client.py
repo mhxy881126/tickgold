@@ -157,6 +157,9 @@ class BaseSidecar:
         self.max_amount = float(max_amount or 0.0)
         self.max_daily = float(max_daily or 0.0)
         self.live_bought_today = 0.0
+        # P12-4 T+1 硬校验：当日买入记录 {code: vol}，卖出时冻结不可卖
+        self.today_buys = {}
+        self._trade_date = time.strftime("%Y-%m-%d")
 
     # 子类实现
     def connect(self):
@@ -208,6 +211,70 @@ class BaseSidecar:
                 return None, (f"真实模式拦截：单日累计买入将达 {self.live_bought_today + amount:.0f}，"
                               f"超过上限 {self.max_daily:.0f}（sidecar 兜底）")
         return {"code": code, "side": side, "price": price, "vol": vol, "cid": cid}, ""
+
+    # P12-4 跨日重置 T+1 冻结
+    def _rollover_t1(self):
+        today = time.strftime("%Y-%m-%d")
+        if today != self._trade_date:
+            self.today_buys.clear()
+            self.live_bought_today = 0.0
+            self._trade_date = today
+            # dry-run 本地持仓：跨日解冻，avail 同步为 vol（真实模式由客户端可卖数量控制）
+            if hasattr(self, "positions") and hasattr(self, "lock"):
+                with self.lock:
+                    for _pos in self.positions.values():
+                        _pos["avail"] = _pos["vol"]
+
+    # P12-4 下单前硬校验：余额 / 数量 / T+1 三维，任一不通过即拒。
+    # available_cash / available_qty 由子类传入（dry-run 用本地状态，THS 用弹窗读回值）。
+    # 返回 (ok: bool, detail: dict)，detail 含 checks 列表供确认桥展示。
+    def hard_validate(self, parsed, available_cash=None, available_qty=None):
+        self._rollover_t1()
+        code, side, price, vol = parsed["code"], parsed["side"], parsed["price"], parsed["vol"]
+        amount = round(price * vol, 2)
+        commission, stamp = calc_fee(amount, side)
+        checks = []
+        ok = True
+
+        # --- 买入：余额校验 ---
+        if side == "BUY":
+            need = round(amount + commission, 2)
+            if available_cash is not None:
+                passed = available_cash >= need - 1e-6
+                checks.append({"name": "可用资金", "ok": passed,
+                               "need": need, "avail": round(available_cash, 2)})
+                if not passed:
+                    ok = False
+            else:
+                checks.append({"name": "可用资金", "ok": None, "note": "未读取（客户端未回传）"})
+        # --- 卖出：数量 + T+1 校验 ---
+        else:
+            t1_frozen = self.today_buys.get(code, 0)
+            if available_qty is not None:
+                passed = available_qty >= vol
+                checks.append({"name": "可用持仓", "ok": passed,
+                               "need": vol, "avail": int(available_qty)})
+                if not passed:
+                    ok = False
+                    # 判断是否因 T+1 冻结导致
+                    if t1_frozen > 0 and available_qty < vol:
+                        checks.append({"name": "T+1 冻结", "ok": False,
+                                       "frozen": int(t1_frozen),
+                                       "note": f"当日买入 {int(t1_frozen)} 股不可当日卖出"})
+                    else:
+                        checks.append({"name": "T+1 冻结", "ok": True, "frozen": int(t1_frozen)})
+                else:
+                    checks.append({"name": "T+1 冻结", "ok": True, "frozen": int(t1_frozen)})
+            else:
+                checks.append({"name": "可用持仓", "ok": None, "note": "未读取（客户端未回传）"})
+                if t1_frozen > 0:
+                    checks.append({"name": "T+1 冻结", "ok": None,
+                                   "frozen": int(t1_frozen),
+                                   "note": f"当日买入 {int(t1_frozen)} 股，需确认客户端可卖数量"})
+
+        detail = {"amount": amount, "commission": round(commission, 2),
+                  "stamp": round(stamp, 2), "checks": checks, "ok": ok}
+        return ok, detail
 
     # 提交（后台线程执行，避免阻塞 stdin 读循环，保证半自动可收到 confirm）
     def submit(self, p):
@@ -281,20 +348,19 @@ class DryRunSidecar(BaseSidecar):
             return
         code, side, price, vol = parsed["code"], parsed["side"], parsed["price"], parsed["vol"]
         amount = round(price * vol, 2)
-        # 填单前预校验资金/持仓，不足直接拒绝（避免“先提交再报错”）；成交时再做一次并发兜底。
-        commission0, _stamp0 = calc_fee(amount, side)
+        # P12-4 统一硬校验：余额 / 数量 / T+1
         with self.lock:
-            if side == "BUY" and self.cash < amount + commission0:
-                emit({"event": "error", "client_order_id": cid,
-                      "message": f"可用资金不足：需 {amount + commission0:.2f}，可用 {self.cash:.2f}"})
-                return
-            if side == "SELL":
-                _pos = self.positions.get(code)
-                _avail = _pos["avail"] if _pos else 0
-                if _avail < vol:
-                    emit({"event": "error", "client_order_id": cid,
-                          "message": f"可用持仓不足：需 {vol}，可用 {_avail}"})
-                    return
+            _pos = self.positions.get(code)
+            _avail = _pos["avail"] if _pos else 0
+            ok, val = self.hard_validate(parsed, available_cash=self.cash, available_qty=_avail)
+        if not ok:
+            _fail = next((c for c in val["checks"] if c.get("ok") is False), None)
+            _msg = _fail["note"] if _fail and _fail.get("note") else (
+                f"可用资金不足：需 {_fail['need']:.2f}，可用 {_fail['avail']:.2f}" if _fail and "need" in _fail and "avail" in _fail and isinstance(_fail["avail"], float)
+                else f"可用持仓不足：需 {_fail['need']}，可用 {_fail['avail']}" if _fail and "need" in _fail
+                else "硬校验未通过")
+            emit({"event": "error", "client_order_id": cid, "message": _msg, "validation": val})
+            return
         broker_oid = f"DRY{int(time.time()*1000) % 10**8}"
         emit({"event": "order", "client_order_id": cid, "broker_order_id": broker_oid,
               "status": "submitting", "filled_vol": 0, "filled_avg_price": 0.0})
@@ -304,7 +370,8 @@ class DryRunSidecar(BaseSidecar):
         shot = self._shot(side, code, price, vol)
         emit({"event": "screenshot", "client_order_id": cid, "shot": shot,
               "expect": {"code": code, "side": side, "price": price, "vol": vol,
-                         "amount": amount, "sim": self.sim, "autoConfirm": self.auto_confirm}})
+                         "amount": amount, "sim": self.sim, "autoConfirm": self.auto_confirm,
+                         "validation": val}})
         emit({"event": "order", "client_order_id": cid, "status": "submitted",
               "filled_vol": 0, "filled_avg_price": 0.0})
 
@@ -338,7 +405,8 @@ class DryRunSidecar(BaseSidecar):
                 new_vol = pos["vol"] + vol
                 pos["cost"] = (pos["cost"] * pos["vol"] + amount) / new_vol
                 pos["vol"] = new_vol
-                pos["avail"] = new_vol  # dry-run 简化 T+1，保证卖出可立即演示
+                # P12-4 T+1：当日买入不进可用，次日才可卖（avail 不变）
+                self.today_buys[code] = self.today_buys.get(code, 0) + vol
             else:
                 pos = self.positions.get(code)
                 if not pos or pos["avail"] < vol:
@@ -1273,6 +1341,39 @@ class RealSidecar(BaseSidecar):
                 dialog = self.engine.find_dialog()
                 if dialog is None:
                     raise RuntimeError("未弹出闪电下单确认窗口（#32770），请确认已在同花顺开启快捷下单")
+                # P12-4 硬校验：输入前先读回客户端可用数量（买入=可买股数/资金，卖出=可卖股数，已含 T+1 冻结）
+                self.engine.click_id(dialog, CID_REFRESH_AVAIL)
+                time.sleep(0.2)
+                avail_txt = self.engine.text_id(dialog, CID_ORDER_AMT)
+                try:
+                    client_avail = int(float(str(avail_txt).replace(",", ""))) if avail_txt else 0
+                except (TypeError, ValueError):
+                    client_avail = 0
+                # 买入：可用资金由客户端可买股数反推（可买股数 * 价格 ≈ 可用资金）；卖出直接用可卖股数
+                if side == "BUY":
+                    est_cash = round(client_avail * price, 2) if client_avail else None
+                    ok, val = self.hard_validate(parsed, available_cash=est_cash, available_qty=None)
+                else:
+                    ok, val = self.hard_validate(parsed, available_cash=None, available_qty=client_avail)
+                if not ok:
+                    _fail = next((c for c in val["checks"] if c.get("ok") is False), None)
+                    _msg = "硬校验未通过"
+                    if _fail:
+                        if _fail.get("note"):
+                            _msg = _fail["note"]
+                        elif "need" in _fail and "avail" in _fail:
+                            if isinstance(_fail["avail"], float):
+                                _msg = f"可用资金不足：需 {_fail['need']:.2f}，可用约 {_fail['avail']:.2f}"
+                            else:
+                                _msg = f"可用持仓不足：需 {_fail['need']}，可用 {_fail['avail']}"
+                    try:
+                        self.engine.send_key("ESC")
+                    except Exception:
+                        pass
+                    emit({"event": "error", "client_order_id": cid, "message": _msg, "validation": val})
+                    emit({"event": "order", "client_order_id": cid, "status": "rejected",
+                          "filled_vol": 0, "filled_avg_price": 0.0})
+                    return
                 self.engine.input_id(dialog, CID_ORDER_AMT, str(vol))
                 time.sleep(0.25)
                 got = self.engine.text_id(dialog, CID_ORDER_AMT)
@@ -1285,7 +1386,7 @@ class RealSidecar(BaseSidecar):
                 emit({"event": "screenshot", "client_order_id": cid, "shot": shot,
                       "expect": {"code": code, "side": side, "price": price, "vol": vol,
                                  "amount": amount, "lightning": True, "sim": self.sim,
-                                 "autoConfirm": self.auto_confirm},
+                                 "autoConfirm": self.auto_confirm, "validation": val},
                       "message": "闪电下单按客户端盘口价，请核对截图中的代码/方向/数量/价格"})
                 emit({"event": "order", "client_order_id": cid, "status": "submitted",
                       "filled_vol": 0, "filled_avg_price": 0.0})
@@ -1307,6 +1408,9 @@ class RealSidecar(BaseSidecar):
                         emit({"event": "note", "client_order_id": cid, "message": "人工已拒绝，已关闭下单弹窗"})
                         return
                 self.engine.click_id(dialog, CID_ORDER_CONFIRM)
+                if side == "BUY":
+                    # P12-4 T+1 跟踪：当日买入记录
+                    self.today_buys[code] = self.today_buys.get(code, 0) + vol
                 if self.live_guarded and side == "BUY":
                     # 按提交参考价预占单日额度（闪电实际盘口价以成交回报为准，Rust 侧为权威）。
                     self.live_bought_today += amount
@@ -1368,11 +1472,34 @@ class RealSidecar(BaseSidecar):
                 est = round(order_vol * float(ref_price or 0), 2)
                 if self.live_guarded and side == "BUY" and self.max_amount and est and est > self.max_amount + 1e-6:
                     raise RuntimeError(f"仓位下单估算金额 {est:.0f} 超单笔上限 {self.max_amount:.0f}")
+                # P12-4 硬校验：仓位下单已从弹窗读回 avail，直接校验
+                _parsed = {"code": code, "side": side, "price": float(ref_price or price or 0), "vol": order_vol, "cid": cid}
+                if side == "BUY":
+                    _est_cash = round(avail * float(ref_price or 0), 2) if avail else None
+                    ok, val = self.hard_validate(_parsed, available_cash=_est_cash, available_qty=None)
+                else:
+                    ok, val = self.hard_validate(_parsed, available_cash=None, available_qty=avail)
+                if not ok:
+                    _fail = next((c for c in val["checks"] if c.get("ok") is False), None)
+                    _msg = _fail["note"] if _fail and _fail.get("note") else (
+                        f"可用资金不足：需 {_fail['need']:.2f}，可用约 {_fail['avail']:.2f}" if _fail and isinstance(_fail.get("avail"), float)
+                        else f"可用持仓不足：需 {_fail['need']}，可用 {_fail['avail']}" if _fail else "硬校验未通过")
+                    try:
+                        self.engine.send_key("ESC")
+                    except Exception:
+                        pass
+                    emit({"event": "error", "client_order_id": cid, "message": _msg, "validation": val})
+                    emit({"event": "order", "client_order_id": cid, "status": "rejected",
+                          "filled_vol": 0, "filled_avg_price": 0.0})
+                    return
+                if side == "BUY":
+                    self.today_buys[code] = self.today_buys.get(code, 0) + order_vol
                 shot = self._win_shot(dialog)
                 pos_label = {0: "满仓", 1: "全仓", 2: "1/2 仓", 3: "1/3 仓", 4: "1/4 仓"}[position]
                 emit({"event": "screenshot", "client_order_id": cid, "shot": shot,
                       "expect": {"code": code, "side": side, "vol": order_vol, "position": pos_label,
-                                 "lightning": True, "sim": self.sim, "autoConfirm": self.auto_confirm},
+                                 "amount": est, "lightning": True, "sim": self.sim,
+                                 "autoConfirm": self.auto_confirm, "validation": val},
                       "message": f"仓位下单（{pos_label}）：可用 {avail}，拟下单 {order_vol} 股，请核对"})
                 # 真实模式强制半自动；模拟 auto-confirm 才直接提交
                 approved = self.auto_confirm

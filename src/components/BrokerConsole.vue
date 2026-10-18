@@ -55,7 +55,11 @@ const loading = ref(false);
 const connected = computed(() => status.value?.connected === true);
 const isLive = computed(() => status.value?.liveEnabled === true);
 // P12-2 通道识别：实际窗口(sidecar) > 手动标注(配置记忆) > 配置判定，冲突时黄色警示。
-const channelLive = computed(() => isLive.value || status.value?.clientSim === false);
+// P12-6 本地模拟（mock）永远不是实盘：即使 clientSim 残留 false（从实盘切过来）也不误判红标。
+const channelLive = computed(() => {
+  if (status.value?.kind === "mock") return false;
+  return isLive.value || status.value?.clientSim === false;
+});
 const windowSim = computed(() => status.value?.windowSim ?? null);
 const manualMark = ref<string | null>(null);
 const chanConflict = computed(() => {
@@ -256,6 +260,16 @@ async function apiCall(ep: ApiEndpoint) {
     return;
   }
   if (apiBusy.value) return;
+  // P12-6 「下单」组接口操控券商账户：调用前二次确认（实盘先截图核对后才落键）
+  if (ep.group === "下单") {
+    const ok = await confirmDialog({
+      title: `${ep.desc}（账户操作）`,
+      message: `接口 ${ep.path} 将操控券商账户${liveNow.value ? "。当前为实盘通道：会先截图、由你在确认桥核对后才落键；未武装时会被白名单锁定拒绝" : ""}。确认调用？`,
+      confirmText: "确认调用",
+      danger: true,
+    });
+    if (!ok) return;
+  }
   apiBusy.value = ep.key;
   try {
     const r = await fetch(apiUrl(ep));
@@ -372,6 +386,20 @@ const POSITIONS = [
   { v: 4, t: "1/4 仓" },
 ];
 const posBusy = ref(false);
+// P12-6 持仓行「下单」快捷带入：代码 + 现价 填入仓位下单表单
+function fillPosFromRow(p: BrokerPosition) {
+  posForm.code = p.code ?? "";
+  posForm.refPrice = p.price ? String(p.price) : "";
+  posForm.side = "BUY";
+  flash(`已带入 ${p.code}（现价 ${p.price ?? "--"}），选好仓位档位后点「填单」`);
+  document
+    .querySelector(".bc-posbox")
+    ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+// P12-6 实盘未武装时禁止填单（sidecar 白名单为空会拒单，前置提示避免"点了没反应"）
+const posLocked = computed(
+  () => liveNow.value && !isLive.value,
+);
 async function onPositionOrder() {
   const code = posForm.code.trim();
   const refPrice = parseFloat(posForm.refPrice);
@@ -619,9 +647,21 @@ onBeforeUnmount(() => {
         未开启 HTTP API 服务：设置 → 券商交易 → 同花顺客户端 → 「HTTP API 服务」打开并保存配置，然后连接通道。开启后本页即可一键调用全部接口。
       </div>
       <template v-else>
+        <details class="api-howto" open>
+          <summary>这个页面怎么用？（快速上手）</summary>
+          <div class="ah-body">
+            <div class="ah-step"><b>① 开启服务</b>：设置 → 券商交易 → 同花顺客户端 → 打开「HTTP API 服务」（端口默认 5000），保存并连接通道。</div>
+            <div class="ah-step"><b>② 本页试用</b>：先点右上角「健康检查」确认服务正常；然后对任意接口点「调用」，下方会显示返回的 JSON。</div>
+            <div class="ah-step"><b>③ 给脚本用</b>：每个接口下方有一行 <code>curl</code> 命令，复制到你的 Python / Excel 宏 / 自动化平台即可远程调用。</div>
+            <div class="ah-code">Python 示例：一键买入<pre>import requests
+r = requests.get("http://127.0.0.1:5000/xiadan?code=600519&status=1&amount=100&price=10")
+print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}</pre></div>
+            <div class="ah-warn">⚠ 「下单」组接口会操控账户：实盘下先截图、由你在确认桥核对后才落键；未武装时被白名单锁定拒绝。</div>
+          </div>
+        </details>
         <div class="api-group" v-for="g in API_GROUPS" :key="g">
           <div class="api-group-title">{{ g }}</div>
-          <div v-for="ep in APIS.filter((e) => e.group === g)" :key="ep.key" class="api-card">
+          <div v-for="ep in APIS.filter((e) => e.group === g)" :key="ep.key" class="api-card" :class="{ danger: ep.group === '下单' }">
             <div class="api-card-head">
               <code class="api-path">{{ ep.path }}</code>
               <span class="api-desc">{{ ep.desc }}</span>
@@ -672,7 +712,7 @@ onBeforeUnmount(() => {
         <thead>
           <tr>
             <th>代码</th><th>名称</th><th class="r">持仓</th><th class="r">可用</th>
-            <th class="r">成本</th><th class="r">现价</th><th class="r">市值</th><th class="r">盈亏</th>
+            <th class="r">成本</th><th class="r">现价</th><th class="r">市值</th><th class="r">盈亏</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -686,6 +726,7 @@ onBeforeUnmount(() => {
             <td class="r mono">{{ fmtNum(p.price) }}</td>
             <td class="r mono">{{ fmtMoney(p.marketValue) }}</td>
             <td class="r mono" :class="pnlCls(p.pnl)">{{ fmtMoney(p.pnl) }}</td>
+            <td><button class="bp-pos-btn" @click="fillPosFromRow(p)">下单</button></td>
           </tr>
         </tbody>
       </table>
@@ -743,13 +784,20 @@ onBeforeUnmount(() => {
         <span class="ct-tag" :class="channelTag().cls">{{ channelTag().label }}</span>
       </div>
       <div class="bp-hint" :class="channelTag().cls">{{ channelTag().hint }}</div>
+      <div class="bp-steps">
+        <span class="bp-step">① 选方向</span>
+        <span class="bp-step">② 填 6 位代码</span>
+        <span class="bp-step">③ 填参考价</span>
+        <span class="bp-step">④ 选仓位档位</span>
+        <span class="bp-step">⑤ 点填单</span>
+      </div>
       <div class="bp-row">
         <select v-model="posForm.side">
           <option value="BUY">买入</option>
           <option value="SELL">卖出</option>
         </select>
         <input v-model="posForm.code" placeholder="代码 600519" spellcheck="false" />
-        <input v-model="posForm.refPrice" placeholder="参考价" type="number" step="0.01" />
+        <input v-model="posForm.refPrice" placeholder="参考价（按现价估算）" type="number" step="0.01" />
       </div>
       <div class="bp-row">
         <div class="bp-seg">
@@ -761,9 +809,21 @@ onBeforeUnmount(() => {
             @click="posForm.position = p.v"
           >{{ p.t }}</button>
         </div>
-        <button class="bp-submit" :class="{ live: liveNow }" :disabled="posBusy" @click="onPositionOrder">
-          {{ posBusy ? "填单中…" : liveNow ? "填单 · 需确认" : "按仓位填单" }}
+        <button
+          class="bp-submit"
+          :class="{ live: liveNow }"
+          :disabled="posBusy || posLocked"
+          @click="onPositionOrder"
+          :title="posLocked ? '实盘未武装：请到设置完成武装后再下单' : ''"
+        >
+          {{ posBusy ? "填单中…" : posLocked ? "实盘未武装 · 先到设置武装" : liveNow ? "填单 · 需确认" : "按仓位填单" }}
         </button>
+      </div>
+      <div class="bp-help">
+        <b>怎么用：</b>参考价仅用于金额估算与资金护栏，实际以同花顺下单窗口盘口价为准（可从上方持仓行点「下单」自动带入）；全仓=按可用资金全部买入，半仓 / 1/3 / 1/4 依次减半；卖出按持仓比例换算。填单后同花顺会弹出下单窗口，应用再弹「截图确认桥」，核对无误后点确认才落键。
+      </div>
+      <div v-if="posLocked" class="bp-lock">
+        ⚠ 实盘未武装（出厂锁定）：请到「设置 → 券商交易 → 实盘与风控」完成武装（单笔上限 + 白名单 + 演练确认）后，这里才能填单。当前点「填单」会被系统拒绝。
       </div>
     </div>
 
@@ -853,6 +913,42 @@ onBeforeUnmount(() => {
 .bc-conn { font-weight: 600; color: var(--text, #e6ecf5); }
 .bc-acct { color: var(--text-dim, #7c8798); font-size: 11px; }
 .bc-live { color: #fff; background: #f23645; border-radius: 4px; padding: 0 6px; font-size: 10px; font-weight: 700; }
+/* P12-6 API 控制台快速上手 */
+.api-howto {
+  border: 1px solid var(--line, #243049); border-radius: 10px;
+  background: rgba(31,41,68,.35); padding: 6px 12px; margin-bottom: 10px;
+  font-size: 12px;
+}
+.api-howto summary { cursor: pointer; font-weight: 600; color: var(--text, #e6ecf5); padding: 4px 0; }
+.ah-body { padding: 6px 4px 8px; display: flex; flex-direction: column; gap: 8px; }
+.ah-step { color: var(--text-dim, #9aa5b8); line-height: 1.55; }
+.ah-step b { color: var(--text, #e6ecf5); }
+.ah-code {
+  background: rgba(10,15,28,.6); border: 1px solid var(--line, #243049);
+  border-radius: 8px; padding: 8px 10px; font-size: 11px; color: #a8c7ff;
+}
+.ah-code pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-all; color: #d7e3ff; font-family: Consolas, monospace; }
+.ah-warn { color: #ffb46b; background: rgba(242,54,69,.1); border: 1px solid rgba(242,54,69,.35); border-radius: 8px; padding: 6px 10px; }
+.api-card.danger { border-color: rgba(242,54,69,.55); background: rgba(242,54,69,.04); }
+/* P12-6 仓位下单步骤引导 / 说明 / 锁定 */
+.bp-steps { display: flex; flex-wrap: wrap; gap: 4px 6px; margin: 6px 0 8px; }
+.bp-step {
+  font-size: 11px; color: var(--text-dim, #9aa5b8);
+  background: rgba(90,160,255,.08); border: 1px solid rgba(90,160,255,.25);
+  border-radius: 6px; padding: 2px 8px;
+}
+.bp-help { margin-top: 8px; font-size: 11px; color: var(--text-dim, #9aa5b8); line-height: 1.6; }
+.bp-help b { color: var(--text, #e6ecf5); }
+.bp-lock {
+  margin-top: 8px; font-size: 11px; color: #ffb46b; line-height: 1.6;
+  background: rgba(242,54,69,.1); border: 1px solid rgba(242,54,69,.4);
+  border-radius: 8px; padding: 6px 10px;
+}
+.bp-pos-btn {
+  border: 1px solid rgba(90,160,255,.4); background: rgba(90,160,255,.1);
+  color: #8ab8ff; border-radius: 5px; font-size: 11px; padding: 1px 8px; cursor: pointer;
+}
+.bp-pos-btn:hover { background: rgba(90,160,255,.22); }
 .bc-sim { color: #ffb13d; border: 1px solid rgba(255, 177, 61, 0.5); border-radius: 4px; padding: 0 6px; font-size: 10px; }
 .bc-live.sim { background: #7a5c12; } /* 实际窗口为模拟盘：黄褐色底 */
 .ct-tag { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 0 6px; vertical-align: 1px; }
