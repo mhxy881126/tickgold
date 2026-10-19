@@ -216,6 +216,8 @@ pub(crate) fn init(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
         // 两者内部都有 AtomicBool 幂等守卫，重复 setup 不会双跑。
         crate::market::alert::ensure_co_engine(app.handle());
         crate::ai::instruction::ensure_materialize_loop(app.handle());
+        // P1-c：盘后自动流水线（15:05 后）+ 8:45 盘前确认提醒，同一 30s 循环。
+        crate::ai::daily_schedule::ensure_daily_schedule(app.handle());
 
         // v2.31 选股订阅：30s 常驻调度，到点执行已保存战法扫描并应用内推送
         {

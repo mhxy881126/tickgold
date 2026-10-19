@@ -7,6 +7,7 @@ pub mod backtest;
 pub mod bridge;
 pub mod commentary;
 pub mod config;
+pub mod daily_schedule;
 pub mod decision;
 pub mod evolution;
 pub mod fastbrain;
