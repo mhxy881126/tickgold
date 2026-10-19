@@ -144,12 +144,14 @@ fn save_plan(
     let title = pj["title"].as_str().unwrap_or("");
     let market_view = pj["marketView"].as_str().unwrap_or("");
     let pk = profile_key.unwrap_or("");
+    // 重新生成同一天计划时重置为 draft：旧确认针对的是旧指令，
+    // 新指令未经复核不得沿用 confirmed 自动物化。
     c.execute(
         "INSERT INTO plan(plan_date,title,market_view,status,profile_key,source_review_date,model,created_at,updated_at)
          VALUES(?1,?2,?3,'draft',?4,?5,?6,?7,?7)
          ON CONFLICT(plan_date) DO UPDATE SET title=excluded.title, market_view=excluded.market_view,
             profile_key=excluded.profile_key, source_review_date=excluded.source_review_date,
-            model=excluded.model, updated_at=excluded.updated_at",
+            model=excluded.model, status='draft', updated_at=excluded.updated_at",
         rusqlite::params![plan_date, title, market_view, pk, source_date, model, now_millis()],
     )
     .map_err(|e| e.to_string())?;
@@ -553,6 +555,32 @@ mod tests {
             .unwrap();
         assert_eq!(plan_count, 1);
         assert_eq!(instr_count, 1, "旧指令应被删除后重建");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_plan_regeneration_resets_confirmation() {
+        let (dir, c) = fresh_db();
+        let cfg = AiConfig::default();
+        let p1 = json!({"title":"T","marketView":"V","instructions":[
+            {"tier":"candidate","code":"300003","name":"丙","alertRule":{"upPct":5}}]});
+        save_plan(&c, "2026-10-05", "2026-10-02", None, &cfg.chat_model, &p1).unwrap();
+        // 用户已确认旧计划
+        c.execute(
+            "UPDATE plan SET status='confirmed' WHERE plan_date='2026-10-05'",
+            [],
+        )
+        .unwrap();
+        // 重新生成同日计划：指令已换，旧确认必须失效，否则未复核指令会被自动物化。
+        save_plan(&c, "2026-10-05", "2026-10-02", None, &cfg.chat_model, &p1).unwrap();
+        let status: String = c
+            .query_row(
+                "SELECT status FROM plan WHERE plan_date='2026-10-05'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "draft", "重新生成计划必须重置为 draft");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

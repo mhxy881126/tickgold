@@ -44,6 +44,8 @@ fn leaf(field: &str, op: &str, value: f64, params: Option<Value>) -> CoTrigger {
 ///
 /// 方向阈值必须有效：突破价/幅 > 0，回踩价 > 0、回落幅 < 0；0 视为未设置。
 /// 否则 `upPrice:0` 会物化成 `price>=0` 的恒真单，一开盘就触发。
+/// 过滤类阈值（量比 / 换手 / 成交额 / 涨速 / 跳水）同样只接受 `> 0`：
+/// 0 会让 `amount>=0` 之类的条件恒真，等于没设过滤。
 pub fn leaves_from_alert_rule(rule: &Value) -> Vec<CoTrigger> {
     let mut out = Vec::new();
     if let Some(v) = positive(rule, "upPrice") {
@@ -55,16 +57,17 @@ pub fn leaves_from_alert_rule(rule: &Value) -> Vec<CoTrigger> {
     } else if let Some(v) = negative(rule, "downPct") {
         out.push(leaf("pct", "lte", v, None));
     }
-    if let Some(v) = num(rule, "minVolumeRatio") {
+    if let Some(v) = positive(rule, "minVolumeRatio") {
         out.push(leaf("volumeRatio", "gte", v, None));
     }
-    if let Some(v) = num(rule, "minTurnover") {
+    if let Some(v) = positive(rule, "minTurnover") {
         out.push(leaf("turnover", "gte", v, None));
     }
-    if let Some(v) = num(rule, "minAmount") {
+    if let Some(v) = positive(rule, "minAmount") {
+        // 与 market/alert.rs 语义一致：value 单位为亿元，eval_leaf 用 amount/1e8 比较。
         out.push(leaf("amount", "gte", v, None));
     }
-    if let Some(v) = num(rule, "riseSpeed") {
+    if let Some(v) = positive(rule, "riseSpeed") {
         let win = rule
             .get("speedWindowSec")
             .and_then(|x| x.as_i64())
@@ -76,7 +79,7 @@ pub fn leaves_from_alert_rule(rule: &Value) -> Vec<CoTrigger> {
             Some(serde_json::json!({ "windowSec": win })),
         ));
     }
-    if let Some(v) = num(rule, "downSpeed") {
+    if let Some(v) = positive(rule, "downSpeed") {
         out.push(leaf("downSpeed", "gte", v, None));
     }
     for (key, field) in [
@@ -163,15 +166,17 @@ pub fn materialize_plan(
     conn: &rusqlite::Connection,
     plan_id: i64,
 ) -> Result<MaterializeSummary, String> {
-    // 只在计划自己的交易日物化：次日计划必须等开盘当天再建条件单，
-    // 否则 ttl=day 的单在当天就被 conditional::expire_due 判过期，
-    // 智驾盘中的确认也可能当天触发次日单。
-    let plan_date: String = conn
-        .query_row("SELECT plan_date FROM plan WHERE id=?1", [plan_id], |r| {
-            r.get::<_, String>(0)
-        })
+    // 只在计划自己的交易日、且计划已确认时物化：次日计划必须等开盘当天再建条件单，
+    // 否则 ttl=day 的单在当天就被 conditional::expire_due 判过期；
+    // 草稿计划（生成后未复核确认）也不得自动建单。
+    let (plan_date, plan_status): (String, String) = conn
+        .query_row(
+            "SELECT plan_date,status FROM plan WHERE id=?1",
+            [plan_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
         .unwrap_or_default();
-    if plan_date != crate::broker::conditional::today_dashed() {
+    if plan_date != crate::broker::conditional::today_dashed() || plan_status != "confirmed" {
         return Ok(MaterializeSummary::default());
     }
 
@@ -179,7 +184,7 @@ pub fn materialize_plan(
         let mut stmt = conn
             .prepare(
                 "SELECT id,tier,code,name,alert_rule,co_id FROM plan_instruction
-                 WHERE plan_id=?1 ORDER BY sort",
+                 WHERE plan_id=?1 AND status IN ('open','alerted') ORDER BY sort",
             )
             .map_err(|e| e.to_string())?;
         let it = stmt
@@ -390,7 +395,7 @@ mod tests {
         conn.execute_batch(crate::broker::conditional::CREATE_SQL)
             .unwrap();
         conn.execute_batch(
-            "CREATE TABLE plan(id INTEGER PRIMARY KEY, plan_date TEXT);
+            "CREATE TABLE plan(id INTEGER PRIMARY KEY, plan_date TEXT, status TEXT NOT NULL DEFAULT 'draft');
              CREATE TABLE plan_instruction(
                 id INTEGER PRIMARY KEY AUTOINCREMENT, plan_id INTEGER, tier TEXT, code TEXT,
                 name TEXT, theme TEXT, condition TEXT, action TEXT, position_hint TEXT,
@@ -401,10 +406,20 @@ mod tests {
         conn
     }
 
+    /// 既有物化用例默认插入已确认计划；状态门禁用例用 `insert_plan_with_status`。
     fn insert_plan(conn: &rusqlite::Connection, id: i64, plan_date: &str) {
+        insert_plan_with_status(conn, id, plan_date, "confirmed");
+    }
+
+    fn insert_plan_with_status(
+        conn: &rusqlite::Connection,
+        id: i64,
+        plan_date: &str,
+        status: &str,
+    ) {
         conn.execute(
-            "INSERT INTO plan(id,plan_date) VALUES(?1,?2)",
-            rusqlite::params![id, plan_date],
+            "INSERT INTO plan(id,plan_date,status) VALUES(?1,?2,?3)",
+            rusqlite::params![id, plan_date, status],
         )
         .unwrap();
     }
@@ -495,6 +510,95 @@ mod tests {
         assert_eq!(s.skipped, 0, "非计划日应直接返回，不逐条扫描");
         assert_eq!(co_count(&conn), 0);
         assert!(instruction_co_id(&conn, 1).is_empty());
+    }
+
+    #[test]
+    fn materialize_requires_confirmed_plan() {
+        let conn = conn_with_tables();
+        let today = crate::broker::conditional::today_dashed();
+        // 计划日期是今天，但仍是草稿：用户未复核确认，不得自动建单。
+        insert_plan_with_status(&conn, 1, &today, "draft");
+        conn.execute(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','600519','贵州茅台','{\"upPrice\":1700,\"vol\":200}','open',0)",
+            [],
+        )
+        .unwrap();
+        let s = materialize_plan(&conn, 1).unwrap();
+        assert_eq!(s.created, 0);
+        assert_eq!(s.skipped, 0, "未确认计划应门禁直接返回，不逐条扫描");
+        assert_eq!(co_count(&conn), 0);
+        assert!(instruction_co_id(&conn, 1).is_empty());
+    }
+
+    #[test]
+    fn materialize_skips_dropped_instruction() {
+        let conn = conn_with_tables();
+        insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
+        // dropped（用户丢弃）/ done（已完成）不得物化；alerted（已确认转预警）仍需建单。
+        conn.execute_batch(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','600519','贵州茅台','{\"upPrice\":1700}','dropped',0);
+             INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','000001','平安','{\"upPrice\":10}','done',1);
+             INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','000002','万科','{\"upPrice\":8}','alerted',2);",
+        )
+        .unwrap();
+        let s = materialize_plan(&conn, 1).unwrap();
+        assert_eq!(s.created, 1);
+        assert_eq!(s.skipped, 0, "状态过滤在查询层，丢弃/完成不计 skipped");
+        assert_eq!(co_count(&conn), 1);
+        assert!(instruction_co_id(&conn, 1).is_empty());
+        assert!(instruction_co_id(&conn, 2).is_empty());
+        assert!(
+            !instruction_co_id(&conn, 3).is_empty(),
+            "已确认转预警（alerted）的指令仍应物化"
+        );
+    }
+
+    #[test]
+    fn materialize_ignores_zero_filters() {
+        let conn = conn_with_tables();
+        insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
+        conn.execute(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','600519','贵州茅台',
+                '{\"upPct\":5,\"minAmount\":0,\"minVolumeRatio\":0,\"minTurnover\":0,\"riseSpeed\":0,\"downSpeed\":0}',
+                'open',0)",
+            [],
+        )
+        .unwrap();
+        let s = materialize_plan(&conn, 1).unwrap();
+        assert_eq!(s.created, 1);
+        let co_id = instruction_co_id(&conn, 1);
+        assert!(!co_id.is_empty());
+        let trigger: String = conn
+            .query_row(
+                "SELECT trigger_json FROM conditional_order WHERE co_id=?1",
+                [&co_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(trigger.contains("\"field\":\"pct\""), "{trigger}");
+        for field in [
+            "amount",
+            "volumeRatio",
+            "turnover",
+            "riseSpeed",
+            "downSpeed",
+        ] {
+            assert!(
+                !trigger.contains(&format!("\"field\":\"{field}\"")),
+                "零值过滤字段 {field} 不应出叶: {trigger}"
+            );
+        }
+        // 叶子层：只保留涨幅方向叶，0 值过滤字段一律视为未设置。
+        let leaves = leaves_from_alert_rule(&json!({"upPct":5,"minAmount":0,"riseSpeed":0}));
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].field, "pct");
+        assert_eq!(leaves[0].op, "gte");
+        assert_eq!(leaves[0].value, 5.0);
     }
 
     #[test]

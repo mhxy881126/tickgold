@@ -181,22 +181,28 @@ fn eval_leaf(
     }
 }
 
-/// 单次检测
-async fn check_once(app: &AppHandle, engine: &AlertEngine) {
+/// 单次检测。
+///
+/// `with_co=false`（旧预警引擎）只跑规则，不读条件单、不拉条件单标的、不发
+/// `co:triggered`；条件单由独立循环 `run_co_engine` 负责，避免旧引擎被前端
+/// 重新启动（如保存预警规则）时与条件单循环重复触发。
+async fn check_once_inner(app: &AppHandle, engine: &AlertEngine, with_co: bool) {
     let rules = engine.rules.lock().unwrap().clone();
     let active: Vec<AlertRule> = rules.into_iter().filter(|r| r.enabled).collect();
 
     // 本地条件单：读主库 active，先做过期，再把其标的并入本轮批量行情拉取。
     let mut co_orders: Vec<crate::broker::conditional::ConditionalOrder> = Vec::new();
-    if let Ok(dir) = app.path().app_data_dir() {
-        if let Ok(conn) = crate::ai::maindb::open_readwrite(&dir) {
-            let today = crate::broker::conditional::today_dashed();
-            let _ = crate::broker::conditional::expire_due(&conn, &today, now_millis());
-            co_orders = crate::broker::conditional::list(
-                &conn,
-                Some(crate::broker::conditional::ACTIVE.to_string()),
-                200,
-            );
+    if with_co {
+        if let Ok(dir) = app.path().app_data_dir() {
+            if let Ok(conn) = crate::ai::maindb::open_readwrite(&dir) {
+                let today = crate::broker::conditional::today_dashed();
+                let _ = crate::broker::conditional::expire_due(&conn, &today, now_millis());
+                co_orders = crate::broker::conditional::list(
+                    &conn,
+                    Some(crate::broker::conditional::ACTIVE.to_string()),
+                    200,
+                );
+            }
         }
     }
 
@@ -452,38 +458,42 @@ async fn check_once(app: &AppHandle, engine: &AlertEngine) {
         }
     }
 
-    // 本地条件单触发：trigger 内 leaves 全部满足（AND）才触发
-    for co in &co_orders {
-        let Some(q) = qmap.get(&co.code) else {
-            continue;
-        };
-        let mut matched: Vec<String> = Vec::new();
-        let all = co.trigger.iter().all(|leaf| {
-            if eval_leaf(leaf, q, &co.code, engine, now, &limit_edges) {
-                matched.push(format!("{} {} {}", leaf.field, leaf.op, leaf.value));
-                true
-            } else {
-                false
-            }
-        });
-        if all && !co.trigger.is_empty() {
-            // 先落库 triggered（WHERE 限定 active，防下一轮重复触发）
-            if let Ok(dir) = app.path().app_data_dir() {
-                if let Ok(conn) = crate::ai::maindb::open_readwrite(&dir) {
-                    if crate::broker::conditional::mark_triggered(&conn, &co.co_id, now).is_ok() {
-                        co_events.push(CoTriggerEvent {
-                            time: now,
-                            co_id: co.co_id.clone(),
-                            code: co.code.clone(),
-                            name: co.name.clone(),
-                            side: co.side.clone(),
-                            trigger_price: q.price,
-                            vol: co.vol,
-                            price_mode: co.price_mode.clone(),
-                            limit_price: co.limit_price,
-                            auto_confirm: co.auto_confirm,
-                            matched,
-                        });
+    // 本地条件单触发：trigger 内 leaves 全部满足（AND）才触发。
+    // 旧预警引擎（with_co=false）不评估条件单，避免与条件单专用循环双发。
+    if with_co {
+        for co in &co_orders {
+            let Some(q) = qmap.get(&co.code) else {
+                continue;
+            };
+            let mut matched: Vec<String> = Vec::new();
+            let all = co.trigger.iter().all(|leaf| {
+                if eval_leaf(leaf, q, &co.code, engine, now, &limit_edges) {
+                    matched.push(format!("{} {} {}", leaf.field, leaf.op, leaf.value));
+                    true
+                } else {
+                    false
+                }
+            });
+            if all && !co.trigger.is_empty() {
+                // 先落库 triggered（WHERE 限定 active，防下一轮重复触发）
+                if let Ok(dir) = app.path().app_data_dir() {
+                    if let Ok(conn) = crate::ai::maindb::open_readwrite(&dir) {
+                        if crate::broker::conditional::mark_triggered(&conn, &co.co_id, now).is_ok()
+                        {
+                            co_events.push(CoTriggerEvent {
+                                time: now,
+                                co_id: co.co_id.clone(),
+                                code: co.code.clone(),
+                                name: co.name.clone(),
+                                side: co.side.clone(),
+                                trigger_price: q.price,
+                                vol: co.vol,
+                                price_mode: co.price_mode.clone(),
+                                limit_price: co.limit_price,
+                                auto_confirm: co.auto_confirm,
+                                matched,
+                            });
+                        }
                     }
                 }
             }
@@ -506,11 +516,11 @@ async fn check_once(app: &AppHandle, engine: &AlertEngine) {
     }
 }
 
-/// 后台主循环
+/// 后台主循环（旧预警引擎）：只评估 `alerts` 规则，条件单由 `run_co_engine` 独立触发。
 pub async fn run_loop(app: AppHandle, engine: Arc<AlertEngine>) {
     while engine.running.load(Ordering::Acquire) {
         let trading = is_trading_time();
-        check_once(&app, &engine).await;
+        check_once_inner(&app, &engine, false).await;
         let wait_secs = if trading { 5 } else { 60 };
         for _ in 0..wait_secs {
             if !engine.running.load(Ordering::Acquire) {
@@ -519,4 +529,32 @@ pub async fn run_loop(app: AppHandle, engine: Arc<AlertEngine>) {
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
     }
+}
+
+/// 条件单专用触发循环：独立于旧预警引擎运行（旧引擎在启动时会被前端停掉）。
+///
+/// 只驻留一次，循环不退出；非交易时段跳过行情拉取与求值，靠 5s 心跳等待开盘。
+pub async fn run_co_engine(app: AppHandle, engine: Arc<AlertEngine>) {
+    loop {
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        if !is_trading_time() {
+            continue;
+        }
+        check_once_inner(&app, &engine, true).await;
+    }
+}
+
+static CO_ENGINE_STARTED: AtomicBool = AtomicBool::new(false);
+
+/// 幂等启动条件单触发循环（只启动一次）。
+pub fn ensure_co_engine(app: &AppHandle) {
+    if CO_ENGINE_STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let engine = Arc::new(AlertEngine::new());
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        run_co_engine(handle, engine).await;
+    });
+    log::info!("条件单触发引擎已启动");
 }

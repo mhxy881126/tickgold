@@ -15,7 +15,7 @@ use crate::market::{get_zb_pool, get_zt_pool, today_yyyymmdd};
 use rusqlite::Connection;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 const CANDIDATE_LIMIT: i64 = 50;
 
@@ -639,11 +639,15 @@ fn materialize_today_plan(c: &Connection) {
 /// 只读回显：重开驾驶舱 / 次日盘前时，取回当日已产出的态势包、候选池与次日作战卡。
 #[tauri::command]
 pub fn workflow_p1_products(
+    app: AppHandle,
     state: State<'_, AiState>,
     trade_date: Option<String>,
 ) -> Result<Value, String> {
     let date = trade_date.unwrap_or_else(workflow::today_str);
     let dir = state.dir().clone();
+    // 条件单触发循环与旧预警引擎解耦：旧引擎启动时会被前端停掉，
+    // 这里在计划日读路径上幂等拉起专用循环（只启动一次，非计划日也会拉起）。
+    crate::market::alert::ensure_co_engine(&app);
     let c = open_readwrite(&dir)?;
     let briefing = load_briefing(&c, &date);
     ensure_candidate_table(&c)?;
