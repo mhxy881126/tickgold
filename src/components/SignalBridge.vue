@@ -16,6 +16,7 @@ import {
   type SignalTicketInfo,
 } from "../ai/api";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { priorityOf, sortTickets } from "./signalPriority";
 import {
   brokerSubmit,
   brokerConnect,
@@ -71,10 +72,13 @@ function ensureEdit(t: SignalTicketInfo): EditV {
   return edit[t.id];
 }
 
+// P2-b1 默认排序：待确认优先 → 置信度降序 → 时间降序（纯函数在 signalPriority.ts）。
 const filtered = computed(() =>
-  tab.value === "all"
-    ? tickets.value
-    : tickets.value.filter((t) => t.status === tab.value),
+  sortTickets(
+    tab.value === "all"
+      ? tickets.value
+      : tickets.value.filter((t) => t.status === tab.value),
+  ),
 );
 
 function recompute() {
@@ -377,7 +381,8 @@ function hhmmss(ts: number) {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 function confColor(c: number) {
-  return c >= 0.75 ? "#ff5a5a" : c >= 0.55 ? "#ffb13d" : "#8a93a6";
+  // 与高/中/低徽标同阈值（80/60），避免「条是红的、徽标是中」的自相矛盾。
+  return c >= 0.8 ? "#ff5a5a" : c >= 0.6 ? "#ffb13d" : "#8a93a6";
 }
 
 let timer: ReturnType<typeof setInterval> | undefined;
@@ -526,6 +531,11 @@ onUnmounted(() => {
           <span class="m-item">策略 <b>{{ t.strategy || "-" }}</b></span>
           <span class="m-item">
             置信
+            <span
+              class="sb-pri"
+              :class="priorityOf(t.confidence).tone"
+              data-testid="signal-priority"
+            >{{ priorityOf(t.confidence).label }}</span>
             <i class="conf-bar"
               ><em
                 :style="{
@@ -936,6 +946,18 @@ onUnmounted(() => {
   overflow: hidden;
   display: inline-block;
 }
+/* P2-b1 信号优先级徽标：高红 / 中橙 / 低灰（阈值与 priorityOf 一致） */
+.sb-pri {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+}
+.sb-pri.high { color: #ff5a5a; background: rgba(255, 90, 90, 0.12); }
+.sb-pri.mid { color: #ffb13d; background: rgba(255, 177, 61, 0.12); }
+.sb-pri.low { color: #8a93a6; background: rgba(138, 147, 166, 0.12); }
 .conf-bar em {
   display: block;
   height: 100%;

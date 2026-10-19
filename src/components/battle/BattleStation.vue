@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import PhaseTimeline from "./PhaseTimeline.vue";
 import PhasePanel from "./PhasePanel.vue";
 import InstructionList from "./InstructionList.vue";
@@ -9,6 +9,7 @@ import type { AlertRule } from "./instructionModel";
 import { formatHitRate } from "./hitRateModel";
 import { useWorkflowStore, todayStr } from "../../stores/workflow";
 import { useQuotesStore } from "../../stores/quotes";
+import { consumeOrderSide, pendingOrderSide } from "../../stores/quickAction";
 import { toast } from "../../composables/useToast";
 import { confirmDialog } from "../../composables/useDialog";
 import { formatMs, orderTimingSummary, type OrderTimingSummary } from "../../broker/timing";
@@ -36,6 +37,10 @@ let hitPoll = 0;
 let disposed = false;
 
 onMounted(async () => {
+  // B/S 快捷键：卡片挂载前方向已入队，这里消费一次并切方向 + 聚焦代码框。
+  // 放在任何 await 之前，保证首帧就是目标方向（避免先 BUY 再跳 SELL 的闪烁）。
+  const side = consumeOrderSide();
+  if (side) dock.value?.focusSide(side);
   // 缺省 scope 走后端早盘启发式：今日未确认 → 今日作战卡；否则下一交易日。
   // 战斗台既要展示今日计划，也要承担盘后「确认明日作战卡」入口，故不再固定 scope="today"。
   void wf.loadToday();
@@ -52,6 +57,14 @@ onBeforeUnmount(() => {
   window.clearInterval(clock);
   window.clearInterval(poll);
   window.clearInterval(hitPoll);
+});
+
+// 作战台已挂载时（例如正看着作战台再按 S）也要消费待处理方向：
+// 只在 mount 消费会留下一个「下次重挂载才生效」的陈旧方向，容易在无关场景误切方向。
+watch(pendingOrderSide, (side) => {
+  if (!side) return;
+  const next = consumeOrderSide();
+  if (next) dock.value?.focusSide(next);
 });
 
 // 只轮询本地状态：同花顺通道的 broker_query_position 会激活交易窗口并抢焦点（同 BrokerConsole 不自动刷新），

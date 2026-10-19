@@ -67,10 +67,12 @@ import { startTimeSeries } from "./composables/useTimeSeries";
 import { startCollector } from "./composables/useCollector";
 import { playAlert } from "./utils/sound";
 import { initPluginSystem } from "./plugin/register";
-import { promptDialog } from "./composables/useDialog";
+import { confirmDialog, promptDialog, useDialogState } from "./composables/useDialog";
 import { toast } from "./composables/useToast";
 import { useNovice } from "./composables/useNovice";
 import { useLicenseStore } from "./stores/license";
+import { coCancelAll } from "./broker/co";
+import { requestOrder } from "./stores/quickAction";
 
 const wl = useWatchlistStore();
 const quotes = useQuotesStore();
@@ -367,6 +369,68 @@ registerAction({
 registerAction({
   id: "focus.exit", title: "退出聚焦", category: "盯盘", defaultKeys: "Escape", editingSafe: true,
   hidden: true, when: () => bench.isFocused.value, run: exitFocus,
+});
+
+// ===== P2-b1 全局快捷键：B/S 下单方向 · C 撤销全部条件单 · W/D 直达卡片 =====
+// editingSafe 缺省 false：焦点在输入框时 useActions 直接拦截，单字母键不会误伤打字。
+function openCockpitFor(side: "BUY" | "SELL") {
+  bench.open("cockpit");
+  if (!bench.freeMode.value) bench.setGlassActive("cockpit");
+  // 作战台可能尚未挂载（首次打开 / 切卡后重挂载）：方向先入队，由 BattleStation 挂载时消费。
+  requestOrder(side);
+}
+
+async function cancelAllConditionalOrders() {
+  // 已有弹窗（含本确认）时不叠加：confirmDialog 是单例状态，重复打开会丢前一个 Promise。
+  if (useDialogState().open) return;
+  const ok = await confirmDialog({
+    title: "撤销全部活动条件单？",
+    message: "将撤销所有未触发的条件单，已触发/已成交不受影响。",
+    confirmText: "全部撤销",
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    const n = await coCancelAll();
+    if (n > 0) toast.success(`已撤销 ${n} 张活动条件单`);
+    else toast.info("当前没有生效中的条件单");
+  } catch (e) {
+    const msg = (e as Error)?.message || String(e);
+    toast.error(`撤销条件单失败：${msg}`);
+  }
+}
+
+registerAction({
+  id: "trade.buy", title: "买入（作战台）", desc: "打开今日作战流，下单条切买入并聚焦代码框",
+  category: "交易", keywords: "快捷键 B 买入 下单 作战台",
+  icon: "M12 4l6 6h-4v10h-4V10H6z", defaultKeys: "B", editingSafe: false,
+  run: () => openCockpitFor("BUY"),
+});
+registerAction({
+  id: "trade.sell", title: "卖出（作战台）", desc: "打开今日作战流，下单条切卖出并聚焦代码框",
+  category: "交易", keywords: "快捷键 S 卖出 下单 作战台",
+  icon: "M12 20l-6-6h4V4h4v10h4z", defaultKeys: "S", editingSafe: false,
+  run: () => openCockpitFor("SELL"),
+});
+registerAction({
+  id: "trade.cancelAll", title: "撤销全部活动条件单", desc: "一次确认后撤销所有未触发的条件单",
+  category: "交易", keywords: "快捷键 C 条件单 撤销 全部",
+  icon: "M6 6l12 12M18 6L6 18", defaultKeys: "C", editingSafe: false,
+  run: () => void cancelAllConditionalOrders(),
+});
+registerAction({
+  id: "nav.watch", title: "自选股", desc: "打开自选股卡片",
+  category: "导航", keywords: "快捷键 W 自选 卡片",
+  icon: "M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z",
+  defaultKeys: "W", editingSafe: false,
+  run: () => bench.open("watch"),
+});
+registerAction({
+  id: "nav.chart", title: "K线图", desc: "打开 K 线图卡片",
+  category: "导航", keywords: "快捷键 D K线 图表 卡片",
+  icon: "M4 19h16v2H4zM6 16l4-5 3 3 4-6 3 3v3z",
+  defaultKeys: "D", editingSafe: false,
+  run: () => bench.open("chart"),
 });
 
 // 命令面板内部导航（仅面板打开时生效）

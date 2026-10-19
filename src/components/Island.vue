@@ -1,3 +1,8 @@
+<script lang="ts">
+// 模块级节流状态（P2-b1）：同一 Window 内所有灵动岛实例共享，盘中高优信号最多 30s 自动展开一次。
+let lastStrongExpandAt = 0;
+const STRONG_EXPAND_MS = 30_000;
+</script>
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -48,9 +53,43 @@ interface SignalEvent {
   price: number;
   vol: number;
   time: number;
+  /** 置信度（0~1）：DB 票为准，实时载荷带则先用，便于高优脉冲即时生效 */
+  confidence: number;
 }
 const signalEvents = ref<SignalEvent[]>([]);
 const signalMode = ref(true);
+
+/** 实时信号载荷归一化：老后端可能不带 confidence/vol，缺省 0 交给 DB 同步校正。 */
+function toSignalEvent(p: Partial<SignalEvent>): SignalEvent {
+  const conf = Number(p.confidence);
+  return {
+    sigId: p.sigId ?? "",
+    code: p.code ?? "",
+    name: p.name ?? "",
+    side: p.side ?? "",
+    source: p.source ?? "",
+    price: Number(p.price ?? 0),
+    vol: Number(p.vol ?? 0),
+    time: Number(p.time ?? Date.now()),
+    confidence: Number.isFinite(conf) ? conf : 0,
+  };
+}
+
+// P2-b1：待确认信号里最高置信度 ≥80% → 折叠胶囊加红色脉冲环（数据源含 DB 回补）。
+const strongSignal = computed(
+  () => signalEvents.value.reduce((max, s) => Math.max(max, s.confidence || 0), 0) >= 0.8,
+);
+
+/** 高优新信号自动展开到「信号」页：仅折叠态、模块级 30s 内最多一次，避免盘中反复弹开。 */
+function autoExpandForStrongSignal(confidence: number) {
+  if (confidence < 0.8 || expanded.value) return;
+  const now = Date.now();
+  if (now - lastStrongExpandAt < STRONG_EXPAND_MS) return;
+  lastStrongExpandAt = now;
+  signalMode.value = true;
+  activeTab.value = "signal";
+  void toggleExpand();
+}
 
 // 模拟交易委托（最近 10 笔）
 const paper = usePaperStore();
@@ -224,6 +263,7 @@ async function syncSignals() {
       price: t.price || t.refPrice,
       vol: t.vol,
       time: t.createdAt,
+      confidence: Number.isFinite(t.confidence) ? t.confidence : 0,
     }));
     if (list.length) signalMode.value = true;
   } catch {
@@ -322,14 +362,18 @@ onMounted(async () => {
     refresh();
   });
 
-  // 新交易信号：置顶 + 自动展开，随后以 DB 校正（去重/补全）
+  // 新交易信号：置顶 + 切「信号」页；仅高优且折叠态才自动展开（30s 限流），其余保持折叠。
   unlistenSignal = await listen<SignalEvent>("signal:new", (ev) => {
-    const s = { ...ev.payload, time: Date.now() };
+    const s = toSignalEvent({ ...ev.payload, time: Date.now() });
     signalEvents.value = [s, ...signalEvents.value].slice(0, 20);
     signalMode.value = true;
     activeTab.value = "signal";
-    if (!expanded.value) toggleExpand();
-    void syncSignals();
+    // 实时载荷可能没有 confidence（老后端 / 手建信号）：先以 DB 校正，再按该票真实置信度决定是否展开。
+    const payloadConfidence = s.confidence;
+    void syncSignals().then(() => {
+      const fresh = signalEvents.value.find((x) => x.sigId === s.sigId);
+      autoExpandForStrongSignal(Math.max(payloadConfidence, fresh?.confidence ?? 0));
+    });
   });
 
   // 确认 / 驳回 / 完成：重新从 DB 同步待确认（计数即时回落）
@@ -372,7 +416,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="island" :class="{ open: expanded }">
+  <div class="island" :class="{ open: expanded, strong: strongSignal }">
     <!-- ===== 收起态 ===== -->
     <div v-if="!expanded" class="pill" data-tauri-drag-region @click="toggleExpand">
       <!-- 信号 -->
@@ -586,6 +630,29 @@ html[data-window="island"] #app {
   transition: box-shadow .2s;
 }
 .pill:hover { box-shadow: 0 8px 32px rgba(0,0,0,.5); }
+
+/* P2-b1 高优信号：折叠胶囊红色脉冲环（最高置信度 ≥80%） */
+.island.strong .pill {
+  position: relative;
+  border-color: rgba(255, 59, 48, .65);
+}
+.island.strong .pill::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 59, 48, .55);
+  pointer-events: none;
+  animation: island-strong-ring 1.6s ease-out infinite;
+}
+@keyframes island-strong-ring {
+  0% { transform: scale(1); opacity: .9; }
+  70% { transform: scale(1.06); opacity: 0; }
+  100% { transform: scale(1.06); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .island.strong .pill::after { animation: none; opacity: .55; }
+}
 
 .avatar {
   width: 28px; height: 28px; border-radius: 50%;

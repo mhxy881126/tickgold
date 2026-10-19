@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { brokerQueryPosition, brokerQuickOrder, type BrokerStatus } from "../../broker/api";
 import { fetchOrderBook } from "../../api/market";
 import { recordOrderTiming } from "../../broker/timing";
@@ -23,6 +23,8 @@ const emit = defineEmits<{ (e: "ordered"): void }>();
 
 const quotes = useQuotesStore();
 const code = ref("");
+// B/S 快捷键直达：模板 ref 用于切方向后把焦点落到代码输入框。
+const codeInput = ref<HTMLInputElement | null>(null);
 const price = ref(0);
 const vol = ref(100);
 const position = ref<PositionPct>(2);
@@ -165,13 +167,27 @@ function setCode(c: string) {
   price.value = quotes.map[c]?.price ?? 0;
   void loadBook(c);
 }
-defineExpose({ setCode });
+
+/**
+ * B/S 快捷键：切到指定方向并把焦点落到代码输入框。
+ * 等下一帧再聚焦：快捷键回调发生在卡片刚打开 / 重挂载的同一次 flush 内，
+ * 立刻 focus 会被随后的渲染覆盖。
+ */
+function focusSide(s: "BUY" | "SELL") {
+  side.value = s;
+  void nextTick(() => {
+    codeInput.value?.focus();
+    codeInput.value?.select();
+  });
+}
+defineExpose({ setCode, focusSide });
 </script>
 
 <template>
   <div class="od" data-testid="order-dock">
     <div class="od-row">
       <input
+        ref="codeInput"
         v-model.trim="code"
         class="od-code mono"
         data-testid="order-code"
@@ -203,8 +219,22 @@ defineExpose({ setCode });
         <button type="button" class="od-chip" :class="{ on: position === 4 }" @click="applyPosition(4)">1/4</button>
       </div>
 
-      <button type="button" class="od-btn buy" data-testid="order-buy" :disabled="blocked" @click="openConfirm('BUY')">买入</button>
-      <button type="button" class="od-btn sell" data-testid="order-sell" :disabled="blocked" @click="openConfirm('SELL')">卖出</button>
+      <button
+        type="button"
+        class="od-btn buy"
+        :class="{ active: side === 'BUY' }"
+        data-testid="order-buy"
+        :disabled="blocked"
+        @click="openConfirm('BUY')"
+      >买入</button>
+      <button
+        type="button"
+        class="od-btn sell"
+        :class="{ active: side === 'SELL' }"
+        data-testid="order-sell"
+        :disabled="blocked"
+        @click="openConfirm('SELL')"
+      >卖出</button>
 
       <span class="od-mode" :class="{ live: live && !dead, dead, warn: liveDisabled }" data-testid="order-mode">{{ modeText }}</span>
       <span v-if="lastMsg" class="od-msg" data-testid="order-msg">{{ lastMsg }}</span>
@@ -257,6 +287,9 @@ defineExpose({ setCode });
 .od-btn:disabled { opacity: .45; cursor: not-allowed; }
 .od-btn.buy { color: var(--up); border-color: var(--up); }
 .od-btn.sell { color: var(--down); border-color: var(--down); }
+/* 当前下单方向（B/S 快捷键切换后高亮；也方便 e2e 断言方向） */
+.od-btn.buy.active { background: color-mix(in srgb, var(--up) 16%, transparent); font-weight: 700; }
+.od-btn.sell.active { background: color-mix(in srgb, var(--down) 16%, transparent); font-weight: 700; }
 .od-btn.primary { background: var(--accent); color: #111; border-color: var(--accent); }
 .od-btn.ghost { background: transparent; }
 .od-mode { margin-left: auto; font-size: 10.5px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-dim); }

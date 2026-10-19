@@ -1,12 +1,14 @@
 // 作战台 P0 端到端验收：开盘时段高亮 / 倒计时、下单一次确认、熔断置灰、模拟/实盘徽标、
 // 实盘未启用前端拦截、新旧作战台切换，P1-a 指令列表的状态徽标与触发提示，
 // 以及 P1-b 行内编辑触发条件 / 触发后一键下单 / 模拟盘自动开关，
-// P2-a 对账 chip（正常 / 冲突可跳转）与下单耗时展示。
+// P2-a 对账 chip（正常 / 冲突可跳转）与下单耗时展示，
+// P2-b1 B 快捷键（打开作战台 + 切买入方向 + 聚焦代码框）。
 //
 // 熔断状态注入（重要）：`tests/e2e/support/backend.ts` 会被 Vite 的 e2e alias 打进浏览器 bundle，
 // 与 Node 侧的 Playwright 测试进程是两份模块实例——在 spec 里 import 任何 setter 都改不到页面状态。
 // 因此统一用 page.addInitScript 预置 `window.__FAKE_BROKER_STATUS`，由 backend.ts 初始化时合并。
 import { test, expect, type Page } from "@playwright/test";
+import { boot } from "./support/helpers";
 
 // 2026-10-19 是周一；09:31（Asia/Shanghai）处于「开盘」段，距盘中还有 29 分钟。
 const OPEN_AT = new Date("2026-10-19T09:31:00+08:00");
@@ -412,6 +414,26 @@ test("对账冲突：chip 显示账实不符，点击打开券商控制台", asy
   const consoleCard = page.locator('.card-shell[data-card-id="brokerconsole"]');
   await expect(consoleCard).toBeVisible();
   await expect(consoleCard.locator(".card-title")).toHaveText("同花顺控制台");
+});
+
+// —— P2-b1 快捷键验收 ——
+
+test("B 快捷键：未开作战台时打开卡片、切买入方向并聚焦代码框", async ({ page }) => {
+  await installOpenClock(page);
+  await boot(page);
+
+  // 初始恢复的布局（watch/rank/news）不含作战流：确保 B 是从「未挂载」状态打开卡片。
+  await expect(page.getByTestId("battle-station")).toHaveCount(0);
+
+  // 非输入态单字母快捷键：B → 打开今日作战流 + 下单条切买入 + 聚焦代码框。
+  await page.keyboard.press("b");
+
+  await expect(page.getByTestId("battle-station")).toBeVisible();
+  // OrderDock 给当前方向按钮加 .active：买入按钮必须处于选中态。
+  await expect(page.getByTestId("order-buy")).toHaveClass(/active/);
+  await expect(page.getByTestId("order-sell")).not.toHaveClass(/active/);
+  // 聚焦证明 BattleStation 挂载时消费了 pendingOrderSide 并调用 dock.focusSide。
+  await expect(page.getByTestId("order-code")).toBeFocused();
 });
 
 test("下单耗时：确认下单成功后头部显示最近下单", async ({ page }) => {
