@@ -96,7 +96,8 @@ async function doPlanGenerate() {
   selected.value = null;
 }
 async function doPlanConfirm() {
-  await wf.planConfirm();
+  // 早盘提醒路径按当前作战卡的计划日确认（今日 draft），不再依赖六步门禁。
+  await wf.planConfirm(wf.battlePlan?.planDate);
   selected.value = null;
 }
 async function doReset() {

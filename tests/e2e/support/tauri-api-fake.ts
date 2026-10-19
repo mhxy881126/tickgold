@@ -24,6 +24,12 @@ export async function once(event: string, handler: Listener): Promise<() => void
   return un;
 }
 
+// e2e 测试钩子：spec 里 page.evaluate(() => window.__fakeEmit(event, payload)) 直接触发
+// 与前端 listen 同一个进程内事件总线（如 App 级 battle:reminder 横幅），无需真实后端。
+if (typeof window !== "undefined") {
+  (window as unknown as { __fakeEmit?: typeof emit }).__fakeEmit = emit;
+}
+
 // ---- window ----
 function windowMethods(label: string) {
   return {

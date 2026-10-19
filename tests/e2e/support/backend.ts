@@ -409,6 +409,20 @@ const handlers: Record<string, Handler> = {
     planConfirmed: a?.scope === "today",
   }),
   workflow_p2_products: () => ({ feedback: null, running: false, killSwitch: false }),
+  // P1-c 命中率：固定有价样本（12 笔 ≥ 3）→ 作战台头部必须显示三个百分比。
+  workflow_hit_rate: () => ({
+    days: 20,
+    plans: 12,
+    instructions: 40,
+    triggered: 25,
+    triggeredPct: 62,
+    executed: 18,
+    executedPct: 45,
+    wins: 7,
+    winPct: 58,
+    samples: 12,
+    pricedSamples: 12,
+  }),
   // P1-a 指令列表：3 条覆盖待触发 / 已触发 / 已成交三种徽标与触发提示解析。
   workflow_instructions: () => ({ plan: fakePlan, instructions: fakeInstructions }),
   // P1-b 行内编辑：记录保存参数，返回「旧条件单作废、按新规则重建」后的指令列表。

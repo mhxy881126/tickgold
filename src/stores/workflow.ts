@@ -258,7 +258,8 @@ export interface BattlePlan {
   model?: string;
   instructions: PlanInstruction[];
 }
-/** 作战卡取计划口径：next=下一交易日（驾驶舱③确认入口），today=今天优先（作战台，与指令列表同源）。 */
+/** 作战卡取计划口径：next=下一交易日（盘后确认入口），today=今天优先（作战台，与指令列表同源）。
+ *  不传 scope（None）= 后端启发式：今日作战卡未确认时取今天（8:45 提醒后的驾驶舱），否则下一交易日。 */
 export type PlanScope = "next" | "today";
 
 function todayStr(): string {
@@ -494,7 +495,9 @@ export const useWorkflowStore = defineStore("workflow", () => {
     return { ...prev, currentStep: next, allDone: next >= steps.length, steps, updatedAt: Date.now() };
   }
 
-  async function loadToday(scope: PlanScope = "next") {
+  // `scope` 缺省（undefined）时透传 null：后端走早盘启发式（今日未确认作战卡优先），
+  // 驾驶舱早盘可直接看到待确认的今日作战卡；作战台显式传 "today"。
+  async function loadToday(scope?: PlanScope) {
     loading.value = true;
     error.value = "";
     try {
@@ -511,8 +514,8 @@ export const useWorkflowStore = defineStore("workflow", () => {
   }
 
   // 真实 Tauri：回显当日已产出的态势包/候选池/作战卡。
-  // scope 透传后端：作战台传 today（与指令列表同一份计划），驾驶舱③默认 next（下一交易日）。
-  async function loadProducts(scope: PlanScope = "next") {
+  // scope 透传后端：作战台传 today（与指令列表同一份计划），驾驶舱缺省走早盘启发式。
+  async function loadProducts(scope?: PlanScope) {
     if (mockMode.value) return;
     try {
       const r = await invoke<{
@@ -520,7 +523,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
         candidates: Candidate[];
         plan: BattlePlan | null;
         planConfirmed: boolean;
-      }>("workflow_p1_products", { tradeDate: todayStr(), scope });
+      }>("workflow_p1_products", { tradeDate: todayStr(), scope: scope ?? null });
       const b = r.briefing as Briefing | null;
       briefing.value = b && b.limitUp !== undefined ? b : null;
       candidates.value = r.candidates ?? [];
@@ -634,7 +637,9 @@ export const useWorkflowStore = defineStore("workflow", () => {
   }
 
   // P1 第③步确认：作战卡转预警（入明日盯盘），推进到盯盘步。
-  async function planConfirm() {
+  // `planDate`：8:45 提醒的早盘确认路径。传入时后端按该计划日直接确认今日作战卡，
+  // 不要求今日 mission 走到第③步；缺省仍是盘后「确认下一交易日作战卡」原流程。
+  async function planConfirm(planDate?: string) {
     busy.value = true;
     error.value = "";
     try {
@@ -645,11 +650,12 @@ export const useWorkflowStore = defineStore("workflow", () => {
         if (battlePlan.value) battlePlan.value = { ...battlePlan.value, status: "confirmed" };
         if (mission.value) mission.value = localAdvance(mission.value, `作战卡已转 ${n} 条预警`);
       } else {
-        const r = await invoke<{ mission: Mission; plan: BattlePlan; alertsCreated: number }>(
+        const r = await invoke<{ mission: Mission | null; plan: BattlePlan; alertsCreated: number }>(
           "workflow_plan_confirm",
-          { tradeDate: todayStr() },
+          { tradeDate: todayStr(), planDate: planDate ?? null },
         );
-        mission.value = r.mission;
+        // 早盘路径可能不带 mission：保留已有任务状态，不清空六步进度。
+        if (r.mission) mission.value = r.mission;
         battlePlan.value = r.plan;
         alertsCreated.value = r.alertsCreated ?? 0;
         planConfirmed.value = true;

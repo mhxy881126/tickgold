@@ -580,14 +580,74 @@ pub fn workflow_plan(
     Ok(json!({ "mission": st_view, "plan": saved }))
 }
 
+/// 按计划日确认作战卡（早盘提醒路径，纯 DB 部分，供命令与单测共用）。
+///
+/// 与默认路径的区别：**不读今日 mission 门禁**。8:45 提醒时今日任务通常还是全新的
+/// 第①步（盘后流水线推进的是昨天的 mission），若仍要求第③步，用户点「去确认」会直接
+/// 报「需要在第 3 步进行」，早盘确认链路就断了。返回 `(plan_id, 计划 JSON, 新建预警数)`。
+fn confirm_plan_on_date(
+    dir: &std::path::Path,
+    plan_date: &str,
+) -> Result<(i64, Value, i64), String> {
+    let plan_id = plan::find_plan_id_by_date(dir, plan_date)?
+        .ok_or_else(|| format!("未找到 {plan_date} 的作战卡"))?;
+    let alerts_created = plan::confirm_plan_alerts(dir, plan_id)?;
+    let saved = plan::get_plan(dir, plan_id)?;
+    Ok((plan_id, saved, alerts_created))
+}
+
+/// 按计划日确认 + 同步今日 mission，返回与默认路径相同的 `{mission, plan, alertsCreated}`。
+///
+/// 门禁与推进分开：早盘路径不**要求**今日任务走到第③步；但若任务正停在计划步
+/// （正常的驾驶舱 ③ 确认流程），仍按原语义推进到盯盘——否则确认后 mission 永远停在
+/// 第③步，`workflow_watch_start` 的门禁会让 P2 全链路卡死。
+fn confirm_plan_by_date(
+    dir: &std::path::Path,
+    trade_date: &str,
+    plan_date: &str,
+) -> Result<Value, String> {
+    let (plan_id, saved, alerts_created) = confirm_plan_on_date(dir, plan_date)?;
+    let c = open_readwrite(dir)?;
+    let mut st = load_mission_state(&c, trade_date)?;
+    let mission = if st.current_step == 2 {
+        let snapshot = json!({ "kind": "planConfirmed", "planId": plan_id, "alerts": alerts_created })
+            .to_string();
+        persist_advance(&c, trade_date, &mut st, Some(snapshot))?
+    } else {
+        // 早盘全新任务（step 0）或已进入盯盘之后：只回显当前任务，不越级推进。
+        mission_from_state(trade_date, &st)
+    };
+    Ok(json!({
+        "mission": mission,
+        "plan": saved,
+        "alertsCreated": alerts_created
+    }))
+}
+
 /// 第③步确认：作战卡指令批量转预警（入明日盯盘），计划置 confirmed，推进到盯盘。
+///
+/// `plan_date` 有两种入口：
+/// - 缺省：驾驶舱 ③ 盘后确认下一交易日作战卡，保留今日 mission 第③步门禁并推进到盯盘；
+/// - 显式（8:45 提醒的「去确认」）：按该计划日直接确认今日作战卡，不要求今日 mission
+///   走到第③步；任务恰在计划步时仍推进到盯盘，其它步保持原状。
 #[tauri::command]
 pub fn workflow_plan_confirm(
     state: State<'_, AiState>,
     trade_date: Option<String>,
+    plan_date: Option<String>,
 ) -> Result<Value, String> {
     let date = trade_date.unwrap_or_else(workflow::today_str);
     let dir = state.dir().clone();
+
+    if let Some(plan_date) = plan_date {
+        let out = confirm_plan_by_date(&dir, &date, &plan_date)?;
+        log::info!(
+            "[P1-c] 按计划日确认作战卡 {plan_date}（alerts={}）",
+            out["alertsCreated"].as_i64().unwrap_or(0)
+        );
+        return Ok(out);
+    }
+
     {
         let c = open_readwrite(&dir)?;
         let _st = require_step(&c, &date, 2, "作战卡确认")?;
@@ -627,8 +687,9 @@ fn materialize_paused(app: &AppHandle) -> bool {
 ///
 /// `scope` 决定取哪份计划：
 /// - `Some("today")`：作战台用，今天优先（与 `workflow_instructions` 同一份计划）；
-/// - 其它/缺省：驾驶舱 ③ 盘后确认流程用，保持「下一交易日」原语义。若这里也取今天
-///   已确认的计划，前端 `planConfirmed` 会变 true，把「确认作战卡」入口当成已完成而隐藏。
+/// - `Some("next")` / 其它未知值：保持「下一交易日」原语义（盘后确认流程）；
+/// - 缺省：早盘提醒路径。今日作战卡存在且未确认时取今天（让 8:45 的驾驶舱直接看到
+///   待确认作战卡），否则回落到下一交易日。
 #[tauri::command]
 pub fn workflow_p1_products(
     app: AppHandle,
@@ -695,15 +756,39 @@ fn resolve_plan(c: &Connection, date: &str) -> Option<(i64, Value)> {
     plan::plan_to_json(c, pid).ok().map(|p| (pid, p))
 }
 
-/// 作战卡取计划：`scope == "today"` 时与指令列表同一份（今天优先），否则下一交易日。
+/// 今日未确认计划（早盘确认入口）：无今日计划或已 confirmed → None。
 ///
-/// 两种语义都只保留一个真相源，由调用方 scope 显式选择：
+/// 「今天」与 `instruction_plan_id` / `materialize_today` 同口径取北京日期，
+/// 避免跨时区时读到错的计划日；只对未确认计划生效，已确认计划仍走下一交易日语义。
+fn unconfirmed_today_plan(c: &Connection) -> Option<(i64, Value)> {
+    let today = crate::broker::conditional::today_dashed();
+    let pid = plan_id_on(c, &today)?;
+    let status: String = c
+        .query_row("SELECT status FROM plan WHERE id=?1", [pid], |r| r.get(0))
+        .ok()?;
+    if status == "confirmed" {
+        return None;
+    }
+    plan::plan_to_json(c, pid).ok().map(|p| (pid, p))
+}
+
+/// 作战卡取计划：`scope` 显式选择语义，缺省走「早盘优先今日未确认」启发式。
+///
+/// 三种语义都只保留一个真相源：
 /// - 作战台（`scope="today"`）：与 InstructionList 指向同一份计划；
-/// - 驾驶舱 ③（缺省）：盘后「确认下一交易日作战卡」入口依赖下一交易日计划，
-///   不能被今天已确认的计划遮住。
+/// - 缺省（8:45 提醒后的驾驶舱）：今日作战卡未确认 → 今天，让待确认卡直接可见；
+///   （今日已确认 / 无今日计划 → 下一交易日，不遮挡盘后确认入口）
+/// - `scope="next"`（驾驶舱 ③ 盘后确认）：下一交易日，保持原语义不被今天已确认的计划遮住。
 fn products_plan(c: &Connection, date: &str, scope: Option<&str>) -> Option<(i64, Value)> {
-    if scope == Some("today") {
-        return resolve_plan(c, date);
+    match scope {
+        Some("today") => return resolve_plan(c, date),
+        None => {
+            if let Some(hit) = unconfirmed_today_plan(c) {
+                return Some(hit);
+            }
+        }
+        // "next" 与未知值保持原行为：只取下一交易日。
+        Some(_) => {}
     }
     let pid = plan_id_on(c, &plan::next_trade_date(date))?;
     plan::plan_to_json(c, pid).ok().map(|p| (pid, p))
@@ -926,8 +1011,8 @@ mod tests {
         .unwrap();
         let next_id = c.last_insert_rowid();
 
-        // 驾驶舱 ③（scope 缺省 / "next" / 未知值）：始终取下一交易日，保留「确认作战卡」入口；
-        // 若误取今天已确认的计划，前端 planConfirmed 会变 true 而隐藏确认按钮。
+        // 驾驶舱 ③（今日已确认 / scope="next" / 未知值）：取下一交易日，保留「确认作战卡」
+        // 入口；若误取今天已确认的计划，前端 planConfirmed 会变 true 而隐藏确认按钮。
         for scope in [None, Some("next"), Some("whatever")] {
             let (pid, plan) = products_plan(&c, base, scope).expect("下一交易日有计划");
             assert_eq!(pid, next_id, "scope={scope:?} 应取下一交易日计划");
@@ -943,5 +1028,178 @@ mod tests {
         let (today_pid, _) = products_plan(&c, base, Some("today")).expect("今天有计划");
         assert_eq!(today_pid, today_id);
         assert_ne!(today_id, next_id);
+    }
+
+    #[test]
+    fn products_default_prefers_unconfirmed_today_plan() {
+        let c = conn_with_plan_tables();
+        let base = "2999-01-01";
+        let next = plan::next_trade_date(base);
+        let today = crate::broker::conditional::today_dashed();
+        c.execute(
+            "INSERT INTO plan(plan_date,title,status) VALUES(?1,'今日作战卡','draft')",
+            [&today],
+        )
+        .unwrap();
+        let today_id = c.last_insert_rowid();
+        c.execute(
+            "INSERT INTO plan(plan_date,title,status) VALUES(?1,'明日作战卡','draft')",
+            [&next],
+        )
+        .unwrap();
+        let next_id = c.last_insert_rowid();
+
+        // 8:45 提醒路径（scope 缺省）：今日 draft 直接可见，避免驾驶舱只看到明天的卡。
+        let (pid, plan) = products_plan(&c, base, None).expect("今日未确认计划应可看到");
+        assert_eq!(pid, today_id, "缺省应优先今日未确认作战卡");
+        assert_eq!(plan["status"].as_str(), Some("draft"));
+        assert_eq!(plan["planDate"].as_str(), Some(today.as_str()));
+
+        // 显式语义不变：next 只取下一交易日；today 今天优先。
+        assert_eq!(
+            products_plan(&c, base, Some("next")).map(|(id, _)| id),
+            Some(next_id)
+        );
+        assert_eq!(
+            products_plan(&c, base, Some("today")).map(|(id, _)| id),
+            Some(today_id)
+        );
+
+        // 今日确认后缺省回落到下一交易日（盘后确认入口原语义）。
+        c.execute("UPDATE plan SET status='confirmed' WHERE id=?1", [today_id])
+            .unwrap();
+        assert_eq!(
+            products_plan(&c, base, None).map(|(id, _)| id),
+            Some(next_id),
+            "今日已确认 → 缺省仍取下一交易日"
+        );
+    }
+
+    /// 早盘确认用例的临时主库：只建确认路径需要的 plan / plan_instruction / alerts。
+    fn fresh_confirm_db() -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "tickgold-p1c-confirm-{}-{seq}",
+            now_millis()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let c = Connection::open(dir.join("stock-dock.db")).unwrap();
+        c.execute_batch(
+            "CREATE TABLE plan(id INTEGER PRIMARY KEY AUTOINCREMENT,plan_date TEXT UNIQUE,
+                title TEXT DEFAULT '',market_view TEXT DEFAULT '',status TEXT NOT NULL DEFAULT 'draft',
+                profile_key TEXT DEFAULT '',source_review_date TEXT DEFAULT '',model TEXT DEFAULT '',
+                created_at INTEGER,updated_at INTEGER);
+             CREATE TABLE plan_instruction(id INTEGER PRIMARY KEY AUTOINCREMENT,plan_id INTEGER,
+                tier TEXT NOT NULL DEFAULT 'watch',code TEXT DEFAULT '',name TEXT DEFAULT '',
+                theme TEXT DEFAULT '',condition TEXT DEFAULT '',action TEXT DEFAULT '',
+                position_hint TEXT DEFAULT '',alert_rule TEXT DEFAULT '{}',
+                status TEXT NOT NULL DEFAULT 'open',sort INTEGER NOT NULL DEFAULT 0,
+                co_id TEXT DEFAULT '',trigger_json TEXT DEFAULT '',synced_at INTEGER DEFAULT 0);
+             CREATE TABLE alerts(id TEXT PRIMARY KEY,code TEXT,name TEXT DEFAULT '',up_price REAL,
+                down_price REAL,up_pct REAL,down_pct REAL,cooldown_sec INTEGER NOT NULL DEFAULT 300,
+                enabled INTEGER NOT NULL DEFAULT 1,last_fired_at INTEGER,min_volume_ratio REAL,
+                rise_speed REAL,speed_window_sec INTEGER,down_speed REAL,min_turnover REAL,
+                min_amount REAL,seal_limit_up INTEGER,seal_limit_down INTEGER,broken_limit INTEGER);",
+        )
+        .unwrap();
+        dir
+    }
+
+    /// 在临时库里写入「今日 draft 计划 + 1 条 open 指令」，返回 plan_id。
+    fn insert_today_draft_plan(dir: &std::path::Path, today: &str) -> i64 {
+        let c = Connection::open(dir.join("stock-dock.db")).unwrap();
+        c.execute(
+            "INSERT INTO plan(plan_date,title,source_review_date,status,created_at,updated_at)
+             VALUES(?1,'今日作战卡','2026-10-19','draft',0,0)",
+            [today],
+        )
+        .unwrap();
+        let pid = c.last_insert_rowid();
+        c.execute(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(?1,'candidate','600519','贵州茅台','{}','open',0)",
+            [pid],
+        )
+        .unwrap();
+        pid
+    }
+
+    #[test]
+    fn confirm_plan_on_date_skips_mission_step_gate() {
+        let dir = fresh_confirm_db();
+        let today = crate::broker::conditional::today_dashed();
+        let plan_id = insert_today_draft_plan(&dir, &today);
+
+        {
+            let c = open_readwrite(&dir).unwrap();
+            // 默认路径：全新 mission 在第①步，第③步确认必须被门禁拒绝。
+            assert!(
+                require_step(&c, &today, 2, "作战卡确认").is_err(),
+                "默认确认路径仍要求第③步"
+            );
+            // 早盘路径的数据前提：今日 draft 计划可作为待确认计划返回。
+            let hit = unconfirmed_today_plan(&c).expect("今日 draft 应作为待确认计划");
+            assert_eq!(hit.0, plan_id);
+            assert_eq!(hit.1["status"].as_str(), Some("draft"));
+        }
+
+        // 早盘路径：显式 plan_date 不看 mission 门禁，直接把今日 draft 转预警。
+        let out = confirm_plan_by_date(&dir, &today, &today)
+            .expect("早盘确认不应受步数门禁约束");
+        assert_eq!(out["alertsCreated"].as_i64(), Some(1), "1 条 open 指令应转 1 条预警");
+        assert_eq!(out["plan"]["status"].as_str(), Some("confirmed"));
+        assert_eq!(out["plan"]["planDate"].as_str(), Some(today.as_str()));
+        // 早盘全新任务（第①步）不因确认而越级推进。
+        assert_eq!(out["mission"]["currentStep"].as_i64(), Some(0));
+
+        let c = Connection::open(dir.join("stock-dock.db")).unwrap();
+        let instr_status: String = c
+            .query_row(
+                "SELECT status FROM plan_instruction WHERE plan_id=?1",
+                [plan_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(instr_status, "alerted");
+        let alert_count: i64 = c
+            .query_row("SELECT COUNT(*) FROM alerts", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(alert_count, 1);
+        // 确认后不再作为「早盘待确认计划」返回，缺省回落到下一交易日语义。
+        assert!(unconfirmed_today_plan(&c).is_none());
+    }
+
+    #[test]
+    fn confirm_plan_by_date_advances_mission_at_plan_step() {
+        let dir = fresh_confirm_db();
+        let today = crate::broker::conditional::today_dashed();
+        insert_today_draft_plan(&dir, &today);
+        {
+            // 正常驾驶舱 ③ 流程：collect / analyze 已推进到计划步（step 2）。
+            let c = open_readwrite(&dir).unwrap();
+            let mut st = load_mission_state(&c, &today).unwrap();
+            persist_advance(&c, &today, &mut st, None).unwrap();
+            persist_advance(&c, &today, &mut st, None).unwrap();
+            assert_eq!(st.current_step, 2);
+        }
+
+        let out = confirm_plan_by_date(&dir, &today, &today).unwrap();
+        assert_eq!(
+            out["mission"]["currentStep"].as_i64(),
+            Some(3),
+            "任务正在计划步时，按日确认仍应推进到盯盘（否则 P2 无法启动）"
+        );
+        assert_eq!(out["mission"]["steps"][2]["status"].as_str(), Some("done"));
+        assert_eq!(out["mission"]["steps"][3]["status"].as_str(), Some("doing"));
+    }
+
+    #[test]
+    fn confirm_plan_on_date_missing_returns_chinese_error() {
+        let dir = fresh_confirm_db();
+        let err = confirm_plan_on_date(&dir, "2026-01-01").unwrap_err();
+        assert_eq!(err, "未找到 2026-01-01 的作战卡");
     }
 }

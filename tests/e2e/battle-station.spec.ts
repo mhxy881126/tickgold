@@ -257,3 +257,62 @@ test("模拟盘自动执行可逐条关闭：autoConfirm=false 透传", async ({
   );
   expect(lastTrigger).toMatchObject({ instrId: 1, rule: { autoConfirm: false } });
 });
+
+// —— P1-c 命中率 / 8:45 盘前确认提醒验收 ——
+
+test("命中率：作战台头部显示近20日触发/执行/胜率", async ({ page }) => {
+  await installOpenClock(page);
+  await openCockpit(page);
+
+  // fake 返回有价样本 12 笔（≥3），头部必须出三个百分比而不是「样本不足」。
+  const hit = page.getByTestId("hit-rate");
+  await expect(hit).toBeVisible();
+  await expect(hit).toContainText("62%");
+  await expect(hit).toContainText("45%");
+  await expect(hit).toContainText("58%");
+});
+
+test("8:45 提醒横幅：显示待确认文案，点「去确认」打开今日作战流", async ({ page }) => {
+  await installOpenClock(page);
+  await openCockpit(page);
+
+  // 横幅是 App 级：通过 fake 事件总线模拟后端 battle:reminder（与 listen 同一个总线实例）。
+  await page.evaluate(() =>
+    (window as any).__fakeEmit("battle:reminder", {
+      kind: "plan-confirm",
+      planId: 1,
+      planDate: "2026-10-20",
+      status: "draft",
+      text: "今日作战卡待确认（3 条指令）",
+    }),
+  );
+
+  const banner = page.getByTestId("reminder-banner");
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText("今日作战卡待确认（3 条指令）");
+
+  await page.getByTestId("reminder-open").click();
+  await expect(banner).toHaveCount(0);
+  // 「去确认」走 island:open-card → cockpit：今日作战流卡片内容可见。
+  await expect(page.getByTestId("battle-station")).toBeVisible();
+});
+
+test("8:45 提醒横幅：点「稍后」仅关闭横幅", async ({ page }) => {
+  await installOpenClock(page);
+  await openCockpit(page);
+
+  await page.evaluate(() =>
+    (window as any).__fakeEmit("battle:reminder", {
+      kind: "plan-confirm",
+      planId: 1,
+      planDate: "2026-10-20",
+      status: "draft",
+      text: "今日作战卡待确认（3 条指令）",
+    }),
+  );
+
+  const banner = page.getByTestId("reminder-banner");
+  await expect(banner).toBeVisible();
+  await page.getByTestId("reminder-dismiss").click();
+  await expect(banner).toHaveCount(0);
+});

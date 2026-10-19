@@ -283,7 +283,7 @@ async fn run_scan(app: AppHandle, dir: PathBuf) -> Result<Value, String> {
         );
     }
     if step < 4 {
-        let _ = crate::ai::workflow_p1::workflow_plan_confirm(app.state::<AiState>(), None)
+        let _ = crate::ai::workflow_p1::workflow_plan_confirm(app.state::<AiState>(), None, None)
             .map_err(|e| format!("智驾确认作战卡失败: {e}"))?;
     }
 

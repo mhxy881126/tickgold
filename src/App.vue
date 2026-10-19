@@ -11,6 +11,7 @@ import OnboardingDialog from "./components/OnboardingDialog.vue";
 import OrderConfirmBridge from "./components/OrderConfirmBridge.vue";
 import ConnectionGuard from "./components/ConnectionGuard.vue";
 import ReconciliationGuard from "./components/ReconciliationGuard.vue";
+import ReminderBanner from "./components/ReminderBanner.vue";
 import ToastContainer from "./components/ToastContainer.vue";
 import LayoutMenu from "./components/LayoutMenu.vue";
 import SceneSwitcher from "./components/SceneSwitcher.vue";
@@ -959,6 +960,8 @@ onBeforeUnmount(() => {
     <!-- P0-3 断连闭环 + 重连对账横幅 -->
     <ConnectionGuard />
     <ReconciliationGuard />
+    <!-- P1-c 8:45 盘前确认提醒（App 级横幅，点击直达作战流） -->
+    <ReminderBanner />
     <ToastContainer />
     <AppDialog />
 
