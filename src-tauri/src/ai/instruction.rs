@@ -11,6 +11,16 @@ fn num(rule: &Value, key: &str) -> Option<f64> {
     rule.get(key).and_then(|v| v.as_f64())
 }
 
+/// 突破阈值：价格/涨幅必须 > 0；0 或负值视为未设置。
+fn positive(rule: &Value, key: &str) -> Option<f64> {
+    num(rule, key).filter(|v| *v > 0.0)
+}
+
+/// 回踩阈值：回落幅度必须 < 0（如 `downPct:-5`）；0 或正值视为未设置。
+fn negative(rule: &Value, key: &str) -> Option<f64> {
+    num(rule, key).filter(|v| *v < 0.0)
+}
+
 /// 构造条件单触发叶子。
 fn leaf(field: &str, op: &str, value: f64, params: Option<Value>) -> CoTrigger {
     CoTrigger {
@@ -31,15 +41,18 @@ fn leaf(field: &str, op: &str, value: f64, params: Option<Value>) -> CoTrigger {
 /// `pct>=5 AND pct<=-5` 这种永假条件，故只取单方向——突破优先，其次回踩：
 /// `upPrice`（price gte）→ `upPct`（pct gte）→ `downPrice`（price lte）→
 /// `downPct`（pct lte），命中其一即停止，绝不上下同时出叶。
+///
+/// 方向阈值必须有效：突破价/幅 > 0，回踩价 > 0、回落幅 < 0；0 视为未设置。
+/// 否则 `upPrice:0` 会物化成 `price>=0` 的恒真单，一开盘就触发。
 pub fn leaves_from_alert_rule(rule: &Value) -> Vec<CoTrigger> {
     let mut out = Vec::new();
-    if let Some(v) = num(rule, "upPrice") {
+    if let Some(v) = positive(rule, "upPrice") {
         out.push(leaf("price", "gte", v, None));
-    } else if let Some(v) = num(rule, "upPct") {
+    } else if let Some(v) = positive(rule, "upPct") {
         out.push(leaf("pct", "gte", v, None));
-    } else if let Some(v) = num(rule, "downPrice") {
+    } else if let Some(v) = positive(rule, "downPrice") {
         out.push(leaf("price", "lte", v, None));
-    } else if let Some(v) = num(rule, "downPct") {
+    } else if let Some(v) = negative(rule, "downPct") {
         out.push(leaf("pct", "lte", v, None));
     }
     if let Some(v) = num(rule, "minVolumeRatio") {
@@ -150,6 +163,18 @@ pub fn materialize_plan(
     conn: &rusqlite::Connection,
     plan_id: i64,
 ) -> Result<MaterializeSummary, String> {
+    // 只在计划自己的交易日物化：次日计划必须等开盘当天再建条件单，
+    // 否则 ttl=day 的单在当天就被 conditional::expire_due 判过期，
+    // 智驾盘中的确认也可能当天触发次日单。
+    let plan_date: String = conn
+        .query_row("SELECT plan_date FROM plan WHERE id=?1", [plan_id], |r| {
+            r.get::<_, String>(0)
+        })
+        .unwrap_or_default();
+    if plan_date != crate::broker::conditional::today_dashed() {
+        return Ok(MaterializeSummary::default());
+    }
+
     let rows: Vec<(i64, String, String, String, String, String)> = {
         let mut stmt = conn
             .prepare(
@@ -182,10 +207,16 @@ pub fn materialize_plan(
             out.skipped += 1;
             continue;
         }
+        // 代码去空白后再判空/建单，避免 " 600519 " 这类脏数据落到条件单。
+        let code = code.trim().to_string();
+        if code.is_empty() {
+            out.skipped += 1;
+            continue;
+        }
         let rule: Value =
             serde_json::from_str(&rule_json).unwrap_or_else(|_| serde_json::json!({}));
         let leaves = leaves_from_alert_rule(&rule);
-        if leaves.is_empty() || code.trim().is_empty() {
+        if leaves.is_empty() {
             out.skipped += 1;
             continue;
         }
@@ -200,7 +231,7 @@ pub fn materialize_plan(
             .unwrap_or("BUY")
             .to_uppercase();
         let input = crate::broker::conditional::CreateInput {
-            code: code.clone(),
+            code,
             name: name.clone(),
             side,
             trigger: leaves.clone(),
@@ -359,7 +390,8 @@ mod tests {
         conn.execute_batch(crate::broker::conditional::CREATE_SQL)
             .unwrap();
         conn.execute_batch(
-            "CREATE TABLE plan_instruction(
+            "CREATE TABLE plan(id INTEGER PRIMARY KEY, plan_date TEXT);
+             CREATE TABLE plan_instruction(
                 id INTEGER PRIMARY KEY AUTOINCREMENT, plan_id INTEGER, tier TEXT, code TEXT,
                 name TEXT, theme TEXT, condition TEXT, action TEXT, position_hint TEXT,
                 alert_rule TEXT, status TEXT, sort INTEGER,
@@ -369,9 +401,32 @@ mod tests {
         conn
     }
 
+    fn insert_plan(conn: &rusqlite::Connection, id: i64, plan_date: &str) {
+        conn.execute(
+            "INSERT INTO plan(id,plan_date) VALUES(?1,?2)",
+            rusqlite::params![id, plan_date],
+        )
+        .unwrap();
+    }
+
+    fn co_count(conn: &rusqlite::Connection) -> i64 {
+        conn.query_row("SELECT COUNT(*) FROM conditional_order", [], |r| r.get(0))
+            .unwrap()
+    }
+
+    fn instruction_co_id(conn: &rusqlite::Connection, id: i64) -> String {
+        conn.query_row(
+            "SELECT co_id FROM plan_instruction WHERE id=?1",
+            [id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
     #[test]
     fn materialize_is_idempotent() {
         let conn = conn_with_tables();
+        insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
         conn.execute(
             "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
              VALUES(1,'candidate','600519','贵州茅台','{\"upPrice\":1700,\"vol\":200}','open',0)",
@@ -383,9 +438,7 @@ mod tests {
         let second = materialize_plan(&conn, 1).unwrap();
         assert_eq!(second.created, 0);
         assert_eq!(second.skipped, 1);
-        let n: i64 = conn
-            .query_row("SELECT COUNT(*) FROM conditional_order", [], |r| r.get(0))
-            .unwrap();
+        let n = co_count(&conn);
         assert_eq!(n, 1);
         let (co_id, trigger_json): (String, String) = conn
             .query_row(
@@ -412,6 +465,7 @@ mod tests {
     #[test]
     fn materialize_skips_watch_and_invalid_rule() {
         let conn = conn_with_tables();
+        insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
         conn.execute_batch(
             "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
              VALUES(1,'watch','600519','茅台','{\"upPrice\":1700}','open',0);
@@ -422,5 +476,97 @@ mod tests {
         let s = materialize_plan(&conn, 1).unwrap();
         assert_eq!(s.created, 0);
         assert_eq!(s.skipped, 2);
+        assert_eq!(co_count(&conn), 0);
+    }
+
+    #[test]
+    fn materialize_skips_future_plan() {
+        let conn = conn_with_tables();
+        // 非计划日（未来日期）不物化：次日计划必须等开盘当天再建条件单。
+        insert_plan(&conn, 1, "2999-01-01");
+        conn.execute(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','600519','贵州茅台','{\"upPrice\":1700,\"vol\":200}','open',0)",
+            [],
+        )
+        .unwrap();
+        let s = materialize_plan(&conn, 1).unwrap();
+        assert_eq!(s.created, 0);
+        assert_eq!(s.skipped, 0, "非计划日应直接返回，不逐条扫描");
+        assert_eq!(co_count(&conn), 0);
+        assert!(instruction_co_id(&conn, 1).is_empty());
+    }
+
+    #[test]
+    fn materialize_skips_empty_code_and_zero_price() {
+        let conn = conn_with_tables();
+        insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
+        conn.execute_batch(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','','空代码','{\"upPrice\":1700}','open',0);
+             INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','000002','零价','{\"upPrice\":0}','open',1);
+             INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','000003','零价有涨幅','{\"upPrice\":0,\"upPct\":5}','open',2);",
+        )
+        .unwrap();
+        let s = materialize_plan(&conn, 1).unwrap();
+        // 空代码、只有 upPrice:0 的两条跳过；第三条 upPrice:0 不再遮蔽 upPct，按涨幅物化。
+        assert_eq!(s.created, 1);
+        assert_eq!(s.skipped, 2);
+        assert_eq!(co_count(&conn), 1);
+        assert!(instruction_co_id(&conn, 1).is_empty());
+        assert!(instruction_co_id(&conn, 2).is_empty());
+        let co_id = instruction_co_id(&conn, 3);
+        assert!(!co_id.is_empty());
+        let trigger: String = conn
+            .query_row(
+                "SELECT trigger_json FROM conditional_order WHERE co_id=?1",
+                [&co_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(trigger.contains("\"field\":\"pct\""), "{trigger}");
+        assert!(
+            !trigger.contains("\"field\":\"price\""),
+            "upPrice:0 不应生成 price>=0 恒真叶: {trigger}"
+        );
+
+        // 叶子层：零突破价被忽略后，方向选择继续落到 upPct（只出涨幅叶）。
+        let leaves = leaves_from_alert_rule(&json!({"upPrice": 0, "upPct": 5}));
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].field, "pct");
+        assert_eq!(leaves[0].op, "gte");
+        assert_eq!(leaves[0].value, 5.0);
+        // 零值/错方向的阈值一律视为未设置，避免恒真或恒假条件。
+        assert!(leaves_from_alert_rule(&json!({"upPrice": 0})).is_empty());
+        assert!(leaves_from_alert_rule(&json!({"downPct": 0})).is_empty());
+    }
+
+    #[test]
+    fn materialize_does_not_touch_other_plans() {
+        let conn = conn_with_tables();
+        let today = crate::broker::conditional::today_dashed();
+        insert_plan(&conn, 1, &today);
+        insert_plan(&conn, 2, &today);
+        conn.execute_batch(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','600519','贵州茅台','{\"upPrice\":1700}','open',0);
+             INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(2,'candidate','000001','平安','{\"upPrice\":10}','open',0);",
+        )
+        .unwrap();
+        let s = materialize_plan(&conn, 1).unwrap();
+        assert_eq!(s.created, 1);
+        assert_eq!(co_count(&conn), 1);
+        assert!(!instruction_co_id(&conn, 1).is_empty());
+        assert!(
+            instruction_co_id(&conn, 2).is_empty(),
+            "只应物化目标计划的指令，不得波及其它计划"
+        );
+        let note: String = conn
+            .query_row("SELECT note FROM conditional_order", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(note, "plan:1:1");
     }
 }

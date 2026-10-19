@@ -596,11 +596,9 @@ pub fn workflow_plan_confirm(
     let plan_id = plan::find_plan_id_by_date(&dir, &plan_date)?
         .ok_or_else(|| "请先生成作战卡再确认".to_string())?;
     let alerts_created = plan::confirm_plan_alerts(&dir, plan_id)?;
-    // P1-a：确认后把候选/触发指令物化为本地条件单（失败单条隔离，不阻断确认）。
-    let materialized = {
-        let c = open_readwrite(&dir)?;
-        crate::ai::instruction::materialize_plan(&c, plan_id).unwrap_or_default()
-    };
+    // P1-a：不在确认时物化。本计划面向下一交易日，条件单必须等计划日当天再建，
+    // 否则 ttl=day 的单会在建单当日被 conditional::expire_due 判过期；
+    // 计划日的物化入口见 materialize_today_plan（P1 读取路径）。
     let saved = plan::get_plan(&dir, plan_id)?;
 
     let c = open_readwrite(&dir)?;
@@ -611,9 +609,31 @@ pub fn workflow_plan_confirm(
     Ok(json!({
         "mission": mission,
         "plan": saved,
-        "alertsCreated": alerts_created,
-        "instructionsCreated": materialized.created
+        "alertsCreated": alerts_created
     }))
+}
+
+/// P1-a：把「计划日=今天」且已确认的计划物化为条件单（幂等，非计划日自动 no-op）。
+///
+/// 计划在上一交易日收盘后生成、确认，面向下一交易日；条件单若提前一天建，
+/// `trade_date` 会是昨日，`ttl=day` 的单在计划日开盘前就被 `expire_due` 清掉。
+/// 故物化放在计划日当天的读取路径上：P1 产物回显（本函数）是当前 HEAD 最早的
+/// 计划日读入口；Task 3 的 `workflow_instructions` 接入后可直接复用本函数。
+fn materialize_today_plan(c: &Connection) {
+    let today = crate::broker::conditional::today_dashed();
+    // 仅已确认的计划可建单：草稿计划（用户生成后未确认）不得在次日自动下单。
+    let plan_id: Option<i64> = c
+        .query_row(
+            "SELECT id FROM plan WHERE plan_date=?1 AND status='confirmed'",
+            [&today],
+            |r| r.get(0),
+        )
+        .ok();
+    if let Some(pid) = plan_id {
+        if let Err(e) = crate::ai::instruction::materialize_plan(c, pid) {
+            log::warn!("materialize plan {pid} failed: {e}");
+        }
+    }
 }
 
 /// 只读回显：重开驾驶舱 / 次日盘前时，取回当日已产出的态势包、候选池与次日作战卡。
@@ -628,6 +648,8 @@ pub fn workflow_p1_products(
     let briefing = load_briefing(&c, &date);
     ensure_candidate_table(&c)?;
     let candidates = load_candidates(&c, &date, 30).unwrap_or_default();
+    // 计划日首次读取 P1 产物时把今日作战卡物化为条件单（非计划日 no-op）。
+    materialize_today_plan(&c);
     let plan_date = plan::next_trade_date(&date);
     let plan = plan::find_plan_id_by_date(&dir, &plan_date)
         .ok()
