@@ -26,18 +26,20 @@ fn leaf(field: &str, op: &str, value: f64, params: Option<Value>) -> CoTrigger {
 /// 支持字段与 `market/alert.rs::eval_leaf` 对齐：price / pct / volumeRatio /
 /// turnover / amount / riseSpeed / downSpeed / sealUp / sealDown / broken；
 /// 无可用字段时返回空数组（调用方应跳过物化）。
+///
+/// 方向互斥：数组内是 AND，同时给上涨与下跌阈值会得到
+/// `pct>=5 AND pct<=-5` 这种永假条件，故只取单方向——突破优先，其次回踩：
+/// `upPrice`（price gte）→ `upPct`（pct gte）→ `downPrice`（price lte）→
+/// `downPct`（pct lte），命中其一即停止，绝不上下同时出叶。
 pub fn leaves_from_alert_rule(rule: &Value) -> Vec<CoTrigger> {
     let mut out = Vec::new();
     if let Some(v) = num(rule, "upPrice") {
         out.push(leaf("price", "gte", v, None));
-    }
-    if let Some(v) = num(rule, "downPrice") {
-        out.push(leaf("price", "lte", v, None));
-    }
-    if let Some(v) = num(rule, "upPct") {
+    } else if let Some(v) = num(rule, "upPct") {
         out.push(leaf("pct", "gte", v, None));
-    }
-    if let Some(v) = num(rule, "downPct") {
+    } else if let Some(v) = num(rule, "downPrice") {
+        out.push(leaf("price", "lte", v, None));
+    } else if let Some(v) = num(rule, "downPct") {
         out.push(leaf("pct", "lte", v, None));
     }
     if let Some(v) = num(rule, "minVolumeRatio") {
@@ -220,7 +222,10 @@ pub fn materialize_plan(
                 );
                 out.created += 1;
             }
-            Err(_) => out.failed += 1,
+            Err(e) => {
+                log::warn!("materialize instruction {id} failed: {e}");
+                out.failed += 1;
+            }
         }
     }
     Ok(out)
@@ -238,10 +243,15 @@ mod tests {
             "riseSpeed": 1.2, "speedWindowSec": 120, "sealLimitUp": 1, "vol": 300
         });
         let leaves = leaves_from_alert_rule(&rule);
-        assert_eq!(leaves.len(), 5);
+        // 方向互斥：upPrice 胜出后 upPct 不再出叶，故为 4 片而非 5 片
+        assert_eq!(leaves.len(), 4);
         assert!(leaves
             .iter()
             .any(|l| l.field == "price" && l.op == "gte" && l.value == 10.5));
+        assert!(
+            !leaves.iter().any(|l| l.field == "pct"),
+            "突破价已覆盖方向，不应再有 pct 叶: {leaves:?}"
+        );
         assert!(leaves.iter().any(|l| l.field == "riseSpeed"
             && l.params
                 .as_ref()
@@ -250,6 +260,58 @@ mod tests {
                 == Some(120)));
         assert!(leaves.iter().any(|l| l.field == "sealUp"));
         assert!(leaves_from_alert_rule(&json!({"vol": 100})).is_empty());
+    }
+
+    #[test]
+    fn leaf_mapping_single_direction_never_both() {
+        // 规则作战卡同时给上下阈值：只保留突破方向（upPrice → price gte）
+        let both_price = json!({"upPrice": 10.5, "downPrice": 9.5});
+        let leaves = leaves_from_alert_rule(&both_price);
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].field, "price");
+        assert_eq!(leaves[0].op, "gte");
+        assert_eq!(leaves[0].value, 10.5);
+
+        // 只有涨跌幅时突破优先：{upPct:5,downPct:-5} 只出 pct gte
+        let both_pct = json!({"upPct": 5, "downPct": -5});
+        let leaves = leaves_from_alert_rule(&both_pct);
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].field, "pct");
+        assert_eq!(leaves[0].op, "gte");
+        assert_eq!(leaves[0].value, 5.0);
+
+        // 上下不同维度混用：突破优先于回踩，回踩叶被丢弃
+        let mixed = json!({"downPrice": 9.5, "upPct": 5});
+        let leaves = leaves_from_alert_rule(&mixed);
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].field, "pct");
+        assert_eq!(leaves[0].op, "gte");
+
+        // 仅回踩价：downPrice 独占（price lte）
+        let down_price = json!({"downPrice": 9.5});
+        let leaves = leaves_from_alert_rule(&down_price);
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].field, "price");
+        assert_eq!(leaves[0].op, "lte");
+        assert_eq!(leaves[0].value, 9.5);
+    }
+
+    #[test]
+    fn leaf_mapping_down_pct_only_uses_lte() {
+        let leaves = leaves_from_alert_rule(&json!({"downPct": -5}));
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].field, "pct");
+        assert_eq!(leaves[0].op, "lte");
+        assert_eq!(leaves[0].value, -5.0);
+    }
+
+    #[test]
+    fn leaf_mapping_up_pct_only_uses_gte() {
+        let leaves = leaves_from_alert_rule(&json!({"upPct": 5}));
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].field, "pct");
+        assert_eq!(leaves[0].op, "gte");
+        assert_eq!(leaves[0].value, 5.0);
     }
 
     #[test]
