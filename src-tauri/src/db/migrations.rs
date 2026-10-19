@@ -1,5 +1,5 @@
 // 主库迁移清单（v2.27 巨石拆分：从 lib.rs 抽出）。
-// 追加式：只许新增版本，禁止改动已发布条目。共 61 条（v1..v61）。
+// 追加式：只许新增版本，禁止改动已发布条目。共 62 条（v1..v62）。
 // 数量护栏见 src-tauri/INVENTORY.md；改动后需与之一致。
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -1020,6 +1020,13 @@ pub fn migrations() -> Vec<Migration> {
                                  ALTER TABLE plan_instruction ADD COLUMN synced_at INTEGER DEFAULT 0;
                                  CREATE INDEX IF NOT EXISTS idx_plan_instruction_co
                                      ON plan_instruction(co_id);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 62,
+                            description: "conditional_order: unique plan note (dedupe plan materialization)",
+                            sql: "CREATE UNIQUE INDEX IF NOT EXISTS uq_conditional_plan_note
+                                 ON conditional_order(note) WHERE note LIKE 'plan:%';",
                             kind: MigrationKind::Up,
                         },
     ]

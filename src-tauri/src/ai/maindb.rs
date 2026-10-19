@@ -23,16 +23,22 @@ pub fn open_readonly(dir: &Path) -> Result<Connection, String> {
 
 /// 读写打开主库：仅供 AI 复盘/计划写 ai_review、plan、plan_instruction 等 v2.0 新表。
 /// 与前端 plugin-sql 主连接并存，SQLite 库级写锁串行短事务即可（不改 journal 模式）。
+///
+/// 5s busy_timeout：物化循环、指令读取、智驾排程与前端主连接会并发抢写锁；
+/// 默认 0 超时会让后到者立刻 SQLITE_BUSY 失败，表现为条件单偶发建不出来。
 pub fn open_readwrite(dir: &Path) -> Result<Connection, String> {
     let p = main_db_path(dir);
     if !p.exists() {
         return Err("本地主库尚不存在，请先在应用中初始化行情数据".to_string());
     }
-    Connection::open_with_flags(
+    let conn = Connection::open_with_flags(
         &p,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_FULL_MUTEX,
     )
-    .map_err(|e| format!("读写打开主库失败: {e}"))
+    .map_err(|e| format!("读写打开主库失败: {e}"))?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| format!("设置主库忙等待超时失败: {e}"))?;
+    Ok(conn)
 }
 
 #[cfg(test)]

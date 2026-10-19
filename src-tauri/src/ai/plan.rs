@@ -132,6 +132,18 @@ fn sanitize_profile_sql(sql: &str) -> &str {
     sql
 }
 
+/// 取消单条仍 active 的条件单：计划/指令被废弃后，条件单不得继续触发。
+/// 与 `save_plan` 里的批量取消保持同一条 SQL（只动 active，已触发/已成交不误伤）。
+fn cancel_linked_co(c: &rusqlite::Connection, co_id: &str) -> Result<(), String> {
+    c.execute(
+        "UPDATE conditional_order SET status='cancelled', updated_at=?1 \
+         WHERE co_id=?2 AND status='active'",
+        rusqlite::params![now_millis(), co_id],
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
+}
+
 /// 保存计划（plan_date 唯一）并重建其指令。
 fn save_plan(
     c: &rusqlite::Connection,
@@ -172,11 +184,7 @@ fn save_plan(
             rows.filter_map(|x| x.ok()).collect()
         };
         for co in co_ids {
-            let _ = c.execute(
-                "UPDATE conditional_order SET status='cancelled', updated_at=?1 \
-                 WHERE co_id=?2 AND status='active'",
-                rusqlite::params![now_millis(), co],
-            );
+            let _ = cancel_linked_co(c, &co);
         }
     }
     // 指令全量重建（编辑旧计划时以最新生成结果为准）
@@ -345,6 +353,17 @@ pub fn set_plan_status(data_dir: &Path, id: i64, status: &str) -> Result<(), Str
         rusqlite::params![status, now_millis(), id],
     )
     .map_err(|e| e.to_string())?;
+    // confirmed 是唯一仍驱动执行的状态；归档/废弃/回退都必须取消该计划指令的
+    // active 条件单，否则计划不再有人看，孤儿单仍会在盘中触发。
+    if status != "confirmed" {
+        c.execute(
+            "UPDATE conditional_order SET status='cancelled', updated_at=?1
+             WHERE status='active' AND co_id IN (
+                 SELECT co_id FROM plan_instruction WHERE plan_id=?2 AND co_id<>'')",
+            rusqlite::params![now_millis(), id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -379,6 +398,20 @@ pub fn update_instruction(
         _ => return Err("指令仅支持 tier/name/condition/action/positionHint/status".to_string()),
     };
     let c = open_readwrite(data_dir)?;
+    // 指令被放弃/完成：先按 instr_id 取回已物化的条件单并取消，再落状态。
+    // 取消失败直接返回错误（状态不改），避免用户以为已放弃而条件单仍在盘中触发。
+    if field == "status" && matches!(value, "dropped" | "done") {
+        let co_id: String = c
+            .query_row(
+                "SELECT co_id FROM plan_instruction WHERE id=?1",
+                [instr_id],
+                |r| r.get(0),
+            )
+            .unwrap_or_default();
+        if !co_id.is_empty() {
+            cancel_linked_co(&c, &co_id)?;
+        }
+    }
     c.execute(
         &format!("UPDATE plan_instruction SET {col}=?1 WHERE id=?2"),
         rusqlite::params![value, instr_id],
@@ -613,6 +646,96 @@ mod tests {
             .unwrap();
         assert_eq!(status, "cancelled");
         assert!(updated > 0, "取消时应刷新 updated_at");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dropped_instruction_cancels_linked_conditional_order() {
+        let (dir, c) = fresh_db();
+        let today = crate::broker::conditional::today_dashed();
+        c.execute(
+            "INSERT INTO plan(id,plan_date,status,created_at,updated_at)
+             VALUES(1,?1,'confirmed',0,0)",
+            [&today],
+        )
+        .unwrap();
+        c.execute(
+            "INSERT INTO plan_instruction(id,plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,1,'candidate','600519','贵州茅台','{\"upPrice\":1700}','open',0)",
+            [],
+        )
+        .unwrap();
+        let s = crate::ai::instruction::materialize_plan(&c, 1).unwrap();
+        assert_eq!(s.created, 1);
+        let co_id: String = c
+            .query_row("SELECT co_id FROM plan_instruction WHERE id=1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert!(!co_id.is_empty());
+
+        // 放弃指令：已物化的条件单必须取消，不能成为无人认领的孤儿单。
+        update_instruction(&dir, 1, "status", "dropped").unwrap();
+        let status: String = c
+            .query_row(
+                "SELECT status FROM conditional_order WHERE co_id=?1",
+                [&co_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "cancelled");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn archived_plan_cancels_linked_conditional_orders() {
+        let (dir, c) = fresh_db();
+        let today = crate::broker::conditional::today_dashed();
+        c.execute(
+            "INSERT INTO plan(id,plan_date,status,created_at,updated_at)
+             VALUES(1,?1,'confirmed',0,0)",
+            [&today],
+        )
+        .unwrap();
+        c.execute_batch(
+            "INSERT INTO plan_instruction(id,plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,1,'candidate','600519','贵州茅台','{\"upPrice\":1700}','open',0);
+             INSERT INTO plan_instruction(id,plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(2,1,'trigger','300750','宁德时代','{\"upPct\":3}','open',1);",
+        )
+        .unwrap();
+        let s = crate::ai::instruction::materialize_plan(&c, 1).unwrap();
+        assert_eq!(s.created, 2);
+
+        // confirmed 是保留执行的状态：置回 confirmed 不得误杀条件单。
+        set_plan_status(&dir, 1, "confirmed").unwrap();
+        let active: i64 = c
+            .query_row(
+                "SELECT COUNT(*) FROM conditional_order WHERE status='active'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(active, 2);
+
+        // 归档：该计划所有指令的 active 条件单全部取消。
+        set_plan_status(&dir, 1, "archived").unwrap();
+        let active: i64 = c
+            .query_row(
+                "SELECT COUNT(*) FROM conditional_order WHERE status='active'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(active, 0, "归档后不得留下 active 条件单");
+        let cancelled: i64 = c
+            .query_row(
+                "SELECT COUNT(*) FROM conditional_order WHERE status='cancelled'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(cancelled, 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

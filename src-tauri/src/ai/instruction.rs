@@ -232,6 +232,34 @@ fn co_exists(conn: &rusqlite::Connection, co_id: &str) -> bool {
     .is_ok()
 }
 
+/// 按物化备注反查条件单：v62 唯一索引兜底后，重复插入必然命中同一条 note。
+fn co_id_by_note(conn: &rusqlite::Connection, note: &str) -> Result<String, String> {
+    conn.query_row(
+        "SELECT co_id FROM conditional_order WHERE note=?1",
+        [note],
+        |r| r.get::<_, String>(0),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// 回填指令 → 条件单关联（co_id / trigger_json / synced_at）。
+///
+/// 新建成功与唯一冲突恢复都必须回填：写失败若不报错，下一轮扫描只能靠
+/// v62 唯一索引兜底，等于把错误拖到点外。
+fn link_instruction(
+    conn: &rusqlite::Connection,
+    instr_id: i64,
+    co_id: &str,
+    trigger_json: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE plan_instruction SET co_id=?1,trigger_json=?2,synced_at=?3 WHERE id=?4",
+        rusqlite::params![co_id, trigger_json, now_millis(), instr_id],
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
+}
+
 /// 物化结果统计：新建 / 跳过（观察级或条件不可用或已物化）/ 失败（建单校验或写库失败）。
 #[derive(Debug, Default)]
 pub struct MaterializeSummary {
@@ -316,6 +344,8 @@ pub fn materialize_plan(
             .and_then(|v| v.as_str())
             .unwrap_or("BUY")
             .to_uppercase();
+        let note = format!("plan:{plan_id}:{id}");
+        let trigger_json = serde_json::to_string(&leaves).unwrap_or_default();
         let input = crate::broker::conditional::CreateInput {
             code,
             name: name.clone(),
@@ -328,16 +358,35 @@ pub fn materialize_plan(
             expire_at: now_millis() + 86_400_000,
             auto_confirm: true,
             ticket_id: String::new(),
-            note: format!("plan:{plan_id}:{id}"),
+            note: note.clone(),
         };
         match crate::broker::conditional::insert(conn, input) {
-            Ok(co_id_new) => {
-                let trigger_json = serde_json::to_string(&leaves).unwrap_or_default();
-                let _ = conn.execute(
-                    "UPDATE plan_instruction SET co_id=?1,trigger_json=?2,synced_at=?3 WHERE id=?4",
-                    rusqlite::params![co_id_new, trigger_json, now_millis(), id],
-                );
-                out.created += 1;
+            Ok(co_id_new) => match link_instruction(conn, id, &co_id_new, &trigger_json) {
+                Ok(()) => out.created += 1,
+                Err(e) => {
+                    // 条件单已建但关联未落库：下一轮会撞唯一索引，由回填分支补回。
+                    log::warn!("materialize instruction {id} 回写 co_id 失败: {e}");
+                    out.failed += 1;
+                }
+            },
+            Err(e) if e.contains("UNIQUE constraint failed") => {
+                // v62 兜底：同一 note 的条件单已存在（并发实例 / 上轮回写失败），
+                // 按备注取回 co_id 并回填，计 skipped 而不是 failed。
+                match co_id_by_note(conn, &note) {
+                    Ok(existing) => match link_instruction(conn, id, &existing, &trigger_json) {
+                        Ok(()) => out.skipped += 1,
+                        Err(e) => {
+                            log::warn!("materialize instruction {id} 回填 co_id 失败: {e}");
+                            out.failed += 1;
+                        }
+                    },
+                    Err(le) => {
+                        log::warn!(
+                            "materialize instruction {id} 唯一冲突但按备注查不到条件单: {le}"
+                        );
+                        out.failed += 1;
+                    }
+                }
             }
             Err(e) => {
                 log::warn!("materialize instruction {id} failed: {e}");
@@ -348,12 +397,29 @@ pub fn materialize_plan(
     Ok(out)
 }
 
+/// 智驾是否正在驱动（running / paused 均视作活动）。
+///
+/// 智驾的 autoexec 会全自动执行同一批 plan_instruction；此时再物化条件单会造成
+/// 同一指令被条件单与盯盘各执行一次（重复下单），故物化必须让路。
+fn pilot_active(conn: &rusqlite::Connection) -> bool {
+    conn.query_row("SELECT mode FROM pilot_config WHERE id=1", [], |r| {
+        r.get::<_, String>(0)
+    })
+    .map(|m| m == "running" || m == "paused")
+    .unwrap_or(false)
+}
+
 /// 扫描所有「今天 + confirmed」的计划并物化（幂等）。供定时循环与读取路径复用。
 ///
 /// 与 `materialize_plan` 的区别：后者只在拿到具体 plan_id 时做单计划物化，
 /// 调用方需自己先按日期筛计划；本函数负责「今天到底有哪些计划该建单」这一层，
 /// 让后台循环无需知道计划如何产生。非计划日 / 无确认计划时返回全零汇总。
+/// 智驾驱动中直接返回全零：autoexec 负责执行同一批指令，物化会造成双份触发。
 pub fn materialize_today(conn: &rusqlite::Connection) -> Result<MaterializeSummary, String> {
+    if pilot_active(conn) {
+        log::debug!("智驾模式运行中，跳过计划物化（由 autoexec 执行同一批指令）");
+        return Ok(MaterializeSummary::default());
+    }
     let today = crate::broker::conditional::today_dashed();
     let ids: Vec<i64> = {
         let mut stmt = conn
@@ -620,6 +686,12 @@ mod tests {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::broker::conditional::CREATE_SQL)
             .unwrap();
+        // v62：与生产迁移一致的 `plan:%` 备注唯一索引（重复物化由它兜底）。
+        conn.execute_batch(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_conditional_plan_note
+             ON conditional_order(note) WHERE note LIKE 'plan:%';",
+        )
+        .unwrap();
         conn.execute_batch(
             "CREATE TABLE plan(id INTEGER PRIMARY KEY, plan_date TEXT, status TEXT NOT NULL DEFAULT 'draft');
              CREATE TABLE plan_instruction(
@@ -701,6 +773,84 @@ mod tests {
             .unwrap();
         assert_eq!(vol, 200);
         assert_eq!(note, "plan:1:1");
+    }
+
+    #[test]
+    fn materialize_backfills_existing_co_on_unique_note_conflict() {
+        let conn = conn_with_tables();
+        insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
+        conn.execute(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','600519','贵州茅台','{\"upPrice\":1700,\"vol\":200}','open',0)",
+            [],
+        )
+        .unwrap();
+        // 模拟「条件单已落库、指令 co_id 回写失败」（上轮写库失败或并发实例先建）：
+        // v62 唯一索引让本轮重复插入必然失败，此时必须按 note 取回并回填。
+        conn.execute(
+            "INSERT INTO conditional_order(co_id,trade_date,code,side,trigger_json,vol,status,note,created_at,updated_at)
+             VALUES('CO_existing','2026-10-19','600519','BUY','[]',200,'active','plan:1:1',1,1)",
+            [],
+        )
+        .unwrap();
+        let s = materialize_plan(&conn, 1).unwrap();
+        assert_eq!(s.created, 0);
+        assert_eq!(s.skipped, 1, "唯一冲突按已存在处理，计 skipped");
+        assert_eq!(s.failed, 0);
+        assert_eq!(co_count(&conn), 1, "不得重复建单");
+        assert_eq!(
+            instruction_co_id(&conn, 1),
+            "CO_existing",
+            "必须把已有条件单回填到指令"
+        );
+        let (trigger_json, synced_at): (String, i64) = conn
+            .query_row(
+                "SELECT trigger_json,synced_at FROM plan_instruction WHERE id=1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert!(
+            trigger_json.contains("\"field\":\"price\""),
+            "回填时应刷新触发条件: {trigger_json}"
+        );
+        assert!(synced_at > 0, "回填应刷新 synced_at");
+    }
+
+    #[test]
+    fn materialize_today_skips_while_pilot_active() {
+        let conn = conn_with_tables();
+        conn.execute_batch(
+            "CREATE TABLE pilot_config(id INTEGER PRIMARY KEY CHECK (id=1),
+                 mode TEXT NOT NULL DEFAULT 'off');
+             INSERT INTO pilot_config(id,mode) VALUES(1,'running');",
+        )
+        .unwrap();
+        insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
+        conn.execute(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','600519','贵州茅台','{\"upPrice\":1700,\"vol\":200}','open',0)",
+            [],
+        )
+        .unwrap();
+
+        // 智驾 running：autoexec 会执行同一批指令，物化必须让路（返回全零、不建单）。
+        assert!(pilot_active(&conn));
+        let s = materialize_today(&conn).unwrap();
+        assert_eq!(s.created, 0);
+        assert_eq!(s.skipped, 0);
+        assert_eq!(s.failed, 0);
+        assert_eq!(co_count(&conn), 0);
+        assert!(instruction_co_id(&conn, 1).is_empty());
+
+        // 智驾 off：恢复常规物化。
+        conn.execute("UPDATE pilot_config SET mode='off' WHERE id=1", [])
+            .unwrap();
+        assert!(!pilot_active(&conn));
+        let s = materialize_today(&conn).unwrap();
+        assert_eq!(s.created, 1);
+        assert_eq!(co_count(&conn), 1);
+        assert!(!instruction_co_id(&conn, 1).is_empty());
     }
 
     #[test]

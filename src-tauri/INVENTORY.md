@@ -1,7 +1,7 @@
 # TickGold 后端命令 / 迁移对照清单（v2.29.0 基线）
 
 > 巨石拆分（lib.rs → db/migrations.rs、commands.rs、setup.rs 模块化）的护栏。
-> 每次后端结构调整后，必须重新核对：**命令总数 243、迁移总数 61**，逐一对照无缺失。
+> 每次后端结构调整后，必须重新核对：**命令总数 243、迁移总数 62**，逐一对照无缺失。
 > （v2.30 起命令/迁移逐步增加，历史编号未全量回填；P0 新增条目见文末对应小节。）
 > 基线：v2.27.0（149 命令 / 48 迁移）；v2.28.0 净增 21 个命令
 > （资金流 3、组合层 2、风险仪表盘 1、异动阈值 2、板块日快照 3、备份中心 7、数据治理 3）
@@ -367,7 +367,7 @@
 
 ---
 
-## 二、数据库迁移：61 条（主库 sqlite:stock-dock.db）
+## 二、数据库迁移：62 条（主库 sqlite:stock-dock.db）
 
 | v | description |
 | --- | --- |
@@ -432,6 +432,8 @@
 | 59 | P5 brain_rollout (rule→shadow→canary→live state machine) + shadow_decision (shadow vs rule decision log) |
 | 60 | P6 pilot_config (one-row autopilot config) + pilot_daily_log (per-trading-day autopilot run log) |
 | 61 | P1-a plan_instruction: co_id / trigger_json / synced_at (instruction materialization & derived state) |
+| 62 | P1-a conditional_order: unique partial index on plan note (dedupe materialization / backfill) |
 
 > P1-a：迁移 v61 给 plan_instruction 增加 co_id / trigger_json / synced_at 三列，供计划指令物化与状态展示使用。
+> P1-a：迁移 v62 给 conditional_order(note) 建部分唯一索引（仅 `plan:%` 备注），并发/崩溃后重复物化由唯一约束兜底并回填 co_id。
 > ai.db 另有独立版本链（当前 v4），不在此表。
