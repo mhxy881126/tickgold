@@ -14,7 +14,7 @@
 - 状态不落库，读取时推导；`plan_instruction` 只新增 `co_id`/`trigger_json`/`synced_at` 三列。
 - 物化必须幂等：重复确认不重复建单；重新生成计划必须取消旧条件单。
 - 物化失败单条隔离，不阻断计划确认。
-- 新增迁移只能追加（当前 v59 → 新增 v60），禁止改动已发布条目。
+- 新增迁移只能追加（当前已有 v60（P6 pilot 配置）→ 新增 v61），禁止改动已发布条目。
 - 前端轮询只查本地 SQLite，禁止调用 `broker_query_position` 等会驱动同花顺 GUI 的命令。
 - 文件 UTF-8 无 BOM；Rust 使用 `cargo clippy --all-targets -- -D warnings` 零告警；前端 `pnpm build` 通过。
 - 提交前缀：`feat(broker):` / `feat(ai):` / `feat(ui):` / `test(e2e):`。
@@ -60,7 +60,7 @@
 
 ```rust
                         Migration {
-                            version: 60,
+                            version: 61,
                             description: "plan_instruction: co_id / trigger_json / synced_at (P1-a)",
                             sql: "ALTER TABLE plan_instruction ADD COLUMN co_id TEXT DEFAULT '';
                                  ALTER TABLE plan_instruction ADD COLUMN trigger_json TEXT DEFAULT '';
@@ -71,7 +71,7 @@
                         },
 ```
 
-并把文件头部注释「共 59 条（v1..v59）」改为「共 60 条（v1..v60）」。
+并把文件头部注释「共 59 条（v1..v59）」改为「共 61 条（v1..v61）」（文件实际已有 v60，头注释一并修正）。
 
 - [ ] **Step 2: 写失败测试**
 
