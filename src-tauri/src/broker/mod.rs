@@ -1089,6 +1089,63 @@ pub async fn broker_submit(
     submit_with_sig(&app, &sig_id).await
 }
 
+/// 一键确认下单的票面状态门禁：`pending` 需先确认，`confirmed` 可直接提交，其余中文报错。
+///
+/// 抽成纯函数便于单测（命令本体依赖 AppHandle / BrokerManager，单测不便构造）；
+/// 真正的急停 / 通道 / 风控校验仍在 `submit_with_sig` 内统一执行，不在此处绕过。
+pub(crate) fn ticket_confirm_action(status: &str) -> Result<bool, String> {
+    match status {
+        "pending" => Ok(true),
+        "confirmed" => Ok(false),
+        other => Err(format!("当前信号票状态不可确认下单：{other}")),
+    }
+}
+
+/// P1-b：触发后一键确认下单。同一张 `signal_ticket` 只确认一次，不新建第二张票。
+///
+/// - `pending` → 走 `bridge::confirm`（价格/数量取票面，可由入参覆盖，actor=dock-confirm）；
+/// - `confirmed` → 跳过确认，直接提交；
+/// - 其它状态（rejected/done/...）→ 中文错误。
+///
+/// 提交复用唯一入口 `submit_with_sig`（急停 / 连接 / 熔断 / 风控 / 白名单全量）。
+#[tauri::command]
+pub async fn broker_confirm_submit(
+    app: AppHandle,
+    ticket_id: i64,
+    price: Option<f64>,
+    vol: Option<i64>,
+) -> Result<protocol::BrokerOrderInfo, String> {
+    let dir = app.state::<crate::ai::AiState>().dir();
+    // 连接在提交前显式丢弃：submit_with_sig 会自行打开读写连接，避免写锁互等。
+    let sig_id = {
+        let conn = maindb::open_readwrite(&dir)?;
+        let (sig_id, status): (String, String) = conn
+            .query_row(
+                "SELECT sig_id,status FROM signal_ticket WHERE id=?1",
+                rusqlite::params![ticket_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(|e| format!("读取信号票失败：{e}"))?;
+        if ticket_confirm_action(&status)? {
+            crate::ai::bridge::confirm(
+                &conn,
+                ticket_id,
+                crate::ai::bridge::ConfirmOpts {
+                    price,
+                    vol,
+                    action_kind: None,
+                    broker: None,
+                    actor: Some("dock-confirm".to_string()),
+                    order_template: None,
+                },
+            )?;
+            checkpoint(&conn);
+        }
+        sig_id
+    };
+    submit_with_sig(&app, &sig_id).await
+}
+
 /// 下单条直下：一次确认后走与信号桥完全相同的风控 / 写单 / 成交推进链路。
 /// `position` 仅作审计记录（写入委托原因），数量 `vol` 由前端按持仓/仓位档算好后原样透传，
 /// 后端不根据 `position` 重算数量。
@@ -2498,5 +2555,22 @@ mod tests {
         assert!(validate_quick_order("600519", "BUY", 0.0, 100).is_err());
         assert!(validate_quick_order("600519", "BUY", 10.0, 150).is_err());
         assert!(validate_quick_order("600519", "BUY", 10.0, 0).is_err());
+    }
+
+    /// 一键确认下单的票面门禁（命令本体依赖 AppHandle，只测纯函数分支）。
+    #[test]
+    fn confirm_submit_ticket_status_validation() {
+        assert!(
+            ticket_confirm_action("pending").unwrap(),
+            "pending 需先确认"
+        );
+        assert!(
+            !ticket_confirm_action("confirmed").unwrap(),
+            "confirmed 直接提交"
+        );
+        for st in ["rejected", "done", "expired", ""] {
+            let err = ticket_confirm_action(st).unwrap_err();
+            assert!(err.contains("不可确认下单"), "{st} -> {err}");
+        }
     }
 }

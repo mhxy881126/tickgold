@@ -7,6 +7,55 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+/// 已触发 / 已挂票 / 已结束的指令禁止改触发条件：否则会撤掉已成交路径（P1-b spec §七）。
+const TRIGGERED_EDIT_ERROR: &str = "已触发，不能修改触发条件";
+
+/// 触发条件可编辑键（P1-b spec §三）：未列出的键一律忽略，避免前端误传把 `alert_rule` 写脏。
+const EDITABLE_RULE_KEYS: [&str; 16] = [
+    "upPrice",
+    "downPrice",
+    "upPct",
+    "downPct",
+    "minVolumeRatio",
+    "minTurnover",
+    "minAmount",
+    "riseSpeed",
+    "speedWindowSec",
+    "downSpeed",
+    "sealLimitUp",
+    "sealLimitDown",
+    "brokenLimit",
+    "vol",
+    "side",
+    "autoConfirm",
+];
+
+/// 数值型编辑键：类型错误直接报错，避免 `"1710"` 这类脏值被静默忽略。
+const NUMERIC_RULE_KEYS: [&str; 14] = [
+    "upPrice",
+    "downPrice",
+    "upPct",
+    "downPct",
+    "minVolumeRatio",
+    "minTurnover",
+    "minAmount",
+    "riseSpeed",
+    "speedWindowSec",
+    "downSpeed",
+    "sealLimitUp",
+    "sealLimitDown",
+    "brokenLimit",
+    "vol",
+];
+
+/// 数量校验：必须为正整数且是 100 股整数倍；兼容前端 JS 数字的整值浮点（如 200.0）。
+fn as_lot_vol(v: &Value) -> Option<i64> {
+    let n = v
+        .as_i64()
+        .or_else(|| v.as_f64().filter(|f| f.fract() == 0.0).map(|f| f as i64))?;
+    (n > 0 && n % 100 == 0).then_some(n)
+}
+
 /// 读取计划指令 `alert_rule` 中的数值字段。
 fn num(rule: &Value, key: &str) -> Option<f64> {
     rule.get(key).and_then(|v| v.as_f64())
@@ -151,7 +200,8 @@ pub fn list_instructions(conn: &rusqlite::Connection, plan_id: i64) -> Result<Ve
             "SELECT i.id,i.tier,i.code,i.name,i.condition,i.action,i.position_hint,
                     i.co_id,i.trigger_json,
                     c.status,c.triggered_at,
-                    t.status,o.status,o.filled_vol,o.filled_avg_price
+                    t.id,t.status,o.status,o.filled_vol,o.filled_avg_price,
+                    c.side,c.vol,c.limit_price,t.price,i.alert_rule
              FROM plan_instruction i
              LEFT JOIN conditional_order c ON c.co_id=i.co_id AND i.co_id<>''
              LEFT JOIN signal_ticket t ON t.sig_id=c.ticket_id AND c.ticket_id<>''
@@ -162,8 +212,35 @@ pub fn list_instructions(conn: &rusqlite::Connection, plan_id: i64) -> Result<Ve
     let rows = stmt
         .query_map([plan_id], |r| {
             let co = r.get::<_, String>(9).ok();
-            let ticket = r.get::<_, String>(11).ok();
-            let order = r.get::<_, String>(12).ok();
+            let ticket = r.get::<_, String>(12).ok();
+            let order = r.get::<_, String>(13).ok();
+            // P1-b 行内编辑 / 确认下单所需字段：条件单未建立时回退到 alert_rule 默认值。
+            let rule_json = r.get::<_, String>(20).unwrap_or_default();
+            let rule: Value =
+                serde_json::from_str(&rule_json).unwrap_or_else(|_| serde_json::json!({}));
+            let co_side = r.get::<_, String>(16).unwrap_or_default();
+            let side = if co_side.trim().is_empty() {
+                rule.get("side")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("BUY")
+                    .to_uppercase()
+            } else {
+                co_side
+            };
+            let co_vol = r.get::<_, i64>(17).unwrap_or(0);
+            let vol = if co_vol > 0 {
+                co_vol
+            } else {
+                rule.get("vol").and_then(|v| v.as_i64()).unwrap_or(100)
+            };
+            let limit_price = r.get::<_, f64>(18).unwrap_or(0.0);
+            let ticket_price = r.get::<_, f64>(19).unwrap_or(0.0);
+            // 确认下单弹窗优先取票面价，未触发时退回条件单限价。
+            let price = if ticket_price > 0.0 {
+                ticket_price
+            } else {
+                limit_price
+            };
             Ok(serde_json::json!({
                 "id": r.get::<_, i64>(0)?,
                 "tier": r.get::<_, String>(1)?,
@@ -176,8 +253,17 @@ pub fn list_instructions(conn: &rusqlite::Connection, plan_id: i64) -> Result<Ve
                 "triggerJson": r.get::<_, String>(8)?,
                 "state": derive_state(co.as_deref(), ticket.as_deref(), order.as_deref()),
                 "triggeredAt": r.get::<_, i64>(10).unwrap_or(0),
-                "filledVol": r.get::<_, i64>(13).unwrap_or(0),
-                "filledAvgPrice": r.get::<_, f64>(14).unwrap_or(0.0),
+                "filledVol": r.get::<_, i64>(14).unwrap_or(0),
+                "filledAvgPrice": r.get::<_, f64>(15).unwrap_or(0.0),
+                "ticketId": r.get::<_, i64>(11).unwrap_or(0),
+                "ticketStatus": r.get::<_, String>(12).unwrap_or_default(),
+                "side": side,
+                "vol": vol,
+                "price": price,
+                "autoConfirm": rule
+                    .get("autoConfirm")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true),
             }))
         })
         .map_err(|e| e.to_string())?;
@@ -212,6 +298,12 @@ fn list_instructions_legacy(
                 "triggeredAt": 0,
                 "filledVol": 0,
                 "filledAvgPrice": 0.0,
+                "ticketId": 0,
+                "ticketStatus": "",
+                "side": "BUY",
+                "vol": 100,
+                "price": 0.0,
+                "autoConfirm": true,
             }))
         })
         .map_err(|e| e.to_string())?;
@@ -362,7 +454,11 @@ pub fn materialize_plan(
             vol,
             ttl: "day".to_string(),
             expire_at: now_millis() + 86_400_000,
-            auto_confirm: true,
+            // P1-b：条级模拟自动开关；缺省 true（实盘仍由 submit 闸门强制人工确认）。
+            auto_confirm: rule
+                .get("autoConfirm")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true),
             ticket_id: String::new(),
             note: note.clone(),
         };
@@ -401,6 +497,135 @@ pub fn materialize_plan(
         }
     }
     Ok(out)
+}
+
+/// 行内编辑触发条件（P1-b spec §二/§三）：合并允许键 → 校验 → 取消旧条件单 →
+/// 清关联 → 写回 `alert_rule` →（今天 + confirmed 时）立即重新物化。
+///
+/// 与 `conditional::cancel` 的关键区别：编辑场景**不能**把指令置 `dropped`，否则
+/// `materialize_plan` 不再扫描该指令，用户保存后条件单永远不会重建。这里只把旧单置
+/// `cancelled` 并清空 `co_id`，保留指令 `open/alerted` 状态供物化重扫。
+///
+/// 已触发 / 已挂票 / 已结束的指令一律拒绝：编辑会撤掉旧单，可能截断已成交路径。
+pub fn update_trigger(
+    conn: &rusqlite::Connection,
+    instr_id: i64,
+    rule: &Value,
+) -> Result<(), String> {
+    let incoming = rule
+        .as_object()
+        .ok_or_else(|| "触发条件格式无效".to_string())?;
+    let (plan_id, co_id, status, old_rule_json): (i64, String, String, String) = conn
+        .query_row(
+            "SELECT plan_id,COALESCE(co_id,''),status,COALESCE(alert_rule,'{}')
+             FROM plan_instruction WHERE id=?1",
+            [instr_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .map_err(|_| "指令不存在".to_string())?;
+    if status == "done" {
+        return Err(TRIGGERED_EDIT_ERROR.to_string());
+    }
+    if !co_id.is_empty() {
+        let linked: Option<(String, String)> = conn
+            .query_row(
+                "SELECT status,COALESCE(ticket_id,'') FROM conditional_order WHERE co_id=?1",
+                [&co_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .ok();
+        if let Some((co_status, ticket_id)) = linked {
+            if !ticket_id.is_empty()
+                || matches!(co_status.as_str(), "triggered" | "submitted" | "done")
+            {
+                return Err(TRIGGERED_EDIT_ERROR.to_string());
+            }
+        }
+    }
+
+    // 只合并允许键（spec §三）：null 表示清除该条件，未知键原样忽略。
+    let mut merged: serde_json::Map<String, Value> = serde_json::from_str::<Value>(&old_rule_json)
+        .ok()
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default();
+    for (k, v) in incoming {
+        if !EDITABLE_RULE_KEYS.contains(&k.as_str()) {
+            continue;
+        }
+        if v.is_null() {
+            merged.remove(k);
+        } else {
+            merged.insert(k.clone(), v.clone());
+        }
+    }
+    for key in NUMERIC_RULE_KEYS {
+        if let Some(v) = merged.get(key) {
+            if !v.is_number() {
+                return Err(format!("触发条件 {key} 须为数字"));
+            }
+        }
+    }
+    let side_norm = merged
+        .get("side")
+        .map(|v| v.as_str().unwrap_or("").trim().to_ascii_uppercase());
+    if let Some(up) = side_norm {
+        if up != "BUY" && up != "SELL" {
+            return Err("方向只能是 BUY 或 SELL".to_string());
+        }
+        merged.insert("side".to_string(), Value::String(up));
+    }
+    if let Some(v) = merged.get("vol") {
+        let lot = as_lot_vol(v).ok_or_else(|| "委托数量须为 100 股整数倍".to_string())?;
+        merged.insert("vol".to_string(), Value::from(lot));
+    }
+    if let Some(v) = merged.get("autoConfirm") {
+        if !v.is_boolean() {
+            return Err("模拟自动执行开关须为布尔值".to_string());
+        }
+    }
+    let merged = Value::Object(merged);
+    if leaves_from_alert_rule(&merged).is_empty() {
+        return Err("至少设置一个触发条件".to_string());
+    }
+
+    // 取消旧单 / 清关联 / 写规则 / 立即重建放进同一事务：任一步失败都回滚，
+    // 避免「旧单已撤、新规则没写」的半成品状态。
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("开启触发条件编辑事务失败: {e}"))?;
+    if !co_id.is_empty() {
+        tx.execute(
+            "UPDATE conditional_order SET status='cancelled',updated_at=?1
+             WHERE co_id=?2 AND status='active'",
+            rusqlite::params![now_millis(), co_id],
+        )
+        .map_err(|e| format!("取消旧条件单失败: {e}"))?;
+    }
+    let rule_json =
+        serde_json::to_string(&merged).map_err(|e| format!("序列化触发条件失败: {e}"))?;
+    tx.execute(
+        "UPDATE plan_instruction SET alert_rule=?1,co_id='',trigger_json='',synced_at=0
+         WHERE id=?2",
+        rusqlite::params![rule_json, instr_id],
+    )
+    .map_err(|e| format!("保存触发条件失败: {e}"))?;
+    // materialize_plan 自带「今天 + confirmed」门禁：非计划日保存只更新规则，
+    // 等计划日当天由物化循环建单。
+    // 智驾计划由 autoexec 执行同一批指令，再物化条件单会双份触发——与
+    // `materialize_today` 的 `model <> 'pilot-auto'` 结构性排除保持一致。
+    let pilot_owned: bool = tx
+        .query_row(
+            "SELECT COALESCE(model,'') = 'pilot-auto' FROM plan WHERE id=?1",
+            [plan_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(false);
+    if !pilot_owned {
+        materialize_plan(&tx, plan_id)?;
+    }
+    tx.commit()
+        .map_err(|e| format!("提交触发条件编辑事务失败: {e}"))?;
+    Ok(())
 }
 
 /// 扫描所有「今天 + confirmed」的计划并物化（幂等）。供定时循环与读取路径复用。
@@ -479,6 +704,31 @@ pub fn ensure_materialize_loop(app: &tauri::AppHandle) {
         run_materialize_loop(handle).await;
     });
     log::info!("计划定时物化循环已启动（30s）");
+}
+
+/// 作战台行内编辑触发条件（P1-b）：保存后取消旧条件单，今日已确认计划立即重建。
+///
+/// 返回该指令所属计划的最新 `{ plan, instructions }`，前端保存后一次刷新即可；
+/// 计划 JSON 与 `workflow_instructions` 同一口径（含原始 instructions 字段）。
+#[tauri::command]
+pub async fn workflow_instruction_trigger_set(
+    ai: tauri::State<'_, crate::ai::AiState>,
+    instr_id: i64,
+    rule: Value,
+) -> Result<Value, String> {
+    let dir = ai.dir();
+    let conn = crate::ai::maindb::open_readwrite(&dir)?;
+    update_trigger(&conn, instr_id, &rule)?;
+    let plan_id: i64 = conn
+        .query_row(
+            "SELECT plan_id FROM plan_instruction WHERE id=?1",
+            [instr_id],
+            |r| r.get(0),
+        )
+        .map_err(|_| "指令不存在".to_string())?;
+    let plan = crate::ai::plan::plan_to_json(&conn, plan_id)?;
+    let instructions = list_instructions(&conn, plan_id)?;
+    Ok(serde_json::json!({ "plan": plan, "instructions": instructions }))
 }
 
 #[cfg(test)]
@@ -608,7 +858,9 @@ mod tests {
     fn conn_with_instruction_links() -> rusqlite::Connection {
         let conn = conn_with_tables();
         conn.execute_batch(
-            "CREATE TABLE signal_ticket (sig_id TEXT NOT NULL UNIQUE, status TEXT DEFAULT 'pending');
+            "CREATE TABLE signal_ticket (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 sig_id TEXT NOT NULL UNIQUE, status TEXT DEFAULT 'pending',
+                 price REAL DEFAULT 0, vol INTEGER DEFAULT 0);
              CREATE TABLE broker_order (sig_id TEXT NOT NULL UNIQUE, status TEXT DEFAULT 'submitted',
                  filled_vol INTEGER DEFAULT 0, filled_avg_price REAL DEFAULT 0.0);",
         )
@@ -627,7 +879,7 @@ mod tests {
              INSERT INTO plan_instruction(id,plan_id,tier,code,name,condition,action,position_hint,alert_rule,status,sort,co_id,trigger_json)
              VALUES(2,1,'trigger','300750','宁德时代','涨幅触发','买入','','{}','alerted',1,'CO2','[{\"field\":\"pct\",\"op\":\"gte\",\"value\":3}]');
              INSERT INTO plan_instruction(id,plan_id,tier,code,name,condition,action,position_hint,alert_rule,status,sort,co_id,trigger_json)
-             VALUES(3,1,'watch','000001','平安银行','仅观察','','','{}','open',2,'','');
+             VALUES(3,1,'watch','000001','平安银行','仅观察','','','{\"autoConfirm\":false,\"side\":\"SELL\",\"vol\":300}','open',2,'','');
              INSERT INTO plan_instruction(id,plan_id,tier,code,name,condition,action,position_hint,alert_rule,status,sort,co_id,trigger_json)
              VALUES(4,1,'candidate','000002','万科','止损','','','{}','alerted',3,'CO4','');
              INSERT INTO plan_instruction(id,plan_id,tier,code,name,condition,action,position_hint,alert_rule,status,sort,co_id,trigger_json)
@@ -638,7 +890,7 @@ mod tests {
              VALUES('CO2','2026-10-19','300750','BUY','[]',100,'triggered','T2',1750000000000,1);
              INSERT INTO conditional_order(co_id,trade_date,code,side,trigger_json,vol,status,ticket_id,triggered_at,created_at)
              VALUES('CO4','2026-10-19','000002','BUY','[]',100,'cancelled','',0,1);
-             INSERT INTO signal_ticket(sig_id,status) VALUES('T2','confirmed');
+             INSERT INTO signal_ticket(sig_id,status,price,vol) VALUES('T2','confirmed',12.3,200);
              INSERT INTO broker_order(sig_id,status,filled_vol,filled_avg_price) VALUES('T2','filled',200,12.3);",
         )
         .unwrap();
@@ -653,14 +905,31 @@ mod tests {
             "[{\"field\":\"price\",\"op\":\"gte\",\"value\":1680}]"
         );
         assert_eq!(rows[0]["positionHint"], "不设仓位");
+        // P1-b 新增字段：未挂票时回退 alert_rule 默认值
+        assert_eq!(rows[0]["ticketId"].as_i64(), Some(0));
+        assert_eq!(rows[0]["ticketStatus"], "");
+        assert_eq!(rows[0]["side"], "BUY");
+        assert_eq!(rows[0]["vol"].as_i64(), Some(100), "数量取条件单");
+        assert_eq!(rows[0]["price"].as_f64(), Some(0.0), "未触发无票面价");
+        assert_eq!(rows[0]["autoConfirm"].as_bool(), Some(true), "缺省自动确认");
         assert_eq!(
             rows[1]["state"], "filled",
             "票 confirmed + 委托 filled → 已成交"
         );
+        assert_eq!(rows[1]["ticketId"].as_i64(), Some(1), "ticketId 为信号票主键");
+        assert_eq!(rows[1]["ticketStatus"], "confirmed");
+        assert_eq!(rows[1]["price"].as_f64(), Some(12.3), "确认弹窗取票面价");
         assert_eq!(rows[1]["filledVol"].as_i64(), Some(200));
         assert_eq!(rows[1]["filledAvgPrice"].as_f64(), Some(12.3));
         assert_eq!(rows[1]["triggeredAt"].as_i64(), Some(1_750_000_000_000));
         assert_eq!(rows[2]["state"], "watch", "无 co_id → 仅观察");
+        assert_eq!(rows[2]["side"], "SELL", "未物化时方向取 alert_rule");
+        assert_eq!(rows[2]["vol"].as_i64(), Some(300));
+        assert_eq!(
+            rows[2]["autoConfirm"].as_bool(),
+            Some(false),
+            "逐条关闭模拟自动"
+        );
         assert_eq!(rows[3]["state"], "cancelled", "条件单 cancelled → 已取消");
     }
 
@@ -1227,5 +1496,222 @@ mod tests {
         assert_eq!(second.failed, 0);
         assert_eq!(second.skipped, 1);
         assert_eq!(co_count(&conn), 1, "重复扫描不得重复建单");
+    }
+
+    #[test]
+    fn update_trigger_rebuilds_conditional_order() {
+        let conn = conn_with_instruction_links();
+        insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
+        conn.execute(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,condition,action,position_hint,alert_rule,status,sort)
+             VALUES(1,'candidate','600519','贵州茅台','战法：龙头','备选','不设仓位',
+                    '{\"upPrice\":1700,\"vol\":200,\"note\":\"保留\"}','open',0)",
+            [],
+        )
+        .unwrap();
+        assert_eq!(materialize_plan(&conn, 1).unwrap().created, 1);
+        let old_co = instruction_co_id(&conn, 1);
+        assert!(!old_co.is_empty());
+
+        update_trigger(&conn, 1, &json!({"upPrice":1710,"side":"sell"})).unwrap();
+
+        let new_co = instruction_co_id(&conn, 1);
+        assert!(!new_co.is_empty(), "编辑后应重新物化条件单");
+        assert_ne!(new_co, old_co, "co_id 必须指向新条件单");
+        let old_status: String = conn
+            .query_row(
+                "SELECT status FROM conditional_order WHERE co_id=?1",
+                [&old_co],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(old_status, "cancelled", "旧条件单应取消而非保留");
+        let (new_status, side, vol): (String, String, i64) = conn
+            .query_row(
+                "SELECT status,side,vol FROM conditional_order WHERE co_id=?1",
+                [&new_co],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(new_status, "active", "新条件单应生效");
+        assert_eq!(side, "SELL", "方向按编辑值归一后物化");
+        assert_eq!(vol, 200, "未编辑的数量沿用原规则");
+        assert_eq!(co_count(&conn), 2, "新旧两张单并存，旧单留审计痕迹");
+
+        // 指令保持 open（不得像手动撤销那样置 dropped），规则只合并允许键。
+        let (status, rule_json): (String, String) = conn
+            .query_row(
+                "SELECT status,alert_rule FROM plan_instruction WHERE id=1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(status, "open", "编辑不得放弃指令");
+        let rule: Value = serde_json::from_str(&rule_json).unwrap();
+        assert_eq!(rule["upPrice"], 1710.0);
+        assert_eq!(rule["side"], "SELL");
+        assert_eq!(rule["vol"], 200);
+        assert_eq!(rule["note"], "保留", "未知键原样保留");
+        // 读取态回到「待触发」。
+        let rows = list_instructions(&conn, 1).unwrap();
+        assert_eq!(rows[0]["state"], "pending");
+        assert_eq!(rows[0]["coId"].as_str(), Some(new_co.as_str()));
+    }
+
+    #[test]
+    fn update_trigger_rejects_triggered_instruction() {
+        let conn = conn_with_tables();
+        insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
+        conn.execute(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','600519','贵州茅台','{\"upPrice\":1700,\"vol\":200}','open',0)",
+            [],
+        )
+        .unwrap();
+        assert_eq!(materialize_plan(&conn, 1).unwrap().created, 1);
+        let co = instruction_co_id(&conn, 1);
+        conn.execute(
+            "UPDATE conditional_order SET status='triggered',ticket_id='T1' WHERE co_id=?1",
+            [&co],
+        )
+        .unwrap();
+
+        let err = update_trigger(&conn, 1, &json!({"upPrice":1800})).unwrap_err();
+        assert!(err.contains(TRIGGERED_EDIT_ERROR), "实际: {err}");
+        assert_eq!(instruction_co_id(&conn, 1), co, "不得清空或换绑 co_id");
+        let rule_json: String = conn
+            .query_row(
+                "SELECT alert_rule FROM plan_instruction WHERE id=1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            rule_json.contains("1700"),
+            "被拒绝时不得写规则: {rule_json}"
+        );
+        assert_eq!(co_count(&conn), 1, "被拒绝时不得新建/取消条件单");
+
+        // 只挂票、状态仍 active 同样拒绝。
+        conn.execute(
+            "UPDATE conditional_order SET status='active' WHERE co_id=?1",
+            [&co],
+        )
+        .unwrap();
+        let err = update_trigger(&conn, 1, &json!({"upPrice":1801})).unwrap_err();
+        assert!(err.contains(TRIGGERED_EDIT_ERROR), "实际: {err}");
+
+        // submitted 也属于已触发（票字段清空后仍拒绝）。
+        conn.execute(
+            "UPDATE conditional_order SET status='submitted',ticket_id='' WHERE co_id=?1",
+            [&co],
+        )
+        .unwrap();
+        let err = update_trigger(&conn, 1, &json!({"upPrice":1802})).unwrap_err();
+        assert!(err.contains(TRIGGERED_EDIT_ERROR), "实际: {err}");
+    }
+
+    #[test]
+    fn update_trigger_validation() {
+        let conn = conn_with_tables();
+        insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
+        conn.execute_batch(
+            "INSERT INTO plan_instruction(id,plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,1,'candidate','600519','贵州茅台','{\"upPrice\":1700}','open',0);
+             INSERT INTO plan_instruction(id,plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(2,1,'candidate','000001','平安','{}','open',1);",
+        )
+        .unwrap();
+
+        for (rule, want) in [
+            (json!({}), "至少设置一个触发条件"),
+            (
+                json!({"note":"随手备注","unknown":1}),
+                "至少设置一个触发条件",
+            ),
+            (json!({"upPrice":1710,"vol":150}), "100"),
+            (json!({"upPrice":1710,"vol":0}), "100"),
+            (json!({"upPrice":1710,"side":"HOLD"}), "BUY 或 SELL"),
+            (json!({"upPrice":1710,"side":""}), "BUY 或 SELL"),
+            (json!({"upPrice":1710,"autoConfirm":"yes"}), "布尔"),
+            (json!({"upPrice":"1710"}), "数字"),
+        ] {
+            let err = update_trigger(&conn, 2, &rule).unwrap_err();
+            assert!(err.contains(want), "{rule} -> {err}");
+        }
+        let rule_json: String = conn
+            .query_row(
+                "SELECT alert_rule FROM plan_instruction WHERE id=2",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(rule_json, "{}", "校验失败不得改动已有规则");
+        assert_eq!(co_count(&conn), 0, "校验失败不得建单");
+
+        // 只改数量（不重发触发键）也应合并且重建。
+        update_trigger(&conn, 1, &json!({"vol":300})).unwrap();
+        assert_eq!(co_count(&conn), 1);
+        let vol: i64 = conn
+            .query_row("SELECT vol FROM conditional_order", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(vol, 300, "数量修改上报");
+        let rule_json: String = conn
+            .query_row(
+                "SELECT alert_rule FROM plan_instruction WHERE id=1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            rule_json.contains("\"upPrice\":1700"),
+            "未编辑的触发条件保留: {rule_json}"
+        );
+    }
+
+    #[test]
+    fn update_trigger_does_not_materialize_pilot_plan() {
+        let conn = conn_with_tables();
+        insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
+        conn.execute("UPDATE plan SET model='pilot-auto' WHERE id=1", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','600519','贵州茅台','{\"upPrice\":1700}','open',0)",
+            [],
+        )
+        .unwrap();
+
+        // 智驾计划由 autoexec 执行同一批指令，编辑不得物化条件单，否则双份触发。
+        update_trigger(&conn, 1, &json!({"upPrice":1710})).unwrap();
+        assert_eq!(co_count(&conn), 0, "pilot-auto 计划不得物化条件单");
+        assert!(instruction_co_id(&conn, 1).is_empty());
+    }
+
+    #[test]
+    fn materialize_auto_confirm_flag() {
+        let conn = conn_with_tables();
+        insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
+        conn.execute_batch(
+            "INSERT INTO plan_instruction(id,plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,1,'candidate','600519','贵州茅台','{\"upPrice\":1700,\"autoConfirm\":false}','open',0);
+             INSERT INTO plan_instruction(id,plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(2,1,'candidate','000001','平安','{\"upPrice\":10,\"autoConfirm\":true}','open',1);
+             INSERT INTO plan_instruction(id,plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(3,1,'candidate','000002','万科','{\"upPrice\":8}','open',2);",
+        )
+        .unwrap();
+        assert_eq!(materialize_plan(&conn, 1).unwrap().created, 3);
+        let flag = |note: &str| -> i64 {
+            conn.query_row(
+                "SELECT auto_confirm FROM conditional_order WHERE note=?1",
+                [note],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(flag("plan:1:1"), 0, "autoConfirm:false 应留人工确认");
+        assert_eq!(flag("plan:1:2"), 1);
+        assert_eq!(flag("plan:1:3"), 1, "缺省 autoConfirm=true");
     }
 }
