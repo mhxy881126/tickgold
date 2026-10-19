@@ -293,6 +293,17 @@ pub fn update(
     Ok(())
 }
 
+/// 手动撤销计划条件单 = 放弃对应指令，避免 30s 物化立即重建。
+fn drop_linked_instruction(conn: &Connection, co_id: &str) {
+    if co_id.is_empty() {
+        return;
+    }
+    let _ = conn.execute(
+        "UPDATE plan_instruction SET status='dropped' WHERE co_id=?1 AND status IN ('open','alerted')",
+        [co_id],
+    );
+}
+
 /// 撤销（仅 active）。
 pub fn cancel(conn: &Connection, id: i64) -> Result<(), String> {
     let n = conn
@@ -303,6 +314,15 @@ pub fn cancel(conn: &Connection, id: i64) -> Result<(), String> {
         .map_err(|e| format!("撤销条件单失败: {e}"))?;
     if n == 0 {
         return Err("条件单不存在或已不可撤销".to_string());
+    }
+    // 手动撤销 = 放弃来源指令：否则指令仍是 open/alerted 且 co_is_live=false，
+    // 下一轮物化（30s）会按同一 note 重新建单，用户永远取消不掉。
+    if let Ok(co_id) = conn.query_row(
+        "SELECT co_id FROM conditional_order WHERE id=?1",
+        params![id],
+        |r| r.get::<_, String>(0),
+    ) {
+        drop_linked_instruction(conn, &co_id);
     }
     Ok(())
 }
@@ -315,6 +335,22 @@ pub fn cancel_all(conn: &Connection) -> Result<i64, String> {
     )
     .map(|n| n as i64)
     .map_err(|e| format!("批量撤销失败: {e}"))
+}
+
+/// 撤销全部 active，并放弃已取消的计划条件单对应的指令，返回撤销数量。
+///
+/// 与 `cancel_all` 分开：kill switch 走裸 `cancel_all`，不应改变计划指令状态；
+/// 条件单面板的「全部撤销」走本函数，避免 30s 物化把同一批计划条件单重建。
+pub fn cancel_all_dropping(conn: &Connection) -> Result<i64, String> {
+    let n = cancel_all(conn)?;
+    conn.execute(
+        "UPDATE plan_instruction SET status='dropped'
+         WHERE status IN ('open','alerted')
+           AND co_id IN (SELECT co_id FROM conditional_order WHERE note LIKE 'plan:%' AND status='cancelled')",
+        [],
+    )
+    .map_err(|e| format!("放弃已撤销计划指令失败: {e}"))?;
+    Ok(n)
 }
 
 /// 命中触发：active → triggered，记录触发时间（WHERE 限定 active，防重复触发）。
@@ -452,7 +488,7 @@ pub fn co_cancel(ai: State<'_, crate::ai::AiState>, id: i64) -> Result<(), Strin
 #[tauri::command]
 pub fn co_cancel_all(ai: State<'_, crate::ai::AiState>) -> Result<i64, String> {
     let conn = maindb::open_readwrite(&ai.dir())?;
-    let n = cancel_all(&conn)?;
+    let n = cancel_all_dropping(&conn)?;
     checkpoint(&conn);
     Ok(n)
 }

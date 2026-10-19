@@ -883,6 +883,73 @@ mod tests {
     }
 
     #[test]
+    fn manual_cancel_drops_instruction_and_blocks_rematerialize() {
+        let conn = conn_with_tables();
+        insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
+        conn.execute(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','600519','贵州茅台','{\"upPrice\":1700,\"vol\":200}','open',0)",
+            [],
+        )
+        .unwrap();
+        assert_eq!(materialize_plan(&conn, 1).unwrap().created, 1);
+        let co_row_id: i64 = conn
+            .query_row(
+                "SELECT id FROM conditional_order WHERE note='plan:1:1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        // 用户在 ConditionalOrders 面板手动撤销（co_cancel 走同一 cancel 路径）。
+        crate::broker::conditional::cancel(&conn, co_row_id).unwrap();
+
+        let (status, co_id): (String, String) = conn
+            .query_row(
+                "SELECT status,co_id FROM plan_instruction WHERE id=1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(status, "dropped", "撤销条件单必须同时放弃指令");
+        assert!(!co_id.is_empty(), "保留 co_id 便于审计与重开");
+
+        // 30s 物化循环：dropped 不在扫描范围，不得重建同一 note 的条件单。
+        let again = materialize_plan(&conn, 1).unwrap();
+        assert_eq!(again.created, 0, "手动撤销后不得被物化重建");
+        assert_eq!(co_count(&conn), 1, "不得新增条件单");
+    }
+
+    #[test]
+    fn cancel_all_dropping_releases_linked_instructions() {
+        let conn = conn_with_tables();
+        insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
+        conn.execute(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','600519','贵州茅台','{\"upPrice\":1700,\"vol\":200}','open',0)",
+            [],
+        )
+        .unwrap();
+        assert_eq!(materialize_plan(&conn, 1).unwrap().created, 1);
+
+        // 条件单面板「全部撤销」：撤销 CO 的同时放弃计划指令。
+        let n = crate::broker::conditional::cancel_all_dropping(&conn).unwrap();
+        assert_eq!(n, 1);
+        let status: String = conn
+            .query_row("SELECT status FROM plan_instruction WHERE id=1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(status, "dropped");
+        assert_eq!(
+            materialize_plan(&conn, 1).unwrap().created,
+            0,
+            "批量撤销后不得被物化重建"
+        );
+        assert_eq!(co_count(&conn), 1);
+    }
+
+    #[test]
     fn materialize_today_skips_pilot_owned_plan() {
         let conn = conn_with_tables();
         let today = crate::broker::conditional::today_dashed();
