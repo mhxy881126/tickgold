@@ -118,7 +118,7 @@
 | `OrderDock.vue` | 下单条 + 确认弹窗 + 提交与结果处理 |
 | `useBattlePhase.ts` | 纯函数 `computePhase(now)`、`nextBoundary()`、`phaseProgress()`（vitest 单测） |
 
-保留 `Cockpit.vue` 不删除，通过卡片设置里的「六步流程（旧）」开关切换（localStorage `battle_station_v2`，默认 `on`）。
+保留 `Cockpit.vue` 不删除，卡片右上角提供「旧版六步 / 新版作战台」切换按钮（localStorage `battle_station_v2`，默认 `on`）。
 
 ### 5.2 后端
 
