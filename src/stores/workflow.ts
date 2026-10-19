@@ -262,7 +262,8 @@ export interface BattlePlan {
  *  不传 scope（None）= 后端启发式：今日作战卡未确认时取今天（8:45 提醒后的驾驶舱），否则下一交易日。 */
 export type PlanScope = "next" | "today";
 
-function todayStr(): string {
+/** 当日日期（YYYY-MM-DD，本地时区）：作战流各命令与前端判断统一用该口径。 */
+export function todayStr(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;

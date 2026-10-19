@@ -271,6 +271,25 @@ const fakeInstructions: Record<string, unknown>[] = [
   { id: 3, tier: "candidate", code: "000001", name: "平安银行", condition: "", action: "", positionHint: "", coId: "CO3", triggerJson: "", state: "filled", triggeredAt: 1, filledVol: 100, filledAvgPrice: 12.3, ticketId: 3, ticketStatus: "done", side: "SELL", vol: 100, price: 12.3, autoConfirm: true, orderStatus: "filled", hasOrder: true },
 ];
 
+// —— P1-c 早盘：缺省 scope（无 scope）返回「今日 draft」计划 ——
+// 新版作战台以缺省 scope 拉取可确认计划：今日未确认 → 今日 draft（早盘提醒链路）。
+// scope="today"/"next" 的既有分支保持不变（见 workflow_p1_products）。
+function todayDashed(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+const fakeTodayPlan = {
+  id: 2,
+  planDate: todayDashed(),
+  title: "今日作战卡",
+  marketView: "",
+  status: "draft",
+  instructions: fakeInstructions.map(({ tier, code, name }) => ({
+    tier, code, name, theme: "", condition: "", action: "", positionHint: "",
+  })) as Record<string, unknown>[],
+};
+
 // —— invoke 命令注册表 ——
 type Handler = (args: Record<string, unknown> | undefined) => unknown;
 const handlers: Record<string, Handler> = {
@@ -400,14 +419,28 @@ const handlers: Record<string, Handler> = {
     positions: [{ code: "600519", name: "贵州茅台", vol: 1000, avail: 1000 }],
   }),
   workflow_get_today: () => null,
-  // 驾驶舱③默认（无 scope）返回 null，保留「确认作战卡」入口；
-  // 作战台 scope="today" 与 workflow_instructions 返回同一份 fakePlan。
-  workflow_p1_products: (a) => ({
-    briefing: null,
-    candidates: [],
-    plan: a?.scope === "today" ? fakePlan : null,
-    planConfirmed: a?.scope === "today",
-  }),
+  // scope="today"：与 workflow_instructions 返回同一份 fakePlan（既有分支不变）；
+  // scope="next"：返回 null（既有分支不变）；
+  // 缺省（无 scope）：早盘启发式 → 今日 draft 计划，作战台据此显示「确认今日作战卡」。
+  workflow_p1_products: (a) => {
+    if (a?.scope === "today") {
+      return { briefing: null, candidates: [], plan: fakePlan, planConfirmed: true };
+    }
+    if (a?.scope === "next") {
+      return { briefing: null, candidates: [], plan: null, planConfirmed: false };
+    }
+    return { briefing: null, candidates: [], plan: fakeTodayPlan, planConfirmed: false };
+  },
+  // P1-c 早盘确认：记录参数（e2e 断言 planDate），返回 confirmed 计划 + 计数。
+  workflow_plan_confirm: (a) => {
+    (window as unknown as { __FAKE_LAST_PLAN_CONFIRM?: unknown }).__FAKE_LAST_PLAN_CONFIRM = a;
+    const planDate = String(a?.planDate ?? fakeTodayPlan.planDate);
+    return {
+      mission: null,
+      plan: { ...fakeTodayPlan, planDate, status: "confirmed" },
+      alertsCreated: 3,
+    };
+  },
   workflow_p2_products: () => ({ feedback: null, running: false, killSwitch: false }),
   // P1-c 命中率：固定有价样本（12 笔 ≥ 3）→ 作战台头部必须显示三个百分比。
   workflow_hit_rate: () => ({

@@ -316,3 +316,34 @@ test("8:45 提醒横幅：点「稍后」仅关闭横幅", async ({ page }) => {
   await page.getByTestId("reminder-dismiss").click();
   await expect(banner).toHaveCount(0);
 });
+
+test("作战台确认今日作战卡：弹窗确认后记录 planDate 并显示已确认", async ({ page }) => {
+  await installOpenClock(page);
+  await openCockpit(page);
+
+  // 缺省 products 分支返回今日 draft（fakeTodayPlan）：作战台直接给出确认入口。
+  const confirmBtn = page.getByTestId("confirm-plan");
+  await expect(confirmBtn).toBeVisible();
+  await expect(confirmBtn).toHaveText("确认今日作战卡");
+  await confirmBtn.click();
+
+  const dialog = page.getByRole("dialog", { name: "确认今日作战卡" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("今日作战卡");
+  await dialog.getByRole("button", { name: "确认", exact: true }).click();
+
+  // fake 记录 planConfirm 的参数：必须按 battlePlan.planDate（今天）确认一次。
+  const today = await page.evaluate(() => {
+    const d = new Date();
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  });
+  const lastConfirm = await page.evaluate(
+    () => (window as unknown as { __FAKE_LAST_PLAN_CONFIRM?: unknown }).__FAKE_LAST_PLAN_CONFIRM,
+  );
+  expect(lastConfirm).toMatchObject({ planDate: today });
+
+  // 成功后确认按钮消失，头部显示「已确认」chip。
+  await expect(page.getByTestId("confirm-plan")).toHaveCount(0);
+  await expect(page.getByTestId("plan-confirmed")).toHaveText("已确认");
+});

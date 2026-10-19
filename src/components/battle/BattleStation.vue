@@ -7,9 +7,10 @@ import OrderDock from "./OrderDock.vue";
 import { computePhase, type PhaseId } from "./useBattlePhase";
 import type { AlertRule } from "./instructionModel";
 import { formatHitRate } from "./hitRateModel";
-import { useWorkflowStore } from "../../stores/workflow";
+import { useWorkflowStore, todayStr } from "../../stores/workflow";
 import { useQuotesStore } from "../../stores/quotes";
 import { toast } from "../../composables/useToast";
+import { confirmDialog } from "../../composables/useDialog";
 import {
   brokerGetStatus,
   riskSnapshot,
@@ -33,8 +34,9 @@ let hitPoll = 0;
 let disposed = false;
 
 onMounted(async () => {
-  // 作战台与指令列表同口径：取「今天优先」的计划（驾驶舱③仍走默认 next）。
-  void wf.loadToday("today");
+  // 缺省 scope 走后端早盘启发式：今日未确认 → 今日作战卡；否则下一交易日。
+  // 战斗台既要展示今日计划，也要承担盘后「确认明日作战卡」入口，故不再固定 scope="today"。
+  void wf.loadToday();
   // P1-c 命中率：挂载取一次，之后每 5 分钟刷新（不随 5s 指令轮询打行情接口）。
   void wf.loadHitRate();
   hitPoll = window.setInterval(() => { void wf.loadHitRate(); }, 5 * 60 * 1000);
@@ -71,6 +73,35 @@ const state = computed(() => computePhase(now.value));
 const hit = computed(() => formatHitRate(wf.hitRate));
 const cash = computed(() => snap.value?.cash ?? 0);
 const pct = computed(() => (snap.value?.positionPct ?? 0).toFixed(1));
+
+// P1-c 计划确认入口：今日未确认作战卡（早盘提醒直达）或下一交易日 draft（盘后）。
+const planIsToday = computed(() => wf.battlePlan?.planDate === todayStr());
+const canConfirmPlan = computed(() => !!wf.battlePlan && !wf.planConfirmed);
+const planConfirmLabel = computed(() =>
+  planIsToday.value ? "确认今日作战卡" : "确认明日作战卡",
+);
+
+// 一次确认弹窗后调后端按计划日确认；失败把中文错误透出到 toast（不静默）。
+async function onConfirmPlan() {
+  const plan = wf.battlePlan;
+  if (!plan || wf.planConfirmed) return;
+  const label = plan.planDate === todayStr() ? "确认今日作战卡" : "确认明日作战卡";
+  const ok = await confirmDialog({
+    title: label,
+    message:
+      `确认后将把 ${plan.planDate} 作战卡的 ${plan.instructions?.length ?? 0} 条指令转为触发预警，` +
+      "并进入盯盘流程。确认后不可在盘前撤回，可重新生成作战卡。",
+    confirmText: "确认",
+    cancelText: "取消",
+  });
+  if (!ok) return;
+  await wf.planConfirm(plan.planDate);
+  if (wf.error) {
+    toast.error(wf.error);
+    return;
+  }
+  toast.success("作战卡已确认，指令已转预警");
+}
 
 function pick(code: string) {
   dock.value?.setCode(code);
@@ -126,6 +157,22 @@ function money(n: number) {
         总资产 {{ money(snap?.equity ?? 0) }} · 现金 {{ money(cash) }} · 仓位 {{ pct }}%
       </span>
       <span data-testid="hit-rate" class="bts-hit mono" :title="hit.title">{{ hit.text }}</span>
+      <button
+        v-if="canConfirmPlan"
+        type="button"
+        class="bts-plan-btn"
+        data-testid="confirm-plan"
+        :disabled="wf.busy"
+        @click="onConfirmPlan"
+      >
+        {{ wf.busy ? "确认中…" : planConfirmLabel }}
+      </button>
+      <span
+        v-else-if="wf.battlePlan && wf.planConfirmed"
+        class="bts-plan-ok"
+        data-testid="plan-confirmed"
+        >已确认</span
+      >
     </header>
 
     <PhaseTimeline :state="state" :preview="preview" @preview="preview = $event" />
@@ -156,13 +203,25 @@ function money(n: number) {
 
 <style scoped>
 .bts { display: flex; flex-direction: column; gap: 10px; height: 100%; padding: 10px 12px; overflow: auto; }
-.bts-head { display: flex; align-items: baseline; gap: 10px; }
+.bts-head { display: flex; align-items: baseline; gap: 10px; padding-right: 72px; }
 .bts-logo { font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: 1px; }
 .bts-sub { font-size: 11px; color: var(--text-dim); }
 .bts-acc { margin-left: auto; font-size: 11px; color: var(--text-dim); }
 .bts-hit {
   flex: none; font-size: 11px; color: var(--text-dim); white-space: nowrap; cursor: help;
   padding: 1px 7px; border: 1px solid var(--border); border-radius: 999px;
+}
+.bts-plan-btn {
+  flex: none; font-size: 11.5px; font-weight: 700; color: #1a1408;
+  background: var(--accent, #e8c878); border: 1px solid transparent;
+  border-radius: 7px; padding: 3px 10px; cursor: pointer; white-space: nowrap;
+}
+.bts-plan-btn:hover { filter: brightness(1.08); }
+.bts-plan-btn:disabled { opacity: .6; cursor: not-allowed; }
+.bts-plan-ok {
+  flex: none; font-size: 11px; font-weight: 700; color: var(--down, #2fbf95);
+  border: 1px solid rgba(47, 191, 149, .5); border-radius: 999px; padding: 1px 8px;
+  white-space: nowrap;
 }
 .bts-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
 .mono { font-variant-numeric: tabular-nums; }
