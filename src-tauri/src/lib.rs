@@ -310,6 +310,7 @@ pub fn run() {
             ai::workflow_p1::workflow_plan,
             ai::workflow_p1::workflow_plan_confirm,
             ai::workflow_p1::workflow_p1_products,
+            ai::workflow_p1::workflow_instructions,
             ai::workflow_p2::workflow_watch_start,
             ai::workflow_p2::workflow_execute_status,
             ai::workflow_p2::workflow_feedback,

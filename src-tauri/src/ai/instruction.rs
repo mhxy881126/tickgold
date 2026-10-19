@@ -1,5 +1,5 @@
 // P1-a：计划指令 → 条件单物化、状态推导；状态不落库，读取时计算。
-// 本任务提供触发映射、状态推导与物化；读取列表在后续任务补充。
+// 本文件提供触发映射、状态推导、物化与只读指令列表（供 workflow_instructions 复用）。
 
 use crate::ai::now_millis;
 use crate::broker::conditional::CoTrigger;
@@ -96,7 +96,6 @@ pub fn leaves_from_alert_rule(rule: &Value) -> Vec<CoTrigger> {
 }
 
 /// 读取时推导：条件单 → 信号票 → 委托。状态不落库。
-#[allow(dead_code)] // Task 2/3 接入物化与列表
 pub fn derive_state(co: Option<&str>, ticket: Option<&str>, order: Option<&str>) -> &'static str {
     match co.unwrap_or("") {
         "" => "watch",
@@ -126,7 +125,6 @@ pub fn derive_state(co: Option<&str>, ticket: Option<&str>, order: Option<&str>)
 }
 
 /// 检查 `plan_instruction` 是否已具备 P1-a 新增列（旧库未迁移时降级）。
-#[allow(dead_code)] // Task 3 列表展示接入
 pub fn plan_instruction_columns_exist(conn: &rusqlite::Connection) -> bool {
     let mut stmt = match conn.prepare("PRAGMA table_info(plan_instruction)") {
         Ok(s) => s,
@@ -137,6 +135,88 @@ pub fn plan_instruction_columns_exist(conn: &rusqlite::Connection) -> bool {
         Err(_) => return false,
     };
     cols.contains("co_id") && cols.contains("trigger_json")
+}
+
+/// 读取计划指令并推导执行状态（只读，状态不落库）。
+///
+/// 单条 SQL 左联 `conditional_order → signal_ticket → broker_order`，一次取齐
+/// 条件单状态、触发时间与成交回填，避免 N+1 查询。旧库未迁移（缺 `co_id` /
+/// `trigger_json`）时降级为只读计划字段，全部指令按「仅观察」返回。
+pub fn list_instructions(conn: &rusqlite::Connection, plan_id: i64) -> Result<Vec<Value>, String> {
+    if !plan_instruction_columns_exist(conn) {
+        return list_instructions_legacy(conn, plan_id);
+    }
+    let mut stmt = conn
+        .prepare(
+            "SELECT i.id,i.tier,i.code,i.name,i.condition,i.action,i.position_hint,
+                    i.co_id,i.trigger_json,
+                    c.status,c.triggered_at,
+                    t.status,o.status,o.filled_vol,o.filled_avg_price
+             FROM plan_instruction i
+             LEFT JOIN conditional_order c ON c.co_id=i.co_id AND i.co_id<>''
+             LEFT JOIN signal_ticket t ON t.sig_id=c.ticket_id AND c.ticket_id<>''
+             LEFT JOIN broker_order o ON o.sig_id=t.sig_id
+             WHERE i.plan_id=?1 ORDER BY i.sort",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([plan_id], |r| {
+            let co = r.get::<_, String>(9).ok();
+            let ticket = r.get::<_, String>(11).ok();
+            let order = r.get::<_, String>(12).ok();
+            Ok(serde_json::json!({
+                "id": r.get::<_, i64>(0)?,
+                "tier": r.get::<_, String>(1)?,
+                "code": r.get::<_, String>(2)?,
+                "name": r.get::<_, String>(3)?,
+                "condition": r.get::<_, String>(4)?,
+                "action": r.get::<_, String>(5)?,
+                "positionHint": r.get::<_, String>(6)?,
+                "coId": r.get::<_, String>(7)?,
+                "triggerJson": r.get::<_, String>(8)?,
+                "state": derive_state(co.as_deref(), ticket.as_deref(), order.as_deref()),
+                "triggeredAt": r.get::<_, i64>(10).unwrap_or(0),
+                "filledVol": r.get::<_, i64>(13).unwrap_or(0),
+                "filledAvgPrice": r.get::<_, f64>(14).unwrap_or(0.0),
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| e.to_string())
+}
+
+/// 旧库降级：缺 `co_id`/`trigger_json` 时只返回计划字段，状态恒为「仅观察」。
+fn list_instructions_legacy(
+    conn: &rusqlite::Connection,
+    plan_id: i64,
+) -> Result<Vec<Value>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id,tier,code,name,condition,action,position_hint
+             FROM plan_instruction WHERE plan_id=?1 ORDER BY sort",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([plan_id], |r| {
+            Ok(serde_json::json!({
+                "id": r.get::<_, i64>(0)?,
+                "tier": r.get::<_, String>(1)?,
+                "code": r.get::<_, String>(2)?,
+                "name": r.get::<_, String>(3)?,
+                "condition": r.get::<_, String>(4)?,
+                "action": r.get::<_, String>(5)?,
+                "positionHint": r.get::<_, String>(6)?,
+                "coId": "",
+                "triggerJson": "",
+                "state": "watch",
+                "triggeredAt": 0,
+                "filledVol": 0,
+                "filledAvgPrice": 0.0,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| e.to_string())
 }
 
 /// 条件单是否仍存在。
@@ -451,6 +531,89 @@ mod tests {
         )
         .unwrap();
         assert!(plan_instruction_columns_exist(&conn));
+    }
+
+    /// 列表查询需要的三张关联表：条件单 → 信号票 → 委托。
+    fn conn_with_instruction_links() -> rusqlite::Connection {
+        let conn = conn_with_tables();
+        conn.execute_batch(
+            "CREATE TABLE signal_ticket (sig_id TEXT NOT NULL UNIQUE, status TEXT DEFAULT 'pending');
+             CREATE TABLE broker_order (sig_id TEXT NOT NULL UNIQUE, status TEXT DEFAULT 'submitted',
+                 filled_vol INTEGER DEFAULT 0, filled_avg_price REAL DEFAULT 0.0);",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn list_instructions_derives_state_from_linked_orders() {
+        let conn = conn_with_instruction_links();
+        insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
+        insert_plan(&conn, 2, "2999-01-01");
+        conn.execute_batch(
+            "INSERT INTO plan_instruction(id,plan_id,tier,code,name,condition,action,position_hint,alert_rule,status,sort,co_id,trigger_json)
+             VALUES(1,1,'candidate','600519','贵州茅台','战法：龙头共振','备选待确认','不设仓位','{}','alerted',0,'CO1','[{\"field\":\"price\",\"op\":\"gte\",\"value\":1680}]');
+             INSERT INTO plan_instruction(id,plan_id,tier,code,name,condition,action,position_hint,alert_rule,status,sort,co_id,trigger_json)
+             VALUES(2,1,'trigger','300750','宁德时代','涨幅触发','买入','','{}','alerted',1,'CO2','[{\"field\":\"pct\",\"op\":\"gte\",\"value\":3}]');
+             INSERT INTO plan_instruction(id,plan_id,tier,code,name,condition,action,position_hint,alert_rule,status,sort,co_id,trigger_json)
+             VALUES(3,1,'watch','000001','平安银行','仅观察','','','{}','open',2,'','');
+             INSERT INTO plan_instruction(id,plan_id,tier,code,name,condition,action,position_hint,alert_rule,status,sort,co_id,trigger_json)
+             VALUES(4,1,'candidate','000002','万科','止损','','','{}','alerted',3,'CO4','');
+             INSERT INTO plan_instruction(id,plan_id,tier,code,name,condition,action,position_hint,alert_rule,status,sort,co_id,trigger_json)
+             VALUES(5,2,'candidate','600036','招商银行','其它计划','','','{}','open',0,'','');
+             INSERT INTO conditional_order(co_id,trade_date,code,side,trigger_json,vol,status,ticket_id,triggered_at,created_at)
+             VALUES('CO1','2026-10-19','600519','BUY','[]',100,'active','',0,1);
+             INSERT INTO conditional_order(co_id,trade_date,code,side,trigger_json,vol,status,ticket_id,triggered_at,created_at)
+             VALUES('CO2','2026-10-19','300750','BUY','[]',100,'triggered','T2',1750000000000,1);
+             INSERT INTO conditional_order(co_id,trade_date,code,side,trigger_json,vol,status,ticket_id,triggered_at,created_at)
+             VALUES('CO4','2026-10-19','000002','BUY','[]',100,'cancelled','',0,1);
+             INSERT INTO signal_ticket(sig_id,status) VALUES('T2','confirmed');
+             INSERT INTO broker_order(sig_id,status,filled_vol,filled_avg_price) VALUES('T2','filled',200,12.3);",
+        )
+        .unwrap();
+
+        let rows = list_instructions(&conn, 1).unwrap();
+        assert_eq!(rows.len(), 4, "只返回目标计划的指令，且按 sort 排序");
+        assert_eq!(rows[0]["id"].as_i64(), Some(1));
+        assert_eq!(rows[0]["state"], "pending", "条件单 active → 待触发");
+        assert_eq!(rows[0]["coId"], "CO1");
+        assert_eq!(
+            rows[0]["triggerJson"],
+            "[{\"field\":\"price\",\"op\":\"gte\",\"value\":1680}]"
+        );
+        assert_eq!(rows[0]["positionHint"], "不设仓位");
+        assert_eq!(
+            rows[1]["state"], "filled",
+            "票 confirmed + 委托 filled → 已成交"
+        );
+        assert_eq!(rows[1]["filledVol"].as_i64(), Some(200));
+        assert_eq!(rows[1]["filledAvgPrice"].as_f64(), Some(12.3));
+        assert_eq!(rows[1]["triggeredAt"].as_i64(), Some(1_750_000_000_000));
+        assert_eq!(rows[2]["state"], "watch", "无 co_id → 仅观察");
+        assert_eq!(rows[3]["state"], "cancelled", "条件单 cancelled → 已取消");
+    }
+
+    #[test]
+    fn list_instructions_legacy_schema_degrades_to_watch() {
+        // 旧库未迁移（缺 co_id / trigger_json）：降级为只读计划字段，不能整页报错。
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE plan_instruction(id INTEGER PRIMARY KEY AUTOINCREMENT, plan_id INTEGER,
+                tier TEXT, code TEXT, name TEXT, condition TEXT, action TEXT, position_hint TEXT,
+                sort INTEGER);
+             INSERT INTO plan_instruction(plan_id,tier,code,name,condition,action,position_hint,sort)
+             VALUES(7,'candidate','600519','贵州茅台','战法：龙头','备选','不设仓位',0);",
+        )
+        .unwrap();
+        assert!(!plan_instruction_columns_exist(&conn));
+        let rows = list_instructions(&conn, 7).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["state"], "watch");
+        assert_eq!(rows[0]["coId"], "");
+        assert_eq!(rows[0]["triggerJson"], "");
+        assert_eq!(rows[0]["triggeredAt"].as_i64(), Some(0));
+        assert_eq!(rows[0]["filledVol"].as_i64(), Some(0));
+        assert_eq!(rows[0]["filledAvgPrice"].as_f64(), Some(0.0));
     }
 
     fn conn_with_tables() -> rusqlite::Connection {

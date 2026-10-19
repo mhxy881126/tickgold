@@ -385,6 +385,15 @@ const handlers: Record<string, Handler> = {
     planConfirmed: false,
   }),
   workflow_p2_products: () => ({ feedback: null, running: false, killSwitch: false }),
+  // P1-a 指令列表：3 条覆盖待触发 / 已触发 / 已成交三种徽标与触发提示解析。
+  workflow_instructions: () => ({
+    plan: { id: 1, planDate: "2026-10-20", status: "confirmed" },
+    instructions: [
+      { id: 1, tier: "candidate", code: "600519", name: "贵州茅台", condition: "", action: "", positionHint: "", coId: "CO1", triggerJson: '[{"field":"price","op":"gte","value":1680}]', state: "pending", triggeredAt: 0, filledVol: 0, filledAvgPrice: 0 },
+      { id: 2, tier: "trigger", code: "300750", name: "宁德时代", condition: "", action: "", positionHint: "", coId: "CO2", triggerJson: '[{"field":"pct","op":"gte","value":3}]', state: "triggered", triggeredAt: 1, filledVol: 0, filledAvgPrice: 0 },
+      { id: 3, tier: "candidate", code: "000001", name: "平安银行", condition: "", action: "", positionHint: "", coId: "CO3", triggerJson: "", state: "filled", triggeredAt: 1, filledVol: 100, filledAvgPrice: 12.3 },
+    ],
+  }),
   // 旧版六步驾驶舱（PilotPanel）挂载即读 pilot_status.today。缺该命令时假后端会回 []，
   // 模板 st?.today.scanCount 会因 st=[] 抛错并触发卡片错误边界（新旧切换用例点不到按钮）。
   pilot_status: () => ({

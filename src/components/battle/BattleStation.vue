@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import PhaseTimeline from "./PhaseTimeline.vue";
 import PhasePanel from "./PhasePanel.vue";
+import InstructionList from "./InstructionList.vue";
 import OrderDock from "./OrderDock.vue";
 import { computePhase, type PhaseId } from "./useBattlePhase";
 import { useWorkflowStore } from "../../stores/workflow";
@@ -50,6 +51,8 @@ async function refresh() {
     if (disposed) return;
     snap.value = r;
   } catch { /* 模拟盘未初始化时忽略 */ }
+  // 指令列表随同一轮轮询刷新（只查本地库，不驱动同花顺 GUI）。
+  void wf.refreshInstructions();
 }
 
 const state = computed(() => computePhase(now.value));
@@ -85,6 +88,7 @@ function money(n: number) {
         @pick="pick"
         @preview="preview = $event"
       />
+      <InstructionList :rows="wf.instructions" @pick="pick" />
     </div>
 
     <OrderDock ref="dock" :status="status" :cash="cash" @ordered="refresh" />
@@ -97,6 +101,6 @@ function money(n: number) {
 .bts-logo { font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: 1px; }
 .bts-sub { font-size: 11px; color: var(--text-dim); }
 .bts-acc { margin-left: auto; font-size: 11px; color: var(--text-dim); }
-.bts-body { flex: 1; min-height: 0; }
+.bts-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
 .mono { font-variant-numeric: tabular-nums; }
 </style>

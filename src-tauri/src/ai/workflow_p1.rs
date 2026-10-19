@@ -598,7 +598,7 @@ pub fn workflow_plan_confirm(
     let alerts_created = plan::confirm_plan_alerts(&dir, plan_id)?;
     // P1-a：不在确认时物化。本计划面向下一交易日，条件单必须等计划日当天再建，
     // 否则 ttl=day 的单会在建单当日被 conditional::expire_due 判过期；
-    // 计划日的物化入口见 materialize_today_plan（P1 读取路径）。
+    // 计划日的物化入口见 instruction::materialize_today（后台 30s 循环 + 指令列表读取路径）。
     let saved = plan::get_plan(&dir, plan_id)?;
 
     let c = open_readwrite(&dir)?;
@@ -611,29 +611,6 @@ pub fn workflow_plan_confirm(
         "plan": saved,
         "alertsCreated": alerts_created
     }))
-}
-
-/// P1-a：把「计划日=今天」且已确认的计划物化为条件单（幂等，非计划日自动 no-op）。
-///
-/// 计划在上一交易日收盘后生成、确认，面向下一交易日；条件单若提前一天建，
-/// `trade_date` 会是昨日，`ttl=day` 的单在计划日开盘前就被 `expire_due` 清掉。
-/// 故物化放在计划日当天的读取路径上：P1 产物回显（本函数）是当前 HEAD 最早的
-/// 计划日读入口；Task 3 的 `workflow_instructions` 接入后可直接复用本函数。
-fn materialize_today_plan(c: &Connection) {
-    let today = crate::broker::conditional::today_dashed();
-    // 仅已确认的计划可建单：草稿计划（用户生成后未确认）不得在次日自动下单。
-    let plan_id: Option<i64> = c
-        .query_row(
-            "SELECT id FROM plan WHERE plan_date=?1 AND status='confirmed'",
-            [&today],
-            |r| r.get(0),
-        )
-        .ok();
-    if let Some(pid) = plan_id {
-        if let Err(e) = crate::ai::instruction::materialize_plan(c, pid) {
-            log::warn!("materialize plan {pid} failed: {e}");
-        }
-    }
 }
 
 /// 只读回显：重开驾驶舱 / 次日盘前时，取回当日已产出的态势包、候选池与次日作战卡。
@@ -652,8 +629,10 @@ pub fn workflow_p1_products(
     let briefing = load_briefing(&c, &date);
     ensure_candidate_table(&c)?;
     let candidates = load_candidates(&c, &date, 30).unwrap_or_default();
-    // 计划日首次读取 P1 产物时把今日作战卡物化为条件单（非计划日 no-op）。
-    materialize_today_plan(&c);
+    // 计划日读取 P1 产物时把今日作战卡物化为条件单（非计划日 no-op，幂等）。
+    if let Err(e) = crate::ai::instruction::materialize_today(&c) {
+        log::warn!("materialize_today failed: {e}");
+    }
     let plan_date = plan::next_trade_date(&date);
     let plan = plan::find_plan_id_by_date(&dir, &plan_date)
         .ok()
@@ -670,6 +649,47 @@ pub fn workflow_p1_products(
         "plan": plan,
         "planConfirmed": confirmed
     }))
+}
+
+/// 按计划日取计划 id（旧库缺 plan 表时返回 None，由调用方按空态处理）。
+fn plan_id_on(c: &Connection, plan_date: &str) -> Option<i64> {
+    c.query_row("SELECT id FROM plan WHERE plan_date=?1", [plan_date], |r| {
+        r.get(0)
+    })
+    .ok()
+}
+
+/// 指令列表展示哪张计划：计划日（今天）优先，其次下一交易日（盘后预览）。
+///
+/// `materialize_today` 只物化 `plan_date == 今天` 的计划，故盘中必须读今天的计划，
+/// 否则拿不到条件单状态；今天无计划（周末 / 盘后尚未生成）时回退到下一交易日，
+/// 让盘后确认的作战卡也能提前预览（未建单，全部「仅观察」）。
+fn instruction_plan_id(c: &Connection, date: &str) -> Option<i64> {
+    let today = crate::broker::conditional::today_dashed();
+    plan_id_on(c, &today).or_else(|| plan_id_on(c, &plan::next_trade_date(date)))
+}
+
+/// P1-a：作战台只读指令列表（状态由条件单 / 信号票 / 委托在读取时推导，不落库）。
+///
+/// 先做一次幂等物化：5s 轮询会反复调用本命令，今天的已确认计划因此始终「最多晚
+/// 30s」就能拿到 `co_id` 与实时状态（后台循环是兜底，不依赖作战台是否挂载）。
+#[tauri::command]
+pub fn workflow_instructions(
+    state: State<'_, AiState>,
+    trade_date: Option<String>,
+) -> Result<Value, String> {
+    let date = trade_date.unwrap_or_else(workflow::today_str);
+    let dir = state.dir().clone();
+    let c = open_readwrite(&dir)?;
+    if let Err(e) = crate::ai::instruction::materialize_today(&c) {
+        log::warn!("materialize_today failed: {e}");
+    }
+    let Some(pid) = instruction_plan_id(&c, &date) else {
+        return Ok(json!({ "plan": null, "instructions": [] }));
+    };
+    let plan = plan::get_plan(&dir, pid).unwrap_or(Value::Null);
+    let instructions = crate::ai::instruction::list_instructions(&c, pid)?;
+    Ok(json!({ "plan": plan, "instructions": instructions }))
 }
 
 // ============================ 单测 ============================
@@ -745,5 +765,32 @@ mod tests {
         assert_eq!(ins[0]["tier"], "candidate");
         assert!(ins[0]["condition"].as_str().unwrap().contains("连板"));
         assert!(pj["title"].as_str().unwrap().contains("2026-10-17"));
+    }
+
+    #[test]
+    fn instruction_plan_prefers_today_then_next_trade_date() {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE plan(id INTEGER PRIMARY KEY AUTOINCREMENT, plan_date TEXT NOT NULL UNIQUE);",
+        )
+        .unwrap();
+        // 用远期基准日构造「下一交易日」，避免用例与真实日期耦合（不会被今天命中）。
+        let base = "2999-01-01";
+        let next = plan::next_trade_date(base);
+        // 空库：没有计划 → None（列表走空态）
+        assert_eq!(instruction_plan_id(&c, base), None);
+
+        c.execute("INSERT INTO plan(plan_date) VALUES(?1)", [&next])
+            .unwrap();
+        let next_id = c.last_insert_rowid();
+        // 今天没有计划：回退到下一交易日（盘后确认的作战卡预览）
+        assert_eq!(instruction_plan_id(&c, base), Some(next_id));
+
+        let today = crate::broker::conditional::today_dashed();
+        c.execute("INSERT INTO plan(plan_date) VALUES(?1)", [&today])
+            .unwrap();
+        let today_id = c.last_insert_rowid();
+        // 今天已有计划：计划日优先，避免盘中展示明天的计划
+        assert_eq!(instruction_plan_id(&c, base), Some(today_id));
     }
 }

@@ -1,5 +1,5 @@
 // 作战台 P0 端到端验收：开盘时段高亮 / 倒计时、下单一次确认、熔断置灰、模拟/实盘徽标、
-// 实盘未启用前端拦截、新旧作战台切换。
+// 实盘未启用前端拦截、新旧作战台切换，以及 P1-a 指令列表的状态徽标与触发提示。
 //
 // 熔断状态注入（重要）：`tests/e2e/support/backend.ts` 会被 Vite 的 e2e alias 打进浏览器 bundle，
 // 与 Node 侧的 Playwright 测试进程是两份模块实例——在 spec 里 import 任何 setter 都改不到页面状态。
@@ -157,4 +157,18 @@ test("旧版六步 / 新版作战台可切换，旧版渲染完整驾驶舱", as
   await page.locator(".battle-switch").click();
   await expect(page.getByTestId("battle-station")).toBeVisible();
   await expect(page.locator(".battle-switch")).toHaveText("旧版六步");
+});
+
+test("指令列表展示状态与触发提示", async ({ page }) => {
+  await installOpenClock(page);
+  await openCockpit(page);
+
+  const list = page.getByTestId("instruction-list");
+  await expect(list).toBeVisible();
+  await expect(list.locator(".il-row")).toHaveCount(3);
+  await expect(list).toContainText("贵州茅台");
+  await expect(list).toContainText("待触发");
+  await expect(list).toContainText("已触发");
+  await expect(list).toContainText("已成交");
+  await expect(list).toContainText("≥1680.00");
 });

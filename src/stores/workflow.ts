@@ -4,6 +4,7 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import type { InstructionRow } from "../components/battle/instructionModel";
 
 export type StepStatus = "todo" | "doing" | "done";
 
@@ -392,6 +393,8 @@ export const useWorkflowStore = defineStore("workflow", () => {
   const battlePlan = ref<BattlePlan | null>(null);
   const planConfirmed = ref(false);
   const alertsCreated = ref(0);
+  // P1-a 指令列表：执行状态由后端读取时推导，前端只做展示与轮询。
+  const instructions = ref<InstructionRow[]>([]);
 
   // P2 盯盘执行层状态
   const watchStarted = ref(false);
@@ -461,6 +464,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
     battlePlan.value = null;
     planConfirmed.value = false;
     alertsCreated.value = 0;
+    instructions.value = [];
   }
 
   // 本地兜底推进：与后端 advance_steps 同语义（保留已完成步的快照）。
@@ -640,6 +644,19 @@ export const useWorkflowStore = defineStore("workflow", () => {
       error.value = (e as { message?: string })?.message ?? String(e);
     } finally {
       busy.value = false;
+    }
+  }
+
+  // P1-a 只读：今日计划指令 + 执行状态（后端在读取时幂等物化并推导状态）。
+  // 只查本地 SQLite；作战台 5s 轮询调用，失败保持空态不打断其它刷新。
+  async function refreshInstructions() {
+    try {
+      const r = await invoke<{ instructions: InstructionRow[] }>("workflow_instructions", {
+        tradeDate: todayStr(),
+      });
+      instructions.value = r?.instructions ?? [];
+    } catch {
+      instructions.value = [];
     }
   }
 
@@ -989,6 +1006,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
     battlePlan,
     planConfirmed,
     alertsCreated,
+    instructions,
     // P2 执行层
     watchStarted,
     watchCount,
@@ -1013,6 +1031,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
     analyze,
     planGenerate,
     planConfirm,
+    refreshInstructions,
     demoMode,
     runDemo,
     runAfterClosePipeline,
