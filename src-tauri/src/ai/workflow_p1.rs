@@ -15,7 +15,7 @@ use crate::market::{get_zb_pool, get_zt_pool, today_yyyymmdd};
 use rusqlite::Connection;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 const CANDIDATE_LIMIT: i64 = 50;
 
@@ -613,6 +613,16 @@ pub fn workflow_plan_confirm(
     }))
 }
 
+/// 急停（kill switch）期间暂停计划物化。
+///
+/// 急停路径会 `cancel_all_dropping` 放弃关联指令；这里再按全局 kill switch 兜底，
+/// 保证「急停后不再新建任何条件单」不依赖指令状态是否已正确落库。
+fn materialize_paused(app: &AppHandle) -> bool {
+    app.state::<crate::broker::BrokerManager>()
+        .kill_switch
+        .load(std::sync::atomic::Ordering::SeqCst)
+}
+
 /// 只读回显：重开驾驶舱 / 次日盘前时，取回当日已产出的态势包、候选池与作战卡。
 ///
 /// `scope` 决定取哪份计划：
@@ -636,8 +646,11 @@ pub fn workflow_p1_products(
     ensure_candidate_table(&c)?;
     let candidates = load_candidates(&c, &date, 30).unwrap_or_default();
     // 计划日读取 P1 产物时把今日作战卡物化为条件单（非计划日 no-op，幂等）。
-    if let Err(e) = crate::ai::instruction::materialize_today(&c) {
-        log::warn!("materialize_today failed: {e}");
+    // 急停期间必须跳过：kill switch 之后不得再建条件单（否则急停被 30s 循环静默撤销）。
+    if !materialize_paused(&app) {
+        if let Err(e) = crate::ai::instruction::materialize_today(&c) {
+            log::warn!("materialize_today failed: {e}");
+        }
     }
     let plan = products_plan(&c, &date, scope.as_deref()).map(|(_, p)| p);
     let confirmed = plan
@@ -702,14 +715,18 @@ fn products_plan(c: &Connection, date: &str, scope: Option<&str>) -> Option<(i64
 /// 30s」就能拿到 `co_id` 与实时状态（后台循环是兜底，不依赖作战台是否挂载）。
 #[tauri::command]
 pub fn workflow_instructions(
+    app: AppHandle,
     state: State<'_, AiState>,
     trade_date: Option<String>,
 ) -> Result<Value, String> {
     let date = trade_date.unwrap_or_else(workflow::today_str);
     let dir = state.dir().clone();
     let c = open_readwrite(&dir)?;
-    if let Err(e) = crate::ai::instruction::materialize_today(&c) {
-        log::warn!("materialize_today failed: {e}");
+    // 同 `workflow_p1_products`：急停期间暂停物化，读取本身仍可正常回显既有指令。
+    if !materialize_paused(&app) {
+        if let Err(e) = crate::ai::instruction::materialize_today(&c) {
+            log::warn!("materialize_today failed: {e}");
+        }
     }
     let Some((pid, plan)) = resolve_plan(&c, &date) else {
         return Ok(json!({ "plan": null, "instructions": [] }));

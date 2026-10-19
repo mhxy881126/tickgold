@@ -449,6 +449,15 @@ pub async fn run_materialize_loop(app: tauri::AppHandle) {
     use tauri::Manager;
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        // 急停期间暂停物化：即使库里还残留 open/alerted 指令，也不得在 kill switch
+        // 之后重建条件单（急停路径已用 cancel_all_dropping 放弃关联指令，这里是第二道闸）。
+        if app
+            .state::<crate::broker::BrokerManager>()
+            .kill_switch
+            .load(Ordering::SeqCst)
+        {
+            continue;
+        }
         let dir = app.state::<crate::ai::AiState>().dir();
         if let Ok(conn) = crate::ai::maindb::open_readwrite(&dir) {
             if let Err(e) = materialize_today(&conn) {
@@ -932,7 +941,7 @@ mod tests {
         .unwrap();
         assert_eq!(materialize_plan(&conn, 1).unwrap().created, 1);
 
-        // 条件单面板「全部撤销」：撤销 CO 的同时放弃计划指令。
+        // 急停 / 条件单面板「全部撤销」：撤销 CO 的同时放弃计划指令。
         let n = crate::broker::conditional::cancel_all_dropping(&conn).unwrap();
         assert_eq!(n, 1);
         let status: String = conn
@@ -946,7 +955,19 @@ mod tests {
             0,
             "批量撤销后不得被物化重建"
         );
-        assert_eq!(co_count(&conn), 1);
+
+        // 回归：急停后 30s 循环（materialize_today）也不得用同一 note 重建 active 条件单。
+        let again = materialize_today(&conn).unwrap();
+        assert_eq!(again.created, 0, "急停后 30s 物化循环不得重建条件单");
+        assert_eq!(co_count(&conn), 1, "不得新增条件单");
+        let active: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM conditional_order WHERE status='active'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(active, 0, "急停后不得残留或新建 active 条件单");
     }
 
     #[test]

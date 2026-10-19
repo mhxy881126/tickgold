@@ -2232,7 +2232,8 @@ pub fn broker_release_kill(mgr: State<'_, BrokerManager>) -> Result<(), String> 
     Ok(())
 }
 
-/// 一键急停（全局唯一实现）：封新委托 → 停自动执行 → 撤全部条件单 → 撤全部在途委托 → 断 sidecar。
+/// 一键急停（全局唯一实现）：封新委托 → 停自动执行 → 撤全部条件单（同时放弃关联计划指令）
+/// → 撤全部在途委托 → 断 sidecar。
 /// 恢复为纯手动：解除 kill → 手动重连 → 手动重启自动执行。
 pub async fn emergency_halt(app: &AppHandle) -> Result<serde_json::Value, String> {
     let mgr = app.state::<BrokerManager>();
@@ -2252,7 +2253,9 @@ pub async fn emergency_halt(app: &AppHandle) -> Result<serde_json::Value, String
     // 3)+4) 同步收集：撤条件单数量、在途委托列表；随后 drop 连接再做异步撤单（保证 future Send）。
     let (co_count, in_flight): (i64, Vec<(String, String)>) = {
         let conn = maindb::open_readwrite(&dir)?;
-        let co_count = conditional::cancel_all(&conn).unwrap_or(0);
+        // 急停必须同时放弃关联的计划指令：只撤条件单会留下 open 指令，
+        // co_is_live 不认已取消单，30s 物化循环会按同一 note 重建条件单，等于急停被静默撤销。
+        let co_count = conditional::cancel_all_dropping(&conn).unwrap_or(0);
         // 在途：已报/部分成交；含刚提交未回报的 submitting。
         let mut in_flight: Vec<(String, String)> = Vec::new();
         if let Ok(mut stmt) = conn.prepare(
