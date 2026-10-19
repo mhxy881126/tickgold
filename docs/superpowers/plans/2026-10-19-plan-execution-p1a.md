@@ -25,7 +25,7 @@
 
 | 文件 | 职责 |
 |---|---|
-| `src-tauri/src/db/migrations.rs`（修改） | 追加 v60：`plan_instruction` 三列 |
+| `src-tauri/src/db/migrations.rs`（修改） | 追加 v61：`plan_instruction` 三列 |
 | `src-tauri/src/ai/instruction.rs`（新建） | `leaves_from_alert_rule`、`derive_state`、`materialize_plan`、`list_instructions` |
 | `src-tauri/src/ai/mod.rs`（修改） | 注册 `pub mod instruction;` |
 | `src-tauri/src/ai/plan.rs`（修改） | 重建指令前取消旧条件单 |
@@ -54,7 +54,7 @@
   - `pub fn derive_state(co: Option<&str>, ticket: Option<&str>, order: Option<&str>) -> &'static str`
   - 状态常量：`watch/pending/triggered/submitted/filled/cancelled/expired`
 
-- [ ] **Step 1: 追加迁移 v60**
+- [ ] **Step 1: 追加迁移 v61**
 
 在 `src-tauri/src/db/migrations.rs` 的 `vec![...]` 末尾（最后一条 Migration 之后）追加：
 
@@ -412,13 +412,15 @@ pub fn materialize_plan(conn: &rusqlite::Connection, plan_id: i64) -> Result<Mat
 ```rust
     // P1-a：重建指令前取消旧条件单，避免孤儿单继续触发。
     {
-        let mut stmt = c
-            .prepare("SELECT co_id FROM plan_instruction WHERE plan_id=?1 AND co_id<>''")
-            .map_err(|e| e.to_string())?;
-        let co_ids: Vec<String> = stmt
-            .query_map([plan_id], |r| r.get::<_, String>(0))
-            .map(|rows| rows.filter_map(|x| x.ok()).collect())
-            .unwrap_or_default();
+        let co_ids: Vec<String> = {
+            let mut stmt = c
+                .prepare("SELECT co_id FROM plan_instruction WHERE plan_id=?1 AND co_id<>''")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([plan_id], |r| r.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            rows.filter_map(|x| x.ok()).collect()
+        };
         for co in co_ids {
             let _ = c.execute(
                 "UPDATE conditional_order SET status='cancelled', updated_at=?1 \
