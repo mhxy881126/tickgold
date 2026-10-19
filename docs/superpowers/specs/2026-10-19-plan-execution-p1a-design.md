@@ -107,7 +107,8 @@ pub fn workflow_instructions(ai: State<AiState>, trade_date: Option<String>) -> 
 
 - 计划解析采用**今天优先**：`trade_date` 当天有 `plan` 则用之，否则退回 `next_trade_date(trade_date)` 的计划；
   - 原因：物化只发生在计划日当天，只查「下一交易日」会让计划日盘中的列表恒为空；
-  - `workflow_p1_products` 必须使用同一解析，保证作战卡与指令列表口径一致。
+  - 作战台调用 `workflow_p1_products(scope:"today")` 时使用同一解析，保证作战卡与指令列表口径一致；
+  - `scope` 缺省时保持原语义（`next_trade_date`），避免盘后「确认下一交易日作战卡」入口被今天已确认的计划遮住。
 - 读取前先执行一次幂等的 `materialize_today`（只处理今天 + confirmed 的计划）。
 - 单条 SQL 左联 `conditional_order` → `signal_ticket` → `broker_order`；
 - 返回：`id/tier/code/name/condition/action/positionHint/coId/triggerJson/state/triggeredAt/filledVol/filledAvgPrice`；
