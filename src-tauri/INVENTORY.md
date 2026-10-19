@@ -374,6 +374,15 @@
 > 实现：src-tauri/src/ai/hitrate.rs（纯函数 compute + 命令 workflow_hit_rate），无新增迁移；
 > 前端 src/components/battle/hitRateModel.ts 格式化 + BattleStation 头部展示。
 
+> **P2-a 实盘闭环（模块 broker，实际注册总数 245）新增 1 个命令**：
+> - broker_recon_status()（只读：返回 { conflict, connected, kind, report }；report 为内存最近一次对账报告，
+>   无则 null，供对账状态 chip 挂载初始化）
+>
+> 实现：src-tauri/src/broker/errors.rs 新增 friendly 错误中文化（UNIQUE / no rows / 库忙 / 超时 / 未连接），
+> 仅作用于 broker_submit / broker_confirm_submit / broker_quick_order 的 Err 出口；
+> BrokerManager 新增 recon_auto_pending（sidecar connected 置 true），重连后首次合法持仓回报自动补跑一次
+> intraday 对账（mock / 空持仓跳过，失败只记日志）；无新增迁移。
+
 ---
 
 ## 二、数据库迁移：62 条（主库 sqlite:stock-dock.db）

@@ -7,6 +7,7 @@ pub mod channel;
 pub mod client;
 pub mod conditional;
 pub mod config;
+pub mod errors;
 pub mod portfolio;
 pub mod protocol;
 pub mod probe;
@@ -58,6 +59,8 @@ pub struct BrokerManager {
     pub recon_conflict: AtomicBool,
     /// P1-1/P1-2 最近一次对账报告（含差异清单）。
     pub recon_report: Mutex<serde_json::Value>,
+    /// P2-a 断线自动对账：connected 事件置 true；首次收到合法持仓回报后消费并跑一次 intraday 对账。
+    pub recon_auto_pending: AtomicBool,
     /// P1-4 报撤滑动窗口：报单/撤单时刻（毫秒），保留最近 60 秒。
     pub order_rate: Mutex<std::collections::VecDeque<u64>>,
     /// P1-4 报撤频率熔断标志，true=暂停新委托与自动执行。
@@ -94,6 +97,7 @@ impl BrokerManager {
             last_query_at: Mutex::new(std::collections::HashMap::new()),
             recon_conflict: AtomicBool::new(false),
             recon_report: Mutex::new(serde_json::json!({})),
+            recon_auto_pending: AtomicBool::new(false),
             order_rate: Mutex::new(std::collections::VecDeque::new()),
             rate_circuit: AtomicBool::new(false),
             chase_times: Mutex::new(std::collections::HashMap::new()),
@@ -227,6 +231,8 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
         "connected" => {
             if let Some(m) = try_manager(app) {
                 m.connected.store(true, Ordering::SeqCst);
+                // P2-a 断线重连：下一次合法持仓回报后自动补跑一次 intraday 对账。
+                m.recon_auto_pending.store(true, Ordering::SeqCst);
                 // P0-3 重连后通知前端：在途委托进入对账流程（下方 spawn 已触发资产/持仓/成交/挂单全量重查）。
                 let _ = app.emit("broker:connection_restored", serde_json::json!({}));
                 // python connected 后不主动推全量：立即拉一次资产 + 持仓。
@@ -430,6 +436,37 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
                         cache.remove(&code);
                     } else {
                         cache.insert(code, p);
+                    }
+                }
+                drop(cache);
+                // P2-a 断线自动对账：重连后首次合法持仓回报触发一次；缓存为空（空仓/尚未同步）跳过并保持「未对账」。
+                if m.recon_auto_pending.swap(false, Ordering::SeqCst) {
+                    let cfg = m.config.lock().unwrap().clone();
+                    if cfg.kind != "mock" {
+                        let positions = m.position_cache.lock().unwrap().clone();
+                        if !positions.is_empty() {
+                            let app2 = app.clone();
+                            let dir2 = dir.to_path_buf();
+                            tauri::async_runtime::spawn(async move {
+                                match crate::broker::reconciliation::reconcile(
+                                    &dir2,
+                                    &positions,
+                                    "intraday",
+                                    crate::ai::now_millis(),
+                                ) {
+                                    Ok(rep) => {
+                                        let j = rep.to_json();
+                                        if let Some(mgr) = app2.try_state::<BrokerManager>() {
+                                            mgr.recon_conflict
+                                                .store(!rep.matched, Ordering::SeqCst);
+                                            *mgr.recon_report.lock().unwrap() = j.clone();
+                                        }
+                                        let _ = app2.emit("broker:recon", j);
+                                    }
+                                    Err(e) => log::warn!("自动对账失败: {e}"),
+                                }
+                            });
+                        }
                     }
                 }
             }
@@ -1086,7 +1123,9 @@ pub async fn broker_submit(
     app: AppHandle,
     sig_id: String,
 ) -> Result<protocol::BrokerOrderInfo, String> {
-    submit_with_sig(&app, &sig_id).await
+    submit_with_sig(&app, &sig_id)
+        .await
+        .map_err(|e| errors::friendly(&e))
 }
 
 /// 一键确认下单的票面状态门禁：`pending` 需先确认，`confirmed` 可直接提交，其余中文报错。
@@ -1110,6 +1149,17 @@ pub(crate) fn ticket_confirm_action(status: &str) -> Result<bool, String> {
 /// 提交复用唯一入口 `submit_with_sig`（急停 / 连接 / 熔断 / 风控 / 白名单全量）。
 #[tauri::command]
 pub async fn broker_confirm_submit(
+    app: AppHandle,
+    ticket_id: i64,
+    price: Option<f64>,
+    vol: Option<i64>,
+) -> Result<protocol::BrokerOrderInfo, String> {
+    broker_confirm_submit_impl(app, ticket_id, price, vol)
+        .await
+        .map_err(|e| errors::friendly(&e))
+}
+
+async fn broker_confirm_submit_impl(
     app: AppHandle,
     ticket_id: i64,
     price: Option<f64>,
@@ -1151,6 +1201,19 @@ pub async fn broker_confirm_submit(
 /// 后端不根据 `position` 重算数量。
 #[tauri::command]
 pub async fn broker_quick_order(
+    app: AppHandle,
+    code: String,
+    side: String,
+    price: f64,
+    vol: i64,
+    position: Option<i64>,
+) -> Result<protocol::BrokerOrderInfo, String> {
+    broker_quick_order_impl(app, code, side, price, vol, position)
+        .await
+        .map_err(|e| errors::friendly(&e))
+}
+
+async fn broker_quick_order_impl(
     app: AppHandle,
     code: String,
     side: String,
@@ -2446,6 +2509,40 @@ pub async fn broker_reconcile(
     Ok(j)
 }
 
+/// P2-a 对账状态视图（纯函数便于单测）：内存报告为空对象时归一为 null，前端据此显示「未对账」。
+fn recon_status_view(
+    conflict: bool,
+    connected: bool,
+    kind: &str,
+    report: &serde_json::Value,
+) -> serde_json::Value {
+    let report = if report.as_object().is_some_and(|o| !o.is_empty()) {
+        report.clone()
+    } else {
+        serde_json::Value::Null
+    };
+    serde_json::json!({
+        "conflict": conflict,
+        "connected": connected,
+        "kind": kind,
+        "report": report,
+    })
+}
+
+/// P2-a 对账状态常驻：冲突 / 连接 / 通道类型 / 最近一次报告（仅内存，不落库）。
+#[tauri::command]
+pub fn broker_recon_status(app: AppHandle) -> serde_json::Value {
+    let mgr = app.state::<BrokerManager>();
+    let cfg = mgr.config.lock().unwrap().clone();
+    let report = mgr.recon_report.lock().unwrap().clone();
+    recon_status_view(
+        mgr.recon_conflict.load(Ordering::SeqCst),
+        mgr.connected.load(Ordering::SeqCst),
+        &cfg.kind,
+        &report,
+    )
+}
+
 /// 以券商为准重新校准基线（用户确认冲突 / 核对无误后），清除冲突、恢复自动化。
 #[tauri::command]
 pub async fn broker_recon_recalibrate(app: AppHandle) -> Result<(), String> {
@@ -2572,5 +2669,23 @@ mod tests {
             let err = ticket_confirm_action(st).unwrap_err();
             assert!(err.contains("不可确认下单"), "{st} -> {err}");
         }
+    }
+
+    /// P2-a 对账状态视图：空报告归一为 null，非空原样返回（命令本体依赖 AppHandle，只测纯函数）。
+    #[test]
+    fn recon_status_view_shape() {
+        let empty = serde_json::json!({});
+        let v = recon_status_view(true, false, "mock", &empty);
+        assert_eq!(v["conflict"].as_bool(), Some(true));
+        assert_eq!(v["connected"].as_bool(), Some(false));
+        assert_eq!(v["kind"], "mock");
+        assert!(v["report"].is_null(), "空报告应为 null");
+
+        let report = serde_json::json!({ "kind": "intraday", "matched": false });
+        let v = recon_status_view(false, true, "qmt", &report);
+        assert_eq!(v["conflict"].as_bool(), Some(false));
+        assert_eq!(v["connected"].as_bool(), Some(true));
+        assert_eq!(v["kind"], "qmt");
+        assert_eq!(v["report"], report);
     }
 }

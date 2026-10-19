@@ -196,6 +196,7 @@ pub fn run() {
             broker::broker_kill_switch,
             broker::broker_emergency_halt,
             broker::broker_reconcile,
+            broker::broker_recon_status,
             broker::broker_recon_recalibrate,
             broker::broker_chase_validate,
             broker::broker_rate_reset,
