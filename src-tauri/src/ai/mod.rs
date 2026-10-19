@@ -11,6 +11,7 @@ pub mod decision;
 pub mod evolution;
 pub mod fastbrain;
 pub mod ingest;
+pub mod instruction;
 pub mod intraday;
 pub mod maindb;
 pub mod pilot;

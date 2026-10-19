@@ -1,5 +1,5 @@
 // 主库迁移清单（v2.27 巨石拆分：从 lib.rs 抽出）。
-// 追加式：只许新增版本，禁止改动已发布条目。共 59 条（v1..v59）。
+// 追加式：只许新增版本，禁止改动已发布条目。共 61 条（v1..v61）。
 // 数量护栏见 src-tauri/INVENTORY.md；改动后需与之一致。
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -1010,6 +1010,16 @@ pub fn migrations() -> Vec<Migration> {
                               updated_at INTEGER NOT NULL DEFAULT 0
                             );
                             CREATE INDEX IF NOT EXISTS idx_pilot_daily_log_date ON pilot_daily_log(trade_date);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 61,
+                            description: "plan_instruction: co_id / trigger_json / synced_at (P1-a)",
+                            sql: "ALTER TABLE plan_instruction ADD COLUMN co_id TEXT DEFAULT '';
+                                 ALTER TABLE plan_instruction ADD COLUMN trigger_json TEXT DEFAULT '';
+                                 ALTER TABLE plan_instruction ADD COLUMN synced_at INTEGER DEFAULT 0;
+                                 CREATE INDEX IF NOT EXISTS idx_plan_instruction_co
+                                     ON plan_instruction(co_id);",
                             kind: MigrationKind::Up,
                         },
     ]
