@@ -1,6 +1,7 @@
 // P1-a：计划指令 → 条件单物化、状态推导；状态不落库，读取时计算。
-// 本任务仅提供触发映射与状态推导，materialize/list 在后续任务补充。
+// 本任务提供触发映射、状态推导与物化；读取列表在后续任务补充。
 
+use crate::ai::now_millis;
 use crate::broker::conditional::CoTrigger;
 use serde_json::Value;
 use std::collections::HashSet;
@@ -25,7 +26,6 @@ fn leaf(field: &str, op: &str, value: f64, params: Option<Value>) -> CoTrigger {
 /// 支持字段与 `market/alert.rs::eval_leaf` 对齐：price / pct / volumeRatio /
 /// turnover / amount / riseSpeed / downSpeed / sealUp / sealDown / broken；
 /// 无可用字段时返回空数组（调用方应跳过物化）。
-#[allow(dead_code)] // Task 2/3 接入物化与列表
 pub fn leaves_from_alert_rule(rule: &Value) -> Vec<CoTrigger> {
     let mut out = Vec::new();
     if let Some(v) = num(rule, "upPrice") {
@@ -107,7 +107,7 @@ pub fn derive_state(co: Option<&str>, ticket: Option<&str>, order: Option<&str>)
 }
 
 /// 检查 `plan_instruction` 是否已具备 P1-a 新增列（旧库未迁移时降级）。
-#[allow(dead_code)] // Task 2/3 接入物化与列表
+#[allow(dead_code)] // Task 3 列表展示接入
 pub fn plan_instruction_columns_exist(conn: &rusqlite::Connection) -> bool {
     let mut stmt = match conn.prepare("PRAGMA table_info(plan_instruction)") {
         Ok(s) => s,
@@ -118,6 +118,112 @@ pub fn plan_instruction_columns_exist(conn: &rusqlite::Connection) -> bool {
         Err(_) => return false,
     };
     cols.contains("co_id") && cols.contains("trigger_json")
+}
+
+/// 条件单是否仍存在。
+///
+/// 说明：`conditional::get_by_co_id` 当前为 `#[cfg(test)]`，而物化需要在正式构建里
+/// 判定幂等；本任务文件范围不含 `broker/conditional.rs`，故就地做存在性查询。
+fn co_exists(conn: &rusqlite::Connection, co_id: &str) -> bool {
+    conn.query_row(
+        "SELECT 1 FROM conditional_order WHERE co_id=?1",
+        [co_id],
+        |_| Ok(()),
+    )
+    .is_ok()
+}
+
+/// 物化结果统计：新建 / 跳过（观察级或条件不可用或已物化）/ 失败（建单校验或写库失败）。
+#[derive(Debug, Default)]
+pub struct MaterializeSummary {
+    pub created: usize,
+    pub skipped: usize,
+    pub failed: usize,
+}
+
+/// 把作战卡的 candidate/trigger 指令物化为条件单；幂等（已有 co_id 且单据存在则跳过）。
+///
+/// 单条失败只计入 `failed`，不阻断其余指令；选股数量默认 100 股，非整手则跳过。
+pub fn materialize_plan(
+    conn: &rusqlite::Connection,
+    plan_id: i64,
+) -> Result<MaterializeSummary, String> {
+    let rows: Vec<(i64, String, String, String, String, String)> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id,tier,code,name,alert_rule,co_id FROM plan_instruction
+                 WHERE plan_id=?1 ORDER BY sort",
+            )
+            .map_err(|e| e.to_string())?;
+        let it = stmt
+            .query_map([plan_id], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        it.filter_map(|x| x.ok()).collect()
+    };
+
+    let mut out = MaterializeSummary::default();
+    for (id, tier, code, name, rule_json, co_id) in rows {
+        if tier != "candidate" && tier != "trigger" {
+            out.skipped += 1;
+            continue;
+        }
+        if !co_id.is_empty() && co_exists(conn, &co_id) {
+            out.skipped += 1;
+            continue;
+        }
+        let rule: Value =
+            serde_json::from_str(&rule_json).unwrap_or_else(|_| serde_json::json!({}));
+        let leaves = leaves_from_alert_rule(&rule);
+        if leaves.is_empty() || code.trim().is_empty() {
+            out.skipped += 1;
+            continue;
+        }
+        let vol = rule.get("vol").and_then(|v| v.as_i64()).unwrap_or(100);
+        if vol <= 0 || vol % 100 != 0 {
+            out.skipped += 1;
+            continue;
+        }
+        let side = rule
+            .get("side")
+            .and_then(|v| v.as_str())
+            .unwrap_or("BUY")
+            .to_uppercase();
+        let input = crate::broker::conditional::CreateInput {
+            code: code.clone(),
+            name: name.clone(),
+            side,
+            trigger: leaves.clone(),
+            price_mode: "trigger".to_string(),
+            limit_price: 0.0,
+            vol,
+            ttl: "day".to_string(),
+            expire_at: now_millis() + 86_400_000,
+            auto_confirm: true,
+            ticket_id: String::new(),
+            note: format!("plan:{plan_id}:{id}"),
+        };
+        match crate::broker::conditional::insert(conn, input) {
+            Ok(co_id_new) => {
+                let trigger_json = serde_json::to_string(&leaves).unwrap_or_default();
+                let _ = conn.execute(
+                    "UPDATE plan_instruction SET co_id=?1,trigger_json=?2,synced_at=?3 WHERE id=?4",
+                    rusqlite::params![co_id_new, trigger_json, now_millis(), id],
+                );
+                out.created += 1;
+            }
+            Err(_) => out.failed += 1,
+        }
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -184,5 +290,75 @@ mod tests {
         )
         .unwrap();
         assert!(plan_instruction_columns_exist(&conn));
+    }
+
+    fn conn_with_tables() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::broker::conditional::CREATE_SQL)
+            .unwrap();
+        conn.execute_batch(
+            "CREATE TABLE plan_instruction(
+                id INTEGER PRIMARY KEY AUTOINCREMENT, plan_id INTEGER, tier TEXT, code TEXT,
+                name TEXT, theme TEXT, condition TEXT, action TEXT, position_hint TEXT,
+                alert_rule TEXT, status TEXT, sort INTEGER,
+                co_id TEXT DEFAULT '', trigger_json TEXT DEFAULT '', synced_at INTEGER DEFAULT 0);",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn materialize_is_idempotent() {
+        let conn = conn_with_tables();
+        conn.execute(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','600519','贵州茅台','{\"upPrice\":1700,\"vol\":200}','open',0)",
+            [],
+        )
+        .unwrap();
+        let first = materialize_plan(&conn, 1).unwrap();
+        assert_eq!(first.created, 1);
+        let second = materialize_plan(&conn, 1).unwrap();
+        assert_eq!(second.created, 0);
+        assert_eq!(second.skipped, 1);
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM conditional_order", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1);
+        let (co_id, trigger_json): (String, String) = conn
+            .query_row(
+                "SELECT co_id,trigger_json FROM plan_instruction WHERE id=1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert!(!co_id.is_empty());
+        assert!(
+            trigger_json.contains("\"field\":\"price\""),
+            "触发条件应回写到指令: {trigger_json}"
+        );
+        // 物化入参：数量取 alertRule.vol，备注带计划与指令来源，便于溯源
+        let (vol, note): (i64, String) = conn
+            .query_row("SELECT vol,note FROM conditional_order", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(vol, 200);
+        assert_eq!(note, "plan:1:1");
+    }
+
+    #[test]
+    fn materialize_skips_watch_and_invalid_rule() {
+        let conn = conn_with_tables();
+        conn.execute_batch(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'watch','600519','茅台','{\"upPrice\":1700}','open',0);
+             INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','000001','平安','{}','open',1);",
+        )
+        .unwrap();
+        let s = materialize_plan(&conn, 1).unwrap();
+        assert_eq!(s.created, 0);
+        assert_eq!(s.skipped, 2);
     }
 }

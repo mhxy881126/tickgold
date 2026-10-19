@@ -158,6 +158,25 @@ fn save_plan(
             r.get(0)
         })
         .map_err(|e| e.to_string())?;
+    // P1-a：重建指令前取消旧条件单，避免孤儿单继续触发。
+    {
+        let co_ids: Vec<String> = {
+            let mut stmt = c
+                .prepare("SELECT co_id FROM plan_instruction WHERE plan_id=?1 AND co_id<>''")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([plan_id], |r| r.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            rows.filter_map(|x| x.ok()).collect()
+        };
+        for co in co_ids {
+            let _ = c.execute(
+                "UPDATE conditional_order SET status='cancelled', updated_at=?1 \
+                 WHERE co_id=?2 AND status='active'",
+                rusqlite::params![now_millis(), co],
+            );
+        }
+    }
     // 指令全量重建（编辑旧计划时以最新生成结果为准）
     c.execute("DELETE FROM plan_instruction WHERE plan_id=?1", [plan_id])
         .map_err(|e| e.to_string())?;
@@ -479,7 +498,8 @@ mod tests {
         CREATE TABLE plan_instruction(id INTEGER PRIMARY KEY AUTOINCREMENT,plan_id INTEGER REFERENCES plan(id),
             tier TEXT NOT NULL DEFAULT 'watch',code TEXT DEFAULT '',name TEXT DEFAULT '',theme TEXT DEFAULT '',
             condition TEXT DEFAULT '',action TEXT DEFAULT '',position_hint TEXT DEFAULT '',
-            alert_rule TEXT DEFAULT '{}',status TEXT NOT NULL DEFAULT 'open',sort INTEGER NOT NULL DEFAULT 0);
+            alert_rule TEXT DEFAULT '{}',status TEXT NOT NULL DEFAULT 'open',sort INTEGER NOT NULL DEFAULT 0,
+            co_id TEXT DEFAULT '',trigger_json TEXT DEFAULT '',synced_at INTEGER DEFAULT 0);
         CREATE TABLE alerts(id TEXT PRIMARY KEY,code TEXT,name TEXT DEFAULT '',up_price REAL,down_price REAL,
             up_pct REAL,down_pct REAL,cooldown_sec INTEGER NOT NULL DEFAULT 300,enabled INTEGER NOT NULL DEFAULT 1,
             last_fired_at INTEGER,min_volume_ratio REAL,rise_speed REAL,speed_window_sec INTEGER,down_speed REAL,
@@ -498,6 +518,8 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let c = rusqlite::Connection::open(dir.join("stock-dock.db")).unwrap();
         c.execute_batch(SCHEMA).unwrap();
+        c.execute_batch(crate::broker::conditional::CREATE_SQL)
+            .unwrap();
         (dir, c)
     }
 
@@ -531,6 +553,37 @@ mod tests {
             .unwrap();
         assert_eq!(plan_count, 1);
         assert_eq!(instr_count, 1, "旧指令应被删除后重建");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_plan_cancels_old_conditional_orders() {
+        let (dir, c) = fresh_db();
+        let cfg = AiConfig::default();
+        let p1 = json!({"title":"T","marketView":"V","instructions":[
+            {"tier":"trigger","code":"300002","name":"乙","alertRule":{"upPrice":10.5}}]});
+        save_plan(&c, "2026-10-05", "2026-10-02", None, &cfg.chat_model, &p1).unwrap();
+        // 模拟确认时物化出的旧条件单
+        c.execute(
+            "INSERT INTO conditional_order(co_id,code,side,trigger_json,vol,status,created_at,updated_at)
+             VALUES('CO_old','300002','BUY','[]',100,'active',0,0)",
+            [],
+        )
+        .unwrap();
+        c.execute("UPDATE plan_instruction SET co_id='CO_old'", [])
+            .unwrap();
+        // 重新生成计划（重建指令）应取消旧条件单，避免孤儿单继续触发
+        let p2 = json!({"title":"T2","marketView":"V2","instructions":[]});
+        save_plan(&c, "2026-10-05", "2026-10-02", None, &cfg.chat_model, &p2).unwrap();
+        let (status, updated): (String, i64) = c
+            .query_row(
+                "SELECT status,updated_at FROM conditional_order WHERE co_id='CO_old'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(status, "cancelled");
+        assert!(updated > 0, "取消时应刷新 updated_at");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

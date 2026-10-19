@@ -596,6 +596,11 @@ pub fn workflow_plan_confirm(
     let plan_id = plan::find_plan_id_by_date(&dir, &plan_date)?
         .ok_or_else(|| "请先生成作战卡再确认".to_string())?;
     let alerts_created = plan::confirm_plan_alerts(&dir, plan_id)?;
+    // P1-a：确认后把候选/触发指令物化为本地条件单（失败单条隔离，不阻断确认）。
+    let materialized = {
+        let c = open_readwrite(&dir)?;
+        crate::ai::instruction::materialize_plan(&c, plan_id).unwrap_or_default()
+    };
     let saved = plan::get_plan(&dir, plan_id)?;
 
     let c = open_readwrite(&dir)?;
@@ -606,7 +611,8 @@ pub fn workflow_plan_confirm(
     Ok(json!({
         "mission": mission,
         "plan": saved,
-        "alertsCreated": alerts_created
+        "alertsCreated": alerts_created,
+        "instructionsCreated": materialized.created
     }))
 }
 
