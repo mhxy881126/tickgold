@@ -11,8 +11,8 @@ P1-a 把「作战卡指令」接进已有的条件单触发引擎，并让作战
 
 **目标**
 
-1. 确认作战卡后，`candidate` / `trigger` 指令自动物化为条件单（结构化触发）。
-2. 重复确认、重新生成计划都不会产生重复/孤儿条件单。
+1. 作战卡确认后，`candidate` / `trigger` 指令在**计划日当天**自动物化为条件单（结构化触发）。
+2. 重复确认、重新生成计划都不会产生重复/孤儿条件单；重新生成计划需重新确认。
 3. 作战台显示指令状态：仅观察 / 待触发 / 已触发 / 已下单 / 已成交 / 已取消 / 已过期。
 4. 状态在 10s 内可见（触发事件 + 本地轮询）。
 
@@ -37,11 +37,13 @@ P1-a 把「作战卡指令」接进已有的条件单触发引擎，并让作战
 
 ### 新增
 
-1. **列**（`plan_instruction`，`ALTER TABLE` 幂等补列）：`co_id TEXT DEFAULT ''`、`trigger_json TEXT DEFAULT ''`、`synced_at INTEGER DEFAULT 0`。
-2. **物化器** `ai/instruction.rs::materialize_plan`：把 `alert_rule` 映射为 `CoTrigger` 叶子，建条件单并回填 `co_id`。
-3. **状态推导** `derive_state(co_status, ticket_status, order_status)`：读取时计算，**不落库**，避免双写漂移。
-4. **读取命令** `workflow_instructions(trade_date)`：返回指令 + 链接对象状态。
-5. **前端** `InstructionList.vue` + workflow store `instructions`；作战台每 5s 刷新（只读本地库）。
+1. **列**（`plan_instruction`，迁移 v61）：`co_id TEXT DEFAULT ''`、`trigger_json TEXT DEFAULT ''`、`synced_at INTEGER DEFAULT 0`。
+2. **物化器** `ai/instruction.rs::materialize_plan`：把 `alert_rule` 映射为 `CoTrigger` 叶子，建条件单并回填 `co_id`；仅「计划日 == 今天且计划 confirmed、指令 open/alerted」时生效。
+3. **定时物化** `materialize_today` + 30s 循环：应用启动即运行，覆盖跨午夜/长时间挂机的场景。
+4. **独立触发循环** `market/alert::run_co_engine`（5s，仅交易时段）：条件单不再依赖旧预警引擎；旧引擎启动时被前端停掉后仍能触发。
+5. **状态推导** `derive_state(co_status, ticket_status, order_status)`：读取时计算，**不落库**，避免双写漂移。
+6. **读取命令** `workflow_instructions(trade_date)`：先物化今天已确认计划，再返回指令 + 链接对象状态。
+7. **前端** `InstructionList.vue` + workflow store `instructions`；作战台每 5s 刷新（只读本地库）。
 
 ## 三、触发映射（alertRule → CoTrigger）
 
@@ -90,10 +92,11 @@ P1-a 把「作战卡指令」接进已有的条件单触发引擎，并让作战
 
 ## 五、物化时机、幂等与清理
 
-- **时机**：`workflow_plan_confirm` 在 `confirm_plan_alerts` 之后调用 `materialize_plan`；返回新建条数写入 mission snapshot。
+- **时机**：不在确认时建单（次日计划在 D 日建单会被 `ttl=day` 提前判过期）。改为**计划日当天**由 30s 定时循环与 `workflow_instructions` 读取路径触发，且只处理 `status='confirmed'` 的计划。
 - **幂等**：指令 `co_id` 已存在且对应条件单存在 → 跳过；条件单被取消/过期后不自动重建（用户需重新确认计划）。
-- **重新生成计划**：`plan::save_plan` 重建指令前，先按旧指令的 `co_id` 取消仍 active 的条件单，避免孤儿单继续触发。
+- **重新生成计划**：`plan::save_plan` 把计划重置为 `draft`（需重新确认），并按旧指令 `co_id` 取消仍 active 的条件单，避免孤儿单继续触发；未确认的重新生成结果不会被物化。
 - **失败隔离**：单条指令物化失败只跳过该条（写 `synced_at` 与日志），不阻断计划确认。
+- **触发时机**：独立条件单循环只在交易时段（周一至周五 09:15–11:31 / 12:59–15:05）评估，避免盘前/收市后用旧收盘价误触发。
 
 ## 六、读取 API
 
@@ -132,12 +135,13 @@ pub fn workflow_instructions(ai: State<AiState>, trade_date: Option<String>) -> 
 - fake `workflow_instructions` 返回 3 条（pending/triggered/filled），作战台展示对应徽标与触发提示；空计划显示空态。
 
 **验收清单**
-1. 确认作战卡 → candidate/trigger 指令出现 `co_id`，条件单列表可见。
-2. 再次确认 → 条件单数量不变。
-3. 手动把条件单置 triggered（或真实触发）→ 作战台 10s 内显示「已触发」。
-4. 重新生成计划 → 旧条件单变 cancelled，新指令重新物化。
-5. 不改变任何下单路径；实盘仍需人工确认。
-6. 作战台轮询仍只查本地库，不触发同花顺 GUI。
+1. 计划日打开应用（或作战台）→ candidate/trigger 指令出现 `co_id`，条件单列表可见。
+2. 同日重复读取/重复确认 → 条件单数量不变。
+3. 交易时段内触发 → 作战台 10s 内显示「已触发」；盘前/收市后不触发。
+4. 重新生成计划 → 计划回到 draft、旧条件单 cancelled，重新确认后才重新物化。
+5. 应用跨午夜一直开着 → 次日计划当天自动物化（30s 循环），无需重开窗口。
+6. 不改变任何下单路径；实盘仍需人工确认。
+7. 作战台轮询仍只查本地库，不触发同花顺 GUI。
 
 ## 九、风险与回退
 
