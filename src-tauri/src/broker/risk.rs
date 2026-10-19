@@ -108,6 +108,38 @@ impl RiskParams {
     }
 }
 
+/// P1-4 追价硬上限校验：追价次数与价格偏离任一超限即拒。
+/// BUY 追价：新价高于原委托价；SELL 追价：新价低于原委托价。
+pub fn check_chase(
+    ref_px: f64,
+    new_px: f64,
+    side: &str,
+    times: i32,
+    cfg: &super::config::BrokerConfig,
+) -> Result<(), String> {
+    if times >= cfg.max_chase_times {
+        return Err(format!(
+            "追价被拒：同一标的已追价 {} 次，达到硬上限 {} 次",
+            times, cfg.max_chase_times
+        ));
+    }
+    if ref_px <= 0.0 || new_px <= 0.0 {
+        return Err("追价被拒：价格数据无效".to_string());
+    }
+    let dev_pct = if side.eq_ignore_ascii_case("BUY") {
+        (new_px - ref_px) / ref_px * 100.0
+    } else {
+        (ref_px - new_px) / ref_px * 100.0
+    };
+    if dev_pct > cfg.max_chase_pct {
+        return Err(format!(
+            "追价被拒：价格偏离 {:.2}% 超过硬上限 {:.2}%",
+            dev_pct, cfg.max_chase_pct
+        ));
+    }
+    Ok(())
+}
+
 /// 风控主入口。`allow_anytime`（mock）跳过交易时段校验。
 pub fn check(
     order: &RiskOrder,

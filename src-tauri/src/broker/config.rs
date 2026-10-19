@@ -92,6 +92,17 @@ pub struct BrokerConfig {
     /// 最近一次实盘武装时间戳（Unix 秒，审计用；0 = 未武装）。
     #[serde(default)]
     pub live_armed_at: i64,
+
+    // ===== P1-4 追价硬上限 + 报撤频率熔断 =====
+    /// 同一标的最多追价次数（撤单重报），超过即拒。
+    #[serde(default = "default_max_chase_times")]
+    pub max_chase_times: i32,
+    /// 追价相对原委托价的最大偏离（%），超过即拒。
+    #[serde(default = "default_max_chase_pct")]
+    pub max_chase_pct: f64,
+    /// 60 秒滑动窗口内允许的报单+撤单笔数上限，超过触发频率熔断。
+    #[serde(default = "default_max_order_rate")]
+    pub max_order_rate_per_min: i32,
 }
 
 fn default_client_vendor() -> String {
@@ -118,6 +129,15 @@ fn default_drawdown() -> f64 {
 }
 fn default_consecutive() -> i32 {
     3
+}
+fn default_max_chase_times() -> i32 {
+    3
+}
+fn default_max_chase_pct() -> f64 {
+    2.0
+}
+fn default_max_order_rate() -> i32 {
+    20
 }
 
 impl Default for BrokerConfig {
@@ -157,6 +177,9 @@ impl Default for BrokerConfig {
             live_codes_whitelist: Vec::new(),
             live_sim_drill_passed: false,
             live_armed_at: 0,
+            max_chase_times: 3,
+            max_chase_pct: 2.0,
+            max_order_rate_per_min: 20,
         }
     }
 }

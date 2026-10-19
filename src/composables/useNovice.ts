@@ -19,7 +19,16 @@ async function load() {
       "SELECT value FROM meta WHERE key=?",
       [KEY]
     );
-    novice.value = rows[0]?.value === "1";
+    if (rows[0]?.value === undefined) {
+      // 无记录：新用户默认开启新手模式；已完成引导（onboarding_done=1）的老用户默认关闭，避免升级打扰。
+      const ob = await db().select<{ value: string }[]>(
+        "SELECT value FROM meta WHERE key=?",
+        ["onboarding_done"]
+      );
+      novice.value = ob[0]?.value !== "1";
+    } else {
+      novice.value = rows[0].value === "1";
+    }
     apply(novice.value);
   } catch {
     /* web 预览 / 数据库不可用 */

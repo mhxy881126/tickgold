@@ -654,6 +654,14 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
         if !cfg.enabled {
             continue;
         }
+        // P1-1 多源对账冲突：账实不符，暂停自动执行（等用户核对/重新校准；手动经确认桥下单不受影响）。
+        if let Some(mgr) = app.try_state::<crate::broker::BrokerManager>() {
+            if mgr.recon_conflict.load(Ordering::SeqCst)
+                || mgr.rate_circuit.load(Ordering::SeqCst)
+            {
+                continue;
+            }
+        }
         // 账户级/订单级阈值唯一事实源：BrokerConfig（broker_config.json）。
         let bcfg = broker_config::load(&data_dir);
 

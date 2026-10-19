@@ -10,6 +10,7 @@ import ShortcutDialog from "./components/ShortcutDialog.vue";
 import OnboardingDialog from "./components/OnboardingDialog.vue";
 import OrderConfirmBridge from "./components/OrderConfirmBridge.vue";
 import ConnectionGuard from "./components/ConnectionGuard.vue";
+import ReconciliationGuard from "./components/ReconciliationGuard.vue";
 import ToastContainer from "./components/ToastContainer.vue";
 import LayoutMenu from "./components/LayoutMenu.vue";
 import SceneSwitcher from "./components/SceneSwitcher.vue";
@@ -40,6 +41,7 @@ import { useWatchlistStore } from "./stores/watchlist";
 import { useQuotesStore } from "./stores/quotes";
 import { useAlertStore } from "./stores/alert";
 import { useWorkbench, CARD_META, currentTimeSlot, type CardId, type Scene } from "./composables/useWorkbench";
+import { NOVICE_CARDS } from "./lib/cards";
 import { useDockGroups } from "./composables/useDockGroups";
 import { useTheme } from "./composables/useTheme";
 import { useAccessibility } from "./composables/useAccessibility";
@@ -508,11 +510,16 @@ onMounted(async () => {
   try {
     const restored = await bench.restoreCurrent();
     if (!restored) {
-      bench.enterTimeMode(currentTimeSlot());
+      // P1-3 新手模式：首屏仅主线「今日作战流」+ 同花顺控制台；否则按时段进入默认布局。
+      if (novice.novice.value) bench.setMode(NOVICE_CARDS);
+      else bench.enterTimeMode(currentTimeSlot());
     }
   } catch (e) {
     console.error("[app] restore layout", e);
   }
+  watch(novice.novice, (v) => {
+    if (v) bench.setMode(NOVICE_CARDS);
+  });
   if (wl.codes.length) {
     selected.value = wl.codes[0];
   }
@@ -951,6 +958,7 @@ onBeforeUnmount(() => {
     <OrderConfirmBridge />
     <!-- P0-3 断连闭环 + 重连对账横幅 -->
     <ConnectionGuard />
+    <ReconciliationGuard />
     <ToastContainer />
     <AppDialog />
 

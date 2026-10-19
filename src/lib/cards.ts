@@ -109,6 +109,9 @@ export const CARD_META: Record<CardId, CardMeta> = {
   brokerconsole: { title: "同花顺控制台", accent: "#e8c878", kind: "chart" },
 };
 
+/// P1-3 新手模式默认布局：仅保留「今日作战流」主线 + 「同花顺控制台」，其余卡片随流程按需打开。
+export const NOVICE_CARDS: CardId[] = ["cockpit", "brokerconsole"];
+
 // ===== 卡片个性化（V1 单卡设置 / V3 场景模板）=====
 export interface CardCustom {
   span?: number;       // 用户覆盖的列跨度（1..12）

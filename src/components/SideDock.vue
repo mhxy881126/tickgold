@@ -482,6 +482,10 @@ async function doMove(toGroup: string) {
 .dpi-ic svg { width: 13px; height: 13px; }
 .dpi-t { font-size: 11px; font-weight: 400; line-height: 1.2; display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dpi-d { display: none; }
+/* P1-3 新手模式：显示每张卡片/工具的一句话用途 */
+:global([data-novice]) .dpi-d {
+  display: block; margin-top: 2px; font-size: 11px; line-height: 1.35; opacity: .68;
+}
 .dp-item:hover { background: rgba(255,255,255,.05); }
 .dp-item.on { background: rgba(232,184,96,.08); border-color: rgba(232,184,96,.25); }
 .dp-item.on .dpi-t::after {

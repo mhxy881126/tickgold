@@ -24,6 +24,8 @@ import {
   brokerClientClick,
   brokerClientCaptchaInput,
   brokerClientConfirm,
+  brokerReconcile,
+  brokerRateReset,
   type BrokerStatus,
   type BrokerAsset,
   type BrokerPosition,
@@ -32,6 +34,7 @@ import {
   type ClientAppState,
   type ClientCurrentPage,
   type ClientShot,
+  type ReconReport,
 } from "../broker/api";
 
 type TabKey = "position" | "trades" | "pending" | "api";
@@ -228,6 +231,34 @@ async function refreshTab() {
   if (tab.value === "position") await loadPositions();
   else if (tab.value === "trades") await loadTrades();
   else if (tab.value === "pending") await loadPending();
+}
+
+// ===== P1-1 / P1-2 多源对账 =====
+const reconBusy = ref(false);
+const reconLast = ref<ReconReport | null>(null);
+const RECON_LABEL: Record<string, string> = { intraday: "即时对账", open: "日初对账", close: "日终对账" };
+async function onReconcile(kind: "intraday" | "open" | "close") {
+  if (reconBusy.value) return;
+  reconBusy.value = true;
+  try {
+    const r = await brokerReconcile(kind);
+    reconLast.value = r;
+    if (r.matched) flash(r.baseline ? "首次对账：已建立券商持仓基线" : `${RECON_LABEL[kind]}通过：账实一致`);
+    else flash(`${RECON_LABEL[kind]}发现 ${r.diffs.length} 只股票账实不符，已暂停自动执行`);
+  } catch (e) {
+    flash("对账失败：" + String(e));
+  } finally {
+    reconBusy.value = false;
+  }
+}
+// P1-4 人工核对无误后重置频率熔断
+async function onRateReset() {
+  try {
+    await brokerRateReset();
+    flash("已重置频率熔断，恢复下单与自动执行");
+  } catch (e) {
+    flash("重置失败：" + String(e));
+  }
 }
 
 // ===== P10-3 API 控制台：展示 THSAutoTrader 兼容 REST 接口，curl 示例 + 一键调用 + JSON 预览 =====
@@ -676,6 +707,11 @@ onBeforeUnmount(() => {
         :title="autoRefresh ? '自动刷新已开启（每 30 秒）' : '自动刷新已关闭：手动点「刷新」或切换标签拉取，避免频繁弹出验证码'"
         @click="autoRefresh = !autoRefresh"
       >{{ autoRefresh ? "自动刷新·开" : "自动刷新·关" }}</button>
+      <span class="bc-spacer"></span>
+      <button class="bc-btn mini" :disabled="reconBusy" title="盘前对昨收持仓" @click="onReconcile('open')">日初对账</button>
+      <button class="bc-btn" :disabled="reconBusy" @click="onReconcile('intraday')">对账</button>
+      <button class="bc-btn mini" :disabled="reconBusy" title="盘后对当日成交/持仓" @click="onReconcile('close')">日终对账</button>
+      <button class="bc-btn mini" title="报撤频率熔断后，人工核对无误点此恢复下单" @click="onRateReset">重置熔断</button>
     </div>
 
     <!-- 自检结果 -->
@@ -687,6 +723,15 @@ onBeforeUnmount(() => {
         <span class="sc-item">窗口：<b :class="currentPage.found ? 'ok' : 'bad'">{{ currentPage.found ? "已找到" : "未找到" }}</b></span>
         <span v-if="cleanTitle(currentPage.title)" class="sc-item sc-title">{{ cleanTitle(currentPage.title) }}</span>
       </template>
+    </div>
+
+    <!-- 对账状态条 -->
+    <div v-if="reconLast" class="bc-recon" :class="{ ok: reconLast.matched, bad: !reconLast.matched }">
+      <span class="sc-item">{{ RECON_LABEL[reconLast.kind] || "对账" }}：
+        <b>{{ reconLast.matched ? "账实一致" : reconLast.diffs.length + " 只股票账实不符，已暂停自动执行" }}</b>
+      </span>
+      <span v-if="reconLast.matched" class="sc-item">核对 {{ reconLast.checked }} 只</span>
+      <span v-if="reconLast.baseline" class="sc-item">已建立券商持仓基线</span>
     </div>
 
     <!-- 资金四格 -->

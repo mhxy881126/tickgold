@@ -109,6 +109,13 @@ async function doDemo() {
   await wf.runDemo();
   selected.value = null;
 }
+// P1-5 盘后一键流水线：自动采集→分析→计划，停在「确认作战卡」人工卡点（不自动确认）。
+async function doAfterClose() {
+  if (wf.busy) return;
+  await wf.runAfterClosePipeline();
+  // 跳到计划步（人工卡点）：展示待确认的明日作战卡，由用户人工核对后确认。
+  selected.value = 2;
+}
 
 function fmtMoney(n: number) {
   return n.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
@@ -672,6 +679,9 @@ const killOn = computed(() => wf.killSwitch);
             </button>
             <button v-if="view.index === 0" class="btn-demo" :disabled="wf.busy" @click="doDemo">
               {{ wf.busy ? "演示中…" : "一键演示（演示数据跑通前 3 步）" }}
+            </button>
+            <button v-if="view.index === 0" class="btn-ghost" :disabled="wf.busy" title="盘后一键串联采集→分析→计划，到计划确认人工卡点暂停" @click="doAfterClose">
+              盘后一键流水线（确认前暂停）
             </button>
             <button v-else-if="view.index === 1" class="btn-primary" :disabled="wf.busy" @click="doAnalyze">
               {{ wf.busy ? "分析中…（六战法扫描）" : "分析完成，生成作战计划" }}

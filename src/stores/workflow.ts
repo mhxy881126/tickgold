@@ -924,6 +924,18 @@ export const useWorkflowStore = defineStore("workflow", () => {
 
   // P8 一键演示：用内置演示数据跑通 采集→分析→计划，让新手看到完整效果（不接真实行情）。
   const demoMode = ref(false);
+  // P1-5 盘后一键流水线：自动串联 采集→分析→计划生成，停在「计划确认」人工卡点（不自动确认）。
+  async function runAfterClosePipeline() {
+    if (busy.value) return;
+    error.value = "";
+    await collect();
+    if (error.value) return;
+    await analyze();
+    if (error.value) return;
+    await planGenerate();
+    // 不调用 planConfirm：停在人工卡点，等待用户人工核对后确认明日作战计划。
+  }
+
   async function runDemo() {
     if (busy.value) return;
     demoMode.value = true;
@@ -1003,6 +1015,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
     planConfirm,
     demoMode,
     runDemo,
+    runAfterClosePipeline,
     reset,
   };
 });

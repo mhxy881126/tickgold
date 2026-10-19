@@ -6,6 +6,7 @@ pub mod config;
 pub mod portfolio;
 pub mod protocol;
 pub mod probe;
+pub mod reconciliation;
 pub mod risk;
 pub mod sidecar;
 
@@ -49,6 +50,16 @@ pub struct BrokerManager {
     pub current_page_cache: Mutex<serde_json::Value>,
     /// P12-8 实盘查询节流：按查询类型分键（asset/position/trades/pending），互不吞并。
     pub last_query_at: Mutex<std::collections::HashMap<String, u64>>,
+    /// P1-1 多源对账：数据冲突（账实不符）标志，true=暂停自动执行（run_loop 跳过）。
+    pub recon_conflict: AtomicBool,
+    /// P1-1/P1-2 最近一次对账报告（含差异清单）。
+    pub recon_report: Mutex<serde_json::Value>,
+    /// P1-4 报撤滑动窗口：报单/撤单时刻（毫秒），保留最近 60 秒。
+    pub order_rate: Mutex<std::collections::VecDeque<u64>>,
+    /// P1-4 报撤频率熔断标志，true=暂停新委托与自动执行。
+    pub rate_circuit: AtomicBool,
+    /// P1-4 追价次数：key=裸码，撤单重报累计（断连/重置清零）。
+    pub chase_times: Mutex<std::collections::HashMap<String, i32>>,
 }
 
 impl BrokerManager {
@@ -77,6 +88,11 @@ impl BrokerManager {
             app_state_cache: Mutex::new(serde_json::json!({})),
             current_page_cache: Mutex::new(serde_json::json!({})),
             last_query_at: Mutex::new(std::collections::HashMap::new()),
+            recon_conflict: AtomicBool::new(false),
+            recon_report: Mutex::new(serde_json::json!({})),
+            order_rate: Mutex::new(std::collections::VecDeque::new()),
+            rate_circuit: AtomicBool::new(false),
+            chase_times: Mutex::new(std::collections::HashMap::new()),
         }
     }
 
@@ -84,6 +100,27 @@ impl BrokerManager {
     pub fn init_with_dir(&self, dir: &Path) {
         let cfg = config::load(dir);
         *self.config.lock().unwrap() = cfg;
+    }
+
+    /// P1-4 记录一次报单/撤单并做 60 秒滑动窗口频率检查；超限触发熔断并报错。
+    pub fn touch_rate(&self, now: u64) -> Result<(), String> {
+        let limit = { self.config.lock().unwrap().max_order_rate_per_min };
+        let mut q = self.order_rate.lock().unwrap();
+        while let Some(&t) = q.front() {
+            if now.saturating_sub(t) >= 60_000 {
+                q.pop_front();
+            } else {
+                break;
+            }
+        }
+        q.push_back(now);
+        if (q.len() as i32) > limit {
+            self.rate_circuit.store(true, Ordering::SeqCst);
+            return Err(format!(
+                "报撤过于频繁（60 秒内超过 {limit} 笔），已触发频率熔断，暂停新委托"
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -254,6 +291,10 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
                 *m.pending_cache.lock().unwrap() = serde_json::json!({});
                 *m.app_state_cache.lock().unwrap() = serde_json::json!({});
                 *m.current_page_cache.lock().unwrap() = serde_json::json!({});
+                // P1-1 断连后对账冲突标志一并清除（断连横幅接管，避免双横幅）
+                m.recon_conflict.store(false, Ordering::SeqCst);
+                // P1-4 断连重置追价计数
+                m.chase_times.lock().unwrap().clear();
                 // P0-3 断连闭环：统计在途委托（非终态），通知前端逐笔对账，
                 // 防止本地显示"未成交"而券商侧已成交（孤儿委托）。
                 let open_orders: Vec<serde_json::Value> = maindb::open_readonly(dir)
@@ -1375,6 +1416,11 @@ pub(crate) async fn submit_with_sig(
     if !mgr.connected.load(Ordering::SeqCst) {
         return Err("券商通道未连接，请先连接".to_string());
     }
+    // P1-4 报撤频率熔断：熔断未解除禁止新委托；否则记录本次报单到滑动窗口。
+    if mgr.rate_circuit.load(Ordering::SeqCst) {
+        return Err("报撤频率熔断已触发，已暂停新委托（请人工核对后重置）".to_string());
+    }
+    mgr.touch_rate(now_millis() as u64)?;
     let cfg = mgr.config.lock().unwrap().clone();
     let dir = app.state::<crate::ai::AiState>().dir();
 
@@ -1879,6 +1925,8 @@ pub async fn broker_cancel(
 ) -> Result<(), String> {
     let cfg = mgr.config.lock().unwrap().clone();
     let dir = ai.dir();
+    // P1-4 撤单计入报撤频率；撤单本身是降低风险动作，即使触发熔断也不阻挡，故忽略其错误。
+    let _ = mgr.touch_rate(now_millis() as u64);
     match cfg.kind.as_str() {
         "mock" => {
             let conn = maindb::open_readwrite(&dir)?;
@@ -2201,6 +2249,97 @@ pub async fn emergency_halt(app: &AppHandle) -> Result<serde_json::Value, String
 #[tauri::command]
 pub async fn broker_emergency_halt(app: AppHandle) -> Result<serde_json::Value, String> {
     emergency_halt(&app).await
+}
+
+// ===== P1-1 / P1-2 通道多源对账（日初/日终/即时）=====
+
+/// 执行对账：券商 UI 实读持仓 vs 本地「快照 + 系统成交流水」。冲突时置 recon_conflict（停自动化）。
+#[tauri::command]
+pub async fn broker_reconcile(
+    app: AppHandle,
+    kind: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let kind = kind.unwrap_or_else(|| "intraday".to_string());
+    let now = now_millis();
+    let mgr = app.state::<BrokerManager>();
+    let cfg = mgr.config.lock().unwrap().clone();
+    // 模拟盘（mock）由系统自行撮合，账实天然一致，不适用多源对账：直接返回 matched。
+    if cfg.kind == "mock" {
+        let r = reconciliation::Report {
+            kind: kind.clone(),
+            matched: true,
+            baseline: false,
+            diffs: vec![],
+            checked: 0,
+            at: now,
+        };
+        let j = r.to_json();
+        *mgr.recon_report.lock().unwrap() = j.clone();
+        mgr.recon_conflict.store(false, Ordering::SeqCst);
+        let _ = app.emit("broker:recon", j.clone());
+        return Ok(j);
+    }
+    let dir = app.state::<crate::ai::AiState>().dir();
+    let positions = mgr.position_cache.lock().unwrap().clone();
+    let report = reconciliation::reconcile(&dir, &positions, &kind, now)?;
+    let j = report.to_json();
+    mgr.recon_conflict.store(!report.matched, Ordering::SeqCst);
+    *mgr.recon_report.lock().unwrap() = j.clone();
+    let _ = app.emit("broker:recon", j.clone());
+    Ok(j)
+}
+
+/// 以券商为准重新校准基线（用户确认冲突 / 核对无误后），清除冲突、恢复自动化。
+#[tauri::command]
+pub async fn broker_recon_recalibrate(app: AppHandle) -> Result<(), String> {
+    let mgr = app.state::<BrokerManager>();
+    let dir = app.state::<crate::ai::AiState>().dir();
+    let positions = mgr.position_cache.lock().unwrap().clone();
+    reconciliation::recalibrate(&dir, &positions, now_millis())?;
+    mgr.recon_conflict.store(false, Ordering::SeqCst);
+    let _ = app.emit("broker:recon_resolved", serde_json::json!({}));
+    Ok(())
+}
+
+// ===== P1-4 追价硬上限校验 + 频率熔断重置 =====
+
+/// 追价校验（撤单重报前置）：已追次数 / 价格偏离任一超硬上限即拒；通过后追价次数 +1。
+#[tauri::command]
+pub async fn broker_chase_validate(
+    app: AppHandle,
+    code: String,
+    ref_px: f64,
+    new_px: f64,
+    side: String,
+) -> Result<(), String> {
+    let mgr = app.state::<BrokerManager>();
+    if mgr.rate_circuit.load(Ordering::SeqCst) {
+        return Err("报撤频率熔断已触发，已暂停追价（请人工核对后重置）".to_string());
+    }
+    let cfg = mgr.config.lock().unwrap().clone();
+    let key = bare_code(&code);
+    let times_before = {
+        let ct = mgr.chase_times.lock().unwrap();
+        *ct.get(&key).unwrap_or(&0)
+    };
+    // 硬上限校验：次数 / 偏离超限即拒（不增加计数）。
+    risk::check_chase(ref_px, new_px, &side, times_before, &cfg)?;
+    // 记录本次报撤到滑动窗口（超限则熔断）。
+    mgr.touch_rate(now_millis() as u64)?;
+    let mut ct = mgr.chase_times.lock().unwrap();
+    *ct.entry(key).or_insert(0) += 1;
+    Ok(())
+}
+
+/// 人工核对无误后重置频率熔断（清空窗口与追价计数），恢复新委托与自动执行。
+#[tauri::command]
+pub async fn broker_rate_reset(app: AppHandle) -> Result<(), String> {
+    let mgr = app.state::<BrokerManager>();
+    mgr.rate_circuit.store(false, Ordering::SeqCst);
+    mgr.order_rate.lock().unwrap().clear();
+    mgr.chase_times.lock().unwrap().clear();
+    let _ = app.emit("broker:rate_reset", serde_json::json!({}));
+    Ok(())
 }
 
 #[tauri::command]

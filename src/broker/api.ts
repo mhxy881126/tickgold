@@ -254,6 +254,41 @@ export function brokerReleaseKill() {
   return invoke<void>("broker_release_kill");
 }
 
+// ===== P1-1 / P1-2 多源对账（日初/日终/即时）=====
+export interface ReconDiff {
+  code: string;
+  localVol: number;
+  brokerVol: number;
+}
+export interface ReconReport {
+  kind: string;
+  matched: boolean;
+  baseline: boolean;
+  checked: number;
+  at: number;
+  diffs: ReconDiff[];
+}
+export function brokerReconcile(kind?: "intraday" | "open" | "close") {
+  return invoke<ReconReport>("broker_reconcile", { kind: kind ?? null });
+}
+export function brokerReconRecalibrate() {
+  return invoke<void>("broker_recon_recalibrate");
+}
+
+// P1-4 追价硬上限校验（撤单重报前置；超限由后端拒绝）
+export function brokerChaseValidate(
+  code: string,
+  refPx: number,
+  newPx: number,
+  side: "BUY" | "SELL",
+) {
+  return invoke<void>("broker_chase_validate", { code, refPx, newPx, side });
+}
+// P1-4 人工核对后重置频率熔断
+export function brokerRateReset() {
+  return invoke<void>("broker_rate_reset");
+}
+
 // ===== P3 客户端自动化通道（同花顺模拟）=====
 
 export interface ClientSelfcheckItem {
