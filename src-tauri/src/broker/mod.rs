@@ -1,5 +1,8 @@
 // 券商对接编排：BrokerManager（配置 / 模拟账户 / sidecar / 紧急停止），Tauri 命令，
 // 委托状态机推进、signal_audit 审计、事件广播。合规：只处理 confirmed 单、实盘默认关、风控前置。
+// P2-1 统一通道契约：目前只落契约与单测，尚无通道实现方接入 BrokerManager，
+// 因此整体标注 allow(dead_code)，等 QMT/OpenAPI 通道实装后移除。
+#[allow(dead_code)]
 pub mod channel;
 pub mod client;
 pub mod conditional;
@@ -1499,7 +1502,7 @@ pub(crate) async fn submit_with_sig(
             } else {
                 std::time::Duration::from_secs(600)
             };
-            let stale = |at: Option<std::time::Instant>| at.map_or(true, |t| t.elapsed() > ttl);
+            let stale = |at: Option<std::time::Instant>| at.is_none_or(|t| t.elapsed() > ttl);
             if stale(asset_at) {
                 return Err(
                     "资产数据已过期：请先在同花顺控制台刷新资产（实盘要求 60 秒内最新数据），再下单"
