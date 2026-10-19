@@ -26,7 +26,8 @@ let poll = 0;
 let disposed = false;
 
 onMounted(async () => {
-  void wf.loadToday();
+  // 作战台与指令列表同口径：取「今天优先」的计划（驾驶舱③仍走默认 next）。
+  void wf.loadToday("today");
   clock = window.setInterval(() => { now.value = new Date(); }, 1000);
   // 定时器先挂上再 await：否则首次请求期间组件被卸载会漏掉 poll 的清理。
   poll = window.setInterval(refresh, 5000);

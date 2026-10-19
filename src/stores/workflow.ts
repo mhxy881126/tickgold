@@ -256,6 +256,8 @@ export interface BattlePlan {
   model?: string;
   instructions: PlanInstruction[];
 }
+/** 作战卡取计划口径：next=下一交易日（驾驶舱③确认入口），today=今天优先（作战台，与指令列表同源）。 */
+export type PlanScope = "next" | "today";
 
 function todayStr(): string {
   const d = new Date();
@@ -481,13 +483,13 @@ export const useWorkflowStore = defineStore("workflow", () => {
     return { ...prev, currentStep: next, allDone: next >= steps.length, steps, updatedAt: Date.now() };
   }
 
-  async function loadToday() {
+  async function loadToday(scope: PlanScope = "next") {
     loading.value = true;
     error.value = "";
     try {
       mission.value = await invoke<Mission>("workflow_get_today", { tradeDate: todayStr() });
       mockMode.value = false;
-      await loadProducts();
+      await loadProducts(scope);
     } catch {
       // 浏览器 dev / 后端未就绪：本地内存兜底，保证交互可走查。
       mockMode.value = true;
@@ -497,8 +499,9 @@ export const useWorkflowStore = defineStore("workflow", () => {
     }
   }
 
-  // 真实 Tauri：回显当日已产出的态势包/候选池/次日作战卡（次日盘前可见）。
-  async function loadProducts() {
+  // 真实 Tauri：回显当日已产出的态势包/候选池/作战卡。
+  // scope 透传后端：作战台传 today（与指令列表同一份计划），驾驶舱③默认 next（下一交易日）。
+  async function loadProducts(scope: PlanScope = "next") {
     if (mockMode.value) return;
     try {
       const r = await invoke<{
@@ -506,7 +509,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
         candidates: Candidate[];
         plan: BattlePlan | null;
         planConfirmed: boolean;
-      }>("workflow_p1_products", { tradeDate: todayStr() });
+      }>("workflow_p1_products", { tradeDate: todayStr(), scope });
       const b = r.briefing as Briefing | null;
       briefing.value = b && b.limitUp !== undefined ? b : null;
       candidates.value = r.candidates ?? [];

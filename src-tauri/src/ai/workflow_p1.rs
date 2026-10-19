@@ -613,12 +613,18 @@ pub fn workflow_plan_confirm(
     }))
 }
 
-/// 只读回显：重开驾驶舱 / 次日盘前时，取回当日已产出的态势包、候选池与次日作战卡。
+/// 只读回显：重开驾驶舱 / 次日盘前时，取回当日已产出的态势包、候选池与作战卡。
+///
+/// `scope` 决定取哪份计划：
+/// - `Some("today")`：作战台用，今天优先（与 `workflow_instructions` 同一份计划）；
+/// - 其它/缺省：驾驶舱 ③ 盘后确认流程用，保持「下一交易日」原语义。若这里也取今天
+///   已确认的计划，前端 `planConfirmed` 会变 true，把「确认作战卡」入口当成已完成而隐藏。
 #[tauri::command]
 pub fn workflow_p1_products(
     app: AppHandle,
     state: State<'_, AiState>,
     trade_date: Option<String>,
+    scope: Option<String>,
 ) -> Result<Value, String> {
     let date = trade_date.unwrap_or_else(workflow::today_str);
     let dir = state.dir().clone();
@@ -633,9 +639,7 @@ pub fn workflow_p1_products(
     if let Err(e) = crate::ai::instruction::materialize_today(&c) {
         log::warn!("materialize_today failed: {e}");
     }
-    // 与 workflow_instructions 共用同一解析：作战卡 chips 与指令列表永远指向同一份计划，
-    // planConfirmed 也从同一份计划的 status 推导，避免两处口径分裂。
-    let plan = resolve_plan(&c, &date).map(|(_, p)| p);
+    let plan = products_plan(&c, &date, scope.as_deref()).map(|(_, p)| p);
     let confirmed = plan
         .as_ref()
         .and_then(|p| p["status"].as_str())
@@ -675,6 +679,20 @@ fn instruction_plan_id(c: &Connection, date: &str) -> Option<i64> {
 /// （也避免每次读取多开一条数据库连接）。
 fn resolve_plan(c: &Connection, date: &str) -> Option<(i64, Value)> {
     let pid = instruction_plan_id(c, date)?;
+    plan::plan_to_json(c, pid).ok().map(|p| (pid, p))
+}
+
+/// 作战卡取计划：`scope == "today"` 时与指令列表同一份（今天优先），否则下一交易日。
+///
+/// 两种语义都只保留一个真相源，由调用方 scope 显式选择：
+/// - 作战台（`scope="today"`）：与 InstructionList 指向同一份计划；
+/// - 驾驶舱 ③（缺省）：盘后「确认下一交易日作战卡」入口依赖下一交易日计划，
+///   不能被今天已确认的计划遮住。
+fn products_plan(c: &Connection, date: &str, scope: Option<&str>) -> Option<(i64, Value)> {
+    if scope == Some("today") {
+        return resolve_plan(c, date);
+    }
+    let pid = plan_id_on(c, &plan::next_trade_date(date))?;
     plan::plan_to_json(c, pid).ok().map(|p| (pid, p))
 }
 
@@ -820,7 +838,7 @@ mod tests {
     }
 
     #[test]
-    fn products_and_instructions_share_same_plan_on_plan_day() {
+    fn products_scope_today_shares_plan_with_instructions() {
         let c = conn_with_plan_tables();
         // 用远期基准日构造「下一交易日」，避免用例与真实日期耦合（不会被今天命中）。
         let base = "2999-01-01";
@@ -845,23 +863,18 @@ mod tests {
         )
         .unwrap();
 
-        // workflow_p1_products 路径：共用解析 + 由同一份计划推导 planConfirmed
-        let products = resolve_plan(&c, base).map(|(_, p)| p);
-        let products_confirmed = products
-            .as_ref()
-            .and_then(|p| p["status"].as_str())
-            .map(|x| x == "confirmed")
-            .unwrap_or(false);
+        // 作战台（scope=today）路径：与指令列表共用解析 + 由同一份计划推导 planConfirmed
+        let (products_pid, products_plan) =
+            products_plan(&c, base, Some("today")).expect("今天有计划，作战台不应为 null");
+        let products_confirmed = products_plan["status"].as_str() == Some("confirmed");
         // workflow_instructions 路径：共用解析拿 plan_id，指令按该 id 查询
         let (instructions_pid, instructions_plan) =
-            resolve_plan(&c, base).expect("今天有计划，两处都不应为 None");
-        let products_plan = products.expect("今天有计划，作战卡不应为 null");
+            resolve_plan(&c, base).expect("今天有计划，指令列表不应为 None");
 
-        assert_eq!(instructions_pid, today_id, "计划日应取今天的计划");
+        assert_eq!(products_pid, today_id, "计划日应取今天的计划");
         assert_eq!(
-            products_plan["id"].as_i64(),
-            Some(instructions_pid),
-            "作战卡与指令列表必须指向同一 plan_id"
+            products_pid, instructions_pid,
+            "作战台与指令列表必须指向同一 plan_id"
         );
         assert_eq!(products_plan["planDate"].as_str(), Some(today.as_str()));
         assert_eq!(products_plan["status"].as_str(), Some("confirmed"));
@@ -875,5 +888,43 @@ mod tests {
             products_confirmed,
             "今天 confirmed 计划 → planConfirmed=true"
         );
+    }
+
+    #[test]
+    fn products_default_scope_keeps_next_trade_date_plan() {
+        let c = conn_with_plan_tables();
+        let base = "2999-01-01";
+        let next = plan::next_trade_date(base);
+        let today = crate::broker::conditional::today_dashed();
+        c.execute(
+            "INSERT INTO plan(plan_date,title,status) VALUES(?1,'今日作战卡','confirmed')",
+            [&today],
+        )
+        .unwrap();
+        let today_id = c.last_insert_rowid();
+        c.execute(
+            "INSERT INTO plan(plan_date,title,status) VALUES(?1,'明日作战卡','draft')",
+            [&next],
+        )
+        .unwrap();
+        let next_id = c.last_insert_rowid();
+
+        // 驾驶舱 ③（scope 缺省 / "next" / 未知值）：始终取下一交易日，保留「确认作战卡」入口；
+        // 若误取今天已确认的计划，前端 planConfirmed 会变 true 而隐藏确认按钮。
+        for scope in [None, Some("next"), Some("whatever")] {
+            let (pid, plan) = products_plan(&c, base, scope).expect("下一交易日有计划");
+            assert_eq!(pid, next_id, "scope={scope:?} 应取下一交易日计划");
+            assert_eq!(plan["planDate"].as_str(), Some(next.as_str()));
+            assert_eq!(plan["title"].as_str(), Some("明日作战卡"));
+            assert_eq!(
+                plan["status"].as_str(),
+                Some("draft"),
+                "驾驶舱看到的是待确认草稿，planConfirmed 应为 false"
+            );
+        }
+        // 对照：只有显式 scope=today 才取今天的计划。
+        let (today_pid, _) = products_plan(&c, base, Some("today")).expect("今天有计划");
+        assert_eq!(today_pid, today_id);
+        assert_ne!(today_id, next_id);
     }
 }

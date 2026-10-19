@@ -249,6 +249,23 @@ export function clearQuoteOverrides(): void {
   quoteOverrides.clear();
 }
 
+// —— P1-a 作战卡 / 指令列表共用同一份假计划 ——
+// 作战台以 scope="today" 调 workflow_p1_products，后端与 workflow_instructions 同源；
+// 若两处各写一份，e2e 会出现「卡片有计划、列表无指令」的 split-brain。
+const fakePlan = {
+  id: 1,
+  planDate: "2026-10-20",
+  title: "明日作战卡",
+  marketView: "",
+  status: "confirmed",
+  instructions: [] as Record<string, unknown>[],
+};
+const fakeInstructions = [
+  { id: 1, tier: "candidate", code: "600519", name: "贵州茅台", condition: "", action: "", positionHint: "", coId: "CO1", triggerJson: '[{"field":"price","op":"gte","value":1680}]', state: "pending", triggeredAt: 0, filledVol: 0, filledAvgPrice: 0 },
+  { id: 2, tier: "trigger", code: "300750", name: "宁德时代", condition: "", action: "", positionHint: "", coId: "CO2", triggerJson: '[{"field":"pct","op":"gte","value":3}]', state: "triggered", triggeredAt: 1, filledVol: 0, filledAvgPrice: 0 },
+  { id: 3, tier: "candidate", code: "000001", name: "平安银行", condition: "", action: "", positionHint: "", coId: "CO3", triggerJson: "", state: "filled", triggeredAt: 1, filledVol: 100, filledAvgPrice: 12.3 },
+];
+
 // —— invoke 命令注册表 ——
 type Handler = (args: Record<string, unknown> | undefined) => unknown;
 const handlers: Record<string, Handler> = {
@@ -378,22 +395,17 @@ const handlers: Record<string, Handler> = {
     positions: [{ code: "600519", name: "贵州茅台", vol: 1000, avail: 1000 }],
   }),
   workflow_get_today: () => null,
-  workflow_p1_products: () => ({
+  // 驾驶舱③默认（无 scope）返回 null，保留「确认作战卡」入口；
+  // 作战台 scope="today" 与 workflow_instructions 返回同一份 fakePlan。
+  workflow_p1_products: (a) => ({
     briefing: null,
     candidates: [],
-    plan: null,
-    planConfirmed: false,
+    plan: a?.scope === "today" ? fakePlan : null,
+    planConfirmed: a?.scope === "today",
   }),
   workflow_p2_products: () => ({ feedback: null, running: false, killSwitch: false }),
   // P1-a 指令列表：3 条覆盖待触发 / 已触发 / 已成交三种徽标与触发提示解析。
-  workflow_instructions: () => ({
-    plan: { id: 1, planDate: "2026-10-20", status: "confirmed" },
-    instructions: [
-      { id: 1, tier: "candidate", code: "600519", name: "贵州茅台", condition: "", action: "", positionHint: "", coId: "CO1", triggerJson: '[{"field":"price","op":"gte","value":1680}]', state: "pending", triggeredAt: 0, filledVol: 0, filledAvgPrice: 0 },
-      { id: 2, tier: "trigger", code: "300750", name: "宁德时代", condition: "", action: "", positionHint: "", coId: "CO2", triggerJson: '[{"field":"pct","op":"gte","value":3}]', state: "triggered", triggeredAt: 1, filledVol: 0, filledAvgPrice: 0 },
-      { id: 3, tier: "candidate", code: "000001", name: "平安银行", condition: "", action: "", positionHint: "", coId: "CO3", triggerJson: "", state: "filled", triggeredAt: 1, filledVol: 100, filledAvgPrice: 12.3 },
-    ],
-  }),
+  workflow_instructions: () => ({ plan: fakePlan, instructions: fakeInstructions }),
   // 旧版六步驾驶舱（PilotPanel）挂载即读 pilot_status.today。缺该命令时假后端会回 []，
   // 模板 st?.today.scanCount 会因 st=[] 抛错并触发卡片错误边界（新旧切换用例点不到按钮）。
   pilot_status: () => ({
