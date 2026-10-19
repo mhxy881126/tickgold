@@ -348,13 +348,10 @@ pub fn get_plan(data_dir: &Path, id: i64) -> Result<Value, String> {
 
 pub fn set_plan_status(data_dir: &Path, id: i64, status: &str) -> Result<(), String> {
     let c = open_readwrite(data_dir)?;
-    c.execute(
-        "UPDATE plan SET status=?1,updated_at=?2 WHERE id=?3",
-        rusqlite::params![status, now_millis(), id],
-    )
-    .map_err(|e| e.to_string())?;
+    // 先取消条件单、再落计划状态：反序一旦取消失败（写库错误），计划已归档而
+    // 条件单仍 active，孤儿单会继续在盘中触发，且计划界面已无人再看。
     // confirmed 是唯一仍驱动执行的状态；归档/废弃/回退都必须取消该计划指令的
-    // active 条件单，否则计划不再有人看，孤儿单仍会在盘中触发。
+    // active 条件单。
     if status != "confirmed" {
         c.execute(
             "UPDATE conditional_order SET status='cancelled', updated_at=?1
@@ -364,6 +361,11 @@ pub fn set_plan_status(data_dir: &Path, id: i64, status: &str) -> Result<(), Str
         )
         .map_err(|e| e.to_string())?;
     }
+    c.execute(
+        "UPDATE plan SET status=?1,updated_at=?2 WHERE id=?3",
+        rusqlite::params![status, now_millis(), id],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 

@@ -219,23 +219,28 @@ fn list_instructions_legacy(
         .map_err(|e| e.to_string())
 }
 
-/// 条件单是否仍存在。
+/// 条件单是否仍在生效（未被取消 / 过期 / 完成）。
 ///
 /// 说明：`conditional::get_by_co_id` 当前为 `#[cfg(test)]`，而物化需要在正式构建里
 /// 判定幂等；本任务文件范围不含 `broker/conditional.rs`，故就地做存在性查询。
-fn co_exists(conn: &rusqlite::Connection, co_id: &str) -> bool {
+///
+/// 不能只看「co_id 存在」：用户丢弃指令时旧条件单会被取消，重开指令必须重新
+/// 物化一张新单，否则会一直停在已取消的死单上（v62 索引也已放开 cancelled 行）。
+fn co_is_live(conn: &rusqlite::Connection, co_id: &str) -> bool {
     conn.query_row(
-        "SELECT 1 FROM conditional_order WHERE co_id=?1",
+        "SELECT 1 FROM conditional_order WHERE co_id=?1 \
+         AND status NOT IN ('cancelled','expired','done')",
         [co_id],
         |_| Ok(()),
     )
     .is_ok()
 }
 
-/// 按物化备注反查条件单：v62 唯一索引兜底后，重复插入必然命中同一条 note。
+/// 按物化备注反查仍生效的条件单：v62 唯一索引只约束 active 行，重复插入被拒时
+/// 命中的必然是同一 note 的 active 单（旧 cancelled 行不再参与）。
 fn co_id_by_note(conn: &rusqlite::Connection, note: &str) -> Result<String, String> {
     conn.query_row(
-        "SELECT co_id FROM conditional_order WHERE note=?1",
+        "SELECT co_id FROM conditional_order WHERE note=?1 AND status='active'",
         [note],
         |r| r.get::<_, String>(0),
     )
@@ -268,7 +273,8 @@ pub struct MaterializeSummary {
     pub failed: usize,
 }
 
-/// 把作战卡的 candidate/trigger 指令物化为条件单；幂等（已有 co_id 且单据存在则跳过）。
+/// 把作战卡的 candidate/trigger 指令物化为条件单；幂等（已有 co_id 且条件单仍
+/// 生效则跳过，已取消 / 过期 / 完成的旧单会触发重新物化）。
 ///
 /// 单条失败只计入 `failed`，不阻断其余指令；选股数量默认 100 股，非整手则跳过。
 pub fn materialize_plan(
@@ -317,7 +323,7 @@ pub fn materialize_plan(
             out.skipped += 1;
             continue;
         }
-        if !co_id.is_empty() && co_exists(conn, &co_id) {
+        if !co_id.is_empty() && co_is_live(conn, &co_id) {
             out.skipped += 1;
             continue;
         }
@@ -397,33 +403,23 @@ pub fn materialize_plan(
     Ok(out)
 }
 
-/// 智驾是否正在驱动（running / paused 均视作活动）。
-///
-/// 智驾的 autoexec 会全自动执行同一批 plan_instruction；此时再物化条件单会造成
-/// 同一指令被条件单与盯盘各执行一次（重复下单），故物化必须让路。
-fn pilot_active(conn: &rusqlite::Connection) -> bool {
-    conn.query_row("SELECT mode FROM pilot_config WHERE id=1", [], |r| {
-        r.get::<_, String>(0)
-    })
-    .map(|m| m == "running" || m == "paused")
-    .unwrap_or(false)
-}
-
 /// 扫描所有「今天 + confirmed」的计划并物化（幂等）。供定时循环与读取路径复用。
 ///
 /// 与 `materialize_plan` 的区别：后者只在拿到具体 plan_id 时做单计划物化，
 /// 调用方需自己先按日期筛计划；本函数负责「今天到底有哪些计划该建单」这一层，
 /// 让后台循环无需知道计划如何产生。非计划日 / 无确认计划时返回全零汇总。
-/// 智驾驱动中直接返回全零：autoexec 负责执行同一批指令，物化会造成双份触发。
+///
+/// 智驾计划按 `plan.model='pilot-auto'` 结构性排除：智驾由 autoexec 执行同一批
+/// 指令，若再物化条件单会双份触发。不能靠 `pilot_config.mode` 判定——崩溃 / 重启
+/// 后 mode 可能残留 running/paused 而排程器并未在跑，会把物化整天卡死。
 pub fn materialize_today(conn: &rusqlite::Connection) -> Result<MaterializeSummary, String> {
-    if pilot_active(conn) {
-        log::debug!("智驾模式运行中，跳过计划物化（由 autoexec 执行同一批指令）");
-        return Ok(MaterializeSummary::default());
-    }
     let today = crate::broker::conditional::today_dashed();
     let ids: Vec<i64> = {
         let mut stmt = conn
-            .prepare("SELECT id FROM plan WHERE plan_date=?1 AND status='confirmed'")
+            .prepare(
+                "SELECT id FROM plan WHERE plan_date=?1 AND status='confirmed'
+                 AND COALESCE(model,'') <> 'pilot-auto'",
+            )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([&today], |r| r.get::<_, i64>(0))
@@ -686,14 +682,16 @@ mod tests {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::broker::conditional::CREATE_SQL)
             .unwrap();
-        // v62：与生产迁移一致的 `plan:%` 备注唯一索引（重复物化由它兜底）。
+        // v62：与生产迁移一致的 `plan:%` active 备注唯一索引（重复物化由它兜底，
+        // 已取消 / 过期的旧单不在索引内，允许重开后重建同 note 的新单）。
         conn.execute_batch(
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_conditional_plan_note
-             ON conditional_order(note) WHERE note LIKE 'plan:%';",
+             ON conditional_order(note) WHERE note LIKE 'plan:%' AND status='active';",
         )
         .unwrap();
         conn.execute_batch(
-            "CREATE TABLE plan(id INTEGER PRIMARY KEY, plan_date TEXT, status TEXT NOT NULL DEFAULT 'draft');
+            "CREATE TABLE plan(id INTEGER PRIMARY KEY, plan_date TEXT, model TEXT DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'draft');
              CREATE TABLE plan_instruction(
                 id INTEGER PRIMARY KEY AUTOINCREMENT, plan_id INTEGER, tier TEXT, code TEXT,
                 name TEXT, theme TEXT, condition TEXT, action TEXT, position_hint TEXT,
@@ -818,14 +816,8 @@ mod tests {
     }
 
     #[test]
-    fn materialize_today_skips_while_pilot_active() {
+    fn reopen_dropped_instruction_rematerializes_new_conditional_order() {
         let conn = conn_with_tables();
-        conn.execute_batch(
-            "CREATE TABLE pilot_config(id INTEGER PRIMARY KEY CHECK (id=1),
-                 mode TEXT NOT NULL DEFAULT 'off');
-             INSERT INTO pilot_config(id,mode) VALUES(1,'running');",
-        )
-        .unwrap();
         insert_plan(&conn, 1, &crate::broker::conditional::today_dashed());
         conn.execute(
             "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
@@ -833,24 +825,90 @@ mod tests {
             [],
         )
         .unwrap();
+        let first = materialize_plan(&conn, 1).unwrap();
+        assert_eq!(first.created, 1);
+        let old_co = instruction_co_id(&conn, 1);
+        assert!(!old_co.is_empty());
 
-        // 智驾 running：autoexec 会执行同一批指令，物化必须让路（返回全零、不建单）。
-        assert!(pilot_active(&conn));
-        let s = materialize_today(&conn).unwrap();
-        assert_eq!(s.created, 0);
-        assert_eq!(s.skipped, 0);
-        assert_eq!(s.failed, 0);
-        assert_eq!(co_count(&conn), 0);
-        assert!(instruction_co_id(&conn, 1).is_empty());
+        // 用户丢弃：plan::update_instruction 的真实路径是先取消旧条件单，再落 dropped。
+        conn.execute(
+            "UPDATE conditional_order SET status='cancelled' WHERE co_id=?1",
+            [&old_co],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE plan_instruction SET status='dropped' WHERE id=1",
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            materialize_plan(&conn, 1).unwrap().created,
+            0,
+            "dropped 指令不得物化"
+        );
 
-        // 智驾 off：恢复常规物化。
-        conn.execute("UPDATE pilot_config SET mode='off' WHERE id=1", [])
+        // 重开：旧 co_id 指向已取消的死单，必须重新建单，不能被旧单挡住。
+        conn.execute("UPDATE plan_instruction SET status='open' WHERE id=1", [])
             .unwrap();
-        assert!(!pilot_active(&conn));
+        let second = materialize_plan(&conn, 1).unwrap();
+        assert_eq!(second.created, 1, "重开应重新物化一张条件单");
+        let new_co = instruction_co_id(&conn, 1);
+        assert!(!new_co.is_empty());
+        assert_ne!(new_co, old_co, "co_id 必须指向新条件单");
+        let old_status: String = conn
+            .query_row(
+                "SELECT status FROM conditional_order WHERE co_id=?1",
+                [&old_co],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(old_status, "cancelled", "旧条件单保持取消");
+        let new_status: String = conn
+            .query_row(
+                "SELECT status FROM conditional_order WHERE co_id=?1",
+                [&new_co],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(new_status, "active", "新条件单应 active");
+        assert_eq!(co_count(&conn), 2, "新旧两张单并存，旧单保留审计痕迹");
+        let active: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM conditional_order WHERE status='active'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(active, 1, "同一 note 只允许一张 active 单");
+    }
+
+    #[test]
+    fn materialize_today_skips_pilot_owned_plan() {
+        let conn = conn_with_tables();
+        let today = crate::broker::conditional::today_dashed();
+        insert_plan(&conn, 1, &today);
+        insert_plan(&conn, 2, &today);
+        conn.execute_batch(
+            "UPDATE plan SET model='pilot-auto' WHERE id=1;
+             INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','600519','贵州茅台','{\"upPrice\":1700,\"vol\":200}','open',0);
+             INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(2,'candidate','000001','平安','{\"upPrice\":10}','open',0);",
+        )
+        .unwrap();
+
+        // 智驾计划按 plan.model 结构性排除：智驾由 autoexec 执行，物化会双份触发。
         let s = materialize_today(&conn).unwrap();
-        assert_eq!(s.created, 1);
+        assert_eq!(s.created, 1, "只物化非智驾计划");
         assert_eq!(co_count(&conn), 1);
-        assert!(!instruction_co_id(&conn, 1).is_empty());
+        assert!(
+            instruction_co_id(&conn, 1).is_empty(),
+            "pilot-auto 计划不得物化"
+        );
+        assert!(
+            !instruction_co_id(&conn, 2).is_empty(),
+            "普通今日计划仍应物化"
+        );
     }
 
     #[test]

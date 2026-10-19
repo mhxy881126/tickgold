@@ -209,6 +209,8 @@ fn parse_hint(s: &str) -> f64 {
 /// 收集盯盘对象：当日作战卡指令（open / 已确认转预警 alerted）+ 持仓。
 /// P2：作战卡确认后指令被置为 alerted（已入明日盯盘），必须一并纳入盯盘；
 /// plan_date>=今日 避免盯历史作战卡；持仓始终收集（卖出/硬止损不依赖指令状态）。
+/// P1-a：已物化出条件单（co_id<>''）的指令由条件单引擎执行，盯盘必须跳过，
+/// 否则同一指令会被条件单与 autoexec 各执行一次（手动盯盘 + 智驾均适用）。
 pub(crate) fn collect_watch(conn: &Connection) -> Vec<WatchItem> {
     let mut map: HashMap<String, WatchItem> = HashMap::new();
 
@@ -216,7 +218,8 @@ pub(crate) fn collect_watch(conn: &Connection) -> Vec<WatchItem> {
     if let Ok(mut stmt) = conn.prepare(
         "SELECT i.id,i.code,i.name,i.position_hint,p.profile_key
          FROM plan_instruction i JOIN plan p ON i.plan_id=p.id
-         WHERE i.status IN ('open','alerted') AND p.plan_date >= ?1",
+         WHERE i.status IN ('open','alerted') AND p.plan_date >= ?1
+           AND COALESCE(i.co_id,'')=''",
     ) {
         if let Ok(rows) = stmt.query_map([&today], |r| {
             Ok((
@@ -1173,5 +1176,45 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                 _ => {} // HOLD / NO_BUY 不写日志（避免每 5s 大量噪音）
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn collect_watch_skips_materialized_instructions() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE plan(id INTEGER PRIMARY KEY, plan_date TEXT,
+                 profile_key TEXT DEFAULT '');
+             CREATE TABLE plan_instruction(id INTEGER PRIMARY KEY, plan_id INTEGER,
+                 code TEXT, name TEXT, position_hint TEXT DEFAULT '', status TEXT,
+                 co_id TEXT DEFAULT '');",
+        )
+        .unwrap();
+        let today = today_dashed();
+        conn.execute(
+            "INSERT INTO plan(id,plan_date,profile_key) VALUES(1,?1,'steady')",
+            [&today],
+        )
+        .unwrap();
+        conn.execute_batch(
+            "INSERT INTO plan_instruction(id,plan_id,code,name,position_hint,status,co_id)
+             VALUES(1,1,'600519','贵州茅台','10%','open','CO1');
+             INSERT INTO plan_instruction(id,plan_id,code,name,position_hint,status,co_id)
+             VALUES(2,1,'000001','平安银行','','alerted','');",
+        )
+        .unwrap();
+
+        let watch = collect_watch(&conn);
+        assert_eq!(watch.len(), 1, "已物化指令交给条件单引擎，不再进盯盘列表");
+        assert_eq!(watch[0].code, "000001");
+        assert_eq!(watch[0].instr_id, Some(2));
+        assert!(
+            !watch.iter().any(|w| w.code == "600519"),
+            "有 co_id 的指令不得由 autoexec 再执行一遍"
+        );
     }
 }

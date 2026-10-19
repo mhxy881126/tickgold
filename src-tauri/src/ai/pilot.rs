@@ -259,6 +259,29 @@ async fn run_scan(app: AppHandle, dir: PathBuf) -> Result<Value, String> {
         let _ = crate::ai::workflow_p1::workflow_plan(app.state::<AiState>(), None)
             .map_err(|e| format!("智驾生成作战卡失败: {e}"))?;
     }
+    // 智驾计划打标 + 取消已物化条件单：必须在确认 / 物化之前完成。
+    // 智驾由 autoexec 执行这批指令，条件单引擎不得再执行一遍；打标后
+    // materialize_today 按 model='pilot-auto' 结构性排除（不依赖崩溃后会
+    // 残留的 pilot_config.mode）。每轮幂等执行，覆盖「确认后崩溃重启」的恢复。
+    let plan_date = crate::ai::plan::next_trade_date(&crate::ai::workflow::today_str());
+    let _ = conn.execute(
+        "UPDATE plan SET model='pilot-auto' WHERE plan_date=?1",
+        [&plan_date],
+    );
+    // 崩溃 / 重启恢复：打标前已确认并物化过的计划可能留着 active 条件单，
+    // 会与智驾 autoexec 双份执行；这里按计划取消（与 set_plan_status 同一条 UPDATE）。
+    if let Ok(plan_id) = conn.query_row(
+        "SELECT id FROM plan WHERE plan_date=?1",
+        [&plan_date],
+        |r| r.get::<_, i64>(0),
+    ) {
+        let _ = conn.execute(
+            "UPDATE conditional_order SET status='cancelled', updated_at=?1
+             WHERE status='active' AND co_id IN (
+                 SELECT co_id FROM plan_instruction WHERE plan_id=?2 AND co_id<>'')",
+            rusqlite::params![now, plan_id],
+        );
+    }
     if step < 4 {
         let _ = crate::ai::workflow_p1::workflow_plan_confirm(app.state::<AiState>(), None)
             .map_err(|e| format!("智驾确认作战卡失败: {e}"))?;

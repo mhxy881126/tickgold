@@ -432,8 +432,8 @@
 | 59 | P5 brain_rollout (rule→shadow→canary→live state machine) + shadow_decision (shadow vs rule decision log) |
 | 60 | P6 pilot_config (one-row autopilot config) + pilot_daily_log (per-trading-day autopilot run log) |
 | 61 | P1-a plan_instruction: co_id / trigger_json / synced_at (instruction materialization & derived state) |
-| 62 | P1-a conditional_order: unique partial index on plan note (dedupe materialization / backfill) |
+| 62 | P1-a conditional_order: dedupe active plan notes + unique partial index on active plan note (materialization idempotence / reopen re-arm) |
 
 > P1-a：迁移 v61 给 plan_instruction 增加 co_id / trigger_json / synced_at 三列，供计划指令物化与状态展示使用。
-> P1-a：迁移 v62 给 conditional_order(note) 建部分唯一索引（仅 `plan:%` 备注），并发/崩溃后重复物化由唯一约束兜底并回填 co_id。
+> P1-a：迁移 v62 先取消重复的 active `plan:%` 条件单（同 note 仅保留 MIN(id)），再给 `note` 建「active 行才入索引」的部分唯一索引；并发/崩溃后重复物化由唯一约束兜底并回填 co_id，指令重开（旧单 cancelled）可重新物化同 note 的新 active 单。
 > ai.db 另有独立版本链（当前 v4），不在此表。

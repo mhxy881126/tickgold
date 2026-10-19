@@ -1024,9 +1024,13 @@ pub fn migrations() -> Vec<Migration> {
                         },
                         Migration {
                             version: 62,
-                            description: "conditional_order: unique plan note (dedupe plan materialization)",
-                            sql: "CREATE UNIQUE INDEX IF NOT EXISTS uq_conditional_plan_note
-                                 ON conditional_order(note) WHERE note LIKE 'plan:%';",
+                            description: "conditional_order: unique active plan note (dedupe plan materialization, allow reopen)",
+                            sql: "UPDATE conditional_order SET status='cancelled'
+                                 WHERE note LIKE 'plan:%' AND status='active'
+                                   AND id NOT IN (SELECT MIN(id) FROM conditional_order
+                                                  WHERE note LIKE 'plan:%' AND status='active' GROUP BY note);
+                                 CREATE UNIQUE INDEX IF NOT EXISTS uq_conditional_plan_note
+                                 ON conditional_order(note) WHERE note LIKE 'plan:%' AND status='active';",
                             kind: MigrationKind::Up,
                         },
     ]
