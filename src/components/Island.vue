@@ -639,19 +639,20 @@ html[data-window="island"] #app {
 .island.strong .pill::after {
   content: "";
   position: absolute;
-  inset: -3px;
+  /* 画在 320×52 窗口内侧：负 inset 会外扩到窗口边界外，折叠态被 WebView 裁掉看不见。 */
+  inset: 1px;
   border-radius: 999px;
-  border: 2px solid rgba(255, 59, 48, .55);
+  border: 2px solid rgba(255, 59, 48, .75);
+  box-shadow: inset 0 0 12px rgba(255, 59, 48, .5);
   pointer-events: none;
-  animation: island-strong-ring 1.6s ease-out infinite;
+  animation: island-strong-ring 1.6s ease-in-out infinite;
 }
 @keyframes island-strong-ring {
-  0% { transform: scale(1); opacity: .9; }
-  70% { transform: scale(1.06); opacity: 0; }
-  100% { transform: scale(1.06); opacity: 0; }
+  0%, 100% { opacity: .45; }
+  50% { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .island.strong .pill::after { animation: none; opacity: .55; }
+  .island.strong .pill::after { animation: none; opacity: .8; }
 }
 
 .avatar {

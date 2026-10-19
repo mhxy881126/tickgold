@@ -174,6 +174,8 @@ function setCode(c: string) {
  * 立刻 focus 会被随后的渲染覆盖。
  */
 function focusSide(s: "BUY" | "SELL") {
+  // 确认弹窗打开时方向已冻结：此时改 side 会让「买入确认中按 S」在确认后下成卖单。
+  if (confirmOpen.value) return;
   side.value = s;
   void nextTick(() => {
     codeInput.value?.focus();

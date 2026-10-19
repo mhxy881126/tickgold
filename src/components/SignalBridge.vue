@@ -152,9 +152,10 @@ async function onReject(t: SignalTicketInfo) {
   }
 }
 
-// ===== 卡片内快捷键：Enter 确认 / Ctrl(⌘)+Enter 确认并唤起 / R 驳回 =====
+// ===== 卡片内快捷键：Enter 确认置顶 / Ctrl(⌘)+Enter 确认并唤起 / R 驳回 =====
 function firstPending(): SignalTicketInfo | undefined {
-  return tickets.value.find((t) => t.status === "pending");
+  // 与列表顶部一致：待确认优先 → 置信度降序 → 时间降序（复用列表同一排序）。
+  return sortTickets(tickets.value).find((t) => t.status === "pending");
 }
 function isFormTarget(ev: KeyboardEvent): boolean {
   const el = ev.target as HTMLElement | null;
@@ -452,7 +453,7 @@ onUnmounted(() => {
     </div>
 
     <div class="hk-hint">
-      💡 快捷键：Enter 确认最新 · Ctrl+Enter 确认并唤起券商 · R 驳回
+      💡 快捷键：Enter 确认置顶 · Ctrl+Enter 确认并唤起券商 · R 驳回
     </div>
 
     <!-- 手动新建表单 -->

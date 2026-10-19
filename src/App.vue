@@ -385,7 +385,9 @@ async function cancelAllConditionalOrders() {
   if (useDialogState().open) return;
   const ok = await confirmDialog({
     title: "撤销全部活动条件单？",
-    message: "将撤销所有未触发的条件单，已触发/已成交不受影响。",
+    message:
+      "将撤销所有未触发的条件单，已触发/已成交不受影响。此操作不可撤销；" +
+      "关联计划指令也会被放弃。",
     confirmText: "全部撤销",
     danger: true,
   });
