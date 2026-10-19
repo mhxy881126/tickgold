@@ -633,11 +633,9 @@ pub fn workflow_p1_products(
     if let Err(e) = crate::ai::instruction::materialize_today(&c) {
         log::warn!("materialize_today failed: {e}");
     }
-    let plan_date = plan::next_trade_date(&date);
-    let plan = plan::find_plan_id_by_date(&dir, &plan_date)
-        .ok()
-        .flatten()
-        .and_then(|id| plan::get_plan(&dir, id).ok());
+    // 与 workflow_instructions 共用同一解析：作战卡 chips 与指令列表永远指向同一份计划，
+    // planConfirmed 也从同一份计划的 status 推导，避免两处口径分裂。
+    let plan = resolve_plan(&c, &date).map(|(_, p)| p);
     let confirmed = plan
         .as_ref()
         .and_then(|p| p["status"].as_str())
@@ -669,6 +667,17 @@ fn instruction_plan_id(c: &Connection, date: &str) -> Option<i64> {
     plan_id_on(c, &today).or_else(|| plan_id_on(c, &plan::next_trade_date(date)))
 }
 
+/// 作战卡（`workflow_p1_products`）与指令列表（`workflow_instructions`）共用的计划解析。
+///
+/// 两处必须指向同一份计划：计划日盘中指令列表读今天的计划，作战卡若仍读「下一交易日」，
+/// 就会出现「列表有今天指令、PhasePanel 计划 chips 为空」的口径分裂。这里同时返回
+/// plan_id 与计划 JSON，保证 JSON 里的 `id` 与指令列表查询用的 id 永远一致
+/// （也避免每次读取多开一条数据库连接）。
+fn resolve_plan(c: &Connection, date: &str) -> Option<(i64, Value)> {
+    let pid = instruction_plan_id(c, date)?;
+    plan::plan_to_json(c, pid).ok().map(|p| (pid, p))
+}
+
 /// P1-a：作战台只读指令列表（状态由条件单 / 信号票 / 委托在读取时推导，不落库）。
 ///
 /// 先做一次幂等物化：5s 轮询会反复调用本命令，今天的已确认计划因此始终「最多晚
@@ -684,10 +693,9 @@ pub fn workflow_instructions(
     if let Err(e) = crate::ai::instruction::materialize_today(&c) {
         log::warn!("materialize_today failed: {e}");
     }
-    let Some(pid) = instruction_plan_id(&c, &date) else {
+    let Some((pid, plan)) = resolve_plan(&c, &date) else {
         return Ok(json!({ "plan": null, "instructions": [] }));
     };
-    let plan = plan::get_plan(&dir, pid).unwrap_or(Value::Null);
     let instructions = crate::ai::instruction::list_instructions(&c, pid)?;
     Ok(json!({ "plan": plan, "instructions": instructions }))
 }
@@ -792,5 +800,80 @@ mod tests {
         let today_id = c.last_insert_rowid();
         // 今天已有计划：计划日优先，避免盘中展示明天的计划
         assert_eq!(instruction_plan_id(&c, base), Some(today_id));
+    }
+
+    /// `resolve_plan` 需要的表：列与 `plan::plan_to_json` 的查询保持一致。
+    fn conn_with_plan_tables() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE plan(id INTEGER PRIMARY KEY AUTOINCREMENT, plan_date TEXT NOT NULL UNIQUE,
+                title TEXT NOT NULL DEFAULT '', market_view TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'draft', profile_key TEXT NOT NULL DEFAULT '',
+                source_review_date TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '',
+                created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
+             CREATE TABLE plan_instruction(id INTEGER PRIMARY KEY AUTOINCREMENT, plan_id INTEGER,
+                tier TEXT, code TEXT, name TEXT, theme TEXT, condition TEXT, action TEXT,
+                position_hint TEXT, alert_rule TEXT, status TEXT, sort INTEGER);",
+        )
+        .unwrap();
+        c
+    }
+
+    #[test]
+    fn products_and_instructions_share_same_plan_on_plan_day() {
+        let c = conn_with_plan_tables();
+        // 用远期基准日构造「下一交易日」，避免用例与真实日期耦合（不会被今天命中）。
+        let base = "2999-01-01";
+        let next = plan::next_trade_date(base);
+        let today = crate::broker::conditional::today_dashed();
+        c.execute(
+            "INSERT INTO plan(plan_date,title,status) VALUES(?1,'明日作战卡','draft')",
+            [&next],
+        )
+        .unwrap();
+        c.execute(
+            "INSERT INTO plan(plan_date,title,status) VALUES(?1,'今日作战卡','confirmed')",
+            [&today],
+        )
+        .unwrap();
+        let today_id = c.last_insert_rowid();
+        c.execute(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,theme,condition,action,
+                position_hint,alert_rule,status,sort)
+             VALUES(?1,'candidate','600519','贵州茅台','白酒','战法：龙头','备选','不设仓位','{}','alerted',0)",
+            [today_id],
+        )
+        .unwrap();
+
+        // workflow_p1_products 路径：共用解析 + 由同一份计划推导 planConfirmed
+        let products = resolve_plan(&c, base).map(|(_, p)| p);
+        let products_confirmed = products
+            .as_ref()
+            .and_then(|p| p["status"].as_str())
+            .map(|x| x == "confirmed")
+            .unwrap_or(false);
+        // workflow_instructions 路径：共用解析拿 plan_id，指令按该 id 查询
+        let (instructions_pid, instructions_plan) =
+            resolve_plan(&c, base).expect("今天有计划，两处都不应为 None");
+        let products_plan = products.expect("今天有计划，作战卡不应为 null");
+
+        assert_eq!(instructions_pid, today_id, "计划日应取今天的计划");
+        assert_eq!(
+            products_plan["id"].as_i64(),
+            Some(instructions_pid),
+            "作战卡与指令列表必须指向同一 plan_id"
+        );
+        assert_eq!(products_plan["planDate"].as_str(), Some(today.as_str()));
+        assert_eq!(products_plan["status"].as_str(), Some("confirmed"));
+        assert_eq!(instructions_plan["title"].as_str(), Some("今日作战卡"));
+        assert_eq!(
+            instructions_plan["instructions"].as_array().map(Vec::len),
+            Some(1),
+            "共用解析返回的计划 JSON 应带指令列表"
+        );
+        assert!(
+            products_confirmed,
+            "今天 confirmed 计划 → planConfirmed=true"
+        );
     }
 }

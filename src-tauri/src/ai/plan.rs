@@ -268,7 +268,8 @@ pub async fn generate_plan(
     plan_to_json(&c, id)
 }
 
-fn plan_to_json(c: &rusqlite::Connection, id: i64) -> Result<Value, String> {
+/// 计划 JSON（含 instructions）；`pub(crate)` 供作战卡/指令列表在同一连接上共用解析。
+pub(crate) fn plan_to_json(c: &rusqlite::Connection, id: i64) -> Result<Value, String> {
     let base = c.query_row(
         "SELECT id,plan_date,title,market_view,status,profile_key,source_review_date,model,created_at,updated_at
          FROM plan WHERE id=?1", [id],
