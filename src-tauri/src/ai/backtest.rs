@@ -44,6 +44,15 @@ pub struct BacktestReq {
     /// 滑点 %（开盘价向不利方向偏移）。
     #[serde(default)]
     pub slippage_pct: f64,
+    /// 市场冲击线性系数（参与率→价格冲击）。
+    #[serde(default = "default_impact_linear")]
+    pub impact_linear: f64,
+    /// 市场冲击非线性系数。
+    #[serde(default = "default_impact_nonlinear")]
+    pub impact_nonlinear: f64,
+    /// 市场冲击非线性幂次（>1）。
+    #[serde(default = "default_impact_power")]
+    pub impact_power: f64,
     /// 基准指数代码（如 000300 / 000001）；空则不带基准。
     #[serde(default)]
     pub benchmark: String,
@@ -73,6 +82,21 @@ fn default_max_single_pct() -> f64 {
 fn default_participation() -> f64 {
     10.0
 }
+fn default_impact_linear() -> f64 {
+    0.1
+}
+fn default_impact_nonlinear() -> f64 {
+    0.2
+}
+fn default_impact_power() -> f64 {
+    1.5
+}
+
+/// 市场冲击（比例）：参与率 p=订单股数/当日成交量；线性项 + 非线性幂次项。
+fn market_impact(participation: f64, lin: f64, nl: f64, pow: f64) -> f64 {
+    let p = participation.max(0.0);
+    lin * p + nl * p.powf(pow)
+}
 
 impl Default for BacktestReq {
     fn default() -> Self {
@@ -87,6 +111,9 @@ impl Default for BacktestReq {
             max_single_pct: default_max_single_pct(),
             participation_pct: default_participation(),
             slippage_pct: 0.0,
+            impact_linear: default_impact_linear(),
+            impact_nonlinear: default_impact_nonlinear(),
+            impact_power: default_impact_power(),
             benchmark: String::new(),
             name: String::new(),
             weights: None,
@@ -344,6 +371,15 @@ impl Engine {
                     if vol < 100 {
                         continue;
                     }
+                    // 市场冲击：按实际参与率（订单/当日成交量）抬高买入价。
+                    let participation = vol as f64 / day_volume.max(1.0);
+                    let impact = market_impact(
+                        participation,
+                        self.req.impact_linear,
+                        self.req.impact_nonlinear,
+                        self.req.impact_power,
+                    );
+                    let price = price * (1.0 + impact);
                     let amount = price * vol as f64;
                     let fee = calc_fee(Side::Buy, amount);
                     self.cash -= amount + fee;
@@ -394,6 +430,15 @@ impl Engine {
                     if vol <= 0 {
                         continue;
                     }
+                    // 市场冲击：按实际参与率（订单/当日成交量）压低卖出价。
+                    let participation = vol as f64 / day_volume.max(1.0);
+                    let impact = market_impact(
+                        participation,
+                        self.req.impact_linear,
+                        self.req.impact_nonlinear,
+                        self.req.impact_power,
+                    );
+                    let price = price * (1.0 - impact);
                     let amount = price * vol as f64;
                     let fee = calc_fee(Side::Sell, amount);
                     let cost_reduce = cost * (vol as f64 / pos_vol as f64);
@@ -675,6 +720,9 @@ impl Engine {
         params.insert("maxSinglePct".into(), self.req.max_single_pct);
         params.insert("participationPct".into(), self.req.participation_pct);
         params.insert("slippagePct".into(), self.req.slippage_pct);
+        params.insert("impactLinear".into(), self.req.impact_linear);
+        params.insert("impactNonlinear".into(), self.req.impact_nonlinear);
+        params.insert("impactPower".into(), self.req.impact_power);
         BacktestResult {
             id: None,
             name: self.req.name.clone(),

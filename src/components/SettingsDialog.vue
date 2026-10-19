@@ -237,6 +237,13 @@ function onLevelChange(e: Event) {
   refreshLogs();
 }
 async function clearLogs() {
+  const ok = await confirmDialog({
+    title: "清空日志",
+    message: "将清空全部本地日志，可能影响后续问题排查。是否继续？",
+    confirmText: "清空",
+    danger: true,
+  });
+  if (!ok) return;
   logger.clear();
   try { await invoke("rust_clear_logs"); } catch { /* ignore */ }
   logRows.value = [];
@@ -465,6 +472,13 @@ async function saveCloudKeyEv() {
   }
 }
 async function clearCloudKeyEv() {
+  const ok = await confirmDialog({
+    title: "清除云端密钥",
+    message: "将清除已保存的云端 AI 服务密钥，清除后需重新输入才能使用相关功能。是否继续？",
+    confirmText: "清除",
+    danger: true,
+  });
+  if (!ok) return;
   try {
     await clearCloudKey();
     cloudKeySet.value = false;
@@ -1664,6 +1678,13 @@ async function saveL2Key(r: PluginRow) {
   }
 }
 async function clearL2Key(r: PluginRow) {
+  const ok = await confirmDialog({
+    title: "清除 API Key",
+    message: `将清除「${r.name}」的 API Key，清除后需重新输入。是否继续？`,
+    confirmText: "清除",
+    danger: true,
+  });
+  if (!ok) return;
   l2Busy.value[r.pluginId] = true;
   try {
     await pluginL2ClearKey(r.pluginId);
@@ -2027,7 +2048,7 @@ async function clearL2Key(r: PluginRow) {
 
               <!-- 备份 / 恢复中心（v2.29）-->
               <div class="section-title" style="margin-top:24px">备份 / 恢复中心</div>
-              <div class="section-sub">备份主库、知识库与本地配置（自选 / 布局 / 设置）；恢复时自动重启</div>
+              <div class="section-sub">备份主库（含成交流水 / 委托）、知识库、券商配置与本地配置（自选 / 布局 / 设置）；恢复前做完整性校验，恢复时自动重启</div>
               <div class="ai-actions">
                 <button type="button" class="logs-btn primary" :disabled="backupBusy" @click="onCreateBackup">
                   {{ backupBusy ? "备份中…" : "立即备份" }}
@@ -2043,8 +2064,11 @@ async function clearL2Key(r: PluginRow) {
                     {{ b.files.map((f) => f.name.replace(".db", "")).join(" · ") }}
                     · {{ fmtBytes(b.totalBytes) }}
                   </div>
+                  <div class="backup-verify" :class="{ ok: b.verified, bad: !b.verified }">
+                    {{ b.verified ? "完整性校验通过" : "校验未通过，恢复将被拒绝" }}
+                  </div>
                 </div>
-                <button type="button" class="logs-btn" :disabled="backupBusy" @click="onRestoreBackup(b)">恢复</button>
+                <button type="button" class="logs-btn" :disabled="backupBusy || !b.verified" @click="onRestoreBackup(b)">恢复</button>
                 <button type="button" class="logs-btn" :disabled="backupBusy" @click="onDeleteBackup(b)">删除</button>
               </div>
 
@@ -2942,6 +2966,9 @@ async function clearL2Key(r: PluginRow) {
 .backup-info { flex: 1; min-width: 0; }
 .backup-id { font-weight: 600; }
 .backup-meta { margin-top: 2px; color: var(--text-dim); font-size: 11px; }
+.backup-verify { margin-top: 4px; font-size: 10.5px; font-weight: 600; }
+.backup-verify.ok { color: var(--down); }
+.backup-verify.bad { color: var(--up); }
 .gov-trow { display: inline-block; margin: 2px 8px 2px 0; color: var(--text-dim); font-size: 11px; }
 .dc-row + .dc-row { border-top: 1px solid var(--border); }
 .dr-k { color: var(--text-dim); }

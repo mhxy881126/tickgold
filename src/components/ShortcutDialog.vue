@@ -48,7 +48,7 @@
           </div>
         </div>
         <div class="sc-foot">
-          <button class="sc-reset" @click="resetAll">全部恢复默认</button>
+          <button class="sc-reset" @click="confirmResetAll">全部恢复默认</button>
           <button class="sc-ok" @click="close">知道了</button>
         </div>
       </div>
@@ -60,11 +60,22 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useActions, type Action } from "../composables/useActions";
 import { parseCombo, sameCombo } from "../lib/keymap";
+import { confirmDialog } from "../composables/useDialog";
 
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ (e: "update:open", v: boolean): void }>();
 
 const { os, list, setBinding, resetBinding, resetAll, effectiveKeys } = useActions();
+
+async function confirmResetAll() {
+  const ok = await confirmDialog({
+    title: "全部恢复默认",
+    message: "将全部快捷键恢复为默认设置，自定义绑定将被清除。是否继续？",
+    confirmText: "恢复",
+    danger: true,
+  });
+  if (ok) resetAll();
+}
 
 function close() {
   cancelRecord();

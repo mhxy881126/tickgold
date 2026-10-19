@@ -7,6 +7,7 @@ export interface BackupFileInfo {
 export interface BackupSetInfo {
   id: string;
   createdMs: number;
+  verified: boolean;
   files: BackupFileInfo[];
   totalBytes: number;
 }

@@ -111,7 +111,7 @@
           </label>
           <button class="db-btn txt" title="画线粗细（点击切换）" @click="cycleSize">{{ drawSize }}</button>
           <div class="db-sep"></div>
-          <button class="db-btn txt danger" title="清除全部画线" @click="clearDrawings">清除</button>
+          <button class="db-btn txt danger" title="清除全部画线" @click="confirmClearDrawings">清除</button>
         </div>
 
         <!-- 持仓信息角标 -->
@@ -270,6 +270,7 @@ import { UP, DOWN_K, FLAT, AVG_Y, line, buildStyles } from "../lib/chart-styles"
 import { SUB_GROUPS as subGroups } from "../lib/indicator-groups";
 import IndicatorSettings from "./IndicatorSettings.vue";
 import MinuteReplayPopup from "./MinuteReplayPopup.vue";
+import { confirmDialog } from "../composables/useDialog";
 
 const props = defineProps<{ code: string }>();
 
@@ -380,6 +381,16 @@ const {
   getCode: () => props.code,
   activePeriod: () => active.value,
 });
+
+async function confirmClearDrawings() {
+  const ok = await confirmDialog({
+    title: "清除全部画线",
+    message: "将清除当前图表上的全部画线（趋势线、标注等）。是否继续？",
+    confirmText: "清除",
+    danger: true,
+  });
+  if (ok) clearDrawings();
+}
 
 // 涨跌停价 / 模拟持仓
 const limitRate = computed(() => limitRateOf(props.code, headName.value));

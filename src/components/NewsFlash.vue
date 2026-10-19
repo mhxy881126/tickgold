@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { openInAppBrowser } from "../utils/openInApp";
 import { fetchNewsFlash, type NewsItem } from "../api/market";
 import { useSmartPolling } from "../composables/useSmartPolling";
+import StateView from "./StateView.vue";
 
 const items = ref<NewsItem[]>([]);
 const loading = ref(false);
+const errMsg = ref("");
+
+const state = computed<"loading" | "empty" | "error" | "ready">(() => {
+  if (loading.value && items.value.length === 0) return "loading";
+  if (items.value.length === 0) return errMsg.value ? "error" : "empty";
+  return "ready";
+});
 const live = ref(true);
 const page = ref(1);
 const seen = new Set<number>();
@@ -28,8 +36,10 @@ async function load(p: number) {
       items.value = [...items.value, ...more];
     }
     list.forEach((x) => seen.add(x.id));
+    errMsg.value = "";
   } catch (e) {
     console.error("fetchNewsFlash", e);
+    errMsg.value = String(e);
   }
   loading.value = false;
 }
@@ -59,14 +69,23 @@ useSmartPolling(() => load(1), { interval: 45000, cardId: "news" });
       <span class="dot" :class="{ on: live }"></span>
       {{ live ? "直播中 · 45s 自动刷新" : "已暂停" }}
     </div>
-    <div class="nf-list" @scroll="onScroll">
-      <div v-for="n in items" :key="n.id" class="nf-item" @click="open(n)">
-        <span class="nf-time">{{ hm(n.time) }}</span>
-        <span v-for="(t, i) in n.tags" :key="i" class="nf-tag">{{ t }}</span>
-        <span class="nf-text">{{ n.text }}</span>
+    <StateView
+      :state="state"
+      skeleton
+      empty-title="暂无快讯"
+      empty-desc="交易时段快讯会实时推送"
+      :error-text="errMsg"
+      @retry="load(1)"
+    >
+      <div class="nf-list" @scroll="onScroll">
+        <div v-for="n in items" :key="n.id" class="nf-item" @click="open(n)">
+          <span class="nf-time">{{ hm(n.time) }}</span>
+          <span v-for="(t, i) in n.tags" :key="i" class="nf-tag">{{ t }}</span>
+          <span class="nf-text">{{ n.text }}</span>
+        </div>
+        <div v-if="loading" class="nf-load">加载中…</div>
       </div>
-      <div v-if="loading" class="nf-load">加载中…</div>
-    </div>
+    </StateView>
   </div>
 </template>
 

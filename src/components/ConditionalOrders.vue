@@ -8,6 +8,7 @@ import {
   type ConditionalOrder, type CoTriggerLeaf,
 } from "../broker/co";
 import { CO_PLANS, getCoPlan } from "../lib/playbooks";
+import { confirmDialog } from "../composables/useDialog";
 
 // ===== 列表 / 筛选 =====
 const orders = ref<ConditionalOrder[]>([]);
@@ -166,6 +167,13 @@ async function submit() {
 }
 
 async function cancelOne(o: ConditionalOrder) {
+  const ok = await confirmDialog({
+    title: "撤销条件单",
+    message: "确定撤销该条件单？撤销后将不再自动触发。",
+    confirmText: "撤销",
+    danger: true,
+  });
+  if (!ok) return;
   try {
     await coCancel(o.id);
     await refresh();
@@ -174,6 +182,13 @@ async function cancelOne(o: ConditionalOrder) {
   }
 }
 async function cancelAll() {
+  const ok = await confirmDialog({
+    title: "全部撤销",
+    message: `将撤销全部 ${activeCount} 个生效中的条件单，此操作不可撤销。是否继续？`,
+    confirmText: "全部撤销",
+    danger: true,
+  });
+  if (!ok) return;
   try {
     await coCancelAll();
     await refresh();

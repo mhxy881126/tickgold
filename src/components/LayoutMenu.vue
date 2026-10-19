@@ -3,6 +3,7 @@ import { inject, ref, onMounted } from "vue";
 import type { useWorkbench } from "../composables/useWorkbench";
 import type { NamedLayout } from "../composables/useWorkbench";
 import { buildLayoutFile, downloadLayoutFile, pickLayoutFile } from "../lib/layoutIO";
+import { confirmDialog } from "../composables/useDialog";
 
 type Bench = ReturnType<typeof useWorkbench>;
 const bench = inject<Bench>("workbench")!;
@@ -44,7 +45,14 @@ async function importOne() {
   await bench.importNamedLayout(f.name, f.cards);
   await refresh();
 }
-function reset() {
+async function reset() {
+  const ok = await confirmDialog({
+    title: "恢复默认布局",
+    message: "将丢弃当前的分区与卡片顺序，恢复为默认布局。是否继续？",
+    confirmText: "恢复",
+    danger: true,
+  });
+  if (!ok) return;
   bench.resetLayout();
 }
 function enterFree() {

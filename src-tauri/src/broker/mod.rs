@@ -1,5 +1,6 @@
 // 券商对接编排：BrokerManager（配置 / 模拟账户 / sidecar / 紧急停止），Tauri 命令，
 // 委托状态机推进、signal_audit 审计、事件广播。合规：只处理 confirmed 单、实盘默认关、风控前置。
+pub mod channel;
 pub mod client;
 pub mod conditional;
 pub mod config;

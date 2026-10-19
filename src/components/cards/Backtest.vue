@@ -51,6 +51,20 @@
           <input v-model.number="form.slippagePct" type="number" step="0.02" min="0" max="1" />
         </label>
       </div>
+      <div class="bt-frow">
+        <label class="bt-f">
+          <span>冲击线性</span>
+          <input v-model.number="form.impactLinear" type="number" step="0.02" min="0" max="2" />
+        </label>
+        <label class="bt-f">
+          <span>冲击非线性</span>
+          <input v-model.number="form.impactNonlinear" type="number" step="0.02" min="0" max="2" />
+        </label>
+        <label class="bt-f">
+          <span>冲击幂次</span>
+          <input v-model.number="form.impactPower" type="number" step="0.1" min="1" max="3" />
+        </label>
+      </div>
       <label class="bt-f">
         <span>初始资金</span>
         <input v-model.number="form.initCash" type="number" step="100000" min="10000" />
@@ -374,6 +388,9 @@ const form = reactive({
   maxSinglePct: 20,
   participationPct: 10,
   slippagePct: 0,
+  impactLinear: 0.1,
+  impactNonlinear: 0.2,
+  impactPower: 1.5,
   initCash: 1_000_000,
   name: "",
 });
@@ -420,6 +437,9 @@ async function run() {
     maxSinglePct: form.maxSinglePct,
     participationPct: form.participationPct,
     slippagePct: form.slippagePct,
+    impactLinear: form.impactLinear,
+    impactNonlinear: form.impactNonlinear,
+    impactPower: form.impactPower,
     initCash: form.initCash,
     name: form.name.trim(),
   };
@@ -666,6 +686,9 @@ async function optimize() {
         maxSinglePct: form.maxSinglePct,
         participationPct: form.participationPct,
         slippagePct: form.slippagePct,
+        impactLinear: form.impactLinear,
+        impactNonlinear: form.impactNonlinear,
+        impactPower: form.impactPower,
         initCash: form.initCash,
         name: form.name.trim(),
       },

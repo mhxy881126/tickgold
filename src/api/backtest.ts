@@ -12,6 +12,9 @@ export interface BacktestReq {
   maxSinglePct?: number;
   participationPct?: number;
   slippagePct?: number;
+  impactLinear?: number;
+  impactNonlinear?: number;
+  impactPower?: number;
   benchmark?: string;
   name?: string;
   weights?: Record<string, number> | null;

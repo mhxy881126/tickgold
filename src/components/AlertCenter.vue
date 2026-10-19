@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { alertDialog } from "../composables/useDialog";
+import { alertDialog, confirmDialog } from "../composables/useDialog";
 import { useAlertV2Store } from "../stores/alertV2";
 import { useWatchlistStore } from "../stores/watchlist";
 import type { AlertRuleV2 } from "../alert/types";
@@ -49,6 +49,13 @@ async function switchTab(t: "rules" | "history") {
   if (t === "history" && !store.historyLoaded) await store.loadHistory();
 }
 async function clearHistory() {
+  const ok = await confirmDialog({
+    title: "清空历史",
+    message: "将清空全部预警触发历史，此操作不可恢复。是否继续？",
+    confirmText: "清空",
+    danger: true,
+  });
+  if (!ok) return;
   await store.clearHistory();
 }
 
