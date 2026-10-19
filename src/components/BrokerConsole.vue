@@ -141,6 +141,10 @@ function sideCls(s: string | undefined): string {
 }
 
 // ===== 数据加载 =====
+// P12-15 查询中状态（sidecar 处理中，结果未回）不当作失败显示
+function isQueryingNote(note: string): boolean {
+  return /正在向客户端查询/.test(note);
+}
 async function loadStatus() {
   try {
     status.value = await brokerGetStatus();
@@ -173,8 +177,12 @@ async function loadPositions() {
 async function loadTrades() {
   try {
     const r = await brokerClientQueryTrades();
-    if (r.trades) trades.value = r.trades;
-    if (r.note && !r.trades) queryErr.value = r.note;
+    if (r.trades) {
+      trades.value = r.trades;
+      queryErr.value = ""; // 数据回填即解除错误
+    }
+    // P12-15 「正在向客户端查询…」是查询进行中状态，不是失败，不设错误（等 sidecar 事件回填）
+    if (r.note && !r.trades && !isQueryingNote(r.note)) queryErr.value = r.note;
     lastSync.value = fmtClock(Date.now());
   } catch (e) {
     queryErr.value = String(e);
@@ -183,8 +191,11 @@ async function loadTrades() {
 async function loadPending() {
   try {
     const r = await brokerClientQueryPending();
-    if (r.orders) pending.value = r.orders;
-    if (r.note && !r.orders) queryErr.value = r.note;
+    if (r.orders) {
+      pending.value = r.orders;
+      queryErr.value = ""; // 数据回填即解除错误
+    }
+    if (r.note && !r.orders && !isQueryingNote(r.note)) queryErr.value = r.note;
     lastSync.value = fmtClock(Date.now());
   } catch (e) {
     queryErr.value = String(e);
@@ -587,10 +598,16 @@ onMounted(() => {
     if (connected.value) void refreshTab();
   }, 30000);
   listen<{ trades?: BrokerTrade[] }>("broker:trades", (ev) => {
-    if (ev.payload?.trades) trades.value = ev.payload.trades;
+    if (ev.payload?.trades) {
+      trades.value = ev.payload.trades;
+      queryErr.value = ""; // P12-15 数据到达即解除错误
+    }
   }).then((u) => unlisteners.push(u));
   listen<{ orders?: BrokerPending[] }>("broker:pending", (ev) => {
-    if (ev.payload?.orders) pending.value = ev.payload.orders;
+    if (ev.payload?.orders) {
+      pending.value = ev.payload.orders;
+      queryErr.value = ""; // P12-15 数据到达即解除错误
+    }
   }).then((u) => unlisteners.push(u));
   listen<ClientAppState>("broker:app_state", (ev) => {
     if (ev.payload) appState.value = ev.payload;
@@ -794,7 +811,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
 
     <!-- 表格区 -->
     <div v-else class="bc-table-wrap">
-      <div v-if="queryErr" class="bc-query-err">⚠ {{ queryErr }}（自动重试中…）</div>
+      <div v-if="queryErr" class="bc-query-err">⚠ {{ queryErr }}（请点「刷新」重试）</div>
       <div v-if="lastSync" class="bc-last-sync">数据更新于 {{ lastSync }} · {{ autoRefresh ? "每 30 秒自动刷新" : "手动刷新" }}</div>
       <!-- 持仓 -->
       <table v-if="tab === 'position'" class="bc-table">
@@ -805,7 +822,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
           </tr>
         </thead>
         <tbody>
-          <tr v-if="!positions.length"><td colspan="9" class="bc-row-empty">{{ queryErr ? "读取失败（见上方提示），正在自动重试…" : "暂无持仓" }}</td></tr>
+          <tr v-if="!positions.length"><td colspan="9" class="bc-row-empty">{{ queryErr ? "读取失败，请点「刷新」重试" : "暂无持仓" }}</td></tr>
           <tr v-for="p in positions" :key="p.code">
             <td class="mono">{{ p.code }}</td>
             <td>{{ p.name || "--" }}</td>
@@ -832,7 +849,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
           </tr>
         </thead>
         <tbody>
-          <tr v-if="!trades.length"><td colspan="7" class="bc-row-empty">{{ queryErr ? "读取失败（见上方提示），已停止自动重试，请点「刷新」重试" : "暂无当日成交" }}</td></tr>
+          <tr v-if="!trades.length"><td colspan="7" class="bc-row-empty">{{ queryErr ? "读取失败，请点「刷新」重试" : "暂无当日成交" }}</td></tr>
           <tr v-for="(t, i) in trades" :key="i">
             <td class="mono">{{ t.time || "--" }}</td>
             <td class="mono">{{ t.code }}</td>
@@ -854,7 +871,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
           </tr>
         </thead>
         <tbody>
-          <tr v-if="!pending.length"><td colspan="8" class="bc-row-empty">{{ queryErr ? "读取失败（见上方提示），已停止自动重试，请点「刷新」重试" : "暂无当日挂单" }}</td></tr>
+          <tr v-if="!pending.length"><td colspan="8" class="bc-row-empty">{{ queryErr ? "读取失败，请点「刷新」重试" : "暂无当日挂单" }}</td></tr>
           <tr v-for="(o, i) in pending" :key="i">
             <td class="mono">{{ o.time || "--" }}</td>
             <td class="mono">{{ o.code }}</td>
