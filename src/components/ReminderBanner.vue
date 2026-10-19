@@ -19,14 +19,18 @@ const planDate = ref("");
 const status = ref("");
 
 const subtitle = computed(() => {
-  if (status.value === "missing") return "今日尚无作战卡，打开作战流先生成";
+  if (status.value === "missing") return "收盘后自动生成下一交易日作战卡";
   const date = planDate.value ? `${planDate.value} ` : "";
   return `${date}作战卡 · 确认后转入今日盯盘`;
 });
 
 function onReminder(payload?: ReminderPayload) {
   if (payload?.kind && payload.kind !== "plan-confirm") return;
-  text.value = payload?.text?.trim() || "今日作战卡待确认，请先确认后再盯盘";
+  const missing = payload?.status === "missing";
+  // missing 不承诺「可生成今日卡」：workflow_plan 只生成下一交易日作战卡。
+  text.value = missing
+    ? "今日无作战卡，请手动盯盘或等待下一交易日"
+    : payload?.text?.trim() || "今日作战卡待确认，请先确认后再盯盘";
   planDate.value = payload?.planDate ?? "";
   status.value = payload?.status ?? "";
   show.value = true;

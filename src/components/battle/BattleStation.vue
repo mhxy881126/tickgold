@@ -103,6 +103,18 @@ async function onConfirmPlan() {
   toast.success("作战卡已确认，指令已转预警");
 }
 
+// P1-c 确认后进入盯盘：计划已确认且尚未启动时给一键入口。
+const canStartWatch = computed(() => wf.planConfirmed && !wf.watchStarted);
+
+async function onWatchStart() {
+  await wf.watchStart();
+  if (wf.error) {
+    toast.error(wf.error);
+    return;
+  }
+  toast.success("盯盘已启动");
+}
+
 function pick(code: string) {
   dock.value?.setCode(code);
   preview.value = null;
@@ -168,10 +180,26 @@ function money(n: number) {
         {{ wf.busy ? "确认中…" : planConfirmLabel }}
       </button>
       <span
-        v-else-if="wf.battlePlan && wf.planConfirmed"
+        v-if="wf.battlePlan && wf.planConfirmed"
         class="bts-plan-ok"
         data-testid="plan-confirmed"
         >已确认</span
+      >
+      <button
+        v-if="canStartWatch"
+        type="button"
+        class="bts-plan-btn"
+        data-testid="watch-start"
+        :disabled="wf.busy"
+        @click="onWatchStart"
+      >
+        {{ wf.busy ? "启动中…" : "开始盯盘" }}
+      </button>
+      <span
+        v-if="wf.watchStarted"
+        class="bts-plan-ok"
+        data-testid="watch-started"
+        >盯盘已启动</span
       >
     </header>
 

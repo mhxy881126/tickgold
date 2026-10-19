@@ -246,17 +246,17 @@ async fn run_scan(app: AppHandle, dir: PathBuf) -> Result<Value, String> {
     // 2) 按当前步自动补齐缺失的盘前步骤（step 语义：0 采集 / 1 分析 / 2 计划 / 3 确认）。
     let step = current_step(&conn, &date);
     if step < 1 {
-        let _ = crate::ai::workflow_p1::workflow_collect(app.state::<AiState>(), None, None)
+        let _ = crate::ai::workflow_p1::workflow_collect(app.state::<AiState>(), None, None, None)
             .await
             .map_err(|e| format!("智驾采集失败: {e}"))?;
     }
     if step < 2 {
-        let _ = crate::ai::workflow_p1::workflow_analyze(app.state::<AiState>(), None, None)
+        let _ = crate::ai::workflow_p1::workflow_analyze(app.state::<AiState>(), None, None, None)
             .await
             .map_err(|e| format!("智驾分析失败: {e}"))?;
     }
     if step < 3 {
-        let _ = crate::ai::workflow_p1::workflow_plan(app.state::<AiState>(), None)
+        let _ = crate::ai::workflow_p1::workflow_plan(app.state::<AiState>(), None, None)
             .map_err(|e| format!("智驾生成作战卡失败: {e}"))?;
     }
     // 智驾计划打标 + 取消已物化条件单：必须在确认 / 物化之前完成。

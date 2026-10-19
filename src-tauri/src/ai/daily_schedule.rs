@@ -63,31 +63,33 @@ fn bump_attempts(conn: &Connection, key: &str) -> i64 {
 
 /// 采集 → 分析 → 计划（任一步失败即中止，不写半成品计划）。
 ///
-/// 断点续跑：`workflow_*` 三步有严格门禁（第①步只能 step 0 调、第②步只能 step 1 调），
-/// 若第②步网络失败，整轮重试再从第①步开始会被门禁直接拒绝，导致重试永远失败。
-/// 因此按当日 mission 当前步只补跑未完成的步骤（与 `pilot.rs` 的补齐逻辑同口径）。
-async fn run_pipeline(app: &AppHandle) -> Result<(), String> {
-    let date = crate::ai::workflow::today_str();
-    let step = {
-        let dir = app.state::<AiState>().dir();
-        let c = open_readwrite(&dir)?;
-        crate::ai::workflow::load_mission_state(&c, &date)?.current_step
-    };
-    if step <= 0 {
-        crate::ai::workflow_p1::workflow_collect(app.state::<AiState>(), None, None)
-            .await
-            .map_err(|e| format!("盘后采集失败: {e}"))?;
-    }
-    if step <= 1 {
-        crate::ai::workflow_p1::workflow_analyze(app.state::<AiState>(), None, None)
-            .await
-            .map_err(|e| format!("盘后分析失败: {e}"))?;
-    }
-    if step > 2 {
-        return Err(format!("今日作战流已推进到第 {} 步，无法自动生成作战卡", step + 1));
-    }
-    crate::ai::workflow_p1::workflow_plan(app.state::<AiState>(), None)
-        .map_err(|e| format!("盘后计划生成失败: {e}"))?;
+/// 盘后流水线统一 `force=true` 绕开三步的步数门禁：15:05 时用户可能已部分/全部完成
+/// 今日作战流（任务停在 step 2/3），带门禁调用会被 `require_step` 直接拒绝，自动
+/// 生成次日卡永远失败。日期统一传 after_close 捕获的北京 `today`，不再用 `None`
+/// 落到 `workflow::today_str()` 的 Local 日期。
+async fn run_pipeline(app: &AppHandle, today: &str) -> Result<(), String> {
+    crate::ai::workflow_p1::workflow_collect(
+        app.state::<AiState>(),
+        Some(today.to_string()),
+        None,
+        Some(true),
+    )
+    .await
+    .map_err(|e| format!("盘后采集失败: {e}"))?;
+    crate::ai::workflow_p1::workflow_analyze(
+        app.state::<AiState>(),
+        Some(today.to_string()),
+        None,
+        Some(true),
+    )
+    .await
+    .map_err(|e| format!("盘后分析失败: {e}"))?;
+    crate::ai::workflow_p1::workflow_plan(
+        app.state::<AiState>(),
+        Some(today.to_string()),
+        Some(true),
+    )
+    .map_err(|e| format!("盘后计划生成失败: {e}"))?;
     Ok(())
 }
 
@@ -116,7 +118,7 @@ async fn after_close(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    match run_pipeline(app).await {
+    match run_pipeline(app, &today).await {
         Ok(()) => {
             let c = open_readwrite(&dir)?;
             let _ = claim_meta(&c, &done_key);

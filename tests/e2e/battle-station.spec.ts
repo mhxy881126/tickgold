@@ -21,6 +21,13 @@ async function seedBrokerStatus(page: Page, patch: FakeBrokerStatusPatch): Promi
   }, patch);
 }
 
+/** 页面加载前标记「今日计划已确认」：缺省 products 分支据此返回 confirmed（盯盘入口用）。 */
+async function seedPlanConfirmed(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    (window as unknown as { __FAKE_PLAN_CONFIRMED?: boolean }).__FAKE_PLAN_CONFIRMED = true;
+  });
+}
+
 /** 时钟锁定到开盘时段后再进页面，避免用例受真实时间/时区影响。 */
 async function installOpenClock(page: Page): Promise<void> {
   await page.clock.install({ time: OPEN_AT });
@@ -346,4 +353,27 @@ test("作战台确认今日作战卡：弹窗确认后记录 planDate 并显示�
   // 成功后确认按钮消失，头部显示「已确认」chip。
   await expect(page.getByTestId("confirm-plan")).toHaveCount(0);
   await expect(page.getByTestId("plan-confirmed")).toHaveText("已确认");
+});
+
+test("确认后可启动盯盘：watch-start 调用后端并显示已启动", async ({ page }) => {
+  // 缺省 products 模拟「今日计划已确认」：不再出确认按钮，改出「开始盯盘」。
+  await seedPlanConfirmed(page);
+  await installOpenClock(page);
+  await openCockpit(page);
+
+  await expect(page.getByTestId("confirm-plan")).toHaveCount(0);
+  await expect(page.getByTestId("plan-confirmed")).toHaveText("已确认");
+
+  const startWatch = page.getByTestId("watch-start");
+  await expect(startWatch).toBeVisible();
+  await expect(startWatch).toHaveText("开始盯盘");
+  await startWatch.click();
+
+  const lastStart = await page.evaluate(
+    () => (window as unknown as { __FAKE_LAST_WATCH_START?: unknown }).__FAKE_LAST_WATCH_START,
+  );
+  expect(lastStart).toMatchObject({ tradeDate: expect.any(String) });
+
+  await expect(page.getByTestId("watch-start")).toHaveCount(0);
+  await expect(page.getByTestId("watch-started")).toHaveText("盯盘已启动");
 });

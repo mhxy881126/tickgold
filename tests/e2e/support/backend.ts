@@ -422,6 +422,7 @@ const handlers: Record<string, Handler> = {
   // scope="today"：与 workflow_instructions 返回同一份 fakePlan（既有分支不变）；
   // scope="next"：返回 null（既有分支不变）；
   // 缺省（无 scope）：早盘启发式 → 今日 draft 计划，作战台据此显示「确认今日作战卡」。
+  // `window.__FAKE_PLAN_CONFIRMED`（addInitScript 注入）可模拟「计划已确认」以验收盯盘入口。
   workflow_p1_products: (a) => {
     if (a?.scope === "today") {
       return { briefing: null, candidates: [], plan: fakePlan, planConfirmed: true };
@@ -429,7 +430,15 @@ const handlers: Record<string, Handler> = {
     if (a?.scope === "next") {
       return { briefing: null, candidates: [], plan: null, planConfirmed: false };
     }
-    return { briefing: null, candidates: [], plan: fakeTodayPlan, planConfirmed: false };
+    const confirmed = Boolean(
+      (window as unknown as { __FAKE_PLAN_CONFIRMED?: boolean }).__FAKE_PLAN_CONFIRMED,
+    );
+    return {
+      briefing: null,
+      candidates: [],
+      plan: confirmed ? { ...fakeTodayPlan, status: "confirmed" } : fakeTodayPlan,
+      planConfirmed: confirmed,
+    };
   },
   // P1-c 早盘确认：记录参数（e2e 断言 planDate），返回 confirmed 计划 + 计数。
   workflow_plan_confirm: (a) => {
@@ -440,6 +449,11 @@ const handlers: Record<string, Handler> = {
       plan: { ...fakeTodayPlan, planDate, status: "confirmed" },
       alertsCreated: 3,
     };
+  },
+  // P1-c 确认后启动盯盘：记录参数，返回 running 状态（前端置 watchStarted）。
+  workflow_watch_start: (a) => {
+    (window as unknown as { __FAKE_LAST_WATCH_START?: unknown }).__FAKE_LAST_WATCH_START = a;
+    return { mission: null, watchCount: 3, running: true };
   },
   workflow_p2_products: () => ({ feedback: null, running: false, killSwitch: false }),
   // P1-c 命中率：固定有价样本（12 笔 ≥ 3）→ 作战台头部必须显示三个百分比。

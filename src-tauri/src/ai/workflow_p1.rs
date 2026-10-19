@@ -490,14 +490,49 @@ fn mission_from_state(date: &str, st: &MissionState) -> Value {
     )
 }
 
+/// 读取步骤状态：`force` 为真时跳过步数门禁（盘后流水线补跑用）。
+fn mission_for_step(
+    c: &Connection,
+    date: &str,
+    expect: i64,
+    label: &str,
+    force: bool,
+) -> Result<MissionState, String> {
+    if force {
+        load_mission_state(c, date)
+    } else {
+        require_step(c, date, expect, label)
+    }
+}
+
+/// 完成本步后同步 mission：只有任务正停在该步才推进；
+/// 已越过该步（force 补跑 / 用户已完成流程）时保留既有进度，避免把第 4/5 步推到更后。
+fn advance_step(
+    c: &Connection,
+    date: &str,
+    st: &mut MissionState,
+    expect: i64,
+    snapshot: Option<String>,
+) -> Result<Value, String> {
+    if st.current_step == expect {
+        persist_advance(c, date, st, snapshot)
+    } else {
+        Ok(mission_from_state(date, st))
+    }
+}
+
 // ============================ Tauri 命令 ============================
 
 /// 第①步：采集当日战场态势（涨停/炸板/连板梯队/题材/高标），推进到分析。
+///
+/// `force`（盘后流水线内部使用）：跳过第①步门禁，供自动流水线在任务已推进后补跑；
+/// 前端不传时行为不变。
 #[tauri::command]
 pub async fn workflow_collect(
     state: State<'_, AiState>,
     trade_date: Option<String>,
     demo: Option<bool>,
+    force: Option<bool>,
 ) -> Result<Value, String> {
     let date = trade_date.unwrap_or_else(workflow::today_str);
     let dir = state.dir().clone();
@@ -507,7 +542,7 @@ pub async fn workflow_collect(
         build_briefing(&date).await
     };
     let c = open_readwrite(&dir)?;
-    let mut st = require_step(&c, &date, 0, "采集")?;
+    let mut st = mission_for_step(&c, &date, 0, "采集", force.unwrap_or(false))?;
     save_briefing(&c, &date, &briefing)?;
     let snapshot = json!({
         "kind": "briefing",
@@ -516,16 +551,19 @@ pub async fn workflow_collect(
         "maxBoards": briefing["maxBoards"]
     })
     .to_string();
-    let mission = persist_advance(&c, &date, &mut st, Some(snapshot))?;
+    let mission = advance_step(&c, &date, &mut st, 0, Some(snapshot))?;
     Ok(json!({ "mission": mission, "briefing": briefing }))
 }
 
 /// 第②步：六战法量化选股 + 打分排序，落候选池，推进到计划。
+///
+/// `force` 同 `workflow_collect`：盘后流水线补跑时跳过第②步门禁。
 #[tauri::command]
 pub async fn workflow_analyze(
     state: State<'_, AiState>,
     trade_date: Option<String>,
     demo: Option<bool>,
+    force: Option<bool>,
 ) -> Result<Value, String> {
     let date = trade_date.unwrap_or_else(workflow::today_str);
     let dir = state.dir().clone();
@@ -547,26 +585,29 @@ pub async fn workflow_analyze(
     let total = hits.len();
 
     let c = open_readwrite(&dir)?;
-    let mut st = require_step(&c, &date, 1, "分析")?;
+    let mut st = mission_for_step(&c, &date, 1, "分析", force.unwrap_or(false))?;
     ensure_candidate_table(&c)?;
     save_candidates(&c, &date, &hits)?;
     let candidates = load_candidates(&c, &date, 30)?;
     let snapshot = json!({ "kind": "candidates", "total": total, "top": candidates.len() }).to_string();
-    let mission = persist_advance(&c, &date, &mut st, Some(snapshot))?;
+    let mission = advance_step(&c, &date, &mut st, 1, Some(snapshot))?;
     Ok(json!({ "mission": mission, "candidates": candidates, "total": total }))
 }
 
 /// 第③步：生成次日作战卡（规则，不推进；供用户预览/编辑后再确认）。
+///
+/// `force`：盘后流水线补跑时跳过第③步门禁（不改变「计划不推进 mission」的既有语义）。
 #[tauri::command]
 pub fn workflow_plan(
     state: State<'_, AiState>,
     trade_date: Option<String>,
+    force: Option<bool>,
 ) -> Result<Value, String> {
     let date = trade_date.unwrap_or_else(workflow::today_str);
     let dir = state.dir().clone();
     let (briefing, candidates, st_view) = {
         let c = open_readwrite(&dir)?;
-        let st = require_step(&c, &date, 2, "计划")?;
+        let st = mission_for_step(&c, &date, 2, "计划", force.unwrap_or(false))?;
         ensure_candidate_table(&c)?;
         let cands = load_candidates(&c, &date, 20)?;
         (load_briefing(&c, &date), cands, mission_from_state(&date, &st))
@@ -598,9 +639,10 @@ fn confirm_plan_on_date(
 
 /// 按计划日确认 + 同步今日 mission，返回与默认路径相同的 `{mission, plan, alertsCreated}`。
 ///
-/// 门禁与推进分开：早盘路径不**要求**今日任务走到第③步；但若任务正停在计划步
-/// （正常的驾驶舱 ③ 确认流程），仍按原语义推进到盯盘——否则确认后 mission 永远停在
-/// 第③步，`workflow_watch_start` 的门禁会让 P2 全链路卡死。
+/// 门禁与推进分开：by-date 路径不**要求**今日任务走到第③步。
+/// - `plan_date == 北京今天`（早盘提醒）：把任务推进到盯盘步（step 3），否则早盘全新任务
+///   停在 step 0，`workflow_watch_start` 的门禁会让 P2 全链路卡死；
+/// - 其它计划日（明日晚间确认）：沿用原逻辑，仅任务停在计划步时推进。
 fn confirm_plan_by_date(
     dir: &std::path::Path,
     trade_date: &str,
@@ -609,12 +651,21 @@ fn confirm_plan_by_date(
     let (plan_id, saved, alerts_created) = confirm_plan_on_date(dir, plan_date)?;
     let c = open_readwrite(dir)?;
     let mut st = load_mission_state(&c, trade_date)?;
-    let mission = if st.current_step == 2 {
-        let snapshot = json!({ "kind": "planConfirmed", "planId": plan_id, "alerts": alerts_created })
-            .to_string();
+    let snapshot = json!({ "kind": "planConfirmed", "planId": plan_id, "alerts": alerts_created })
+        .to_string();
+    let today = crate::broker::conditional::today_dashed();
+    let mission = if plan_date == today {
+        // 今日确认：保证至少推进到盯盘步；已进入盯盘及之后的保留现进度，不回退。
+        let mut mission = mission_from_state(trade_date, &st);
+        while st.current_step < 3 {
+            let snap = (st.current_step == 2).then(|| snapshot.clone());
+            mission = persist_advance(&c, trade_date, &mut st, snap)?;
+        }
+        mission
+    } else if st.current_step == 2 {
+        // 明日晚间确认：仍按原逻辑（任务恰在计划步时推进到盯盘）。
         persist_advance(&c, trade_date, &mut st, Some(snapshot))?
     } else {
-        // 早盘全新任务（step 0）或已进入盯盘之后：只回显当前任务，不越级推进。
         mission_from_state(trade_date, &st)
     };
     Ok(json!({
@@ -688,9 +739,8 @@ fn materialize_paused(app: &AppHandle) -> bool {
 /// `scope` 决定取哪份计划：
 /// - `Some("today")`：作战台用，今天优先（与 `workflow_instructions` 同一份计划）；
 /// - `Some("next")` / 其它未知值：保持「下一交易日」原语义（盘后确认流程）；
-/// - 缺省：8:45 提醒 / 新版作战台。三级回退：今日未确认 → 今日（待确认卡直接可见）；
-///   否则下一交易日有计划 → 下一交易日（盘后确认明日卡）；否则回到今日已确认计划
-///   （盘中 PhasePanel 仍显示今日计划 chips）。
+/// - 缺省：时间感知。北京 15:05 前今日未确认 → 今日（8:45 待确认卡）；否则下一交易日
+///   有计划 → 下一交易日；都没有 → 今日（即使已确认，保证盘中 PhasePanel chips）。
 #[tauri::command]
 pub fn workflow_p1_products(
     app: AppHandle,
@@ -714,7 +764,14 @@ pub fn workflow_p1_products(
             log::warn!("materialize_today failed: {e}");
         }
     }
-    let plan = products_plan(&c, &date, scope.as_deref()).map(|(_, p)| p);
+    let (_, hour, minute) = crate::market::spider::beijing();
+    let plan = products_plan(
+        &c,
+        &date,
+        scope.as_deref(),
+        default_plan_prefers_today(hour, minute),
+    )
+    .map(|(_, p)| p);
     let confirmed = plan
         .as_ref()
         .and_then(|p| p["status"].as_str())
@@ -784,27 +841,40 @@ fn unconfirmed_today_plan(c: &Connection) -> Option<(i64, Value)> {
     plan::plan_to_json(c, pid).ok().map(|p| (pid, p))
 }
 
-/// 作战卡取计划：`scope` 显式选择语义，缺省走三级回退。
+/// 缺省计划口径的时间分界：北京 15:05 前优先今日（早盘待确认），15:05 起优先明日
+/// （盘后确认下一交易日卡）。纯函数，便于单测钉死边界。
+fn default_plan_prefers_today(hour: u32, minute: u32) -> bool {
+    hour * 60 + minute < 15 * 60 + 5
+}
+
+/// 作战卡取计划：`scope` 显式选择语义，缺省走时间感知回退。
 ///
-/// 缺省（8:45 提醒 / 新版作战台）按顺序：
-/// 1. 今日未确认 → 今日（待确认卡直接可见）；
-/// 2. 下一交易日有计划 → 下一交易日（盘后确认明日卡）；
-/// 3. 都没有 → 今日已确认计划（盘中 PhasePanel 仍显示今日 chips）。
+/// 缺省（8:45 提醒 / 新版作战台）：
+/// - `prefers_today`（北京 15:05 前）：今日未确认 → 今日；
+/// - 下一交易日有计划 → 下一交易日（盘后确认明日卡，今日草稿不遮挡明日）；
+/// - 都没有 → 今日计划（即使已确认），保证盘中 PhasePanel 仍显示今日 chips。
 ///
 /// 显式语义不变：
 /// - 作战台（`scope="today"`）：与 InstructionList 同源（今天优先，其次下一交易日）；
 /// - `scope="next"` / 未知值：只取下一交易日，不被今日已确认计划遮住。
-fn products_plan(c: &Connection, date: &str, scope: Option<&str>) -> Option<(i64, Value)> {
+fn products_plan(
+    c: &Connection,
+    date: &str,
+    scope: Option<&str>,
+    prefers_today: bool,
+) -> Option<(i64, Value)> {
     match scope {
         Some("today") => return resolve_plan(c, date),
         None => {
-            if let Some(hit) = unconfirmed_today_plan(c) {
-                return Some(hit);
+            if prefers_today {
+                if let Some(hit) = unconfirmed_today_plan(c) {
+                    return Some(hit);
+                }
             }
             if let Some(hit) = plan_on(c, &plan::next_trade_date(date)) {
                 return Some(hit);
             }
-            // 三级兜底：盘中今日计划已确认且明日尚未生成时，仍回显今日计划，
+            // 最后一级：盘中今日计划已确认且明日尚未生成时，仍回显今日计划，
             // 避免 PhasePanel 计划 chips 在盘中消失。
             return today_plan(c);
         }
@@ -942,6 +1012,45 @@ mod tests {
         assert_eq!(instruction_plan_id(&c, base), Some(today_id));
     }
 
+    #[test]
+    fn forced_step_skips_gate_and_keeps_progress() {
+        let c = Connection::open_in_memory().unwrap();
+        let date = "2026-10-19";
+
+        // 全新任务：force 串行跑 0→1→2 不受门禁影响。
+        let mut st = mission_for_step(&c, date, 0, "采集", true).unwrap();
+        advance_step(&c, date, &mut st, 0, None).unwrap();
+        let mut st = mission_for_step(&c, date, 1, "分析", true).unwrap();
+        advance_step(&c, date, &mut st, 1, None).unwrap();
+        let st = mission_for_step(&c, date, 2, "计划", true).unwrap();
+        assert_eq!(st.current_step, 2);
+
+        // 任务已推进到盯盘步（step 3）：force 三步都不再被 require_step 拒绝。
+        let date = "2026-10-20";
+        let mut st = load_mission_state(&c, date).unwrap();
+        persist_advance(&c, date, &mut st, None).unwrap();
+        persist_advance(&c, date, &mut st, None).unwrap();
+        persist_advance(&c, date, &mut st, None).unwrap();
+        assert_eq!(st.current_step, 3);
+        for (expect, label) in [(0, "采集"), (1, "分析"), (2, "计划")] {
+            assert!(
+                mission_for_step(&c, date, expect, label, true).is_ok(),
+                "force 应跳过第 {} 步门禁",
+                expect + 1
+            );
+            assert!(
+                mission_for_step(&c, date, expect, label, false).is_err(),
+                "非 force 仍要求第 {} 步",
+                expect + 1
+            );
+        }
+
+        // force 补跑不会把已经越过该步的任务继续往后推。
+        let mut st = mission_for_step(&c, date, 0, "采集", true).unwrap();
+        let mission = advance_step(&c, date, &mut st, 0, None).unwrap();
+        assert_eq!(mission["currentStep"].as_i64(), Some(3));
+    }
+
     /// `resolve_plan` 需要的表：列与 `plan::plan_to_json` 的查询保持一致。
     fn conn_with_plan_tables() -> Connection {
         let c = Connection::open_in_memory().unwrap();
@@ -986,8 +1095,8 @@ mod tests {
         .unwrap();
 
         // 作战台（scope=today）路径：与指令列表共用解析 + 由同一份计划推导 planConfirmed
-        let (products_pid, products_plan) =
-            products_plan(&c, base, Some("today")).expect("今天有计划，作战台不应为 null");
+        let (products_pid, products_plan) = products_plan(&c, base, Some("today"), true)
+            .expect("今天有计划，作战台不应为 null");
         let products_confirmed = products_plan["status"].as_str() == Some("confirmed");
         // workflow_instructions 路径：共用解析拿 plan_id，指令按该 id 查询
         let (instructions_pid, instructions_plan) =
@@ -1034,7 +1143,7 @@ mod tests {
         // 驾驶舱 ③（今日已确认 / scope="next" / 未知值）：取下一交易日，保留「确认作战卡」
         // 入口；若误取今天已确认的计划，前端 planConfirmed 会变 true 而隐藏确认按钮。
         for scope in [None, Some("next"), Some("whatever")] {
-            let (pid, plan) = products_plan(&c, base, scope).expect("下一交易日有计划");
+            let (pid, plan) = products_plan(&c, base, scope, true).expect("下一交易日有计划");
             assert_eq!(pid, next_id, "scope={scope:?} 应取下一交易日计划");
             assert_eq!(plan["planDate"].as_str(), Some(next.as_str()));
             assert_eq!(plan["title"].as_str(), Some("明日作战卡"));
@@ -1044,8 +1153,14 @@ mod tests {
                 "驾驶舱看到的是待确认草稿，planConfirmed 应为 false"
             );
         }
+        // 时间感知：15:05 后缺省同样取明日（今日已确认不遮挡）。
+        assert_eq!(
+            products_plan(&c, base, None, false).map(|(id, _)| id),
+            Some(next_id)
+        );
         // 对照：只有显式 scope=today 才取今天的计划。
-        let (today_pid, _) = products_plan(&c, base, Some("today")).expect("今天有计划");
+        let (today_pid, _) =
+            products_plan(&c, base, Some("today"), true).expect("今天有计划");
         assert_eq!(today_pid, today_id);
         assert_ne!(today_id, next_id);
     }
@@ -1069,19 +1184,26 @@ mod tests {
         .unwrap();
         let next_id = c.last_insert_rowid();
 
-        // 8:45 提醒路径（scope 缺省）：今日 draft 直接可见，避免驾驶舱只看到明天的卡。
-        let (pid, plan) = products_plan(&c, base, None).expect("今日未确认计划应可看到");
-        assert_eq!(pid, today_id, "缺省应优先今日未确认作战卡");
+        // 8:45 提醒路径（北京 15:05 前，scope 缺省）：今日 draft 直接可见。
+        let (pid, plan) = products_plan(&c, base, None, true).expect("今日未确认计划应可看到");
+        assert_eq!(pid, today_id, "缺省（15:05 前）应优先今日未确认作战卡");
         assert_eq!(plan["status"].as_str(), Some("draft"));
         assert_eq!(plan["planDate"].as_str(), Some(today.as_str()));
 
+        // 15:05 后：明日有计划时优先明日，今日草稿不再遮挡。
+        assert_eq!(
+            products_plan(&c, base, None, false).map(|(id, _)| id),
+            Some(next_id),
+            "缺省（15:05 后）应优先下一交易日"
+        );
+
         // 显式语义不变：next 只取下一交易日；today 今天优先。
         assert_eq!(
-            products_plan(&c, base, Some("next")).map(|(id, _)| id),
+            products_plan(&c, base, Some("next"), true).map(|(id, _)| id),
             Some(next_id)
         );
         assert_eq!(
-            products_plan(&c, base, Some("today")).map(|(id, _)| id),
+            products_plan(&c, base, Some("today"), true).map(|(id, _)| id),
             Some(today_id)
         );
 
@@ -1089,7 +1211,7 @@ mod tests {
         c.execute("UPDATE plan SET status='confirmed' WHERE id=?1", [today_id])
             .unwrap();
         assert_eq!(
-            products_plan(&c, base, None).map(|(id, _)| id),
+            products_plan(&c, base, None, true).map(|(id, _)| id),
             Some(next_id),
             "今日已确认 → 缺省仍取下一交易日"
         );
@@ -1102,7 +1224,7 @@ mod tests {
         let next = plan::next_trade_date(base);
         let today = crate::broker::conditional::today_dashed();
 
-        // ① 今日 draft + 明日 draft：今日待确认优先。
+        // ① 今日 draft + 明日 draft：15:05 前今日待确认优先；15:05 后明日优先。
         c.execute(
             "INSERT INTO plan(plan_date,title,status) VALUES(?1,'今日作战卡','draft')",
             [&today],
@@ -1116,34 +1238,63 @@ mod tests {
         .unwrap();
         let next_id = c.last_insert_rowid();
         assert_eq!(
-            products_plan(&c, base, None).map(|(id, _)| id),
+            products_plan(&c, base, None, true).map(|(id, _)| id),
             Some(today_id),
-            "今日 draft → 缺省返回今日"
+            "今日 draft + 明日 draft（15:05 前）→ 今日"
+        );
+        assert_eq!(
+            products_plan(&c, base, None, false).map(|(id, _)| id),
+            Some(next_id),
+            "今日 draft + 明日 draft（15:05 后）→ 明日"
         );
 
-        // ② 今日 confirmed + 明日 draft：返回明日（盘后确认入口）。
+        // ② 今日 confirmed + 明日 draft：两个时段都返回明日（盘后确认入口）。
         c.execute("UPDATE plan SET status='confirmed' WHERE id=?1", [today_id])
             .unwrap();
         assert_eq!(
-            products_plan(&c, base, None).map(|(id, _)| id),
+            products_plan(&c, base, None, true).map(|(id, _)| id),
             Some(next_id),
-            "今日 confirmed + 明日 draft → 缺省返回明日"
+            "今日 confirmed + 明日 draft（15:05 前）→ 明日"
+        );
+        assert_eq!(
+            products_plan(&c, base, None, false).map(|(id, _)| id),
+            Some(next_id)
         );
 
-        // ③ 今日 confirmed + 明日无计划：回退今日，保证盘中 PhasePanel chips 仍回显。
+        // ③ 今日 confirmed + 明日无计划：两个时段都回退今日，保证盘中 chips 仍回显。
         c.execute("DELETE FROM plan WHERE id=?1", [next_id]).unwrap();
-        let (pid, plan) = products_plan(&c, base, None).expect("缺省应回退今日已确认计划");
-        assert_eq!(pid, today_id, "今日 confirmed + 明日无计划 → 缺省返回今日");
-        assert_eq!(plan["status"].as_str(), Some("confirmed"));
-        assert_eq!(plan["planDate"].as_str(), Some(today.as_str()));
+        for prefers_today in [true, false] {
+            let (pid, plan) = products_plan(&c, base, None, prefers_today)
+                .expect("缺省应回退今日已确认计划");
+            assert_eq!(
+                pid, today_id,
+                "今日 confirmed + 明日无计划（prefers_today={prefers_today}）→ 今日"
+            );
+            assert_eq!(plan["status"].as_str(), Some("confirmed"));
+            assert_eq!(plan["planDate"].as_str(), Some(today.as_str()));
+        }
 
-        // 显式 scope 不受三级回退影响：next 仍只取明日（此时无计划 → None）。
-        assert_eq!(products_plan(&c, base, Some("next")).map(|(id, _)| id), None);
+        // 显式 scope 不受回退影响：next 仍只取明日（此时无计划 → None）。
+        assert_eq!(
+            products_plan(&c, base, Some("next"), true).map(|(id, _)| id),
+            None
+        );
         // 显式 today 仍取今日（与指令列表同源）。
         assert_eq!(
-            products_plan(&c, base, Some("today")).map(|(id, _)| id),
+            products_plan(&c, base, Some("today"), true).map(|(id, _)| id),
             Some(today_id)
         );
+    }
+
+    #[test]
+    fn default_plan_prefers_today_only_before_1505() {
+        // 北京 15:05 前优先今日；15:05 起优先明日（含边界）。
+        assert!(default_plan_prefers_today(0, 0));
+        assert!(default_plan_prefers_today(9, 30));
+        assert!(default_plan_prefers_today(15, 4));
+        assert!(!default_plan_prefers_today(15, 5));
+        assert!(!default_plan_prefers_today(15, 6));
+        assert!(!default_plan_prefers_today(23, 59));
     }
 
     /// 早盘确认用例的临时主库：只建确认路径需要的 plan / plan_instruction / alerts。
@@ -1179,13 +1330,13 @@ mod tests {
         dir
     }
 
-    /// 在临时库里写入「今日 draft 计划 + 1 条 open 指令」，返回 plan_id。
-    fn insert_today_draft_plan(dir: &std::path::Path, today: &str) -> i64 {
+    /// 在临时库里写入一张 draft 计划 + 1 条 open 指令，返回 plan_id。
+    fn insert_draft_plan(dir: &std::path::Path, plan_date: &str) -> i64 {
         let c = Connection::open(dir.join("stock-dock.db")).unwrap();
         c.execute(
             "INSERT INTO plan(plan_date,title,source_review_date,status,created_at,updated_at)
-             VALUES(?1,'今日作战卡','2026-10-19','draft',0,0)",
-            [today],
+             VALUES(?1,'作战卡','2026-10-19','draft',0,0)",
+            [plan_date],
         )
         .unwrap();
         let pid = c.last_insert_rowid();
@@ -1202,7 +1353,7 @@ mod tests {
     fn confirm_plan_on_date_skips_mission_step_gate() {
         let dir = fresh_confirm_db();
         let today = crate::broker::conditional::today_dashed();
-        let plan_id = insert_today_draft_plan(&dir, &today);
+        let plan_id = insert_draft_plan(&dir, &today);
 
         {
             let c = open_readwrite(&dir).unwrap();
@@ -1223,8 +1374,16 @@ mod tests {
         assert_eq!(out["alertsCreated"].as_i64(), Some(1), "1 条 open 指令应转 1 条预警");
         assert_eq!(out["plan"]["status"].as_str(), Some("confirmed"));
         assert_eq!(out["plan"]["planDate"].as_str(), Some(today.as_str()));
-        // 早盘全新任务（第①步）不因确认而越级推进。
-        assert_eq!(out["mission"]["currentStep"].as_i64(), Some(0));
+        // 今日确认后任务推进到盯盘步（step 3），早盘可直接启动盯盘。
+        assert_eq!(
+            out["mission"]["currentStep"].as_i64(),
+            Some(3),
+            "今日确认后 mission 应推进到盯盘步"
+        );
+        assert_eq!(out["mission"]["steps"][0]["status"].as_str(), Some("done"));
+        assert_eq!(out["mission"]["steps"][1]["status"].as_str(), Some("done"));
+        assert_eq!(out["mission"]["steps"][2]["status"].as_str(), Some("done"));
+        assert_eq!(out["mission"]["steps"][3]["status"].as_str(), Some("doing"));
 
         let c = Connection::open(dir.join("stock-dock.db")).unwrap();
         let instr_status: String = c
@@ -1244,27 +1403,36 @@ mod tests {
     }
 
     #[test]
-    fn confirm_plan_by_date_advances_mission_at_plan_step() {
-        let dir = fresh_confirm_db();
+    fn confirm_plan_by_date_tomorrow_keeps_old_advance_rule() {
         let today = crate::broker::conditional::today_dashed();
-        insert_today_draft_plan(&dir, &today);
+        let next = plan::next_trade_date(&today);
+
+        // 明日晚间确认 + 全新任务（step 0）：不越级推进。
+        let dir = fresh_confirm_db();
+        insert_draft_plan(&dir, &next);
+        let out = confirm_plan_by_date(&dir, &today, &next).unwrap();
+        assert_eq!(
+            out["mission"]["currentStep"].as_i64(),
+            Some(0),
+            "明日确认不应把全新任务越级推进"
+        );
+
+        // 明日晚间确认 + 任务恰在计划步（step 2）：沿用原逻辑推进到盯盘。
+        let dir = fresh_confirm_db();
+        insert_draft_plan(&dir, &next);
         {
-            // 正常驾驶舱 ③ 流程：collect / analyze 已推进到计划步（step 2）。
             let c = open_readwrite(&dir).unwrap();
             let mut st = load_mission_state(&c, &today).unwrap();
             persist_advance(&c, &today, &mut st, None).unwrap();
             persist_advance(&c, &today, &mut st, None).unwrap();
             assert_eq!(st.current_step, 2);
         }
-
-        let out = confirm_plan_by_date(&dir, &today, &today).unwrap();
+        let out = confirm_plan_by_date(&dir, &today, &next).unwrap();
         assert_eq!(
             out["mission"]["currentStep"].as_i64(),
             Some(3),
-            "任务正在计划步时，按日确认仍应推进到盯盘（否则 P2 无法启动）"
+            "任务正在计划步时，明日确认仍应按原逻辑推进到盯盘"
         );
-        assert_eq!(out["mission"]["steps"][2]["status"].as_str(), Some("done"));
-        assert_eq!(out["mission"]["steps"][3]["status"].as_str(), Some("doing"));
     }
 
     #[test]
