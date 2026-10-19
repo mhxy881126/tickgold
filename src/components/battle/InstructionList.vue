@@ -3,13 +3,16 @@ import { computed, ref } from "vue";
 import { confirmDialog } from "../../composables/useDialog";
 import InstructionEditor from "./InstructionEditor.vue";
 import {
-  orderStatusLabel,
-  stateMeta,
+  canSubmitInstruction,
+  instructionActions,
+  instructionStatusMeta,
   submitBlockReason,
   triggerHint,
   type AlertRule,
   type BrokerGateStatus,
+  type InstructionActions,
   type InstructionRow,
+  type StateMeta,
 } from "./instructionModel";
 
 const props = defineProps<{
@@ -37,37 +40,17 @@ const visibleRows = computed(() => props.rows.slice(0, 5));
 function tierLabel(tier: string): string {
   return tier === "candidate" ? "备选" : tier === "trigger" ? "触发" : "观察";
 }
-function toneClass(state: string): string {
-  return `tone-${stateMeta(state).tone}`;
-}
 
-/**
- * 行尾动作：
- * - 「编辑」只在条件单未触发时出现（待触发 = 已物化；仅观察 = 尚未物化 / open、alerted）；
- * - 「确认下单」只在有票待确认、或票已确认但还没有委托（重试提交）时出现；
- * - 已有委托 / 已成交 / 已拒绝 / 已取消 / 已过期：只显示文案，不提供任何动作。
- */
-function canEdit(r: InstructionRow): boolean {
-  return r.state === "watch" || r.state === "pending";
+// 状态文案 / 编辑与提交门控 / 按钮文案 / 闸门原因全部来自 instructionModel 的纯函数，组件只调用。
+function actionsOf(r: InstructionRow): InstructionActions {
+  return instructionActions(r, props.status ?? null);
 }
-function canSubmit(r: InstructionRow): boolean {
-  if (r.hasOrder || !(r.ticketId > 0)) return false;
-  // 终态行（已成交/已取消/已过期）即使票面状态滞后也不给提交入口。
-  if (r.state === "filled" || r.state === "cancelled" || r.state === "expired") return false;
-  return r.ticketStatus === "pending" || (r.ticketStatus === "confirmed" && !r.hasOrder);
+function statusOf(r: InstructionRow): StateMeta {
+  return instructionStatusMeta(r);
 }
 
 const blockReason = computed(() => submitBlockReason(props.status ?? null));
-const hasSubmittable = computed(() => visibleRows.value.some((r) => canSubmit(r)));
-
-function orderTone(status: string): string {
-  if (status === "filled" || status === "part_filled") return "ok";
-  if (status === "rejected" || status === "error" || status === "cancelled") return "bad";
-  return "info";
-}
-function orderLabel(r: InstructionRow): string {
-  return orderStatusLabel(r.orderStatus);
-}
+const hasSubmittable = computed(() => visibleRows.value.some((r) => canSubmitInstruction(r)));
 
 function openEdit(r: InstructionRow) {
   editingId.value = r.id;
@@ -87,7 +70,8 @@ function save(r: InstructionRow, rule: AlertRule) {
 
 /** 触发后一键下单：只弹一次确认，确认后把已有的信号票交给 store（后端走 submit_with_sig）。 */
 async function askSubmit(r: InstructionRow) {
-  if (!canSubmit(r) || blockReason.value || submittingId.value) return;
+  const action = actionsOf(r);
+  if (!action.canSubmit || action.blockReason || submittingId.value) return;
   const sideText = r.side === "SELL" ? "卖出" : "买入";
   const priceText = r.price > 0 ? `限价 ${r.price.toFixed(2)}` : "按触发价";
   const ok = await confirmDialog({
@@ -155,32 +139,27 @@ defineExpose({ finishEdit, finishSubmit });
             <span class="il-name">{{ r.name }}</span>
             <span class="il-hint">{{ triggerHint(r.triggerJson) }}</span>
           </button>
-          <!-- 有委托时以委托状态为准（更精确），文案与执行状态重复时不再叠加显示。 -->
+          <!-- 状态徽标：已有委托按委托状态，否则由票面状态覆盖执行状态（confirmed→待提交、rejected→已拒绝）。 -->
           <span
-            v-if="!r.hasOrder || orderLabel(r) !== stateMeta(r.state).label"
             class="il-state"
-            :class="toneClass(r.state)"
+            :class="`tone-${statusOf(r).tone}`"
             :data-state="r.state"
-          >{{ stateMeta(r.state).label }}</span>
-          <span
-            v-if="r.hasOrder"
-            class="il-order"
-            :class="`or-${orderTone(r.orderStatus)}`"
+            :data-ticket="r.ticketStatus"
             :data-order="r.orderStatus"
-            data-testid="instr-order-state"
-          >{{ orderLabel(r) }}</span>
-          <template v-else>
+            :data-testid="r.hasOrder ? 'instr-order-state' : 'instr-state'"
+          >{{ statusOf(r).label }}</span>
+          <template v-if="!r.hasOrder">
             <button
-              v-if="canSubmit(r)"
+              v-if="actionsOf(r).canSubmit"
               type="button"
               class="il-act primary"
               data-testid="instr-submit"
-              :disabled="!!blockReason || submittingId === r.ticketId"
-              :title="blockReason || '一次确认后提交已有信号票'"
+              :disabled="!!actionsOf(r).blockReason || submittingId === r.ticketId"
+              :title="actionsOf(r).blockReason || '一次确认后提交已有信号票'"
               @click="askSubmit(r)"
-            >{{ submittingId === r.ticketId ? "提交中…" : "确认下单" }}</button>
+            >{{ submittingId === r.ticketId ? "提交中…" : actionsOf(r).submitLabel }}</button>
             <button
-              v-if="canEdit(r)"
+              v-if="actionsOf(r).canEdit"
               type="button"
               class="il-act"
               data-testid="instr-edit"
@@ -217,10 +196,6 @@ defineExpose({ finishEdit, finishSubmit });
 .il-state.tone-gold { color: var(--accent); border-color: var(--accent); }
 .il-state.tone-up { color: var(--up); border-color: var(--up); }
 .il-state.tone-muted { color: var(--text-dim); }
-.il-order { flex: none; padding: 0 6px; border-radius: 4px; font-size: 10.5px; border: 1px solid var(--border); }
-.il-order.or-ok { color: var(--accent); border-color: var(--accent); }
-.il-order.or-bad { color: var(--up); border-color: var(--up); }
-.il-order.or-info { color: #6aa6e8; border-color: #6aa6e8; }
 .il-act { flex: none; padding: 1px 7px; border-radius: 5px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); font-size: 10.5px; cursor: pointer; }
 .il-act:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
 .il-act:disabled { opacity: 0.45; cursor: not-allowed; }

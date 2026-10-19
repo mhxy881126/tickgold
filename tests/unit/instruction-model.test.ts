@@ -10,6 +10,13 @@ import {
   triggerJsonToRule,
   orderStatusLabel,
   submitBlockReason,
+  canEditInstruction,
+  canSubmitInstruction,
+  instructionActions,
+  instructionStatusMeta,
+  submitActionLabel,
+  type InstructionGate,
+  type TriggerForm,
 } from "../../src/components/battle/instructionModel";
 
 describe("instructionModel", () => {
@@ -277,5 +284,190 @@ describe("指令编辑表单模型（P1-b）", () => {
         windowSim: null,
       }),
     ).toBe("");
+  });
+});
+
+describe("指令编辑表单 round-trip（P1-b 补测）", () => {
+  it("formToRule ↔ ruleToForm 覆盖后端 16 个可编辑键", () => {
+    const form: TriggerForm = {
+      ...emptyTriggerForm(),
+      upPrice: "1680",
+      downPrice: "1600",
+      upPct: "5",
+      downPct: "-5",
+      minVolumeRatio: "2",
+      minTurnover: "3.5",
+      minAmount: "2",
+      riseSpeed: "1.2",
+      speedWindowSec: "120",
+      downSpeed: "0.8",
+      sealLimitUp: "1",
+      sealLimitDown: "0",
+      brokenLimit: "1",
+      side: "SELL",
+      vol: "300",
+      autoConfirm: false,
+    };
+    const rule = formToRule(form);
+    expect(rule).toEqual({
+      upPrice: 1680,
+      downPrice: 1600,
+      upPct: 5,
+      downPct: -5,
+      minVolumeRatio: 2,
+      minTurnover: 3.5,
+      minAmount: 2,
+      riseSpeed: 1.2,
+      speedWindowSec: 120,
+      downSpeed: 0.8,
+      sealLimitUp: 1,
+      sealLimitDown: 0,
+      brokenLimit: 1,
+      side: "SELL",
+      vol: 300,
+      autoConfirm: false,
+    });
+    // 回填后与原始表单逐键一致（含回踩 / 封板 / 涨速窗口等面板不直接编辑的键）。
+    expect(ruleToForm(rule)).toEqual(form);
+  });
+
+  it("triggerJsonToRule 的 lte 叶子映射到 downPrice / downPct", () => {
+    const rule = triggerJsonToRule(
+      JSON.stringify([
+        { field: "price", op: "lte", value: 1600 },
+        { field: "pct", op: "lte", value: -3 },
+        { field: "turnover", op: "gte", value: 2 },
+      ]),
+    );
+    expect(rule.downPrice).toBe(1600);
+    expect(rule.downPct).toBe(-3);
+    expect(rule.minTurnover).toBe(2);
+    expect(rule.upPrice).toBeUndefined();
+    expect(rule.upPct).toBeUndefined();
+  });
+});
+
+describe("指令行状态徽标（P1-b 文案一致性）", () => {
+  function row(patch: Partial<InstructionGate> = {}): InstructionGate {
+    return {
+      state: "submitted",
+      ticketStatus: "confirmed",
+      hasOrder: false,
+      orderStatus: "",
+      ticketId: 2,
+      ...patch,
+    };
+  }
+
+  it("票 confirmed 但无委托显示「待提交」，不显示「已下单」", () => {
+    expect(instructionStatusMeta(row()).label).toBe("待提交");
+    expect(instructionStatusMeta(row()).tone).toBe("gold");
+  });
+
+  it("票 rejected 显示「已拒绝」，不落到「已取消」", () => {
+    const meta = instructionStatusMeta(row({ state: "cancelled", ticketStatus: "rejected" }));
+    expect(meta.label).toBe("已拒绝");
+    expect(meta.label).not.toBe(stateMeta("cancelled").label);
+  });
+
+  it("票 done 显示「已成交」，pending 显示「已触发」", () => {
+    expect(instructionStatusMeta(row({ state: "filled", ticketStatus: "done" })).label).toBe("已成交");
+    expect(instructionStatusMeta(row({ state: "triggered", ticketStatus: "pending" })).label).toBe(
+      "已触发",
+    );
+  });
+
+  it("已有委托时按 orderStatus 映射", () => {
+    expect(instructionStatusMeta(row({ hasOrder: true, orderStatus: "filled" })).label).toBe("已成交");
+    expect(instructionStatusMeta(row({ hasOrder: true, orderStatus: "submitted" })).label).toBe(
+      "已下单",
+    );
+    expect(instructionStatusMeta(row({ hasOrder: true, orderStatus: "part_filled" })).label).toBe(
+      "部分成交",
+    );
+    expect(instructionStatusMeta(row({ hasOrder: true, orderStatus: "rejected" })).label).toBe(
+      "已拒绝",
+    );
+    expect(instructionStatusMeta(row({ hasOrder: true, orderStatus: "error" })).label).toBe("已失败");
+    expect(instructionStatusMeta(row({ hasOrder: true, orderStatus: "cancelled" })).label).toBe(
+      "已撤销",
+    );
+  });
+
+  it("无票时回执行状态", () => {
+    const noTicket = { ticketStatus: "", orderStatus: "" };
+    expect(instructionStatusMeta(row({ ...noTicket, state: "watch" })).label).toBe("仅观察");
+    expect(instructionStatusMeta(row({ ...noTicket, state: "pending" })).label).toBe("待触发");
+    expect(instructionStatusMeta(row({ ...noTicket, state: "cancelled" })).label).toBe("已取消");
+    expect(instructionStatusMeta(row({ ...noTicket, state: "expired" })).label).toBe("已过期");
+  });
+});
+
+describe("指令可操作性规则（P1-b 安全门控下沉）", () => {
+  function row(patch: Partial<InstructionGate> = {}): InstructionGate {
+    return {
+      state: "triggered",
+      ticketStatus: "pending",
+      hasOrder: false,
+      orderStatus: "",
+      ticketId: 2,
+      ...patch,
+    };
+  }
+  const sim = {
+    kind: "mock",
+    liveEnabled: false,
+    connected: true,
+    killSwitch: false,
+    clientSim: false,
+    windowSim: null,
+  };
+
+  it("pending 可提交；confirmed + 无委托可重试提交", () => {
+    expect(canSubmitInstruction(row())).toBe(true);
+    expect(submitActionLabel(row())).toBe("确认下单");
+    const retry = row({ state: "submitted", ticketStatus: "confirmed" });
+    expect(canSubmitInstruction(retry)).toBe(true);
+    expect(submitActionLabel(retry)).toBe("重试提交");
+  });
+
+  it("已有委托 / 无票据 id / 终态不可提交", () => {
+    expect(canSubmitInstruction(row({ hasOrder: true, orderStatus: "submitted" }))).toBe(false);
+    expect(canSubmitInstruction(row({ ticketId: 0 }))).toBe(false);
+    expect(canSubmitInstruction(row({ state: "filled", ticketStatus: "done" }))).toBe(false);
+    expect(canSubmitInstruction(row({ state: "cancelled", ticketStatus: "rejected" }))).toBe(false);
+    expect(canSubmitInstruction(row({ state: "expired" }))).toBe(false);
+    expect(canSubmitInstruction(row({ ticketStatus: "done" }))).toBe(false);
+    expect(canSubmitInstruction(row({ ticketStatus: "" }))).toBe(false);
+  });
+
+  it("watch / pending 可编辑；triggered / filled / expired 不可编辑", () => {
+    expect(canEditInstruction(row({ state: "watch", ticketStatus: "" }))).toBe(true);
+    expect(canEditInstruction(row({ state: "pending", ticketStatus: "" }))).toBe(true);
+    expect(canEditInstruction(row({ state: "triggered" }))).toBe(false);
+    expect(canEditInstruction(row({ state: "submitted" }))).toBe(false);
+    expect(canEditInstruction(row({ state: "filled" }))).toBe(false);
+    expect(canEditInstruction(row({ state: "expired" }))).toBe(false);
+  });
+
+  it("instructionActions 汇总动作与闸门原因（kill / 未连接 / 实盘未启用）", () => {
+    expect(instructionActions(row({ state: "watch", ticketStatus: "" }), sim)).toEqual({
+      canEdit: true,
+      canSubmit: false,
+      submitLabel: "确认下单",
+      blockReason: "",
+    });
+    expect(instructionActions(row(), sim)).toMatchObject({ canEdit: false, canSubmit: true });
+    expect(instructionActions(row(), null).blockReason).toContain("未知");
+    expect(instructionActions(row(), { ...sim, killSwitch: true }).blockReason).toContain("熔断");
+    expect(instructionActions(row(), { ...sim, connected: false }).blockReason).toContain("未连接");
+    expect(
+      instructionActions(row(), {
+        ...sim,
+        kind: "client",
+        clientSim: false,
+        windowSim: false,
+      }).blockReason,
+    ).toContain("实盘未启用");
   });
 });

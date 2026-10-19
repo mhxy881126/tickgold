@@ -431,3 +431,94 @@ export function submitBlockReason(status?: BrokerGateStatus | null): string {
   }
   return "";
 }
+
+// ============================ P1-b 行状态文案 / 可操作性规则（下沉自组件） ============================
+// 组件只负责渲染：状态徽标、能否编辑、能否确认下单、按钮文案、闸门原因全部由这里的纯函数决定。
+
+/** 行状态判定入参（InstructionRow 结构上满足，单测可只给需要的字段）。 */
+export interface InstructionGate {
+  state: string;
+  ticketStatus: string;
+  hasOrder: boolean;
+  orderStatus?: string;
+  ticketId?: number;
+}
+
+/** 委托状态色调（与执行状态徽标同一套 tone）。 */
+function orderTone(status: string): StateMeta["tone"] {
+  if (status === "filled") return "up";
+  if (status === "part_filled") return "gold";
+  if (status === "rejected" || status === "error") return "up";
+  if (status === "cancelled") return "muted";
+  return "info";
+}
+
+/**
+ * 行尾状态徽标（P1-b 文案一致性）：
+ * - 已有委托：按 `orderStatus` 映射（已下单 / 部分成交 / 已成交 / 已拒绝 / 已失败 / 已撤销）；
+ * - 票 `confirmed` 但还没提交（无委托）：显示「待提交」——后端 `derive_state` 会回 `submitted`（已下单），
+ *   但此时并没有委托，配合行尾「重试提交」按钮才不矛盾；
+ * - 票 `rejected`：显示「已拒绝」——不能沿用后端推导的 `cancelled`（已取消）；
+ * - 票 `done`：显示「已成交」；
+ * - 无票：回执行状态（仅观察 / 待触发 / 已触发 / 已取消 / 已过期）。
+ */
+export function instructionStatusMeta(row: InstructionGate): StateMeta {
+  if (row.hasOrder) {
+    const status = row.orderStatus ?? "";
+    return { label: orderStatusLabel(status), tone: orderTone(status) };
+  }
+  switch (row.ticketStatus) {
+    case "confirmed":
+      return { label: "待提交", tone: "gold" };
+    case "rejected":
+      return { label: "已拒绝", tone: "up" };
+    case "done":
+      return { label: "已成交", tone: "up" };
+    case "pending":
+      return { label: "已触发", tone: "gold" };
+    default:
+      return stateMeta(row.state);
+  }
+}
+
+/** 可编辑：条件单未触发（watch=尚未物化/open、alerted；pending=已物化待触发）；终态不给编辑。 */
+export function canEditInstruction(row: InstructionGate): boolean {
+  return row.state === "watch" || row.state === "pending";
+}
+
+/**
+ * 可「确认下单」：票待确认，或票已确认但还没有委托（重试提交）。
+ * 已有委托、无票据 id、已成交/已取消/已过期一律不给入口。
+ */
+export function canSubmitInstruction(row: InstructionGate): boolean {
+  if (row.hasOrder) return false;
+  if (row.ticketId !== undefined && !(row.ticketId > 0)) return false;
+  if (row.state === "filled" || row.state === "cancelled" || row.state === "expired") return false;
+  return row.ticketStatus === "pending" || (row.ticketStatus === "confirmed" && !row.hasOrder);
+}
+
+/** 提交按钮文案：票已确认（上次提交失败/未提交出去）→「重试提交」，否则「确认下单」。 */
+export function submitActionLabel(row: InstructionGate): string {
+  return row.ticketStatus === "confirmed" ? "重试提交" : "确认下单";
+}
+
+/** 行内动作汇总（组件唯一调用入口）。 */
+export interface InstructionActions {
+  canEdit: boolean;
+  canSubmit: boolean;
+  submitLabel: string;
+  blockReason: string;
+}
+
+/** 行 + 券商状态 → 可操作性；`blockReason` 非空表示提交按钮置灰并提示。 */
+export function instructionActions(
+  row: InstructionGate,
+  status?: BrokerGateStatus | null,
+): InstructionActions {
+  return {
+    canEdit: canEditInstruction(row),
+    canSubmit: canSubmitInstruction(row),
+    submitLabel: submitActionLabel(row),
+    blockReason: submitBlockReason(status),
+  };
+}
