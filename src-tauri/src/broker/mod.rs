@@ -21,7 +21,7 @@ use config::BrokerConfig;
 use rusqlite::Connection;
 use sidecar::SidecarHandle;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Listener, Manager, State};
 
@@ -31,6 +31,8 @@ pub struct BrokerManager {
     pub sidecar: Mutex<Option<SidecarHandle>>,
     pub kill_switch: AtomicBool,
     pub connected: AtomicBool,
+    /// P2-a 连接代际：connected / disconnected 各 +1；自动对账结果写入前校验，防止断线后的旧结果回写冲突。
+    pub conn_epoch: AtomicU64,
     // QMT sidecar 最近一次 asset 回报缓存（含 floatPnl/dayPnl 等扩展字段）
     pub asset_cache: Mutex<serde_json::Value>,
     /// 市场上下文缓存（情绪, 上证涨跌%, 刷新时刻），TTL 60s；autoexec 与仪表盘共用。
@@ -77,6 +79,7 @@ impl BrokerManager {
             sidecar: Mutex::new(None),
             kill_switch: AtomicBool::new(false),
             connected: AtomicBool::new(false),
+            conn_epoch: AtomicU64::new(0),
             asset_cache: Mutex::new(serde_json::json!({})),
             market_ctx: Mutex::new((
                 50.0,
@@ -231,7 +234,9 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
         "connected" => {
             if let Some(m) = try_manager(app) {
                 m.connected.store(true, Ordering::SeqCst);
-                // P2-a 断线重连：下一次合法持仓回报后自动补跑一次 intraday 对账。
+                // P2-a 连接代际 +1：断线前发起的自动对账结果不得写入新连接。
+                m.conn_epoch.fetch_add(1, Ordering::SeqCst);
+                // P2-a 断线重连：下一次合法全量持仓回报后自动补跑一次 intraday 对账。
                 m.recon_auto_pending.store(true, Ordering::SeqCst);
                 // P0-3 重连后通知前端：在途委托进入对账流程（下方 spawn 已触发资产/持仓/成交/挂单全量重查）。
                 let _ = app.emit("broker:connection_restored", serde_json::json!({}));
@@ -290,9 +295,12 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
         "disconnected" => {
             if let Some(m) = try_manager(app) {
                 m.connected.store(false, Ordering::SeqCst);
+                // P2-a 连接代际 +1：在途自动对账结果写入前会因代际不符被丢弃。
+                m.conn_epoch.fetch_add(1, Ordering::SeqCst);
                 // P12-2 断开后窗口识别缓存一并作废
                 *m.client_window_sim.lock().unwrap() = None;
-                // 断开后缓存作废，重连由 connected 分支重新全量查询
+                // 断开后资产/成交/挂单缓存作废、持仓标记未同步；持仓缓存保留（避免断连期间持仓面板瞬间清空），
+                // 重连首帧为全量回报，会先 clear 再写入。
                 m.position_synced.store(false, Ordering::SeqCst);
                 *m.asset_cache_at.lock().unwrap() = None;
                 *m.position_cache_at.lock().unwrap() = None;
@@ -425,6 +433,12 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
                     return;
                 }
                 let (items, full) = risk::parse_position_event(v);
+                // P2-a 全量帧代际：自动对账只认全量持仓帧（增量帧不消费 pending），结果须与写入时连接代际一致。
+                let full_epoch = if full {
+                    Some(m.conn_epoch.load(Ordering::SeqCst))
+                } else {
+                    None
+                };
                 let mut cache = m.position_cache.lock().unwrap();
                 if full {
                     cache.clear();
@@ -439,33 +453,48 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
                     }
                 }
                 drop(cache);
-                // P2-a 断线自动对账：重连后首次合法持仓回报触发一次；缓存为空（空仓/尚未同步）跳过并保持「未对账」。
-                if m.recon_auto_pending.swap(false, Ordering::SeqCst) {
-                    let cfg = m.config.lock().unwrap().clone();
-                    if cfg.kind != "mock" {
-                        let positions = m.position_cache.lock().unwrap().clone();
-                        if !positions.is_empty() {
-                            let app2 = app.clone();
-                            let dir2 = dir.to_path_buf();
-                            tauri::async_runtime::spawn(async move {
-                                match crate::broker::reconciliation::reconcile(
-                                    &dir2,
-                                    &positions,
-                                    "intraday",
-                                    crate::ai::now_millis(),
-                                ) {
-                                    Ok(rep) => {
-                                        let j = rep.to_json();
-                                        if let Some(mgr) = app2.try_state::<BrokerManager>() {
+                if let Some(epoch) = full_epoch {
+                    // P2-a 断线自动对账：重连后首个全量持仓回报触发一次；空仓跳过并保持「未对账」。
+                    if m.recon_auto_pending.swap(false, Ordering::SeqCst) {
+                        let cfg = m.config.lock().unwrap().clone();
+                        if cfg.kind != "mock" {
+                            let positions = m.position_cache.lock().unwrap().clone();
+                            if !positions.is_empty() {
+                                let app2 = app.clone();
+                                let dir2 = dir.to_path_buf();
+                                tauri::async_runtime::spawn(async move {
+                                    match crate::broker::reconciliation::reconcile(
+                                        &dir2,
+                                        &positions,
+                                        "intraday",
+                                        crate::ai::now_millis(),
+                                    ) {
+                                        Ok(rep) => {
+                                            let j = rep.to_json();
+                                            let Some(mgr) = app2.try_state::<BrokerManager>()
+                                            else {
+                                                return;
+                                            };
+                                            // 断线/重连后代际已变：旧结果作废，避免把新一轮的冲突状态覆盖回去。
+                                            if !recon_result_is_current(
+                                                epoch,
+                                                mgr.conn_epoch.load(Ordering::SeqCst),
+                                                mgr.connected.load(Ordering::SeqCst),
+                                            ) {
+                                                log::debug!(
+                                                    "自动对账结果因连接代际变化丢弃（epoch={epoch}）"
+                                                );
+                                                return;
+                                            }
                                             mgr.recon_conflict
                                                 .store(!rep.matched, Ordering::SeqCst);
                                             *mgr.recon_report.lock().unwrap() = j.clone();
+                                            let _ = app2.emit("broker:recon", j);
                                         }
-                                        let _ = app2.emit("broker:recon", j);
+                                        Err(e) => log::warn!("自动对账失败: {e}"),
                                     }
-                                    Err(e) => log::warn!("自动对账失败: {e}"),
-                                }
-                            });
+                                });
+                            }
                         }
                     }
                 }
@@ -2509,6 +2538,11 @@ pub async fn broker_reconcile(
     Ok(j)
 }
 
+/// P2-a 连接代际守卫：仅当对账开始与写入时代际一致且当前仍连接，自动对账结果才可落库/广播。
+fn recon_result_is_current(epoch: u64, current_epoch: u64, connected: bool) -> bool {
+    connected && current_epoch == epoch
+}
+
 /// P2-a 对账状态视图（纯函数便于单测）：内存报告为空对象时归一为 null，前端据此显示「未对账」。
 fn recon_status_view(
     conflict: bool,
@@ -2669,6 +2703,14 @@ mod tests {
             let err = ticket_confirm_action(st).unwrap_err();
             assert!(err.contains("不可确认下单"), "{st} -> {err}");
         }
+    }
+
+    /// P2-a 连接代际守卫：断线/重连后旧对账结果必须丢弃。
+    #[test]
+    fn recon_epoch_guard_discards_stale_result() {
+        assert!(recon_result_is_current(3, 3, true));
+        assert!(!recon_result_is_current(3, 4, true), "重连后代际已变");
+        assert!(!recon_result_is_current(3, 3, false), "已断线");
     }
 
     /// P2-a 对账状态视图：空报告归一为 null，非空原样返回（命令本体依赖 AppHandle，只测纯函数）。
