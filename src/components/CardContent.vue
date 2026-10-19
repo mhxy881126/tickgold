@@ -47,9 +47,13 @@ import Backtest from "./cards/Backtest.vue";
 import StrategyScan from "./cards/StrategyScan.vue";
 import ReviewReport from "./ReviewReport.vue";
 import Cockpit from "./cockpit/Cockpit.vue";
+import BattleStation from "./battle/BattleStation.vue";
+import { useBattleFlag } from "./battle/useBattleFlag";
 import BrokerConsole from "./BrokerConsole.vue";
 import type { CardId } from "../composables/useWorkbench";
 import ProGate from "./common/ProGate.vue";
+
+const battle = useBattleFlag();
 
 const props = defineProps<{ id: CardId; selected: string | null }>();
 defineEmits<{ select: [code: string]; sector: [name: string, kind: string]; switchCard: [cardId: string] }>();
@@ -147,7 +151,13 @@ function retry() {
     <ProGate v-else-if="id === 'reviewreport'" title="复盘报告" desc="订阅 Pro 后解锁每日复盘报告">
       <ReviewReport />
     </ProGate>
-    <Cockpit v-else-if="id === 'cockpit'" />
+    <div v-else-if="id === 'cockpit'" class="cockpit-wrap">
+      <button type="button" class="battle-switch" @click="battle.set(!battle.enabled.value)">
+        {{ battle.enabled.value ? "旧版六步" : "新版作战台" }}
+      </button>
+      <BattleStation v-if="battle.enabled.value" />
+      <Cockpit v-else />
+    </div>
     <BrokerConsole v-else-if="id === 'brokerconsole'" />
   </template>
 </template>
@@ -184,4 +194,12 @@ function retry() {
   color: var(--text, #e6ecf5); font-size: 12px; cursor: pointer;
 }
 .crash-btn:hover { border-color: var(--accent, #e8c66a); }
+.cockpit-wrap { position: relative; height: 100%; }
+.battle-switch {
+  position: absolute; top: 4px; right: 8px; z-index: 6;
+  padding: 1px 8px; font-size: 10.5px; border-radius: 5px;
+  border: 1px solid var(--border); background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+  color: var(--text-dim); cursor: pointer;
+}
+.battle-switch:hover { color: var(--text); border-color: var(--border-light); }
 </style>
