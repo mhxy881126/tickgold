@@ -80,6 +80,28 @@ function pick(it: DockItem) {
   // 打开卡片后不自动收起面板，方便连续开多张；Esc / 点击空白由 App 层处理
 }
 
+// ===== P12-16 交易工具页分区：主线置顶 + 按使用环节归类 =====
+const TOOL_GROUP_NAME = "交易工具";
+// 各环节：label 为分区小标题，ids 为该环节出厂功能（未列出的进「辅助工具」兜底）
+const TOOL_SECTIONS: { label: string; ids: string[] }[] = [
+  { label: "★ 今日主线：先跑作战流", ids: ["cockpit"] },
+  { label: "盘后计划 · 选股做计划", ids: ["battleplan", "strategyscan", "sieve", "screener"] },
+  { label: "盘中执行 · 信号与下单", ids: ["brokerconsole", "signalbridge", "co", "spiderbot", "trade"] },
+  { label: "收盘复盘 · 结算进化", ids: ["review", "performance", "decisionlog", "evolution", "backtest", "reviewreport"] },
+  { label: "辅助工具 · 随时用", ids: ["ai", "risk", "strategy", "mainline", "journal", "calendar", "ipo", "calc", "export"] },
+];
+const isToolGroup = computed(() => current.value?.name === TOOL_GROUP_NAME);
+function sectionOf(id: string): number {
+  for (let i = 0; i < TOOL_SECTIONS.length; i++) {
+    if (TOOL_SECTIONS[i]!.ids.includes(id)) return i;
+  }
+  return TOOL_SECTIONS.length - 1; // 兜底：辅助工具
+}
+function itemsOfSection(i: number): DockItem[] {
+  const items = current.value?.items ?? [];
+  return items.filter((it) => sectionOf(it.id) === i);
+}
+
 const current = computed<DockGroup | null>(
   () => groups.value.find((g) => g.name === activeGroup.value) ?? null
 );
@@ -209,7 +231,34 @@ async function doMove(toGroup: string) {
           <h3>{{ current.name }}</h3>
           <span>{{ current.items.length }} 个功能</span>
         </div>
-        <div class="dp-grid">
+        <template v-if="isToolGroup">
+          <div v-for="(sec, si) in TOOL_SECTIONS" :key="si" class="dp-section">
+            <div class="dp-sec-head" :class="{ main: si === 0 }">{{ sec.label }}</div>
+            <div class="dp-grid dp-sec-grid">
+              <div
+                v-for="it in itemsOfSection(si)"
+                :key="it.id"
+                class="dp-item"
+                :class="{ on: bench?.isOpen(it.id), main: si === 0 }"
+                @click="pick(it)"
+              >
+                <span class="dpi-ic">
+                  <svg viewBox="0 0 24 24"><path fill="currentColor" :d="it.icon" /></svg>
+                </span>
+                <span class="dpi-t" :title="it.desc">{{ it.label }}</span>
+                <span class="dpi-d">{{ it.desc }}</span>
+                <button
+                  type="button"
+                  class="dpi-move"
+                  title="移动到其他分组"
+                  @click.stop="startMove(it, current.name)"
+                >⇄</button>
+              </div>
+              <div v-if="!itemsOfSection(si).length" class="dp-empty dp-sec-empty">本环节暂无出厂功能</div>
+            </div>
+          </div>
+        </template>
+        <div v-else class="dp-grid">
           <div
             v-for="it in current.items"
             :key="it.id"
@@ -397,6 +446,19 @@ async function doMove(toGroup: string) {
 .dp-x { background: transparent; border: 0; color: var(--text-dim); font-size: 12px; cursor: pointer; padding: 0 2px; }
 .dp-x:hover { color: var(--text); }
 .dp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.dp-section { margin-bottom: 8px; }
+.dp-sec-head {
+  font-size: 10px; font-weight: 700; color: var(--text-dim);
+  padding: 2px 2px 4px; letter-spacing: 0.5px;
+}
+.dp-sec-head.main { color: #e8c878; }
+.dp-sec-grid { gap: 4px; }
+.dp-sec-empty { padding: 6px 8px; }
+.dp-item.main {
+  border-color: rgba(232, 184, 96, 0.35);
+  background: rgba(232, 184, 96, 0.06);
+}
+.dp-item.main .dpi-t { font-weight: 600; color: #e8c878; }
 .dp-item {
   display: grid;
   grid-template-columns: 24px 1fr;

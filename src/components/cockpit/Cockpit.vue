@@ -17,6 +17,17 @@ onMounted(() => {
   wf.loadToday();
 });
 
+// ===== P12-16 首次引导：三步主线说明，localStorage 记忆「知道了」 =====
+const GUIDE_KEY = "tickgold_cockpit_guide_v1";
+const showGuide = ref(!localStorage.getItem(GUIDE_KEY));
+function closeGuide() {
+  showGuide.value = false;
+  localStorage.setItem(GUIDE_KEY, "1");
+}
+function reopenGuide() {
+  showGuide.value = true;
+}
+
 // 六步语义色：采集青 / 分析紫 / 计划金 / 盯盘橙 / 执行红 / 回灌绿
 const STEP_COLORS = ["#36b8e8", "#b07cff", "#e8c878", "#ff9f43", "#ff4d6a", "#2fbf95"];
 
@@ -221,6 +232,22 @@ const killOn = computed(() => wf.killSwitch);
 
 <template>
   <div class="cockpit">
+    <!-- P12-16 首次引导条 -->
+    <Transition name="cpg">
+      <div v-if="showGuide" class="cockpit-guide">
+        <div class="cpg-t">今日作战流 = 每天一条作战主线</div>
+        <div class="cpg-steps">
+          <span><b>收盘后</b> ① 采集 → ② 分析 → ③ 计划（生成次日作战卡，自动转预警）</span>
+          <span><b>次日盘中</b> ④ 盯盘 → ⑤ 执行（信号确认桥 + 风控闸门下单）</span>
+          <span><b>收盘</b> ⑥ 回灌（结算、胜率进化）</span>
+        </div>
+        <div class="cpg-actions">
+          <button class="cpg-btn" @click="closeGuide">知道了，开始用</button>
+          <button class="cpg-link" @click="doDemo">先看「一键演示」</button>
+        </div>
+      </div>
+    </Transition>
+    <button v-if="!showGuide" class="cpg-reopen" title="重新查看使用引导" @click="reopenGuide">?</button>
     <!-- 账户条 -->
     <div class="acct-bar" :class="{ killed: wf.killSwitch }">
       <div class="acct-mode">
@@ -879,6 +906,39 @@ const killOn = computed(() => wf.killSwitch);
   padding: 10px 12px; border: 1px dashed var(--border); border-radius: 9px;
 }
 .bc-actions { display: flex; gap: 10px; margin-top: 2px; align-items: center; flex-wrap: wrap; }
+
+/* P12-16 首次引导条 */
+.cockpit-guide {
+  background: linear-gradient(135deg, rgba(232, 200, 120, 0.10), rgba(180, 124, 255, 0.08));
+  border: 1px solid rgba(232, 200, 120, 0.35);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.cpg-t { font-size: 12.5px; font-weight: 700; color: #e8c878; margin-bottom: 6px; }
+.cpg-steps { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--text, #c9d1d9); line-height: 1.5; }
+.cpg-steps b { color: #e8c878; font-weight: 600; }
+.cpg-actions { display: flex; gap: 10px; margin-top: 8px; align-items: center; }
+.cpg-btn {
+  border: 1px solid rgba(232, 184, 96, 0.6);
+  background: rgba(232, 184, 96, 0.12);
+  color: #e8c878; font-size: 11.5px; font-weight: 600;
+  border-radius: 6px; padding: 4px 12px; cursor: pointer;
+}
+.cpg-btn:hover { background: rgba(232, 184, 96, 0.22); }
+.cpg-link { border: 0; background: none; color: var(--text-dim, #97a0b2); font-size: 11.5px; cursor: pointer; text-decoration: underline; }
+.cpg-link:hover { color: #e8c878; }
+.cpg-reopen {
+  position: absolute; right: 6px; top: 0;
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 1px solid rgba(232, 184, 96, 0.4);
+  background: rgba(232, 184, 96, 0.08);
+  color: #e8c878; font-size: 11px; line-height: 16px; text-align: center;
+  cursor: pointer; z-index: 5;
+}
+.cpg-reopen:hover { background: rgba(232, 184, 96, 0.2); }
+.cpg-enter-active, .cpg-leave-active { transition: opacity 0.2s, transform 0.2s; }
+.cpg-enter-from, .cpg-leave-to { opacity: 0; transform: translateY(-4px); }
 .btn-primary {
   flex: 1; padding: 11px 16px; border-radius: 9px; cursor: pointer;
   font-size: 13px; font-weight: 800; color: #0a0e14;
