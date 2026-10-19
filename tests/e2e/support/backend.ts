@@ -4,6 +4,26 @@ import type { Quote, KBar } from "../../../src/api/types";
 
 type Row = Record<string, unknown>;
 
+// —— 券商状态（作战台下单条 / 风控徽标用）——
+// 本文件会被 Vite 的 e2e alias 打进浏览器 bundle，与 Node 侧的 Playwright 测试进程是两份模块实例，
+// 因此 spec 里 import 任何 setter 都改不到页面状态。统一由 page.addInitScript 预置
+// window.__FAKE_BROKER_STATUS（页面级全局），模块初始化时合并该 patch（熔断 / 连接态切换）。
+const injectedBrokerStatus: Record<string, unknown> =
+  typeof window !== "undefined"
+    ? ((window as unknown as { __FAKE_BROKER_STATUS?: Record<string, unknown> })
+        .__FAKE_BROKER_STATUS ?? {})
+    : {};
+let fakeBrokerStatus: Record<string, unknown> = {
+  kind: "mock",
+  liveEnabled: false,
+  connected: true,
+  killSwitch: false,
+  accountId: "SIM",
+  clientSim: true,
+  windowSim: true,
+  ...injectedBrokerStatus,
+};
+
 function quote(code: string, price: number, pct: number, name?: string): Quote {
   const n =
     name ??
@@ -301,6 +321,87 @@ const handlers: Record<string, Handler> = {
   win_minimize: () => "ok",
   win_toggle_maximize: () => false,
   win_close: () => "ok",
+  // —— 作战台 P0：券商状态 / 下单条直下 / 风控快照 / 作战流产物 ——
+  broker_get_status: () => fakeBrokerStatus,
+  broker_quick_order: (a) => ({
+    id: 1,
+    sigId: "QK1",
+    brokerKind: "mock",
+    brokerAccount: "SIM",
+    brokerOrderId: "QK1",
+    code: String(a?.code ?? ""),
+    side: String(a?.side ?? "BUY"),
+    price: Number(a?.price ?? 0),
+    vol: Number(a?.vol ?? 0),
+    status: "submitted",
+    filledVol: 0,
+    filledAvgPrice: 0,
+    errorMsg: "",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  }),
+  risk_snapshot: () => ({
+    equity: 1_000_000,
+    cash: 1_000_000,
+    marketValue: 0,
+    positionPct: 0,
+    maxSinglePct: 0,
+    maxSingleCode: "",
+    totalPnl: 0,
+    totalPnlPct: 0,
+    floatPnl: 0,
+    dayPnl: 0,
+    dayPnlPct: 0,
+    drawdownPct: 0,
+    peakEquity: 0,
+    dayDrawdownPct: 0,
+    sectorExposure: [],
+    marketEmotion: 0,
+    indexChg: 0,
+    systemicRiskLevel: "low",
+    stopTriggerCount: 0,
+    dailyLossPct: 0,
+    consecutiveLosses: 0,
+    warnings: [],
+    killSwitch: false,
+    positions: [],
+  }),
+  broker_query_position: () => ({
+    positions: [{ code: "600519", name: "贵州茅台", vol: 1000, avail: 1000 }],
+  }),
+  workflow_get_today: () => null,
+  workflow_p1_products: () => ({
+    briefing: null,
+    candidates: [],
+    plan: null,
+    planConfirmed: false,
+  }),
+  workflow_p2_products: () => ({ feedback: null, running: false, killSwitch: false }),
+  // 旧版六步驾驶舱（PilotPanel）挂载即读 pilot_status.today。缺该命令时假后端会回 []，
+  // 模板 st?.today.scanCount 会因 st=[] 抛错并触发卡片错误边界（新旧切换用例点不到按钮）。
+  pilot_status: () => ({
+    mode: "off",
+    accountType: "paper",
+    virtualCash: 100_000,
+    tacticProfileId: 0,
+    riskProfile: "steady",
+    scheduleEnabled: true,
+    todayScanTarget: 15,
+    todayScanCount: 0,
+    lastScanAt: 0,
+    running: false,
+    nextScanMinute: 570,
+    tradeDate: new Date().toISOString().slice(0, 10),
+    updatedAt: Date.now(),
+    today: {
+      scanCount: 0,
+      buyCount: 0,
+      sellCount: 0,
+      pnlCents: 0,
+      assetCents: 10_000_000,
+      summary: "",
+    },
+  }),
   check_latest: () => ({ version: "0.69.0", notes: "", pubDate: "" }),
 };
 const passthrough = ["start_spider", "stop_spider", "check_latest", "start_radar", "stop_radar", "start_alert_engine", "stop_alert_engine"];
