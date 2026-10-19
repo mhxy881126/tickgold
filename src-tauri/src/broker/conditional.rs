@@ -153,6 +153,7 @@ pub struct CreateInput {
     pub ttl: String,
     pub expire_at: i64,
     pub auto_confirm: bool,
+    pub ticket_id: String,
     pub note: String,
 }
 
@@ -183,7 +184,7 @@ pub fn insert(conn: &Connection, input: CreateInput) -> Result<String, String> {
         "INSERT INTO conditional_order
            (co_id,trade_date,code,name,side,trigger_json,price_mode,limit_price,
             vol,ttl,expire_at,auto_confirm,status,ticket_id,note,created_at,updated_at)
-         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,'active','',?13,?14,?14)",
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,'active',?13,?14,?15,?15)",
         params![
             co_id,
             trade_date,
@@ -197,6 +198,7 @@ pub fn insert(conn: &Connection, input: CreateInput) -> Result<String, String> {
             input.ttl,
             input.expire_at,
             input.auto_confirm as i64,
+            input.ticket_id,
             input.note,
             now
         ],
@@ -400,6 +402,7 @@ pub fn co_create(
             ttl: ttl.unwrap_or_else(|| "day".to_string()),
             expire_at: expire_at.unwrap_or(0),
             auto_confirm: auto_confirm.unwrap_or(false),
+            ticket_id: String::new(),
             note: note.unwrap_or_default(),
         },
     )?;
@@ -485,6 +488,7 @@ mod tests {
             ttl: "day".to_string(),
             expire_at: 0,
             auto_confirm: false,
+            ticket_id: String::new(),
             note: String::new(),
         }
     }

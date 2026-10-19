@@ -1162,6 +1162,29 @@ const liveUsage = ref<LiveUsage | null>(null);
 const wlInput = ref("");
 const armAckText = ref("");
 const armBusy = ref(false);
+// P0-4 合规逐项确认（武装前必勾；存 localStorage，便于重开仍保留已读状态）
+const COMPLIANCE_KEY = "tickgold_live_compliance_v1";
+const COMPLIANCE_ITEMS = [
+  "我知道本系统通过界面自动化操作同花顺客户端，属非官方接口，可能违反券商软件使用协议，存在被更新或风控阻断的风险",
+  "我知道程序化交易达到报备标准（申报笔数/瞬时速率等阈值，以交易所及券商最新口径为准）时，须事先向开户券商报备，我将自行咨询并完成",
+  "我仅对本人自有账户使用，不代他人操作、不向他人提供买卖建议并收费；所有信号仅供研究参考，不构成投资建议，盈亏自负",
+];
+const complianceAck = ref<boolean[]>([false, false, false]);
+try {
+  const saved = JSON.parse(localStorage.getItem(COMPLIANCE_KEY) || "null");
+  if (Array.isArray(saved) && saved.length === COMPLIANCE_ITEMS.length) {
+    complianceAck.value = saved.map(Boolean);
+  }
+} catch { /* ignore */ }
+const complianceAll = computed(() => complianceAck.value.every(Boolean));
+function toggleCompliance(i: number) {
+  if (!complianceAck.value[i]) {
+    // 勾一项确认一次（避免误勾），与演练一致用原生 checkbox + 即时记忆
+  }
+  complianceAck.value[i] = !complianceAck.value[i];
+  localStorage.setItem(COMPLIANCE_KEY, JSON.stringify(complianceAck.value));
+  armError.value = ""; armErrorOk.value = false;
+}
 const armError = ref("");
 const armErrorOk = ref(false);
 const isLiveChannel = computed(() => {
@@ -1275,6 +1298,10 @@ async function bArm() {
   armErrorOk.value = false;
   if (!license.isPro) {
     armError.value = "真实通道接入为 Pro 订阅功能，请先订阅后武装";
+    return;
+  }
+  if (!complianceAll.value) {
+    armError.value = "请先逐项勾选并确认下方「合规与报备」三条事项";
     return;
   }
   if (armAckText.value.trim() !== "风险确认") {
@@ -2627,14 +2654,19 @@ async function clearL2Key(r: PluginRow) {
                   <div class="section-sub live-amber">同花顺真实通道强制半自动：每笔都需人工点确认，自动确认已永久禁用。</div>
                 </div>
 
-                <!-- ⑤/④ 风险告知 -->
+                <!-- ⑤/④ 合规与报备 + 风险告知（P0-4 强化） -->
                 <div class="bk-arm-step">
-                  <div class="bk-arm-step-h">{{ bForm.kind === 'client' ? '⑤' : '④' }} 风险告知与确认</div>
-                  <div class="bk-arm-notice">
-                    实盘委托将产生真实资金变动，风险自担；按《证券市场程序化交易管理规定（试行）》，你须自行向交易所履行程序化交易报告义务；
-                    无实时涨跌停行情时将拒绝下单，防止乌龙指。请确认已充分了解风险。
+                  <div class="bk-arm-step-h">{{ bForm.kind === 'client' ? '⑤' : '④' }} 合规与报备确认（逐项勾选）</div>
+                  <div class="bk-arm-notice bk-compliance">
+                    <label v-for="(txt, i) in COMPLIANCE_ITEMS" :key="i" class="bk-comp-item">
+                      <input type="checkbox" :checked="complianceAck[i]" @change="toggleCompliance(i)" />
+                      <span>{{ txt }}</span>
+                    </label>
                   </div>
-                  <input v-model="armAckText" type="text" class="mock-cash-in bk-arm-ack" placeholder="请输入「风险确认」四个字" @input="armError=''; armErrorOk=false" />
+                  <div class="bk-arm-notice" style="margin-top:8px">
+                    实盘委托将产生真实资金变动，风险自担；无实时涨跌停行情时将拒绝下单，防止乌龙指。
+                  </div>
+                  <input v-model="armAckText" type="text" class="mock-cash-in bk-arm-ack" placeholder="请先勾选上方三项，再输入「风险确认」四个字" @input="armError=''; armErrorOk=false" />
                 </div>
               </div>
 
@@ -3272,6 +3304,10 @@ async function clearL2Key(r: PluginRow) {
   border: 1px solid rgba(242,54,69,.3); background: rgba(242,54,69,.08);
 }
 .bk-arm-ack { width: 100%; max-width: 260px; }
+.bk-compliance { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.bk-comp-item { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.55; cursor: pointer; color: var(--text, #e8ecf4); margin: 0; }
+.bk-comp-item input { margin-top: 3px; flex-shrink: 0; accent-color: #f23645; }
+.bk-comp-item span { flex: 1; min-width: 0; }
 .bk-advanced summary {
   cursor: pointer; font-size: 13px; color: var(--accent-2);
   padding: 8px 0; user-select: none;

@@ -8,6 +8,8 @@ import UpdateDialog from "./components/UpdateDialog.vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
 import ShortcutDialog from "./components/ShortcutDialog.vue";
 import OnboardingDialog from "./components/OnboardingDialog.vue";
+import OrderConfirmBridge from "./components/OrderConfirmBridge.vue";
+import ConnectionGuard from "./components/ConnectionGuard.vue";
 import ToastContainer from "./components/ToastContainer.vue";
 import LayoutMenu from "./components/LayoutMenu.vue";
 import SceneSwitcher from "./components/SceneSwitcher.vue";
@@ -945,6 +947,10 @@ onBeforeUnmount(() => {
     <SettingsDialog v-model:open="showSettings" :initial-tab="settingsInitialTab as any" @replay-onboarding="showOnboarding = true" @check-update="showUpdate = true" />
     <ShortcutDialog v-model:open="showShortcuts" />
     <OnboardingDialog v-model:open="showOnboarding" />
+    <!-- P0-5 全局下单确认桥：所有下单入口统一的金额醒目 + 硬校验核对 -->
+    <OrderConfirmBridge />
+    <!-- P0-3 断连闭环 + 重连对账横幅 -->
+    <ConnectionGuard />
     <ToastContainer />
     <AppDialog />
 

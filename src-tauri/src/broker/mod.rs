@@ -33,6 +33,9 @@ pub struct BrokerManager {
     pub position_cache: Mutex<std::collections::HashMap<String, risk::QmtPosition>>,
     /// 持仓是否已完成首次全量同步（空仓账户缓存亦为空，须以此区分"尚未同步"）。
     pub position_synced: AtomicBool,
+    /// P0-2 资产 / 持仓缓存最近一次全量回报时刻（None=未同步；断连清零）。
+    pub asset_cache_at: Mutex<Option<std::time::Instant>>,
+    pub position_cache_at: Mutex<Option<std::time::Instant>>,
     /// P3 客户端自动化通道：最近一次连接自检结果（selfcheck 事件）。
     pub client_selfcheck: Mutex<serde_json::Value>,
     /// P12-2 通道识别：sidecar 探测到的实际窗口类型（Some(true)=模拟窗口 / Some(false)=真实窗口 / None=未知）。
@@ -64,6 +67,8 @@ impl BrokerManager {
             )),
             position_cache: Mutex::new(std::collections::HashMap::new()),
             position_synced: AtomicBool::new(false),
+            asset_cache_at: Mutex::new(None),
+            position_cache_at: Mutex::new(None),
             client_selfcheck: Mutex::new(serde_json::json!({})),
             client_window_sim: Mutex::new(None),
             client_shots: Mutex::new(Vec::new()),
@@ -181,6 +186,8 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
         "connected" => {
             if let Some(m) = try_manager(app) {
                 m.connected.store(true, Ordering::SeqCst);
+                // P0-3 重连后通知前端：在途委托进入对账流程（下方 spawn 已触发资产/持仓/成交/挂单全量重查）。
+                let _ = app.emit("broker:connection_restored", serde_json::json!({}));
                 // python connected 后不主动推全量：立即拉一次资产 + 持仓。
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
@@ -240,11 +247,33 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
                 *m.client_window_sim.lock().unwrap() = None;
                 // 断开后缓存作废，重连由 connected 分支重新全量查询
                 m.position_synced.store(false, Ordering::SeqCst);
+                *m.asset_cache_at.lock().unwrap() = None;
+                *m.position_cache_at.lock().unwrap() = None;
                 *m.asset_cache.lock().unwrap() = serde_json::json!({});
                 *m.trades_cache.lock().unwrap() = serde_json::json!({});
                 *m.pending_cache.lock().unwrap() = serde_json::json!({});
                 *m.app_state_cache.lock().unwrap() = serde_json::json!({});
                 *m.current_page_cache.lock().unwrap() = serde_json::json!({});
+                // P0-3 断连闭环：统计在途委托（非终态），通知前端逐笔对账，
+                // 防止本地显示"未成交"而券商侧已成交（孤儿委托）。
+                let open_orders: Vec<serde_json::Value> = maindb::open_readonly(dir)
+                    .map(|c| {
+                        protocol::list(&c, None, 200)
+                            .into_iter()
+                            .filter(|o| {
+                                matches!(
+                                    o.status.as_str(),
+                                    protocol::SUBMITTING | protocol::SUBMITTED | protocol::PART_FILLED
+                                )
+                            })
+                            .filter_map(|o| serde_json::to_value(o).ok())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let _ = app.emit(
+                    "broker:connection_lost",
+                    serde_json::json!({ "open_orders": open_orders }),
+                );
             }
         }
         "fatal_error" => {
@@ -333,6 +362,7 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
                     return;
                 }
                 *m.asset_cache.lock().unwrap() = v.clone();
+                *m.asset_cache_at.lock().unwrap() = Some(std::time::Instant::now());
             }
         }
         "position" => {
@@ -348,6 +378,7 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
                 if full {
                     cache.clear();
                     m.position_synced.store(true, Ordering::SeqCst);
+                    *m.position_cache_at.lock().unwrap() = Some(std::time::Instant::now());
                 }
                 for (code, p) in items {
                     if p.vol <= 0 {
@@ -398,6 +429,26 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
             let _ = progress(&conn, app, &sig_id, st, fv, ap, bid, None, "sidecar 回报");
             if st == protocol::FILLED {
                 auto_done_ticket(&conn, app, &sig_id);
+                // P0-1 买入成交自动武装止损
+                if let Ok((code, name, side)) = conn.query_row(
+                    "SELECT code,name,side FROM signal_ticket WHERE sig_id=?1",
+                    rusqlite::params![&sig_id],
+                    |r| {
+                        Ok((
+                            r.get::<_, String>(0)?,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, String>(2)?,
+                        ))
+                    },
+                ) {
+                    if side.eq_ignore_ascii_case("BUY") {
+                        let px = ap.unwrap_or(0.0);
+                        let vv = fv.unwrap_or(0);
+                        if px > 0.0 && vv > 0 {
+                            auto_arm_stop_loss(&conn, app, &code, &name, px, vv, &sig_id);
+                        }
+                    }
+                }
             }
         }
         _ => {}
@@ -430,6 +481,68 @@ fn auto_done_ticket(conn: &Connection, app: &AppHandle, sig_id: &str) {
         );
     }
 }
+
+/// P0-1 成交即设止损：买入成交后自动武装一笔止损条件单（半自动，触发时仍需人工确认）。
+/// 幂等：同一成交单号 ticket_id 只建一次；T+1 由 gate 的可用持仓 / T+1 校验兜底（当日买入不会卖）。
+fn auto_arm_stop_loss(
+    conn: &Connection,
+    app: &AppHandle,
+    code: &str,
+    name: &str,
+    fill_price: f64,
+    fill_vol: i64,
+    sig_id: &str,
+) {
+    if fill_price <= 0.0 || fill_vol <= 0 || fill_vol % 100 != 0 {
+        return;
+    }
+    const STOP_LOSS_PCT: f64 = -0.04; // 与前端 risk.ts 默认止损 -4% 一致
+    let exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM conditional_order WHERE ticket_id=?1 AND side='SELL'",
+            rusqlite::params![sig_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if exists > 0 {
+        return;
+    }
+    let stop_px = (fill_price * (1.0 + STOP_LOSS_PCT) * 100.0).round() / 100.0;
+    let trig = conditional::CoTrigger {
+        field: "price".to_string(),
+        op: "crossBelow".to_string(),
+        value: stop_px,
+        params: None,
+    };
+    let input = conditional::CreateInput {
+        code: code.to_string(),
+        name: name.to_string(),
+        side: "SELL".to_string(),
+        trigger: vec![trig],
+        price_mode: "trigger".to_string(),
+        limit_price: 0.0,
+        vol: fill_vol,
+        ttl: "gtc".to_string(),
+        expire_at: 0,
+        auto_confirm: false,
+        ticket_id: sig_id.to_string(),
+        note: format!("成交自动止损：成本 {fill_price:.2}，现价跌破 {stop_px:.2} 卖出（-4%），触发需人工确认"),
+    };
+    match conditional::insert(conn, input) {
+        Ok(co_id) => {
+            let _ = app.emit(
+                "broker:stop_armed",
+                serde_json::json!({
+                    "coId": co_id, "code": code, "name": name,
+                    "stopPrice": stop_px, "vol": fill_vol, "sigId": sig_id,
+                }),
+            );
+            log::info!("P0-1 已为 {code} 成交自动武装止损 {co_id} @ {stop_px}");
+        }
+        Err(e) => log::warn!("P0-1 自动武装止损失败：{e}"),
+    }
+}
+
 
 // ===== Tauri 命令 =====
 
@@ -934,6 +1047,7 @@ pub async fn broker_submit(
 /// 前端模拟交易买入：ensure + settle → 统一闸门 gate → portfolio 落账（统一账本）。
 #[tauri::command]
 pub async fn portfolio_buy(
+    app: AppHandle,
     ai: State<'_, crate::ai::AiState>,
     code: String,
     name: String,
@@ -988,7 +1102,10 @@ pub async fn portfolio_buy(
         trade_date: &today,
         limit_prices: None,
     };
-    portfolio::apply_fill(&mut conn, &req)
+    let result = portfolio::apply_fill(&mut conn, &req)?;
+    // P0-1 买入成交自动武装止损（半自动，触发仍需人工确认）
+    auto_arm_stop_loss(&conn, &app, &code, &name, price, vol, &oid);
+    Ok(result)
 }
 
 /// 前端模拟交易卖出。
@@ -1323,6 +1440,30 @@ pub(crate) async fn submit_with_sig(
             if !pos_synced {
                 // 全量回报（哪怕空仓账户的空数组）到达前一律拒绝，保持安全。
                 return Err("交易通道持仓数据尚未同步，请连接通道后稍后重试".to_string());
+            }
+            // P0-2 数据新鲜度闸门：账户/持仓缓存超期一律拒绝，防止用陈旧余额/可用数量下单。
+            // 实盘 60s（要求下单前刚刷新，确认桥唤起 xiadan 时数据须为最新）；模拟盘 10min。
+            let (asset_at, pos_at) = (
+                *mgr.asset_cache_at.lock().unwrap(),
+                *mgr.position_cache_at.lock().unwrap(),
+            );
+            let ttl = if need_live {
+                std::time::Duration::from_secs(60)
+            } else {
+                std::time::Duration::from_secs(600)
+            };
+            let stale = |at: Option<std::time::Instant>| at.map_or(true, |t| t.elapsed() > ttl);
+            if stale(asset_at) {
+                return Err(
+                    "资产数据已过期：请先在同花顺控制台刷新资产（实盘要求 60 秒内最新数据），再下单"
+                        .to_string(),
+                );
+            }
+            if stale(pos_at) {
+                return Err(
+                    "持仓数据已过期：请先在同花顺控制台刷新持仓（实盘要求 60 秒内最新数据），再下单"
+                        .to_string(),
+                );
             }
             let positions = pos_cache
                 .iter()
@@ -1722,6 +1863,10 @@ async fn mock_run(
             &format!("模拟全部成交 {vol}"),
         );
         auto_done_ticket(&conn, app, sig_id);
+        // P0-1 买入成交自动武装止损（模拟信号单）
+        if side.eq_ignore_ascii_case("BUY") {
+            auto_arm_stop_loss(&conn, app, code, "", price, vol, sig_id);
+        }
     }
 }
 
