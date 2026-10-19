@@ -225,12 +225,29 @@ async fn check_once_inner(app: &AppHandle, engine: &AlertEngine, with_co: bool) 
     let mut co_events: Vec<CoTriggerEvent> = Vec::new();
 
     // 记录价格历史（本地涨速 / 跳水用），按规则中最大窗口清理
-    let max_window = active
+    let mut max_window = active
         .iter()
         .filter(|r| r.rise_speed.is_some() || r.down_speed.is_some())
         .map(|r| r.speed_window_sec.unwrap_or(300))
         .max()
         .unwrap_or(0);
+    // 条件单专用引擎没有 alerts 规则，窗口只能来自 CO 叶子：叶子带 params.windowSec
+    // 的按该值（旧单/手写单缺省 300s），否则 price_hist 只增不减、跨日累积。
+    if with_co {
+        for co in &co_orders {
+            for leaf in &co.trigger {
+                if leaf.field == "riseSpeed" || leaf.field == "downSpeed" {
+                    let win = leaf
+                        .params
+                        .as_ref()
+                        .and_then(|p| p.get("windowSec"))
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(300);
+                    max_window = max_window.max(win);
+                }
+            }
+        }
+    }
     {
         let mut hist = engine.price_hist.lock().unwrap();
         for q in qmap.values() {

@@ -210,6 +210,13 @@ pub(crate) fn init(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
         // v2.23 高阶盯盘：注册条件单触发监听（落信号票；模拟盘可自动确认提交）
         broker::register_co_listener(app.handle());
 
+        // P1-a：条件单引擎与计划定时物化随应用启动，不依赖驾驶舱 mount。
+        // 复盘发现执行是「挂载驱动」的：应用跨午夜一直开着、用户不重开驾驶舱时，
+        // 计划日当天既不会物化条件单，也没有引擎在跑。这里在启动装配处各拉起一次；
+        // 两者内部都有 AtomicBool 幂等守卫，重复 setup 不会双跑。
+        crate::market::alert::ensure_co_engine(app.handle());
+        crate::ai::instruction::ensure_materialize_loop(app.handle());
+
         // v2.31 选股订阅：30s 常驻调度，到点执行已保存战法扫描并应用内推送
         {
             let handle = app.handle().clone();

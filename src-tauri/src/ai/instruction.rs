@@ -5,6 +5,7 @@ use crate::ai::now_millis;
 use crate::broker::conditional::CoTrigger;
 use serde_json::Value;
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// 读取计划指令 `alert_rule` 中的数值字段。
 fn num(rule: &Value, key: &str) -> Option<f64> {
@@ -265,6 +266,68 @@ pub fn materialize_plan(
         }
     }
     Ok(out)
+}
+
+/// 扫描所有「今天 + confirmed」的计划并物化（幂等）。供定时循环与读取路径复用。
+///
+/// 与 `materialize_plan` 的区别：后者只在拿到具体 plan_id 时做单计划物化，
+/// 调用方需自己先按日期筛计划；本函数负责「今天到底有哪些计划该建单」这一层，
+/// 让后台循环无需知道计划如何产生。非计划日 / 无确认计划时返回全零汇总。
+pub fn materialize_today(conn: &rusqlite::Connection) -> Result<MaterializeSummary, String> {
+    let today = crate::broker::conditional::today_dashed();
+    let ids: Vec<i64> = {
+        let mut stmt = conn
+            .prepare("SELECT id FROM plan WHERE plan_date=?1 AND status='confirmed'")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([&today], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        rows.filter_map(|x| x.ok()).collect()
+    };
+    let mut total = MaterializeSummary::default();
+    for id in ids {
+        match materialize_plan(conn, id) {
+            Ok(s) => {
+                total.created += s.created;
+                total.skipped += s.skipped;
+                total.failed += s.failed;
+            }
+            // 单计划失败不影响其余计划；记日志便于排查（扫描层不返回 Err）。
+            Err(e) => log::warn!("materialize plan {id} failed: {e}"),
+        }
+    }
+    Ok(total)
+}
+
+/// 后台定时物化：每 30s 一次，覆盖「应用跨午夜一直开着」的场景。
+///
+/// 放在后台循环而非挂载路径：驾驶舱不 mount 时计划仍会在计划日当天建单；
+/// 跨午夜后 `materialize_plan` 的日期门禁自动从「非计划日 no-op」切到「今天物化」。
+pub async fn run_materialize_loop(app: tauri::AppHandle) {
+    use tauri::Manager;
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        let dir = app.state::<crate::ai::AiState>().dir();
+        if let Ok(conn) = crate::ai::maindb::open_readwrite(&dir) {
+            if let Err(e) = materialize_today(&conn) {
+                log::warn!("materialize_today failed: {e}");
+            }
+        }
+    }
+}
+
+static MATERIALIZE_LOOP_STARTED: AtomicBool = AtomicBool::new(false);
+
+/// 幂等启动后台物化循环（重复调用只 spawn 一次）。
+pub fn ensure_materialize_loop(app: &tauri::AppHandle) {
+    if MATERIALIZE_LOOP_STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        run_materialize_loop(handle).await;
+    });
+    log::info!("计划定时物化循环已启动（30s）");
 }
 
 #[cfg(test)]
@@ -672,5 +735,38 @@ mod tests {
             .query_row("SELECT note FROM conditional_order", [], |r| r.get(0))
             .unwrap();
         assert_eq!(note, "plan:1:1");
+    }
+
+    #[test]
+    fn materialize_today_only_today_confirmed_and_idempotent() {
+        let conn = conn_with_tables();
+        let today = crate::broker::conditional::today_dashed();
+        insert_plan(&conn, 1, &today); // 今天 + confirmed → 应物化
+        insert_plan_with_status(&conn, 2, &today, "draft"); // 今天草稿 → 不物化
+        insert_plan(&conn, 3, "2999-01-01"); // 非今天（未来）+ confirmed → 不物化
+        conn.execute_batch(
+            "INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,'candidate','600519','贵州茅台','{\"upPrice\":1700}','open',0);
+             INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(2,'candidate','000001','平安','{\"upPrice\":10}','open',0);
+             INSERT INTO plan_instruction(plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(3,'candidate','000002','万科','{\"upPrice\":8}','open',0);",
+        )
+        .unwrap();
+
+        let first = materialize_today(&conn).unwrap();
+        assert_eq!(first.created, 1, "只应物化今天且已确认的计划");
+        assert_eq!(first.failed, 0);
+        assert_eq!(co_count(&conn), 1);
+        assert!(!instruction_co_id(&conn, 1).is_empty());
+        assert!(instruction_co_id(&conn, 2).is_empty(), "草稿计划不得物化");
+        assert!(instruction_co_id(&conn, 3).is_empty(), "非计划日不得物化");
+
+        // 幂等：再扫一次不新建条件单，已物化指令计入 skipped。
+        let second = materialize_today(&conn).unwrap();
+        assert_eq!(second.created, 0);
+        assert_eq!(second.failed, 0);
+        assert_eq!(second.skipped, 1);
+        assert_eq!(co_count(&conn), 1, "重复扫描不得重复建单");
     }
 }
