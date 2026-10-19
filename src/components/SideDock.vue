@@ -482,8 +482,10 @@ async function doMove(toGroup: string) {
 .dpi-ic svg { width: 13px; height: 13px; }
 .dpi-t { font-size: 11px; font-weight: 400; line-height: 1.2; display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dpi-d { display: none; }
-/* P1-3 新手模式：显示每张卡片/工具的一句话用途 */
-:global([data-novice]) .dpi-d {
+/* P1-3 新手模式：显示每张卡片/工具的一句话用途
+   注意：必须写成 html[data-novice="true"] .dpi-d（不能写 :global([data-novice]) .dpi-d），
+   否则 Vue 会把它编译成裸的 [data-novice]，命中 <html data-novice="true"> 把整窗 opacity 降到 .68（灰蒙蒙）。 */
+html[data-novice="true"] .dpi-d {
   display: block; margin-top: 2px; font-size: 11px; line-height: 1.35; opacity: .68;
 }
 .dp-item:hover { background: rgba(255,255,255,.05); }

@@ -543,10 +543,17 @@ onBeforeUnmount(() => {
 html,
 body,
 #app {
-  background: transparent !important;
   margin: 0 !important;
   padding: 0 !important;
   overflow: hidden !important;
+}
+/* 透明底只给灵动岛悬浮窗（无边框 + transparent 窗口）。
+   主窗口绝不能透底：一旦页面透出 WebView2 的白色默认底，
+   任何一层半透明（如新手模式）都会把整窗洗成灰蒙蒙。 */
+html[data-window="island"],
+html[data-window="island"] body,
+html[data-window="island"] #app {
+  background: transparent !important;
 }
 </style>
 

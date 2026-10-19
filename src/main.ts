@@ -42,6 +42,9 @@ try {
   /* ignore */
 }
 
+// 标记当前窗口类型：岛窗需要透明底，主窗口必须不透底（详见 Island.vue 全局样式）
+document.documentElement.dataset.window = label;
+
 // 所有窗口统一拦截外链：http(s) 链接只在内置浏览器窗口打开，不拉起外部浏览器
 installExternalLinkGuard();
 
