@@ -248,3 +248,131 @@ describe("workflow store", () => {
     expect(s.feedback?.conclusion).toContain("紧急停止");
   });
 });
+
+// ============================ P1-b 指令行内编辑 / 确认下单 ============================
+
+function instrRow(patch: Record<string, unknown> = {}) {
+  return {
+    id: 7,
+    tier: "candidate",
+    code: "600519",
+    name: "贵州茅台",
+    condition: "",
+    action: "",
+    positionHint: "",
+    coId: "CO1",
+    triggerJson: '[{"field":"price","op":"gte","value":1680}]',
+    state: "pending",
+    triggeredAt: 0,
+    filledVol: 0,
+    filledAvgPrice: 0,
+    ticketId: 12,
+    ticketStatus: "pending",
+    side: "BUY",
+    vol: 100,
+    price: 1680,
+    autoConfirm: true,
+    orderStatus: "",
+    hasOrder: false,
+    ...patch,
+  };
+}
+
+const orderInfo = {
+  id: 1,
+  sigId: "QK1",
+  brokerKind: "mock",
+  brokerAccount: "",
+  brokerOrderId: "",
+  code: "600519",
+  side: "BUY",
+  price: 1680,
+  vol: 100,
+  status: "submitted",
+  filledVol: 0,
+  filledAvgPrice: 0,
+  errorMsg: "",
+  createdAt: 1,
+  updatedAt: 1,
+};
+
+describe("workflow store — P1-b 指令动作", () => {
+  it("刷新指令时把 plan.instructions 的 alertRule 关联到行（编辑面板回填用）", async () => {
+    invokeMock.invoke.mockResolvedValueOnce({
+      plan: {
+        id: 1,
+        planDate: "2026-10-19",
+        title: "",
+        marketView: "",
+        status: "confirmed",
+        instructions: [
+          {
+            id: 7,
+            tier: "candidate",
+            code: "600519",
+            name: "贵州茅台",
+            theme: "",
+            condition: "",
+            action: "",
+            positionHint: "",
+            alertRule: '{"upPct":5,"downPct":-5}',
+            status: "open",
+            sort: 0,
+          },
+        ],
+      },
+      instructions: [instrRow()],
+    });
+    const s = useWorkflowStore();
+    await s.refreshInstructions();
+
+    expect(s.instructions).toHaveLength(1);
+    expect(s.instructions[0].alertRule).toBe('{"upPct":5,"downPct":-5}');
+  });
+
+  it("保存触发条件：透传 instrId/rule 并用返回的指令列表覆盖", async () => {
+    invokeMock.invoke.mockResolvedValueOnce({
+      plan: null,
+      instructions: [instrRow({ state: "pending", triggerJson: '[{"field":"price","op":"gte","value":1700}]' })],
+    });
+    const s = useWorkflowStore();
+    const rule = { upPrice: 1700, side: "BUY", vol: 100, autoConfirm: false };
+    const rows = await s.saveInstructionTrigger(7, rule);
+
+    expect(invokeMock.invoke).toHaveBeenCalledWith("workflow_instruction_trigger_set", {
+      instrId: 7,
+      rule,
+    });
+    expect(rows).toHaveLength(1);
+    expect(s.instructions[0].triggerJson).toContain("1700");
+  });
+
+  it("保存失败抛中文错误", async () => {
+    invokeMock.invoke.mockRejectedValueOnce("已触发，不能修改触发条件");
+    const s = useWorkflowStore();
+    await expect(s.saveInstructionTrigger(7, { upPct: 5 })).rejects.toThrow(
+      "已触发，不能修改触发条件",
+    );
+  });
+
+  it("确认下单：只提交票据 id，价格/数量取票面", async () => {
+    invokeMock.invoke.mockResolvedValueOnce(orderInfo);
+    const s = useWorkflowStore();
+    const info = await s.confirmSubmitInstruction(12);
+
+    expect(invokeMock.invoke).toHaveBeenCalledWith("broker_confirm_submit", {
+      ticketId: 12,
+      price: null,
+      vol: null,
+    });
+    expect(info.sigId).toBe("QK1");
+  });
+
+  it("确认下单失败抛中文错误", async () => {
+    invokeMock.invoke.mockRejectedValueOnce("当前信号票状态不可确认下单：done");
+    const s = useWorkflowStore();
+    await expect(s.confirmSubmitInstruction(12)).rejects.toThrow(
+      "当前信号票状态不可确认下单：done",
+    );
+  });
+});

@@ -1,8 +1,38 @@
 <script setup lang="ts">
-import { stateMeta, triggerHint, type InstructionRow } from "./instructionModel";
+import { computed, ref } from "vue";
+import { confirmDialog } from "../../composables/useDialog";
+import InstructionEditor from "./InstructionEditor.vue";
+import {
+  orderStatusLabel,
+  stateMeta,
+  submitBlockReason,
+  triggerHint,
+  type AlertRule,
+  type BrokerGateStatus,
+  type InstructionRow,
+} from "./instructionModel";
 
-defineProps<{ rows: InstructionRow[] }>();
-const emit = defineEmits<{ (e: "pick", code: string): void }>();
+const props = defineProps<{
+  rows: InstructionRow[];
+  /** 券商状态：复用下单条口径决定「确认下单」是否可点；未传视为未知（不允许提交）。 */
+  status?: BrokerGateStatus | null;
+  /** 动作结果一行提示（保存 / 提交后由作战台写入）。 */
+  message?: string;
+  /** 提示色调：ok=成功（默认），bad=失败。 */
+  messageTone?: "ok" | "bad";
+}>();
+const emit = defineEmits<{
+  (e: "pick", code: string): void;
+  (e: "save-trigger", instrId: number, rule: AlertRule): void;
+  (e: "submit", ticketId: number): void;
+}>();
+
+const editingId = ref(0);
+const saving = ref(false);
+const editorError = ref("");
+const submittingId = ref(0);
+// 只展示前 5 条（与 P1-a 一致，保持作战台一屏紧凑）；表头计数仍是全量。
+const visibleRows = computed(() => props.rows.slice(0, 5));
 
 function tierLabel(tier: string): string {
   return tier === "candidate" ? "备选" : tier === "trigger" ? "触发" : "观察";
@@ -10,6 +40,84 @@ function tierLabel(tier: string): string {
 function toneClass(state: string): string {
   return `tone-${stateMeta(state).tone}`;
 }
+
+/**
+ * 行尾动作：
+ * - 「编辑」只在条件单未触发时出现（待触发 = 已物化；仅观察 = 尚未物化 / open、alerted）；
+ * - 「确认下单」只在有票待确认、或票已确认但还没有委托（重试提交）时出现；
+ * - 已有委托 / 已成交 / 已拒绝 / 已取消 / 已过期：只显示文案，不提供任何动作。
+ */
+function canEdit(r: InstructionRow): boolean {
+  return r.state === "watch" || r.state === "pending";
+}
+function canSubmit(r: InstructionRow): boolean {
+  if (r.hasOrder || !(r.ticketId > 0)) return false;
+  // 终态行（已成交/已取消/已过期）即使票面状态滞后也不给提交入口。
+  if (r.state === "filled" || r.state === "cancelled" || r.state === "expired") return false;
+  return r.ticketStatus === "pending" || (r.ticketStatus === "confirmed" && !r.hasOrder);
+}
+
+const blockReason = computed(() => submitBlockReason(props.status ?? null));
+const hasSubmittable = computed(() => visibleRows.value.some((r) => canSubmit(r)));
+
+function orderTone(status: string): string {
+  if (status === "filled" || status === "part_filled") return "ok";
+  if (status === "rejected" || status === "error" || status === "cancelled") return "bad";
+  return "info";
+}
+function orderLabel(r: InstructionRow): string {
+  return orderStatusLabel(r.orderStatus);
+}
+
+function openEdit(r: InstructionRow) {
+  editingId.value = r.id;
+  saving.value = false;
+  editorError.value = "";
+}
+function closeEdit() {
+  editingId.value = 0;
+  saving.value = false;
+  editorError.value = "";
+}
+function save(r: InstructionRow, rule: AlertRule) {
+  saving.value = true;
+  editorError.value = "";
+  emit("save-trigger", r.id, rule);
+}
+
+/** 触发后一键下单：只弹一次确认，确认后把已有的信号票交给 store（后端走 submit_with_sig）。 */
+async function askSubmit(r: InstructionRow) {
+  if (!canSubmit(r) || blockReason.value || submittingId.value) return;
+  const sideText = r.side === "SELL" ? "卖出" : "买入";
+  const priceText = r.price > 0 ? `限价 ${r.price.toFixed(2)}` : "按触发价";
+  const ok = await confirmDialog({
+    title: "确认下单",
+    message:
+      `确认提交 ${r.name || r.code}（${r.code}）${sideText} ${r.vol} 股？\n` +
+      `${priceText}；提交时走全部风控闸门（熔断 / 连接 / 白名单 / 限价 / 新鲜度）。\n` +
+      `沿用触发时生成的信号票，不会新建第二张票。`,
+    confirmText: "确认提交",
+  });
+  if (!ok) return;
+  submittingId.value = r.ticketId;
+  emit("submit", r.ticketId);
+}
+
+/** 父级保存完成回调：成功收起面板，失败把中文错误留在面板内。 */
+function finishEdit(instrId: number, error = "") {
+  if (editingId.value !== instrId) return;
+  saving.value = false;
+  if (error) {
+    editorError.value = error;
+    return;
+  }
+  closeEdit();
+}
+/** 父级提交结束回调：解除「提交中…」并允许重试。 */
+function finishSubmit(ticketId: number) {
+  if (submittingId.value === ticketId) submittingId.value = 0;
+}
+defineExpose({ finishEdit, finishSubmit });
 </script>
 
 <template>
@@ -17,24 +125,71 @@ function toneClass(state: string): string {
     <header class="il-head">
       <span class="il-title">今日指令</span>
       <span class="il-count">{{ rows.length }}</span>
+      <span
+        v-if="message"
+        class="il-msg"
+        :class="{ bad: messageTone === 'bad' }"
+        data-testid="instr-action-msg"
+      >{{ message }}</span>
     </header>
+    <p v-if="blockReason && hasSubmittable" class="il-warn" data-testid="instr-submit-hint">
+      {{ blockReason }}
+    </p>
     <p v-if="!rows.length" class="il-empty">今日无计划指令，确认作战卡后自动生成</p>
     <div v-else class="il-rows">
-      <button
-        v-for="r in rows.slice(0, 5)"
-        :key="r.id"
-        type="button"
-        class="il-row"
-        @click="emit('pick', r.code)"
-      >
-        <span class="il-tier" :class="`tier-${r.tier}`">{{ tierLabel(r.tier) }}</span>
-        <span class="il-code mono">{{ r.code }}</span>
-        <span class="il-name">{{ r.name }}</span>
-        <span class="il-hint">{{ triggerHint(r.triggerJson) }}</span>
-        <span class="il-state" :class="toneClass(r.state)" :data-state="r.state">
-          {{ stateMeta(r.state).label }}
-        </span>
-      </button>
+      <template v-for="r in visibleRows" :key="r.id">
+        <InstructionEditor
+          v-if="editingId === r.id"
+          :row="r"
+          :rule="r.alertRule"
+          :trigger-json="r.triggerJson"
+          :saving="saving"
+          :error="editorError"
+          @save="save(r, $event)"
+          @cancel="closeEdit"
+        />
+        <div v-else class="il-row">
+          <button type="button" class="il-main" @click="emit('pick', r.code)">
+            <span class="il-tier" :class="`tier-${r.tier}`">{{ tierLabel(r.tier) }}</span>
+            <span class="il-code mono">{{ r.code }}</span>
+            <span class="il-name">{{ r.name }}</span>
+            <span class="il-hint">{{ triggerHint(r.triggerJson) }}</span>
+          </button>
+          <!-- 有委托时以委托状态为准（更精确），文案与执行状态重复时不再叠加显示。 -->
+          <span
+            v-if="!r.hasOrder || orderLabel(r) !== stateMeta(r.state).label"
+            class="il-state"
+            :class="toneClass(r.state)"
+            :data-state="r.state"
+          >{{ stateMeta(r.state).label }}</span>
+          <span
+            v-if="r.hasOrder"
+            class="il-order"
+            :class="`or-${orderTone(r.orderStatus)}`"
+            :data-order="r.orderStatus"
+            data-testid="instr-order-state"
+          >{{ orderLabel(r) }}</span>
+          <template v-else>
+            <button
+              v-if="canSubmit(r)"
+              type="button"
+              class="il-act primary"
+              data-testid="instr-submit"
+              :disabled="!!blockReason || submittingId === r.ticketId"
+              :title="blockReason || '一次确认后提交已有信号票'"
+              @click="askSubmit(r)"
+            >{{ submittingId === r.ticketId ? "提交中…" : "确认下单" }}</button>
+            <button
+              v-if="canEdit(r)"
+              type="button"
+              class="il-act"
+              data-testid="instr-edit"
+              title="修改触发条件（保存后重建条件单）"
+              @click="openEdit(r)"
+            >编辑</button>
+          </template>
+        </div>
+      </template>
     </div>
   </section>
 </template>
@@ -44,10 +199,14 @@ function toneClass(state: string): string {
 .il-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
 .il-title { font-size: 12px; font-weight: 700; }
 .il-count { font-size: 11px; color: var(--text-dim); }
+.il-msg { margin-left: auto; font-size: 10.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.il-msg.bad { color: #ff7a86; }
+.il-warn { margin: 0 0 5px; font-size: 10.5px; color: var(--up); }
 .il-empty { margin: 0; font-size: 11.5px; color: var(--text-dim); }
 .il-rows { display: flex; flex-direction: column; gap: 3px; }
-.il-row { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text); font-size: 11.5px; cursor: pointer; text-align: left; }
+.il-row { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border: 1px solid transparent; border-radius: 6px; }
 .il-row:hover { background: var(--bg-hover); }
+.il-main { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 1px 2px; border: none; background: transparent; color: var(--text); font-size: 11.5px; cursor: pointer; text-align: left; }
 .il-tier { flex: none; padding: 0 5px; border-radius: 4px; font-size: 10px; border: 1px solid var(--border); color: var(--text-dim); }
 .il-tier.tier-candidate { color: var(--accent); border-color: var(--accent); }
 .il-code { flex: none; }
@@ -58,5 +217,14 @@ function toneClass(state: string): string {
 .il-state.tone-gold { color: var(--accent); border-color: var(--accent); }
 .il-state.tone-up { color: var(--up); border-color: var(--up); }
 .il-state.tone-muted { color: var(--text-dim); }
+.il-order { flex: none; padding: 0 6px; border-radius: 4px; font-size: 10.5px; border: 1px solid var(--border); }
+.il-order.or-ok { color: var(--accent); border-color: var(--accent); }
+.il-order.or-bad { color: var(--up); border-color: var(--up); }
+.il-order.or-info { color: #6aa6e8; border-color: #6aa6e8; }
+.il-act { flex: none; padding: 1px 7px; border-radius: 5px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); font-size: 10.5px; cursor: pointer; }
+.il-act:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.il-act:disabled { opacity: 0.45; cursor: not-allowed; }
+.il-act.primary { color: var(--accent); border-color: var(--accent); }
+.il-act.primary:disabled { color: var(--text-dim); border-color: var(--border); }
 .mono { font-variant-numeric: tabular-nums; }
 </style>

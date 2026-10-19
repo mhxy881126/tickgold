@@ -4,7 +4,8 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import type { InstructionRow } from "../components/battle/instructionModel";
+import type { AlertRule, InstructionRow } from "../components/battle/instructionModel";
+import type { BrokerOrderInfo } from "../broker/api";
 
 export type StepStatus = "todo" | "doing" | "done";
 
@@ -271,6 +272,13 @@ function nextTradeStr(): string {
   d.setDate(d.getDate() + add);
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** invoke 抛出的错误：Tauri 的 Err(String) 会原样 reject，这里统一取文本（后端错误已是中文）。 */
+function invokeErrorText(e: unknown, fallback: string): string {
+  const raw = typeof e === "string" ? e : (e as { message?: unknown })?.message;
+  const msg = typeof raw === "string" ? raw.trim() : "";
+  return msg || fallback;
 }
 
 function localSteps(current: number): StepState[] {
@@ -650,16 +658,68 @@ export const useWorkflowStore = defineStore("workflow", () => {
     }
   }
 
+  // P1-b：workflow_instructions 行不含原始 alert_rule，用同一响应里的 plan.instructions
+  // 按指令 id 关联回填，编辑面板才能把价格/涨幅/开关等条件原样回显。
+  function withAlertRules(
+    rows: InstructionRow[],
+    plan: BattlePlan | null | undefined,
+  ): InstructionRow[] {
+    const rules = new Map<number, string>();
+    for (const ins of plan?.instructions ?? []) {
+      if (typeof ins.id === "number" && typeof ins.alertRule === "string" && ins.alertRule) {
+        rules.set(ins.id, ins.alertRule);
+      }
+    }
+    return rows.map((r) => ({ ...r, alertRule: rules.get(r.id) ?? r.alertRule ?? "" }));
+  }
+
   // P1-a 只读：今日计划指令 + 执行状态（后端在读取时幂等物化并推导状态）。
   // 只查本地 SQLite；作战台 5s 轮询调用，失败保持空态不打断其它刷新。
   async function refreshInstructions() {
     try {
-      const r = await invoke<{ instructions: InstructionRow[] }>("workflow_instructions", {
-        tradeDate: todayStr(),
-      });
-      instructions.value = r?.instructions ?? [];
+      const r = await invoke<{ plan: BattlePlan | null; instructions: InstructionRow[] }>(
+        "workflow_instructions",
+        { tradeDate: todayStr() },
+      );
+      instructions.value = withAlertRules(r?.instructions ?? [], r?.plan ?? null);
     } catch {
       instructions.value = [];
+    }
+  }
+
+  /**
+   * P1-b 行内编辑：保存触发条件（后端合并规则、作废旧条件单，计划日当天立即重建）。
+   * 返回最新指令列表；失败抛中文错误，由作战台回填到编辑面板。
+   */
+  async function saveInstructionTrigger(
+    instrId: number,
+    rule: AlertRule,
+  ): Promise<InstructionRow[]> {
+    try {
+      const r = await invoke<{ plan: BattlePlan | null; instructions: InstructionRow[] }>(
+        "workflow_instruction_trigger_set",
+        { instrId, rule },
+      );
+      instructions.value = withAlertRules(r?.instructions ?? [], r?.plan ?? null);
+      return instructions.value;
+    } catch (e) {
+      throw new Error(invokeErrorText(e, "保存触发条件失败"));
+    }
+  }
+
+  /**
+   * P1-b 触发后一键下单：确认并提交触发时生成的信号票（不新建第二张票）。
+   * 唯一提交入口 submit_with_sig 与全部风控闸门都在后端；成功后由调用方刷新列表。
+   */
+  async function confirmSubmitInstruction(ticketId: number): Promise<BrokerOrderInfo> {
+    try {
+      return await invoke<BrokerOrderInfo>("broker_confirm_submit", {
+        ticketId,
+        price: null,
+        vol: null,
+      });
+    } catch (e) {
+      throw new Error(invokeErrorText(e, "确认下单失败"));
     }
   }
 
@@ -1035,6 +1095,8 @@ export const useWorkflowStore = defineStore("workflow", () => {
     planGenerate,
     planConfirm,
     refreshInstructions,
+    saveInstructionTrigger,
+    confirmSubmitInstruction,
     demoMode,
     runDemo,
     runAfterClosePipeline,
