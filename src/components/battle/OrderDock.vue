@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { brokerQueryPosition, brokerQuickOrder, type BrokerStatus } from "../../broker/api";
 import { fetchOrderBook } from "../../api/market";
+import { recordOrderTiming } from "../../broker/timing";
 import { useQuotesStore } from "../../stores/quotes";
 import { toast } from "../../composables/useToast";
 import { useActions } from "../../composables/useActions";
@@ -139,8 +140,12 @@ async function submit() {
   if (!canSubmit.value || busy.value) return;
   busy.value = true;
   lastMsg.value = "";
+  // P2-a 耗时埋点：从确认点击到 broker 返回；成功 / 失败都记录，仅作体验指标。
+  const startedAt = performance.now();
+  let ok = false;
   try {
     const info = await brokerQuickOrder(code.value, side.value, price.value, vol.value, position.value);
+    ok = true;
     lastMsg.value = `已提交 ${info.sigId}`;
     toast.success(`${side.value === "BUY" ? "买入" : "卖出"}委托已提交：${code.value} ${vol.value} 股`);
     confirmOpen.value = false;
@@ -151,6 +156,7 @@ async function submit() {
     toast.error(lastMsg.value);
   } finally {
     busy.value = false;
+    recordOrderTiming({ ms: performance.now() - startedAt, clicks: 2, ok });
   }
 }
 

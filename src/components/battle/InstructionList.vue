@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { confirmDialog } from "../../composables/useDialog";
+import { recordOrderTiming } from "../../broker/timing";
 import InstructionEditor from "./InstructionEditor.vue";
 import {
   canSubmitInstruction,
@@ -34,6 +35,9 @@ const editingId = ref(0);
 const saving = ref(false);
 const editorError = ref("");
 const submittingId = ref(0);
+// P2-a 耗时埋点：确认点击 → 父级 store 返回（finishSubmit）为一次下单耗时。
+let submitStartedAt = -1;
+let submitTicketId = 0;
 // 只展示前 5 条（与 P1-a 一致，保持作战台一屏紧凑）；表头计数仍是全量。
 const visibleRows = computed(() => props.rows.slice(0, 5));
 
@@ -84,6 +88,8 @@ async function askSubmit(r: InstructionRow) {
   });
   if (!ok) return;
   submittingId.value = r.ticketId;
+  submitStartedAt = performance.now();
+  submitTicketId = r.ticketId;
   emit("submit", r.ticketId);
 }
 
@@ -97,11 +103,24 @@ function finishEdit(instrId: number, error = "") {
   }
   closeEdit();
 }
-/** 父级提交结束回调：解除「提交中…」并允许重试。 */
-function finishSubmit(ticketId: number) {
-  if (submittingId.value === ticketId) submittingId.value = 0;
+/** 父级在 store resolve 后立即调用：只结算耗时（成功/失败都记），不解除「提交中…」。 */
+function settleSubmit(ticketId: number, ok: boolean) {
+  if (submitStartedAt >= 0 && submitTicketId === ticketId) {
+    recordOrderTiming({
+      ms: performance.now() - submitStartedAt,
+      clicks: 2,
+      ok,
+    });
+    submitStartedAt = -1;
+    submitTicketId = 0;
+  }
 }
-defineExpose({ finishEdit, finishSubmit });
+/** 父级整体结束回调：解除「提交中…」并兜底结算耗时（成功路径已结算，幂等）。 */
+function finishSubmit(ticketId: number, ok = true) {
+  if (submittingId.value === ticketId) submittingId.value = 0;
+  settleSubmit(ticketId, ok);
+}
+defineExpose({ finishEdit, finishSubmit, settleSubmit });
 </script>
 
 <template>

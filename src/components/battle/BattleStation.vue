@@ -11,6 +11,7 @@ import { useWorkflowStore, todayStr } from "../../stores/workflow";
 import { useQuotesStore } from "../../stores/quotes";
 import { toast } from "../../composables/useToast";
 import { confirmDialog } from "../../composables/useDialog";
+import { formatMs, orderTimingSummary, type OrderTimingSummary } from "../../broker/timing";
 import {
   brokerGetStatus,
   riskSnapshot,
@@ -24,6 +25,7 @@ const now = ref(new Date());
 const preview = ref<PhaseId | null>(null);
 const status = ref<BrokerStatus | null>(null);
 const snap = ref<RiskSnapshot | null>(null);
+const timing = ref<OrderTimingSummary | null>(null);
 const dock = ref<InstanceType<typeof OrderDock> | null>(null);
 const listRef = ref<InstanceType<typeof InstructionList> | null>(null);
 const instrMsg = ref("");
@@ -67,10 +69,18 @@ async function refresh() {
   } catch { /* 模拟盘未初始化时忽略 */ }
   // 指令列表随同一轮轮询刷新（只查本地库，不驱动同花顺 GUI）。
   void wf.refreshInstructions();
+  // P2-a 下单耗时：放在 await 之后读取，确保本轮下单产生的记录已落盘；无记录时隐藏。
+  timing.value = orderTimingSummary();
 }
 
 const state = computed(() => computePhase(now.value));
 const hit = computed(() => formatHitRate(wf.hitRate));
+// P2-a 下单耗时文案：`最近下单 1.2s · 2 击 · 中位 1.5s`，无样本时不渲染。
+const timingText = computed(() => {
+  const t = timing.value;
+  if (!t) return "";
+  return `最近下单 ${formatMs(t.lastMs)} · ${t.clicks} 击 · 中位 ${formatMs(t.medianMs)}`;
+});
 const cash = computed(() => snap.value?.cash ?? 0);
 const pct = computed(() => (snap.value?.positionPct ?? 0).toFixed(1));
 
@@ -139,8 +149,13 @@ async function onSaveTrigger(instrId: number, rule: AlertRule) {
 
 // P1-b 触发后一键下单：确认时只提交已有信号票，成功后刷新列表并显示结果。
 async function onSubmitTicket(ticketId: number) {
+  let ok = false;
   try {
     const info = await wf.confirmSubmitInstruction(ticketId);
+    ok = true;
+    // store 已 resolve：先结算耗时并刷新头部，不把随后的指令列表刷新算进下单耗时。
+    listRef.value?.settleSubmit(ticketId, true);
+    timing.value = orderTimingSummary();
     await wf.refreshInstructions();
     instrTone.value = "ok";
     instrMsg.value = `已提交：${info.code} ${info.side === "SELL" ? "卖出" : "买入"} ${info.vol} 股（${info.sigId}）`;
@@ -151,7 +166,9 @@ async function onSubmitTicket(ticketId: number) {
     instrMsg.value = `提交失败：${msg}`;
     toast.error(instrMsg.value);
   } finally {
-    listRef.value?.finishSubmit(ticketId);
+    // 解除「提交中…」；失败路径兜底结算耗时，成功路径已在上面结算（幂等）。
+    listRef.value?.finishSubmit(ticketId, ok);
+    if (!ok) timing.value = orderTimingSummary();
   }
 }
 
@@ -169,6 +186,13 @@ function money(n: number) {
         总资产 {{ money(snap?.equity ?? 0) }} · 现金 {{ money(cash) }} · 仓位 {{ pct }}%
       </span>
       <span data-testid="hit-rate" class="bts-hit mono" :title="hit.title">{{ hit.text }}</span>
+      <span
+        v-if="timing"
+        data-testid="order-timing"
+        class="bts-timing mono"
+        title="最近 20 笔「确认下单 → broker 返回」耗时（本地记录，不参与风控）"
+        >{{ timingText }}</span
+      >
       <button
         v-if="canConfirmPlan"
         type="button"
@@ -231,12 +255,16 @@ function money(n: number) {
 
 <style scoped>
 .bts { display: flex; flex-direction: column; gap: 10px; height: 100%; padding: 10px 12px; overflow: auto; }
-.bts-head { display: flex; align-items: baseline; gap: 10px; padding-right: 72px; }
+.bts-head { display: flex; align-items: baseline; gap: 10px; row-gap: 4px; flex-wrap: wrap; padding-right: 72px; }
 .bts-logo { font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: 1px; }
 .bts-sub { font-size: 11px; color: var(--text-dim); }
 .bts-acc { margin-left: auto; font-size: 11px; color: var(--text-dim); }
 .bts-hit {
   flex: none; font-size: 11px; color: var(--text-dim); white-space: nowrap; cursor: help;
+  padding: 1px 7px; border: 1px solid var(--border); border-radius: 999px;
+}
+.bts-timing {
+  flex: none; font-size: 11px; color: var(--text-dim); white-space: nowrap;
   padding: 1px 7px; border: 1px solid var(--border); border-radius: 999px;
 }
 .bts-plan-btn {

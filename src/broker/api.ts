@@ -282,6 +282,19 @@ export interface ReconReport {
 export function brokerReconcile(kind?: "intraday" | "open" | "close") {
   return invoke<ReconReport>("broker_reconcile", { kind: kind ?? null });
 }
+/**
+ * P2-a 对账状态常驻：`broker_recon_status` 返回体。
+ * `report` 为内存中最近一次对账报告，从未对账 / 重启后为 null；`conflict` 为后端当前冲突标记。
+ */
+export interface ReconStatus {
+  conflict: boolean;
+  connected: boolean;
+  kind: string;
+  report: ReconReport | null;
+}
+export function brokerReconStatus() {
+  return invoke<ReconStatus>("broker_recon_status");
+}
 export function brokerReconRecalibrate() {
   return invoke<void>("broker_recon_recalibrate");
 }

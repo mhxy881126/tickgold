@@ -2,11 +2,21 @@
 // P1-1 / P1-2 多源对账守卫（全局常驻）：
 // 券商 UI 实读持仓与本地「快照 + 成交流水」不符时，顶部琥珀横幅列差异，
 // 已暂停自动执行（run_loop 跳过）；以券商为唯一事实源，重新校准后恢复。
-import { ref, onMounted, onBeforeUnmount } from "vue";
+import { computed, ref, onMounted, onBeforeUnmount } from "vue";
 import { listen, emit, type UnlistenFn } from "@tauri-apps/api/event";
-import { brokerReconRecalibrate, type ReconReport } from "../broker/api";
+import {
+  brokerReconRecalibrate,
+  brokerReconStatus,
+  type ReconReport,
+  type ReconStatus,
+} from "../broker/api";
+import { reconChip } from "../broker/reconChip";
 
+// 冲突横幅只关心未匹配报告；chip 需要完整状态（含正常报告 / 后端冲突标记）。
 const report = ref<ReconReport | null>(null);
+const status = ref<ReconStatus | null>(null);
+const now = ref(Date.now());
+const chip = computed(() => reconChip(status.value, now.value));
 const busy = ref(false);
 const KIND_LABEL: Record<string, string> = {
   intraday: "即时对账",
@@ -23,7 +33,7 @@ async function recalibrate() {
   busy.value = true;
   try {
     await brokerReconRecalibrate();
-    report.value = null;
+    clearConflict();
   } catch (e) {
     console.error("[recon] recalibrate", e);
   } finally {
@@ -31,21 +41,67 @@ async function recalibrate() {
   }
 }
 
+/** 挂载时拉一次后端状态：chip 常驻需要完整报告与冲突标记，不能只依赖事件。 */
+async function loadStatus() {
+  try {
+    const s = await brokerReconStatus();
+    // `conflict` 是后端当前冲突态；人工校准后旧报告仍在内存，未匹配但 conflict=false 视为已校准，
+    // 归一成「无报告」等待下一次对账，避免重挂载后误报「账实不符」。
+    const rep = s?.report && (s.report.matched || s.conflict) ? s.report : null;
+    status.value = s ? { ...s, report: rep } : null;
+    // 仅在仍处于冲突态时恢复横幅：已人工校准（conflict=false）的旧报告不再弹横幅。
+    report.value = s?.conflict && rep && !rep.matched ? rep : null;
+  } catch (e) {
+    // 浏览器 dev / 旧后端没有该命令时保持「未对账」，不打断其它横幅。
+    console.error("[recon] status", e);
+  }
+}
+
+/** 人工校准 / 后端通知已解除冲突：横幅收起，chip 回到「未对账」等待下一次报告。 */
+function clearConflict() {
+  report.value = null;
+  status.value = status.value ? { ...status.value, conflict: false, report: null } : null;
+}
+
 let un: UnlistenFn[] = [];
+let clock = 0;
 onMounted(() => {
+  void loadStatus();
+  clock = window.setInterval(() => { now.value = Date.now(); }, 30_000);
   listen<ReconReport>("broker:recon", (ev) => {
     const r = ev.payload;
-    if (r && !r.matched) report.value = r;
-    else if (r && r.matched) report.value = null;
+    // e2e fake / 旧后端可能推空对象：没有 matched 的报告不参与 chip。
+    if (!r || typeof r.matched !== "boolean") return;
+    status.value = {
+      conflict: !r.matched,
+      connected: status.value?.connected ?? false,
+      kind: r.kind || status.value?.kind || "",
+      report: r,
+    };
+    report.value = r.matched ? null : r;
   }).then((u) => un.push(u));
-  listen("broker:recon_resolved", () => {
-    report.value = null;
-  }).then((u) => un.push(u));
+  listen("broker:recon_resolved", clearConflict).then((u) => un.push(u));
 });
-onBeforeUnmount(() => un.forEach((u) => u()));
+onBeforeUnmount(() => {
+  un.forEach((u) => u());
+  window.clearInterval(clock);
+});
 </script>
 
 <template>
+  <!-- P2-a 对账状态常驻：正常 / 冲突 / 未对账都可见，点击打开券商控制台。 -->
+  <button
+    type="button"
+    class="rg-chip"
+    :class="`tone-${chip.tone}`"
+    data-testid="recon-chip"
+    title="点击打开同花顺控制台核对对账状态"
+    @click="openBrokerConsole"
+  >
+    <span class="rg-chip-dot"></span>
+    {{ chip.label }}
+  </button>
+
   <transition name="rg-fade">
     <div v-if="report" class="rg-bar">
       <div class="rg-main">
@@ -115,4 +171,22 @@ onBeforeUnmount(() => un.forEach((u) => u()));
 .rg-btn:disabled { opacity: .5; cursor: not-allowed; }
 .rg-fade-enter-active, .rg-fade-leave-active { transition: opacity .2s; }
 .rg-fade-enter-from, .rg-fade-leave-to { opacity: 0; }
+/* P2-a 常驻 chip：固定右下角，低于添加卡片菜单 / 弹窗层级，不遮挡交互。 */
+.rg-chip {
+  position: fixed; right: 12px; bottom: 12px; z-index: 60;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 999px;
+  font-family: inherit; font-size: 11px; font-weight: 600;
+  color: var(--text-dim); background: rgba(12, 15, 21, .88);
+  border: 1px solid var(--border); cursor: pointer;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
+}
+.rg-chip:hover { filter: brightness(1.15); }
+.rg-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .9; }
+.rg-chip.tone-ok { color: #3dd68a; border-color: rgba(61, 214, 138, .45); }
+.rg-chip.tone-bad { color: #ff8a8a; border-color: rgba(255, 90, 106, .6); }
+.rg-chip.tone-bad .rg-chip-dot { animation: rg-chip-blink 1s infinite; }
+.rg-chip.tone-muted { color: var(--text-dim); }
+@keyframes rg-chip-blink { 50% { opacity: .25; } }
 </style>
