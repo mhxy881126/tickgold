@@ -688,8 +688,9 @@ fn materialize_paused(app: &AppHandle) -> bool {
 /// `scope` 决定取哪份计划：
 /// - `Some("today")`：作战台用，今天优先（与 `workflow_instructions` 同一份计划）；
 /// - `Some("next")` / 其它未知值：保持「下一交易日」原语义（盘后确认流程）；
-/// - 缺省：早盘提醒路径。今日作战卡存在且未确认时取今天（让 8:45 的驾驶舱直接看到
-///   待确认作战卡），否则回落到下一交易日。
+/// - 缺省：8:45 提醒 / 新版作战台。三级回退：今日未确认 → 今日（待确认卡直接可见）；
+///   否则下一交易日有计划 → 下一交易日（盘后确认明日卡）；否则回到今日已确认计划
+///   （盘中 PhasePanel 仍显示今日计划 chips）。
 #[tauri::command]
 pub fn workflow_p1_products(
     app: AppHandle,
@@ -756,10 +757,21 @@ fn resolve_plan(c: &Connection, date: &str) -> Option<(i64, Value)> {
     plan::plan_to_json(c, pid).ok().map(|p| (pid, p))
 }
 
+/// 按计划日取计划 JSON；无该日计划或表结构缺失 → None。
+fn plan_on(c: &Connection, plan_date: &str) -> Option<(i64, Value)> {
+    let pid = plan_id_on(c, plan_date)?;
+    plan::plan_to_json(c, pid).ok().map(|p| (pid, p))
+}
+
+/// 今日计划（无论状态）：缺省三级回退的最后一级，保证盘中 PhasePanel 仍有今日 chips。
+fn today_plan(c: &Connection) -> Option<(i64, Value)> {
+    plan_on(c, &crate::broker::conditional::today_dashed())
+}
+
 /// 今日未确认计划（早盘确认入口）：无今日计划或已 confirmed → None。
 ///
 /// 「今天」与 `instruction_plan_id` / `materialize_today` 同口径取北京日期，
-/// 避免跨时区时读到错的计划日；只对未确认计划生效，已确认计划仍走下一交易日语义。
+/// 避免跨时区时读到错的计划日；只对未确认计划生效。
 fn unconfirmed_today_plan(c: &Connection) -> Option<(i64, Value)> {
     let today = crate::broker::conditional::today_dashed();
     let pid = plan_id_on(c, &today)?;
@@ -772,13 +784,16 @@ fn unconfirmed_today_plan(c: &Connection) -> Option<(i64, Value)> {
     plan::plan_to_json(c, pid).ok().map(|p| (pid, p))
 }
 
-/// 作战卡取计划：`scope` 显式选择语义，缺省走「早盘优先今日未确认」启发式。
+/// 作战卡取计划：`scope` 显式选择语义，缺省走三级回退。
 ///
-/// 三种语义都只保留一个真相源：
-/// - 作战台（`scope="today"`）：与 InstructionList 指向同一份计划；
-/// - 缺省（8:45 提醒后的驾驶舱）：今日作战卡未确认 → 今天，让待确认卡直接可见；
-///   （今日已确认 / 无今日计划 → 下一交易日，不遮挡盘后确认入口）
-/// - `scope="next"`（驾驶舱 ③ 盘后确认）：下一交易日，保持原语义不被今天已确认的计划遮住。
+/// 缺省（8:45 提醒 / 新版作战台）按顺序：
+/// 1. 今日未确认 → 今日（待确认卡直接可见）；
+/// 2. 下一交易日有计划 → 下一交易日（盘后确认明日卡）；
+/// 3. 都没有 → 今日已确认计划（盘中 PhasePanel 仍显示今日 chips）。
+///
+/// 显式语义不变：
+/// - 作战台（`scope="today"`）：与 InstructionList 同源（今天优先，其次下一交易日）；
+/// - `scope="next"` / 未知值：只取下一交易日，不被今日已确认计划遮住。
 fn products_plan(c: &Connection, date: &str, scope: Option<&str>) -> Option<(i64, Value)> {
     match scope {
         Some("today") => return resolve_plan(c, date),
@@ -786,12 +801,17 @@ fn products_plan(c: &Connection, date: &str, scope: Option<&str>) -> Option<(i64
             if let Some(hit) = unconfirmed_today_plan(c) {
                 return Some(hit);
             }
+            if let Some(hit) = plan_on(c, &plan::next_trade_date(date)) {
+                return Some(hit);
+            }
+            // 三级兜底：盘中今日计划已确认且明日尚未生成时，仍回显今日计划，
+            // 避免 PhasePanel 计划 chips 在盘中消失。
+            return today_plan(c);
         }
         // "next" 与未知值保持原行为：只取下一交易日。
         Some(_) => {}
     }
-    let pid = plan_id_on(c, &plan::next_trade_date(date))?;
-    plan::plan_to_json(c, pid).ok().map(|p| (pid, p))
+    plan_on(c, &plan::next_trade_date(date))
 }
 
 /// P1-a：作战台只读指令列表（状态由条件单 / 信号票 / 委托在读取时推导，不落库）。
@@ -1072,6 +1092,57 @@ mod tests {
             products_plan(&c, base, None).map(|(id, _)| id),
             Some(next_id),
             "今日已确认 → 缺省仍取下一交易日"
+        );
+    }
+
+    #[test]
+    fn products_default_three_level_fallback() {
+        let c = conn_with_plan_tables();
+        let base = "2999-01-01";
+        let next = plan::next_trade_date(base);
+        let today = crate::broker::conditional::today_dashed();
+
+        // ① 今日 draft + 明日 draft：今日待确认优先。
+        c.execute(
+            "INSERT INTO plan(plan_date,title,status) VALUES(?1,'今日作战卡','draft')",
+            [&today],
+        )
+        .unwrap();
+        let today_id = c.last_insert_rowid();
+        c.execute(
+            "INSERT INTO plan(plan_date,title,status) VALUES(?1,'明日作战卡','draft')",
+            [&next],
+        )
+        .unwrap();
+        let next_id = c.last_insert_rowid();
+        assert_eq!(
+            products_plan(&c, base, None).map(|(id, _)| id),
+            Some(today_id),
+            "今日 draft → 缺省返回今日"
+        );
+
+        // ② 今日 confirmed + 明日 draft：返回明日（盘后确认入口）。
+        c.execute("UPDATE plan SET status='confirmed' WHERE id=?1", [today_id])
+            .unwrap();
+        assert_eq!(
+            products_plan(&c, base, None).map(|(id, _)| id),
+            Some(next_id),
+            "今日 confirmed + 明日 draft → 缺省返回明日"
+        );
+
+        // ③ 今日 confirmed + 明日无计划：回退今日，保证盘中 PhasePanel chips 仍回显。
+        c.execute("DELETE FROM plan WHERE id=?1", [next_id]).unwrap();
+        let (pid, plan) = products_plan(&c, base, None).expect("缺省应回退今日已确认计划");
+        assert_eq!(pid, today_id, "今日 confirmed + 明日无计划 → 缺省返回今日");
+        assert_eq!(plan["status"].as_str(), Some("confirmed"));
+        assert_eq!(plan["planDate"].as_str(), Some(today.as_str()));
+
+        // 显式 scope 不受三级回退影响：next 仍只取明日（此时无计划 → None）。
+        assert_eq!(products_plan(&c, base, Some("next")).map(|(id, _)| id), None);
+        // 显式 today 仍取今日（与指令列表同源）。
+        assert_eq!(
+            products_plan(&c, base, Some("today")).map(|(id, _)| id),
+            Some(today_id)
         );
     }
 
