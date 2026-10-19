@@ -6,6 +6,7 @@ import InstructionList from "./InstructionList.vue";
 import OrderDock from "./OrderDock.vue";
 import { computePhase, type PhaseId } from "./useBattlePhase";
 import type { AlertRule } from "./instructionModel";
+import { formatHitRate } from "./hitRateModel";
 import { useWorkflowStore } from "../../stores/workflow";
 import { useQuotesStore } from "../../stores/quotes";
 import { toast } from "../../composables/useToast";
@@ -28,11 +29,15 @@ const instrMsg = ref("");
 const instrTone = ref<"ok" | "bad">("ok");
 let clock = 0;
 let poll = 0;
+let hitPoll = 0;
 let disposed = false;
 
 onMounted(async () => {
   // 作战台与指令列表同口径：取「今天优先」的计划（驾驶舱③仍走默认 next）。
   void wf.loadToday("today");
+  // P1-c 命中率：挂载取一次，之后每 5 分钟刷新（不随 5s 指令轮询打行情接口）。
+  void wf.loadHitRate();
+  hitPoll = window.setInterval(() => { void wf.loadHitRate(); }, 5 * 60 * 1000);
   clock = window.setInterval(() => { now.value = new Date(); }, 1000);
   // 定时器先挂上再 await：否则首次请求期间组件被卸载会漏掉 poll 的清理。
   poll = window.setInterval(refresh, 5000);
@@ -42,6 +47,7 @@ onBeforeUnmount(() => {
   disposed = true;
   window.clearInterval(clock);
   window.clearInterval(poll);
+  window.clearInterval(hitPoll);
 });
 
 // 只轮询本地状态：同花顺通道的 broker_query_position 会激活交易窗口并抢焦点（同 BrokerConsole 不自动刷新），
@@ -62,6 +68,7 @@ async function refresh() {
 }
 
 const state = computed(() => computePhase(now.value));
+const hit = computed(() => formatHitRate(wf.hitRate));
 const cash = computed(() => snap.value?.cash ?? 0);
 const pct = computed(() => (snap.value?.positionPct ?? 0).toFixed(1));
 
@@ -118,6 +125,7 @@ function money(n: number) {
       <span class="bts-acc mono">
         总资产 {{ money(snap?.equity ?? 0) }} · 现金 {{ money(cash) }} · 仓位 {{ pct }}%
       </span>
+      <span data-testid="hit-rate" class="bts-hit mono" :title="hit.title">{{ hit.text }}</span>
     </header>
 
     <PhaseTimeline :state="state" :preview="preview" @preview="preview = $event" />
@@ -152,6 +160,10 @@ function money(n: number) {
 .bts-logo { font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: 1px; }
 .bts-sub { font-size: 11px; color: var(--text-dim); }
 .bts-acc { margin-left: auto; font-size: 11px; color: var(--text-dim); }
+.bts-hit {
+  flex: none; font-size: 11px; color: var(--text-dim); white-space: nowrap; cursor: help;
+  padding: 1px 7px; border: 1px solid var(--border); border-radius: 999px;
+}
 .bts-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
 .mono { font-variant-numeric: tabular-nums; }
 </style>

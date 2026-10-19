@@ -312,6 +312,7 @@ pub fn run() {
             ai::workflow_p1::workflow_plan_confirm,
             ai::workflow_p1::workflow_p1_products,
             ai::workflow_p1::workflow_instructions,
+            ai::hitrate::workflow_hit_rate,
             ai::instruction::workflow_instruction_trigger_set,
             ai::workflow_p2::workflow_watch_start,
             ai::workflow_p2::workflow_execute_status,

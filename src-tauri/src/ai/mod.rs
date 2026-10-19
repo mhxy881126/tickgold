@@ -11,6 +11,7 @@ pub mod daily_schedule;
 pub mod decision;
 pub mod evolution;
 pub mod fastbrain;
+pub mod hitrate;
 pub mod ingest;
 pub mod instruction;
 pub mod intraday;

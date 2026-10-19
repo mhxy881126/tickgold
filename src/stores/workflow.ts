@@ -5,6 +5,7 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import type { AlertRule, InstructionRow } from "../components/battle/instructionModel";
+import type { HitRate } from "../components/battle/hitRateModel";
 import type { BrokerOrderInfo } from "../broker/api";
 
 export type StepStatus = "todo" | "doing" | "done";
@@ -405,6 +406,8 @@ export const useWorkflowStore = defineStore("workflow", () => {
   const alertsCreated = ref(0);
   // P1-a 指令列表：执行状态由后端读取时推导，前端只做展示与轮询。
   const instructions = ref<InstructionRow[]>([]);
+  // P1-c 命中率：近 N 个有计划的交易日触发率 / 执行率 / 胜率（作战台头部）。
+  const hitRate = ref<HitRate | null>(null);
 
   // P2 盯盘执行层状态
   const watchStarted = ref(false);
@@ -684,6 +687,20 @@ export const useWorkflowStore = defineStore("workflow", () => {
       instructions.value = withAlertRules(r?.instructions ?? [], r?.plan ?? null);
     } catch {
       instructions.value = [];
+    }
+  }
+
+  /**
+   * P1-c 命中率：近 N 日触发率 / 执行率 / 胜率（后端按成交后现价浮盈口径统计）。
+   * 只随作战台挂载与 5 分钟定时调用，不进入 5s 指令轮询；失败保留上次结果。
+   */
+  async function loadHitRate(days = 20) {
+    try {
+      const r = await invoke<HitRate>("workflow_hit_rate", { days });
+      // e2e fake / 旧后端可能返回空数组：非对象一律按无样本处理。
+      hitRate.value = r && typeof r === "object" && !Array.isArray(r) ? r : null;
+    } catch {
+      /* 行情或后端未就绪：保持上次结果，不打断作战台其它刷新 */
     }
   }
 
@@ -1070,6 +1087,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
     planConfirmed,
     alertsCreated,
     instructions,
+    hitRate,
     // P2 执行层
     watchStarted,
     watchCount,
@@ -1095,6 +1113,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
     planGenerate,
     planConfirm,
     refreshInstructions,
+    loadHitRate,
     saveInstructionTrigger,
     confirmSubmitInstruction,
     demoMode,

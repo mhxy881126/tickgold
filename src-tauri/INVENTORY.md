@@ -365,6 +365,14 @@
 > 数据表：本阶段无新增迁移（仍 v60）。
 > 验证：cargo check / clippy -D warnings 0 警告、cargo test 通过、vue-tsc 0 错、vitest 710 passed、vite build 成功。
 
+> **P1-c 命中率（模块 ai::hitrate，实际注册总数 244）新增 1 个命令**：
+> - workflow_hit_rate(days?)（只读：近 N 个有计划的交易日按 candidate/trigger 指令统计触发率 / 执行率 / 胜率；
+>   胜率按 broker_order.status='filled' 与 tencent::quotes 当前价的浮盈口径，无样本百分比为 null；
+>   days 缺省 20，样本数随命令返回供作战台「样本不足」判定）
+>
+> 实现：src-tauri/src/ai/hitrate.rs（纯函数 compute + 命令 workflow_hit_rate），无新增迁移；
+> 前端 src/components/battle/hitRateModel.ts 格式化 + BattleStation 头部展示。
+
 ---
 
 ## 二、数据库迁移：62 条（主库 sqlite:stock-dock.db）
