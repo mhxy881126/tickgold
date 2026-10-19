@@ -305,6 +305,8 @@ Expected: FAIL（`materialize_plan` 未定义）
 
 - [ ] **Step 3: 实现物化**
 
+> 注：Task 1 的 `leaves_from_alert_rule` 已实现**方向互斥**（突破优先，其次回踩），不会同时下发上下阈值；物化直接复用即可。
+
 在 `instruction.rs` 追加：
 
 ```rust

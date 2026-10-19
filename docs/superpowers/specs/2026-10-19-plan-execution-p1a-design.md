@@ -63,6 +63,7 @@ P1-a 把「作战卡指令」接进已有的条件单触发引擎，并让作战
 | `brokenLimit` | `broken` | `gte` | 炸板 |
 
 - 一个 `alert_rule` 可产出多个叶子，数组内 AND。
+- **方向互斥**：同一条指令只物化一个方向——突破优先（`upPrice` → `upPct`），其次回踩（`downPrice` → `downPct`）；条件单叶子是 AND，同时下发上下阈值会永不触发。
 - 没有任何可映射叶子 → 该指令保持「仅观察」，不建条件单。
 - 数量 `vol` 取 `alert_rule.vol`（默认 100，且必须为 100 整数倍；非法则跳过并记 `note`）。
 - `side` 取 `alert_rule.side`（默认 `BUY`）。
