@@ -53,18 +53,18 @@ const todayBuys = computed(() =>
   (wf.execStatus?.fills.recent ?? []).filter((f) => f.side === "buy"),
 );
 const buyCount = computed(
-  () => st.value?.today.buyCount ?? todayBuys.value.length,
+  () => st.value?.today?.buyCount ?? todayBuys.value.length,
 );
 
 // ② 赚亏多少：已实现盈亏（分→元）+ 当前资产 + 账户当日盈亏
-const pnlYuan = computed(() => (st.value?.today.pnlCents ?? 0) / 100);
-const assetYuan = computed(() => (st.value?.today.assetCents ?? 0) / 100);
+const pnlYuan = computed(() => (st.value?.today?.pnlCents ?? 0) / 100);
+const assetYuan = computed(() => (st.value?.today?.assetCents ?? 0) / 100);
 const dayPnl = computed(() => wf.account.dayPnl ?? 0);
 const dayPnlPct = computed(() => wf.account.dayPnlPct ?? 0);
 
 // ③ 为什么动：收盘小结 + 最近信号流
 const summaryText = computed(
-  () => st.value?.today.summary || wf.feedback?.conclusion || "",
+  () => st.value?.today?.summary || wf.feedback?.conclusion || "",
 );
 const recentSignals = computed(() => wf.execStatus?.signals.recent ?? []);
 
@@ -221,7 +221,7 @@ function fmtPnl(n: number) {
     <p v-if="pilot.error" class="pp-err">{{ pilot.error }}</p>
 
     <!-- 三问：买了什么 / 赚亏多少 / 为什么动 -->
-    <div v-if="!isOff || st?.today.scanCount" class="pp-questions">
+    <div v-if="!isOff || st?.today?.scanCount" class="pp-questions">
       <div class="pp-q">
         <div class="pp-q-head">
           <span class="pp-q-no">①</span>

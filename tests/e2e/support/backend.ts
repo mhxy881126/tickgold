@@ -323,23 +323,31 @@ const handlers: Record<string, Handler> = {
   win_close: () => "ok",
   // —— 作战台 P0：券商状态 / 下单条直下 / 风控快照 / 作战流产物 ——
   broker_get_status: () => fakeBrokerStatus,
-  broker_quick_order: (a) => ({
-    id: 1,
-    sigId: "QK1",
-    brokerKind: "mock",
-    brokerAccount: "SIM",
-    brokerOrderId: "QK1",
-    code: String(a?.code ?? ""),
-    side: String(a?.side ?? "BUY"),
-    price: Number(a?.price ?? 0),
-    vol: Number(a?.vol ?? 0),
-    status: "submitted",
-    filledVol: 0,
-    filledAvgPrice: 0,
-    errorMsg: "",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  }),
+  broker_quick_order: (a) => {
+    const code = String(a?.code ?? "");
+    const side = String(a?.side ?? "BUY");
+    const price = Number(a?.price ?? 0);
+    const vol = Number(a?.vol ?? 0);
+    // 记录页面侧最近一次下单参数：e2e 用来断言「只提交一次、参数正确」。
+    (window as unknown as { __FAKE_LAST_ORDER?: unknown }).__FAKE_LAST_ORDER = { code, side, price, vol };
+    return {
+      id: 1,
+      sigId: "QK1",
+      brokerKind: "mock",
+      brokerAccount: "SIM",
+      brokerOrderId: "QK1",
+      code,
+      side,
+      price,
+      vol,
+      status: "submitted",
+      filledVol: 0,
+      filledAvgPrice: 0,
+      errorMsg: "",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+  },
   risk_snapshot: () => ({
     equity: 1_000_000,
     cash: 1_000_000,
@@ -363,7 +371,7 @@ const handlers: Record<string, Handler> = {
     dailyLossPct: 0,
     consecutiveLosses: 0,
     warnings: [],
-    killSwitch: false,
+    killSwitch: Boolean(fakeBrokerStatus.killSwitch),
     positions: [],
   }),
   broker_query_position: () => ({

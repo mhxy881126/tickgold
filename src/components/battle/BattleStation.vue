@@ -8,7 +8,6 @@ import { useWorkflowStore } from "../../stores/workflow";
 import { useQuotesStore } from "../../stores/quotes";
 import {
   brokerGetStatus,
-  brokerQueryPosition,
   riskSnapshot,
   type BrokerStatus,
   type RiskSnapshot,
@@ -20,29 +19,37 @@ const now = ref(new Date());
 const preview = ref<PhaseId | null>(null);
 const status = ref<BrokerStatus | null>(null);
 const snap = ref<RiskSnapshot | null>(null);
-const positionList = ref<{ code: string; availVol: number }[]>([]);
 const dock = ref<InstanceType<typeof OrderDock> | null>(null);
 let clock = 0;
 let poll = 0;
+let disposed = false;
 
 onMounted(async () => {
   void wf.loadToday();
   clock = window.setInterval(() => { now.value = new Date(); }, 1000);
-  await refresh();
+  // 定时器先挂上再 await：否则首次请求期间组件被卸载会漏掉 poll 的清理。
   poll = window.setInterval(refresh, 5000);
+  await refresh();
 });
 onBeforeUnmount(() => {
+  disposed = true;
   window.clearInterval(clock);
   window.clearInterval(poll);
 });
 
+// 只轮询本地状态：同花顺通道的 broker_query_position 会激活交易窗口并抢焦点（同 BrokerConsole 不自动刷新），
+// 持仓改由 OrderDock 在用户点卖出仓位档时按需拉取。
 async function refresh() {
-  try { status.value = await brokerGetStatus(); } catch { /* 未连接时保持上次状态 */ }
-  try { snap.value = await riskSnapshot(); } catch { /* 模拟盘未初始化时忽略 */ }
   try {
-    const r = await brokerQueryPosition();
-    positionList.value = (r.positions ?? []).map((p) => ({ code: p.code, availVol: p.avail ?? 0 }));
-  } catch { positionList.value = []; }
+    const s = await brokerGetStatus();
+    if (disposed) return;
+    status.value = s;
+  } catch { /* 未连接时保持上次状态 */ }
+  try {
+    const r = await riskSnapshot();
+    if (disposed) return;
+    snap.value = r;
+  } catch { /* 模拟盘未初始化时忽略 */ }
 }
 
 const state = computed(() => computePhase(now.value));
@@ -80,7 +87,7 @@ function money(n: number) {
       />
     </div>
 
-    <OrderDock ref="dock" :status="status" :cash="cash" :positions="positionList" @ordered="refresh" />
+    <OrderDock ref="dock" :status="status" :cash="cash" @ordered="refresh" />
   </div>
 </template>
 

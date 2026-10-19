@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { brokerQuickOrder, type BrokerStatus } from "../../broker/api";
+import { brokerQueryPosition, brokerQuickOrder, type BrokerStatus } from "../../broker/api";
 import { fetchOrderBook } from "../../api/market";
 import { useQuotesStore } from "../../stores/quotes";
 import { toast } from "../../composables/useToast";
+import { useActions } from "../../composables/useActions";
 import {
   canSubmitQuickOrder,
   limitPrices,
@@ -13,14 +14,10 @@ import {
 } from "./orderModel";
 import type { OrderBook } from "../../api/types";
 
-const props = withDefaults(
-  defineProps<{
-    status: BrokerStatus | null;
-    cash: number;
-    positions?: { code: string; availVol: number }[];
-  }>(),
-  { positions: () => [] },
-);
+const props = defineProps<{
+  status: BrokerStatus | null;
+  cash: number;
+}>();
 const emit = defineEmits<{ (e: "ordered"): void }>();
 
 const quotes = useQuotesStore();
@@ -47,14 +44,21 @@ const chips = computed(() => [
   { label: "跌停", value: limit.value.down },
 ]);
 
-// 仅实盘通道且已启用时才算 live（只用于徽标样式，不影响 modeText）。
-const live = computed(() => !!props.status && props.status.kind !== "mock" && props.status.liveEnabled);
-const warn = computed(() => {
-  const s = props.status;
-  if (!s) return false;
-  return s.killSwitch || (s.kind !== "mock" && !s.liveEnabled);
-});
-const blocked = computed(() => !props.status || props.status.killSwitch || !props.status.connected);
+// 通道语义：mock 与客户端模拟窗口（同花顺模拟）都算模拟；只有真正的实盘通道才是实盘。
+// 出货默认 kind="client", clientSim=true，不能把「非 mock」一律当实盘。
+const isSim = computed(
+  () =>
+    !!props.status &&
+    (props.status.kind === "mock" ||
+      (props.status.kind === "client" && (props.status.clientSim || props.status.windowSim === true))),
+);
+const isRealLive = computed(() => !!props.status && !isSim.value);
+// 仅真正的实盘通道且已启用实盘开关时点亮实盘样式。
+const live = computed(() => isRealLive.value && props.status?.liveEnabled === true);
+// 实盘未启用：徽标红字 + 前端直接拦截（验收 #4），提示去设置开启开关与白名单。
+const liveDisabled = computed(() => isRealLive.value && props.status?.liveEnabled !== true);
+const dead = computed(() => !props.status || props.status.killSwitch || !props.status.connected);
+const blocked = computed(() => dead.value || liveDisabled.value);
 const canSubmit = computed(() =>
   canSubmitQuickOrder({ code: code.value, price: price.value, vol: vol.value, blocked: blocked.value }),
 );
@@ -62,13 +66,28 @@ const modeText = computed(() => {
   if (!props.status) return "未连接";
   if (props.status.killSwitch) return "已熔断";
   if (!props.status.connected) return "未连接";
-  return props.status.kind !== "mock"
-    ? props.status.liveEnabled
-      ? "实盘"
-      : "实盘未启用"
-    : "模拟";
+  if (isSim.value) return "模拟";
+  return props.status.liveEnabled ? "实盘" : "实盘未启用";
 });
 const amount = computed(() => price.value * vol.value);
+
+// 持仓仅在下单动作发生时按需拉取：默认同花顺通道的 broker_query_position 会激活交易窗口并抢焦点。
+let posCache: { at: number; list: { code: string; availVol: number }[] } | null = null;
+async function holdings() {
+  if (posCache && Date.now() - posCache.at < 30_000) return posCache.list;
+  const r = await brokerQueryPosition();
+  const list = (r.positions ?? []).map((p) => ({ code: p.code, availVol: p.avail ?? 0 }));
+  posCache = { at: Date.now(), list };
+  return list;
+}
+
+function openSettings() {
+  try {
+    useActions().list().find((x) => x.id === "app.settings")?.run();
+  } catch {
+    /* ignore */
+  }
+}
 
 async function loadBook(c: string) {
   if (!/^\d{6}$/.test(c)) return;
@@ -86,10 +105,17 @@ function onCodeInput() {
   book.value = null;
 }
 
-function applyPosition(p: PositionPct) {
+async function applyPosition(p: PositionPct) {
+  if (busy.value) return;
   position.value = p;
   if (side.value === "SELL") {
-    const availVol = props.positions.find((x) => x.code === code.value)?.availVol ?? 0;
+    let list: { code: string; availVol: number }[] = [];
+    try {
+      list = await holdings();
+    } catch {
+      list = [];
+    }
+    const availVol = list.find((x) => x.code === code.value)?.availVol ?? 0;
     const v = positionSellVolume(availVol, p);
     if (v <= 0) {
       lastMsg.value = "无可卖持仓，无法按仓位档下单";
@@ -174,8 +200,18 @@ defineExpose({ setCode });
       <button type="button" class="od-btn buy" data-testid="order-buy" :disabled="blocked" @click="openConfirm('BUY')">买入</button>
       <button type="button" class="od-btn sell" data-testid="order-sell" :disabled="blocked" @click="openConfirm('SELL')">卖出</button>
 
-      <span class="od-mode" :class="{ live: live && !blocked, dead: blocked, warn }" data-testid="order-mode">{{ modeText }}</span>
+      <span class="od-mode" :class="{ live: live && !dead, dead, warn: liveDisabled }" data-testid="order-mode">{{ modeText }}</span>
       <span v-if="lastMsg" class="od-msg" data-testid="order-msg">{{ lastMsg }}</span>
+    </div>
+
+    <div v-if="liveDisabled" class="od-hint" data-testid="order-live-hint">
+      <span>实盘未启用：请先到「设置 → 券商」开启实盘开关并配置白名单</span>
+      <button
+        type="button"
+        class="od-chip od-hint-open"
+        data-testid="order-live-hint-settings"
+        @click="openSettings"
+      >打开设置</button>
     </div>
 
     <div v-if="confirmOpen" class="od-mask" @click.self="confirmOpen = false">
@@ -219,9 +255,11 @@ defineExpose({ setCode });
 .od-btn.ghost { background: transparent; }
 .od-mode { margin-left: auto; font-size: 10.5px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-dim); }
 .od-mode.live { color: var(--up); border-color: var(--up); }
-.od-mode.dead { color: var(--text-dim); opacity: .8; }
 .od-mode.warn { color: var(--up); border-color: var(--up); }
+.od-mode.dead { color: var(--text-dim); opacity: .8; }
 .od-msg { font-size: 11px; color: var(--text-dim); }
+.od-hint { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: 11px; color: var(--up); }
+.od-hint-open { flex: none; color: var(--up); border-color: var(--up); }
 .od-mask { position: fixed; inset: 0; background: rgba(5,7,11,.55); display: flex; align-items: center; justify-content: center; z-index: 400; }
 .od-confirm { width: 340px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
 .od-confirm h4 { margin: 0 0 10px; font-size: 13px; }
