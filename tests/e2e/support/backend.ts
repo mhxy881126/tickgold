@@ -1,6 +1,7 @@
 // 浏览器 E2E 的假后端：invoke 命令注册表 + 内存版 SQLite。
 // 让 Vite 构建的前端在没有 Tauri 运行时时也能跑通启动与关键交互。
 import type { Quote, KBar } from "../../../src/api/types";
+import type { BrokerOrderInfo } from "../../../src/broker/api";
 
 type Row = Record<string, unknown>;
 
@@ -260,10 +261,14 @@ const fakePlan = {
   status: "confirmed",
   instructions: [] as Record<string, unknown>[],
 };
-const fakeInstructions = [
-  { id: 1, tier: "candidate", code: "600519", name: "贵州茅台", condition: "", action: "", positionHint: "", coId: "CO1", triggerJson: '[{"field":"price","op":"gte","value":1680}]', state: "pending", triggeredAt: 0, filledVol: 0, filledAvgPrice: 0 },
-  { id: 2, tier: "trigger", code: "300750", name: "宁德时代", condition: "", action: "", positionHint: "", coId: "CO2", triggerJson: '[{"field":"pct","op":"gte","value":3}]', state: "triggered", triggeredAt: 1, filledVol: 0, filledAvgPrice: 0 },
-  { id: 3, tier: "candidate", code: "000001", name: "平安银行", condition: "", action: "", positionHint: "", coId: "CO3", triggerJson: "", state: "filled", triggeredAt: 1, filledVol: 100, filledAvgPrice: 12.3 },
+// —— P1-b：三行分别覆盖「待触发可编辑 / 已触发待确认下单 / 已成交已有委托」——
+// ticketId/ticketStatus/side/vol/price/autoConfirm/orderStatus/hasOrder 与 Rust list_instructions 对齐：
+// 行 2 是触发后自动执行关闭、票仍 pending 的状态，供「确认下单」用例提交；
+// 行 3 已有委托（hasOrder），用来锁定「不显示动作按钮、只显示委托状态」。
+const fakeInstructions: Record<string, unknown>[] = [
+  { id: 1, tier: "candidate", code: "600519", name: "贵州茅台", condition: "", action: "", positionHint: "", coId: "CO1", triggerJson: '[{"field":"price","op":"gte","value":1680}]', state: "pending", triggeredAt: 0, filledVol: 0, filledAvgPrice: 0, ticketId: 0, ticketStatus: "", side: "BUY", vol: 100, price: 1680, autoConfirm: true, orderStatus: "", hasOrder: false },
+  { id: 2, tier: "trigger", code: "300750", name: "宁德时代", condition: "", action: "", positionHint: "", coId: "CO2", triggerJson: '[{"field":"pct","op":"gte","value":3}]', state: "triggered", triggeredAt: 1, filledVol: 0, filledAvgPrice: 0, ticketId: 2, ticketStatus: "pending", side: "BUY", vol: 100, price: 189, autoConfirm: false, orderStatus: "", hasOrder: false },
+  { id: 3, tier: "candidate", code: "000001", name: "平安银行", condition: "", action: "", positionHint: "", coId: "CO3", triggerJson: "", state: "filled", triggeredAt: 1, filledVol: 100, filledAvgPrice: 12.3, ticketId: 3, ticketStatus: "done", side: "SELL", vol: 100, price: 12.3, autoConfirm: true, orderStatus: "filled", hasOrder: true },
 ];
 
 // —— invoke 命令注册表 ——
@@ -406,6 +411,49 @@ const handlers: Record<string, Handler> = {
   workflow_p2_products: () => ({ feedback: null, running: false, killSwitch: false }),
   // P1-a 指令列表：3 条覆盖待触发 / 已触发 / 已成交三种徽标与触发提示解析。
   workflow_instructions: () => ({ plan: fakePlan, instructions: fakeInstructions }),
+  // P1-b 行内编辑：记录保存参数，返回「旧条件单作废、按新规则重建」后的指令列表。
+  // 只改被编辑的那一行（state 回到待触发，触发价换成新值），其余行原样返回。
+  workflow_instruction_trigger_set: (a) => {
+    (window as unknown as { __FAKE_LAST_TRIGGER?: unknown }).__FAKE_LAST_TRIGGER = a;
+    const instrId = Number(a?.instrId ?? 0);
+    const rule = (a?.rule ?? {}) as Record<string, unknown>;
+    return {
+      plan: fakePlan,
+      instructions: fakeInstructions.map((r) => {
+        if (Number(r.id) !== instrId) return r;
+        const next: Record<string, unknown> = { ...r, state: "pending" };
+        if (typeof rule.autoConfirm === "boolean") next.autoConfirm = rule.autoConfirm;
+        const upPrice = Number(rule.upPrice);
+        if (Number.isFinite(upPrice) && upPrice > 0) {
+          next.price = upPrice;
+          next.triggerJson = JSON.stringify([{ field: "price", op: "gte", value: upPrice }]);
+        }
+        return next;
+      }),
+    };
+  },
+  // P1-b 触发后一键下单：记录提交参数（沿用触发时生成的票，不新建第二张），返回 mock 委托。
+  broker_confirm_submit: (a) => {
+    (window as unknown as { __FAKE_LAST_SUBMIT?: unknown }).__FAKE_LAST_SUBMIT = a;
+    const order: BrokerOrderInfo = {
+      id: 2,
+      sigId: "QK2",
+      brokerKind: "mock",
+      brokerAccount: "SIM",
+      brokerOrderId: "QK2",
+      code: "300750",
+      side: "BUY",
+      price: 189,
+      vol: 100,
+      status: "submitted",
+      filledVol: 0,
+      filledAvgPrice: 0,
+      errorMsg: "",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    return order;
+  },
   // 旧版六步驾驶舱（PilotPanel）挂载即读 pilot_status.today。缺该命令时假后端会回 []，
   // 模板 st?.today.scanCount 会因 st=[] 抛错并触发卡片错误边界（新旧切换用例点不到按钮）。
   pilot_status: () => ({

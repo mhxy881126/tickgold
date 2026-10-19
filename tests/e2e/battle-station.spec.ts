@@ -1,5 +1,6 @@
 // 作战台 P0 端到端验收：开盘时段高亮 / 倒计时、下单一次确认、熔断置灰、模拟/实盘徽标、
-// 实盘未启用前端拦截、新旧作战台切换，以及 P1-a 指令列表的状态徽标与触发提示。
+// 实盘未启用前端拦截、新旧作战台切换，P1-a 指令列表的状态徽标与触发提示，
+// 以及 P1-b 行内编辑触发条件 / 触发后一键下单 / 模拟盘自动开关。
 //
 // 熔断状态注入（重要）：`tests/e2e/support/backend.ts` 会被 Vite 的 e2e alias 打进浏览器 bundle，
 // 与 Node 侧的 Playwright 测试进程是两份模块实例——在 spec 里 import 任何 setter 都改不到页面状态。
@@ -171,4 +172,88 @@ test("指令列表展示状态与触发提示", async ({ page }) => {
   await expect(list).toContainText("已触发");
   await expect(list).toContainText("已成交");
   await expect(list).toContainText("≥1680.00");
+});
+
+// —— P1-b 执行闭环验收：行内编辑 / 触发后一键下单 / 模拟盘自动开关 ——
+
+test("行内编辑触发条件：改价格保存后条件单重建并回到待触发", async ({ page }) => {
+  await installOpenClock(page);
+  await openCockpit(page);
+
+  const list = page.getByTestId("instruction-list");
+  await expect(list.locator(".il-row")).toHaveCount(3);
+  // 只有待触发的第一行可编辑；已触发行只给「确认下单」，已成交行不给动作。
+  await expect(page.getByTestId("instr-edit")).toHaveCount(1);
+
+  await page.getByTestId("instr-edit").click();
+  const panel = page.getByTestId("instr-edit-panel");
+  await expect(panel).toBeVisible();
+  // 行上没有原始 alert_rule 时，面板由物化叶子（triggerJson）回填当前条件。
+  await expect(page.getByTestId("instr-up-price")).toHaveValue("1680");
+
+  await page.getByTestId("instr-up-price").fill("1690");
+  await page.getByTestId("instr-save").click();
+
+  // 保存成功：面板收起，列表按新规则回到「待触发」并显示新触发价。
+  await expect(panel).toHaveCount(0);
+  await expect(list.locator(".il-row").first()).toContainText("待触发");
+  await expect(list.locator(".il-row").first()).toContainText("≥1690.00");
+  await expect(page.getByTestId("instr-action-msg")).toContainText("触发条件已保存");
+
+  // fake 后端记录的是 { instrId, rule }：方向/数量按行回填，价格是用户改的新值。
+  const lastTrigger = await page.evaluate(
+    () => (window as unknown as { __FAKE_LAST_TRIGGER?: unknown }).__FAKE_LAST_TRIGGER,
+  );
+  expect(lastTrigger).toMatchObject({
+    instrId: 1,
+    rule: { upPrice: 1690, side: "BUY", vol: 100, autoConfirm: true },
+  });
+});
+
+test("触发后一键确认下单：一次确认提交已有信号票", async ({ page }) => {
+  await installOpenClock(page);
+  await openCockpit(page);
+
+  // 只有「已触发 + 票 pending」的第二行出现「确认下单」；按钮要等券商状态轮询完成才可点。
+  const submitBtn = page.getByTestId("instr-submit");
+  await expect(submitBtn).toHaveCount(1);
+  await expect(submitBtn).toBeEnabled();
+  await submitBtn.click();
+
+  // 一次确认：先弹 AppDialog，确认按钮文案「确认提交」与行内「确认下单」区分。
+  const dialog = page.getByRole("dialog", { name: "确认下单" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("宁德时代");
+  await expect(dialog).toContainText("不会新建第二张票");
+  await dialog.getByRole("button", { name: "确认提交" }).click();
+
+  // 提交成功：行内结果提示（沿用触发时生成的票，ticketId=2）。
+  await expect(page.getByTestId("instr-action-msg")).toContainText("已提交");
+  await expect(page.getByTestId("instr-action-msg")).toContainText("300750");
+
+  const lastSubmit = await page.evaluate(
+    () => (window as unknown as { __FAKE_LAST_SUBMIT?: unknown }).__FAKE_LAST_SUBMIT,
+  );
+  expect(lastSubmit).toMatchObject({ ticketId: 2, price: null, vol: null });
+});
+
+test("模拟盘自动执行可逐条关闭：autoConfirm=false 透传", async ({ page }) => {
+  await installOpenClock(page);
+  await openCockpit(page);
+
+  await page.getByTestId("instr-edit").click();
+  const panel = page.getByTestId("instr-edit-panel");
+  await expect(panel).toBeVisible();
+
+  // 行 1 缺省开启自动执行；取消勾选后保存必须把 false 透传给后端（只影响模拟盘）。
+  const auto = page.getByTestId("instr-auto-confirm");
+  await expect(auto).toBeChecked();
+  await auto.uncheck();
+  await page.getByTestId("instr-save").click();
+
+  await expect(panel).toHaveCount(0);
+  const lastTrigger = await page.evaluate(
+    () => (window as unknown as { __FAKE_LAST_TRIGGER?: unknown }).__FAKE_LAST_TRIGGER,
+  );
+  expect(lastTrigger).toMatchObject({ instrId: 1, rule: { autoConfirm: false } });
 });
