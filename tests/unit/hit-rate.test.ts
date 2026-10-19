@@ -6,7 +6,7 @@ import {
   type HitRate,
 } from "../../src/components/battle/hitRateModel";
 
-/** 默认一份「有足够样本」的命中率，用例只覆盖需要变化的字段。 */
+/** 默认一份「有足够有价样本」的命中率，用例只覆盖需要变化的字段。 */
 function hit(patch: Partial<HitRate> = {}): HitRate {
   return {
     days: DEFAULT_HIT_DAYS,
@@ -19,6 +19,7 @@ function hit(patch: Partial<HitRate> = {}): HitRate {
     wins: 7,
     winPct: 58,
     samples: 12,
+    pricedSamples: 12,
     ...patch,
   };
 }
@@ -29,7 +30,8 @@ describe("formatHitRate", () => {
     expect(r.text).toBe("样本不足");
     expect(r.title).toContain(`近${DEFAULT_HIT_DAYS}日`);
     expect(r.title).toContain("成交 0 笔");
-    expect(r.title).toContain("样本不足");
+    expect(r.title).toContain("可判价 0 笔");
+    expect(r.title).toContain("可判价样本不足");
     expect(r.title).toContain("浮盈");
   });
 
@@ -44,10 +46,12 @@ describe("formatHitRate", () => {
         wins: 0,
         winPct: 0,
         samples: 5,
+        pricedSamples: 5,
       }),
     );
     expect(r.text).toBe("近20日 触发 0% · 执行 0% · 胜率 0%");
     expect(r.title).toContain("指令 5 条");
+    expect(r.title).toContain("可判价 5 笔");
   });
 
   it("100% 边界仍出数字", () => {
@@ -57,6 +61,7 @@ describe("formatHitRate", () => {
         executedPct: 100,
         winPct: 100,
         samples: 4,
+        pricedSamples: 4,
       }),
     );
     expect(r.text).toContain("触发 100%");
@@ -64,7 +69,7 @@ describe("formatHitRate", () => {
     expect(r.text).toContain("胜率 100%");
   });
 
-  it("成交样本 <3 → 样本不足，但 title 显示完整计数", () => {
+  it("有价成交样本 <3 → 样本不足，但 title 显示完整计数", () => {
     const r = formatHitRate(
       hit({
         plans: 3,
@@ -76,18 +81,33 @@ describe("formatHitRate", () => {
         wins: 1,
         winPct: 50,
         samples: 2,
+        pricedSamples: 2,
       }),
     );
     expect(r.text).toBe("样本不足");
     expect(r.title).toContain("计划 3 个");
     expect(r.title).toContain("指令 8 条");
     expect(r.title).toContain("成交 2 笔");
+    expect(r.title).toContain("可判价 2 笔");
     expect(r.title).toContain("盈利 1 笔");
+  });
+
+  it("成交够但 pricedSamples=0（行情失败）→ 样本不足，不显示胜率 0%", () => {
+    const r = formatHitRate(hit({ samples: 12, pricedSamples: 0, wins: 0, winPct: null }));
+    expect(r.text).toBe("样本不足");
+    expect(r.title).toContain("成交 12 笔");
+    expect(r.title).toContain("可判价 0 笔");
   });
 
   it("百分比为 null → 样本不足（即使成交数够）", () => {
     const r = formatHitRate(hit({ triggeredPct: null, winPct: null }));
     expect(r.text).toBe("样本不足");
+  });
+
+  it("旧后端缺 pricedSamples 时回退到 samples，不整块降级", () => {
+    const r = formatHitRate(hit({ pricedSamples: undefined, samples: 12 }));
+    expect(r.text).toContain("胜率 58%");
+    expect(r.title).toContain("可判价 12 笔");
   });
 
   it("自定义 days 生效，缺省 days 回退 20", () => {

@@ -1,8 +1,9 @@
 // 作战台头部命中率文案（纯函数，node 可测）。
 // 百分比口径由后端 ai::hitrate 计算；前端只做空值/小样本降级与文案拼装。
 //
-// 展示规则（spec §四）：
-// - 无数据 / 样本 < 3 笔成交 → 「样本不足」，完整计数放进 title 供悬停查看；
+// 展示规则（spec §四 + 口径收紧）：
+// - 无数据 / **有价成交样本** < 3 笔 → 「样本不足」，完整计数放进 title 供悬停查看；
+//   行情缺失时后端 pricedSamples=0，不会把胜率显示成 0%；
 // - 有样本 → `近20日 触发 x% · 执行 y% · 胜率 z%`。
 
 /** `workflow_hit_rate` 返回结构（字段可能缺省：旧后端 / e2e fake）。 */
@@ -16,7 +17,10 @@ export interface HitRate {
   executedPct?: number | null;
   wins?: number;
   winPct?: number | null;
+  /** filled 成交总数（行情缺失也计数）。 */
   samples?: number;
+  /** 有当前价、可判浮盈的 filled 成交数；胜率分母 / 样本不足判定用。 */
+  pricedSamples?: number;
 }
 
 export interface HitRateText {
@@ -26,7 +30,7 @@ export interface HitRateText {
   title: string;
 }
 
-/** 低于该成交样本数不出百分比，避免 1 笔盈利就显示 100%。 */
+/** 低于该有价成交样本数不出百分比，避免 1 笔盈利就显示 100%。 */
 export const MIN_HIT_SAMPLES = 3;
 export const DEFAULT_HIT_DAYS = 20;
 
@@ -46,6 +50,11 @@ export function formatHitRate(hit: HitRate | null | undefined): HitRateText {
   const triggered = num(hit?.triggered);
   const executed = num(hit?.executed);
   const samples = num(hit?.samples);
+  // 旧后端 / 未升级 fake 没有 pricedSamples：回退到成交总数，避免整块退化成「样本不足」。
+  const pricedSamples =
+    typeof hit?.pricedSamples === "number" && Number.isFinite(hit.pricedSamples)
+      ? Math.max(0, Math.round(hit.pricedSamples))
+      : samples;
   const wins = num(hit?.wins);
   const triggeredPct = pctNum(hit?.triggeredPct);
   const executedPct = pctNum(hit?.executedPct);
@@ -53,18 +62,21 @@ export function formatHitRate(hit: HitRate | null | undefined): HitRateText {
 
   const counts =
     `计划 ${plans} 个 · 指令 ${instructions} 条 · 触发 ${triggered} 条 · ` +
-    `执行 ${executed} 条 · 成交 ${samples} 笔 · 盈利 ${wins} 笔`;
+    `执行 ${executed} 条 · 成交 ${samples} 笔 · 可判价 ${pricedSamples} 笔 · 盈利 ${wins} 笔`;
   const title = `近${days}日 ${counts}（胜率按成交后现价浮盈口径）`;
 
-  // 无返回 / 无成交样本 / 百分比缺失：一律不出数字，避免小样本误导。
+  // 无返回 / 有价样本不足 / 百分比缺失：一律不出数字，避免小样本或行情失败误导。
   const insufficient =
     !hit ||
-    samples < MIN_HIT_SAMPLES ||
+    pricedSamples < MIN_HIT_SAMPLES ||
     triggeredPct === null ||
     executedPct === null ||
     winPct === null;
   if (insufficient) {
-    return { text: "样本不足", title: `${title}（成交样本不足 ${MIN_HIT_SAMPLES} 笔，暂不展示百分比）` };
+    return {
+      text: "样本不足",
+      title: `${title}（可判价样本不足 ${MIN_HIT_SAMPLES} 笔，暂不展示百分比）`,
+    };
   }
   return {
     text: `近${days}日 触发 ${triggeredPct}% · 执行 ${executedPct}% · 胜率 ${winPct}%`,
