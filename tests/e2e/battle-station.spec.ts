@@ -1,6 +1,7 @@
 // 作战台 P0 端到端验收：开盘时段高亮 / 倒计时、下单一次确认、熔断置灰、模拟/实盘徽标、
 // 实盘未启用前端拦截、新旧作战台切换，P1-a 指令列表的状态徽标与触发提示，
-// 以及 P1-b 行内编辑触发条件 / 触发后一键下单 / 模拟盘自动开关。
+// 以及 P1-b 行内编辑触发条件 / 触发后一键下单 / 模拟盘自动开关，
+// P2-a 对账 chip（正常 / 冲突可跳转）与下单耗时展示。
 //
 // 熔断状态注入（重要）：`tests/e2e/support/backend.ts` 会被 Vite 的 e2e alias 打进浏览器 bundle，
 // 与 Node 侧的 Playwright 测试进程是两份模块实例——在 spec 里 import 任何 setter 都改不到页面状态。
@@ -25,6 +26,13 @@ async function seedBrokerStatus(page: Page, patch: FakeBrokerStatusPatch): Promi
 async function seedPlanConfirmed(page: Page): Promise<void> {
   await page.addInitScript(() => {
     (window as unknown as { __FAKE_PLAN_CONFIRMED?: boolean }).__FAKE_PLAN_CONFIRMED = true;
+  });
+}
+
+/** 页面加载前标记后端对账冲突：fake `broker_recon_status` 据此返回未匹配报告（chip 变「账实不符」）。 */
+async function seedReconConflict(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    (window as unknown as { __FAKE_RECON_CONFLICT?: boolean }).__FAKE_RECON_CONFLICT = true;
   });
 }
 
@@ -376,4 +384,55 @@ test("确认后可启动盯盘：watch-start 调用后端并显示已启动", as
 
   await expect(page.getByTestId("watch-start")).toHaveCount(0);
   await expect(page.getByTestId("watch-started")).toHaveText("盯盘已启动");
+});
+
+// —— P2-a 对账状态常驻 / 下单耗时验收 ——
+
+test("对账 chip 常驻显示对账正常", async ({ page }) => {
+  await installOpenClock(page);
+  await openCockpit(page);
+
+  // 假后端 `broker_recon_status` 默认返回 matched 报告：chip 必须常驻并给出「正常」结论。
+  const chip = page.getByTestId("recon-chip");
+  await expect(chip).toBeVisible();
+  await expect(chip).toContainText("对账正常");
+});
+
+test("对账冲突：chip 显示账实不符，点击打开券商控制台", async ({ page }) => {
+  await seedReconConflict(page);
+  await installOpenClock(page);
+  await openCockpit(page);
+
+  const chip = page.getByTestId("recon-chip");
+  await expect(chip).toBeVisible();
+  await expect(chip).toContainText("账实不符");
+
+  // chip 走 island:open-card → brokerconsole（与 ConnectionGuard 同路径）：卡片须被打开。
+  await chip.click();
+  const consoleCard = page.locator('.card-shell[data-card-id="brokerconsole"]');
+  await expect(consoleCard).toBeVisible();
+  await expect(consoleCard.locator(".card-title")).toHaveText("同花顺控制台");
+});
+
+test("下单耗时：确认下单成功后头部显示最近下单", async ({ page }) => {
+  await installOpenClock(page);
+  await openCockpit(page);
+
+  // 无耗时记录时头部不渲染（localStorage 按浏览器上下文隔离，本用例从空开始）。
+  await expect(page.getByTestId("order-timing")).toHaveCount(0);
+
+  // 复用既有「代码 → 买入 → 确认」三击下单链路，等盘口回填价格后再下单。
+  await page.getByTestId("order-code").fill("600519");
+  await page.getByTestId("order-code").blur();
+  await expect(page.getByTestId("order-dock").locator(".od-num").first()).toHaveValue("1680");
+  await page.getByTestId("order-buy").click();
+  await expect(page.getByTestId("order-confirm")).toBeVisible();
+  await page.getByTestId("order-confirm-ok").click();
+  await expect(page.getByTestId("order-msg")).toContainText("QK1");
+
+  // 只有 broker 成功返回才记录耗时；作战台 5s 轮询刷新头部，文本为「最近下单 … · 2 击」。
+  const timing = page.getByTestId("order-timing");
+  await expect(timing).toBeVisible({ timeout: 10_000 });
+  await expect(timing).toContainText("最近下单");
+  await expect(timing).toContainText("2 击");
 });

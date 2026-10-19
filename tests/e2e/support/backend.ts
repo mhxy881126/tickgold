@@ -25,6 +25,30 @@ let fakeBrokerStatus: Record<string, unknown> = {
   ...injectedBrokerStatus,
 };
 
+// —— P2-a 对账状态（常驻 chip / 冲突横幅用）——
+// 与 `__FAKE_BROKER_STATUS` 同理：本模块被 Vite 的 e2e alias 打进浏览器 bundle，
+// spec 里调用任何 setter 都改不到页面状态，统一由 page.addInitScript 预置页面级全局
+// `window.__FAKE_RECON_CONFLICT`（true = 后端处于「账实不符」冲突态）。
+const injectedReconConflict: boolean =
+  typeof window !== "undefined" &&
+  Boolean((window as unknown as { __FAKE_RECON_CONFLICT?: unknown }).__FAKE_RECON_CONFLICT);
+let fakeReconConflict = injectedReconConflict;
+
+/** 缺省「刚跑过一次即时对账且账实一致」；冲突态给未匹配报告，chip / 横幅据此变红。 */
+function fakeReconReport() {
+  const matched = !fakeReconConflict;
+  return {
+    kind: "intraday",
+    matched,
+    baseline: false,
+    checked: 3,
+    at: Date.now(),
+    diffs: matched
+      ? []
+      : [{ code: "600519", localVol: 1000, brokerVol: 900 }],
+  };
+}
+
 function quote(code: string, price: number, pct: number, name?: string): Quote {
   const n =
     name ??
@@ -364,6 +388,13 @@ const handlers: Record<string, Handler> = {
   win_close: () => "ok",
   // —— 作战台 P0：券商状态 / 下单条直下 / 风控快照 / 作战流产物 ——
   broker_get_status: () => fakeBrokerStatus,
+  // P2-a 对账状态：默认「即时对账通过」；`__FAKE_RECON_CONFLICT` 切冲突态（matched=false + 一条差异）。
+  broker_recon_status: () => ({
+    conflict: fakeReconConflict,
+    connected: true,
+    kind: "mock",
+    report: fakeReconReport(),
+  }),
   broker_quick_order: (a) => {
     const code = String(a?.code ?? "");
     const side = String(a?.side ?? "BUY");
