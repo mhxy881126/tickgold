@@ -17,6 +17,13 @@ export function positionVolume(cash: number, position: PositionPct, price: numbe
   return Math.floor((cash * ratio) / price / 100) * 100;
 }
 
+/** 卖出仓位档按可用持仓换算手数（向下取整到 100 股）。 */
+export function positionSellVolume(availVol: number, position: PositionPct): number {
+  if (availVol <= 0) return 0;
+  const ratio = position === 2 ? 0.5 : position === 3 ? 1 / 3 : 0.25;
+  return Math.floor((availVol * ratio) / 100) * 100;
+}
+
 export function canSubmitQuickOrder(a: {
   code: string;
   price: number;

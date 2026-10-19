@@ -4,10 +4,23 @@ import { brokerQuickOrder, type BrokerStatus } from "../../broker/api";
 import { fetchOrderBook } from "../../api/market";
 import { useQuotesStore } from "../../stores/quotes";
 import { toast } from "../../composables/useToast";
-import { canSubmitQuickOrder, limitPrices, positionVolume, type PositionPct } from "./orderModel";
+import {
+  canSubmitQuickOrder,
+  limitPrices,
+  positionSellVolume,
+  positionVolume,
+  type PositionPct,
+} from "./orderModel";
 import type { OrderBook } from "../../api/types";
 
-const props = defineProps<{ status: BrokerStatus | null; cash: number }>();
+const props = withDefaults(
+  defineProps<{
+    status: BrokerStatus | null;
+    cash: number;
+    positions?: { code: string; availVol: number }[];
+  }>(),
+  { positions: () => [] },
+);
 const emit = defineEmits<{ (e: "ordered"): void }>();
 
 const quotes = useQuotesStore();
@@ -34,7 +47,13 @@ const chips = computed(() => [
   { label: "跌停", value: limit.value.down },
 ]);
 
-const live = computed(() => !!props.status && props.status.kind !== "mock");
+// 仅实盘通道且已启用时才算 live（只用于徽标样式，不影响 modeText）。
+const live = computed(() => !!props.status && props.status.kind !== "mock" && props.status.liveEnabled);
+const warn = computed(() => {
+  const s = props.status;
+  if (!s) return false;
+  return s.killSwitch || (s.kind !== "mock" && !s.liveEnabled);
+});
 const blocked = computed(() => !props.status || props.status.killSwitch || !props.status.connected);
 const canSubmit = computed(() =>
   canSubmitQuickOrder({ code: code.value, price: price.value, vol: vol.value, blocked: blocked.value }),
@@ -43,7 +62,11 @@ const modeText = computed(() => {
   if (!props.status) return "未连接";
   if (props.status.killSwitch) return "已熔断";
   if (!props.status.connected) return "未连接";
-  return live.value ? (props.status.liveEnabled ? "实盘" : "实盘未启用") : "模拟";
+  return props.status.kind !== "mock"
+    ? props.status.liveEnabled
+      ? "实盘"
+      : "实盘未启用"
+    : "模拟";
 });
 const amount = computed(() => price.value * vol.value);
 
@@ -54,11 +77,27 @@ async function loadBook(c: string) {
     if (!price.value) price.value = book.value.price || 0;
   } catch {
     book.value = null;
+    lastMsg.value = "盘口读取失败，请手动填写价格";
   }
+}
+
+function onCodeInput() {
+  price.value = 0;
+  book.value = null;
 }
 
 function applyPosition(p: PositionPct) {
   position.value = p;
+  if (side.value === "SELL") {
+    const availVol = props.positions.find((x) => x.code === code.value)?.availVol ?? 0;
+    const v = positionSellVolume(availVol, p);
+    if (v <= 0) {
+      lastMsg.value = "无可卖持仓，无法按仓位档下单";
+      return;
+    }
+    vol.value = v;
+    return;
+  }
   const v = positionVolume(props.cash, p, price.value);
   if (v > 0) vol.value = v;
 }
@@ -81,7 +120,8 @@ async function submit() {
     confirmOpen.value = false;
     emit("ordered");
   } catch (e) {
-    lastMsg.value = String((e as Error)?.message ?? e);
+    const msg = String((e as Error)?.message ?? e).trim();
+    lastMsg.value = msg.startsWith("下单失败") ? msg : `下单失败：${msg}`;
     toast.error(lastMsg.value);
   } finally {
     busy.value = false;
@@ -106,6 +146,7 @@ defineExpose({ setCode });
         placeholder="代码"
         maxlength="6"
         inputmode="numeric"
+        @input="onCodeInput"
         @blur="loadBook(code)"
       />
       <span class="od-name">{{ name || "—" }}</span>
@@ -133,7 +174,7 @@ defineExpose({ setCode });
       <button type="button" class="od-btn buy" data-testid="order-buy" :disabled="blocked" @click="openConfirm('BUY')">买入</button>
       <button type="button" class="od-btn sell" data-testid="order-sell" :disabled="blocked" @click="openConfirm('SELL')">卖出</button>
 
-      <span class="od-mode" :class="{ live, dead: blocked }" data-testid="order-mode">{{ modeText }}</span>
+      <span class="od-mode" :class="{ live: live && !blocked, dead: blocked, warn }" data-testid="order-mode">{{ modeText }}</span>
       <span v-if="lastMsg" class="od-msg" data-testid="order-msg">{{ lastMsg }}</span>
     </div>
 
@@ -179,6 +220,7 @@ defineExpose({ setCode });
 .od-mode { margin-left: auto; font-size: 10.5px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-dim); }
 .od-mode.live { color: var(--up); border-color: var(--up); }
 .od-mode.dead { color: var(--text-dim); opacity: .8; }
+.od-mode.warn { color: var(--up); border-color: var(--up); }
 .od-msg { font-size: 11px; color: var(--text-dim); }
 .od-mask { position: fixed; inset: 0; background: rgba(5,7,11,.55); display: flex; align-items: center; justify-content: center; z-index: 400; }
 .od-confirm { width: 340px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }

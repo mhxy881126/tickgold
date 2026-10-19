@@ -3,6 +3,7 @@ import {
   boardRatio,
   canSubmitQuickOrder,
   limitPrices,
+  positionSellVolume,
   positionVolume,
 } from "../../src/components/battle/orderModel";
 
@@ -21,6 +22,13 @@ describe("orderModel", () => {
     expect(positionVolume(100_000, 4, 10)).toBe(2_500);
     expect(positionVolume(100, 2, 10)).toBe(0);
     expect(positionVolume(1_000_000, 3, 33)).toBe(10_100);
+  });
+
+  it("卖出仓位档按可用持仓换算手数（向下取整到 100 股）", () => {
+    expect(positionSellVolume(1_000, 2)).toBe(500);
+    expect(positionSellVolume(1_000, 3)).toBe(300);
+    expect(positionSellVolume(250, 4)).toBe(0);
+    expect(positionSellVolume(0, 2)).toBe(0);
   });
 
   it("提交校验：代码 / 价格 / 数量 / 熔断", () => {
