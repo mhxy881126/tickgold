@@ -16,6 +16,7 @@
 - 六步 `workflow` 引擎（`src-tauri/src/ai/workflow*.rs`）不改动，只在 UI 里隐藏。
 - 新增 Tauri 命令必须注册到 `src-tauri/src/lib.rs` 的 `invoke_handler`。
 - 前端一律 `pnpm`；提交信息使用 `feat(ui):` / `feat(broker):` / `chore:` 前缀。
+- Vitest 只跑 **node 纯函数测试**（不引入 jsdom）；组件渲染与交互一律用 Playwright e2e 验证。
 - 文件 UTF-8（无 BOM）；Vue 组件使用 `<script setup lang="ts">`。
 - 任何失败必须给用户可读中文原因，禁止静默吞错。
 
@@ -37,8 +38,9 @@
 | `src-tauri/src/broker/mod.rs`（修改） | 新增 `broker_quick_order` 命令 + `validate_quick_order` + 单测 |
 | `src-tauri/src/lib.rs`（修改） | 注册 `broker_quick_order` |
 | `tests/unit/battle-phase.test.ts`（新建） | 时段边界单测 |
-| `tests/unit/battle-timeline.test.ts`（新建） | 时间轴组件单测 |
-| `tests/unit/order-dock.test.ts`（新建） | 下单条确认/提交单测（mock broker API） |
+| `tests/unit/battle-timeline.test.ts`（新建） | 时间轴模型单测（node 纯函数） |
+| `src/components/battle/orderModel.ts`（新建） | 涨跌停 / 仓位档手数 / 提交校验纯函数 |
+| `tests/unit/order-model.test.ts`（新建） | 下单条纯逻辑单测 |
 | `tests/e2e/support/backend.ts`（修改） | 假后端补 `broker_get_status` / `broker_quick_order` / `risk_snapshot` |
 | `tests/e2e/battle-station.spec.ts`（新建） | 开盘时段、下单流程、熔断禁用 |
 
@@ -58,6 +60,8 @@
   - `computePhase(now: Date): PhaseState`
   - `beijingClock(d: Date): { weekday: number; minutes: number; seconds: number }`
   - `PHASES: PhaseDef[]`（6 段）、`CLOSED_PHASE: PhaseDef`
+  - `TIMELINE_SEGMENTS: { id: PhaseId; label: string; grow: number; color: string }[]`（6 段，开盘 grow=31）
+  - `mmss(sec: number): string`（倒计时格式化）
 
 - [ ] **Step 1: Write the failing test**
 
@@ -65,9 +69,19 @@
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { computePhase } from "../../src/components/battle/useBattlePhase";
+import { computePhase, TIMELINE_SEGMENTS, mmss } from "../../src/components/battle/useBattlePhase";
 
 const at = (iso: string) => computePhase(new Date(iso));
+
+describe("timeline model", () => {
+  it("六段、开盘占比 31、倒计时格式化", () => {
+    expect(TIMELINE_SEGMENTS).toHaveLength(6);
+    expect(TIMELINE_SEGMENTS.find((s) => s.id === "open")!.grow).toBe(31);
+    expect(mmss(1740)).toBe("29:00");
+    expect(mmss(59)).toBe("00:59");
+    expect(mmss(0)).toBe("00:00");
+  });
+});
 
 describe("computePhase", () => {
   it("盘前：08:59", () => {
@@ -234,6 +248,21 @@ function subLabelAt(id: PhaseId, m: number): string | null {
   return null;
 }
 
+export const TIMELINE_SEGMENTS: { id: PhaseId; label: string; grow: number; color: string }[] = [
+  { id: "premarket", label: "盘前", grow: 14, color: "#6aa6e8" },
+  { id: "auction", label: "竞价", grow: 15, color: "#e8c878" },
+  { id: "open", label: "开盘", grow: 31, color: "#ff6b78" },
+  { id: "midday", label: "盘中", grow: 20, color: "#2fbf95" },
+  { id: "close", label: "尾盘", grow: 10, color: "#e89c3d" },
+  { id: "post", label: "盘后", grow: 10, color: "#8b97a8" },
+];
+
+export function mmss(sec: number): string {
+  const m = Math.floor(Math.max(0, sec) / 60);
+  const s = Math.max(0, sec) % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 export function computePhase(now: Date): PhaseState {
   const { weekday, minutes, seconds } = beijingClock(now);
   const weekend = weekday === 0 || weekday === 6;
@@ -256,7 +285,7 @@ export function computePhase(now: Date): PhaseState {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `pnpm test tests/unit/battle-phase.test.ts`
-Expected: PASS（5 tests）
+Expected: PASS（6 tests）
 
 - [ ] **Step 5: Commit**
 
@@ -282,34 +311,26 @@ git commit -m "feat(ui): 作战台时段模型（Asia/Shanghai 纯函数 + 单�
 
 - [ ] **Step 1: Write the failing test**
 
-`tests/unit/battle-timeline.test.ts`:
+`tests/unit/battle-timeline.test.ts`（node 纯函数，渲染由 Task 6 的 e2e 覆盖）：
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { mount } from "@vue/test-utils";
-import PhaseTimeline from "../../src/components/battle/PhaseTimeline.vue";
-import { computePhase } from "../../src/components/battle/useBattlePhase";
+import { computePhase, TIMELINE_SEGMENTS, mmss } from "../../src/components/battle/useBattlePhase";
 
-describe("PhaseTimeline", () => {
-  it("六段全渲染，开盘高亮并显示倒计时", () => {
-    const state = computePhase(new Date("2026-10-19T09:31:00+08:00"));
-    const w = mount(PhaseTimeline, { props: { state, preview: null } });
-    expect(w.findAll(".btl-seg")).toHaveLength(6);
-    expect(w.find(".btl-seg.on").text()).toContain("开盘");
-    const cd = w.get('[data-testid="battle-countdown"]').text();
-    expect(cd).toContain("距盘中");
-    expect(cd).toContain("29:00");
-    expect(w.find(".btl-fill").attributes("style")).toContain("3.333");
+describe("battle timeline model", () => {
+  it("开盘时段：六段、开盘占比 31、进度 1/30、倒计时 29:00", () => {
+    const s = computePhase(new Date("2026-10-19T09:31:00+08:00"));
+    expect(TIMELINE_SEGMENTS).toHaveLength(6);
+    expect(TIMELINE_SEGMENTS.find((x) => x.id === "open")!.grow).toBe(31);
+    expect(s.phase.id).toBe("open");
+    expect(s.progress).toBeCloseTo(1 / 30, 5);
+    expect(mmss(s.nextInSec)).toBe("29:00");
   });
 
-  it("点击段落发出 preview，再点一次取消", async () => {
-    const state = computePhase(new Date("2026-10-19T09:31:00+08:00"));
-    const w = mount(PhaseTimeline, { props: { state, preview: null } });
-    await w.findAll(".btl-seg")[5]!.trigger("click");
-    expect(w.emitted("preview")![0]).toEqual(["post"]);
-    await w.setProps({ preview: "post" });
-    await w.findAll(".btl-seg")[5]!.trigger("click");
-    expect(w.emitted("preview")![1]).toEqual([null]);
+  it("周末无当前段", () => {
+    const s = computePhase(new Date("2026-10-24T10:00:00+08:00"));
+    expect(s.weekend).toBe(true);
+    expect(s.phase.id).toBe("closed");
   });
 });
 ```
@@ -317,7 +338,7 @@ describe("PhaseTimeline", () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pnpm test tests/unit/battle-timeline.test.ts`
-Expected: FAIL（组件不存在）
+Expected: FAIL（`TIMELINE_SEGMENTS` / `mmss` 未导出）
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -326,28 +347,14 @@ Expected: FAIL（组件不存在）
 ```vue
 <script setup lang="ts">
 import { computed } from "vue";
-import type { PhaseId, PhaseState } from "./useBattlePhase";
+import { mmss, TIMELINE_SEGMENTS as SEGMENTS, type PhaseId, type PhaseState } from "./useBattlePhase";
 
 const props = defineProps<{ state: PhaseState; preview: PhaseId | null }>();
 const emit = defineEmits<{ (e: "preview", id: PhaseId | null): void }>();
 
-const SEGMENTS: { id: PhaseId; label: string; grow: number; color: string }[] = [
-  { id: "premarket", label: "盘前", grow: 14, color: "#6aa6e8" },
-  { id: "auction", label: "竞价", grow: 15, color: "#e8c878" },
-  { id: "open", label: "开盘", grow: 31, color: "#ff6b78" },
-  { id: "midday", label: "盘中", grow: 20, color: "#2fbf95" },
-  { id: "close", label: "尾盘", grow: 10, color: "#e89c3d" },
-  { id: "post", label: "盘后", grow: 10, color: "#8b97a8" },
-];
-
 const currentId = computed<PhaseId | null>(() => (props.state.weekend ? null : props.state.phase.id));
 const isOn = (id: PhaseId) => currentId.value === id;
 
-function mmss(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
 function click(id: PhaseId) {
   emit("preview", props.preview === id ? null : id);
 }
@@ -500,79 +507,97 @@ git commit -m "feat(ui): 作战台时间轴与阶段面板"
 ### Task 3: 下单条（一次确认）
 
 **Files:**
+- Create: `src/components/battle/orderModel.ts`
 - Create: `src/components/battle/OrderDock.vue`
-- Test: `tests/unit/order-dock.test.ts`
+- Test: `tests/unit/order-model.test.ts`
 
 **Interfaces:**
 - Consumes: `brokerGetStatus` / `brokerQuickOrder` / `BrokerStatus`（`src/broker/api`）；`fetchOrderBook`；`useQuotesStore`；`toast`。
-- Produces: `OrderDock` props `{ status: BrokerStatus | null; cash: number }`，emits `ordered`，expose `setCode(code: string)`。
+- Produces:
+  - `orderModel.ts`：`type PositionPct = 2 | 3 | 4`、`boardRatio(code): number`、`limitPrices(code, prevClose): { up: number; down: number }`、`positionVolume(cash, position, price): number`、`canSubmitQuickOrder({ code, price, vol, blocked }): boolean`
+  - `OrderDock` props `{ status: BrokerStatus | null; cash: number }`，emits `ordered`，expose `setCode(code: string)`。
 - 数据属性：`data-testid` 为 `order-code` / `order-buy` / `order-sell` / `order-confirm` / `order-confirm-ok` / `order-confirm-cancel` / `order-msg` / `order-mode`。
 
 - [ ] **Step 1: Write the failing test**
 
-`tests/unit/order-dock.test.ts`:
+`tests/unit/order-model.test.ts`（node 纯函数；弹窗与提交由 Task 6 的 e2e 覆盖）：
 
 ```ts
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { flushPromises, mount } from "@vue/test-utils";
-import { createPinia, setActivePinia } from "pinia";
+import { describe, expect, it } from "vitest";
+import {
+  boardRatio,
+  canSubmitQuickOrder,
+  limitPrices,
+  positionVolume,
+} from "../../src/components/battle/orderModel";
 
-vi.mock("../../src/broker/api", () => ({
-  brokerQuickOrder: vi.fn(async (code: string, side: string, price: number, vol: number) => ({
-    id: 1, sigId: "QK1", brokerKind: "mock", brokerAccount: "SIM", brokerOrderId: "QK1",
-    code, side, price, vol, status: "submitted", filledVol: 0, filledAvgPrice: 0,
-    errorMsg: "", createdAt: 0, updatedAt: 0,
-  })),
-}));
-vi.mock("../../src/api/market", () => ({
-  fetchOrderBook: vi.fn(async () => ({ code: "600519", name: "贵州茅台", price: 1680, prevClose: 1660, asks: [], bids: [] })),
-}));
-
-import OrderDock from "../../src/components/battle/OrderDock.vue";
-import { brokerQuickOrder } from "../../src/broker/api";
-
-const status = {
-  kind: "mock", liveEnabled: false, connected: true, killSwitch: false,
-  accountId: "SIM", clientSim: true, windowSim: true,
-};
-
-describe("OrderDock", () => {
-  beforeEach(() => {
-    setActivePinia(createPinia());
-    vi.clearAllMocks();
+describe("orderModel", () => {
+  it("涨跌停按板块：主板 10%，创业板/科创板 20%", () => {
+    expect(boardRatio("600519")).toBe(1.1);
+    expect(boardRatio("300750")).toBe(1.2);
+    expect(boardRatio("688981")).toBe(1.2);
+    expect(limitPrices("600519", 100)).toEqual({ up: 110, down: 90 });
+    expect(limitPrices("300750", 100)).toEqual({ up: 120, down: 80 });
+    expect(limitPrices("600519", 0)).toEqual({ up: 0, down: 0 });
   });
 
-  it("填代码后点买入弹一次确认，确认后调用下单命令", async () => {
-    const w = mount(OrderDock, { props: { status, cash: 1_000_000 } });
-    await w.get('[data-testid="order-code"]').setValue("600519");
-    await w.get('[data-testid="order-code"]').trigger("blur");
-    await w.vm.$nextTick();
-    await w.get('[data-testid="order-buy"]').trigger("click");
-    expect(w.get('[data-testid="order-confirm"]').exists()).toBe(true);
-    await w.get('[data-testid="order-confirm-ok"]').trigger("click");
-    await flushPromises();
-    expect(brokerQuickOrder).toHaveBeenCalledTimes(1);
-    const args = (brokerQuickOrder as ReturnType<typeof vi.fn>).mock.calls[0]!;
-    expect(args[0]).toBe("600519");
-    expect(args[1]).toBe("BUY");
-    expect(args[3]).toBe(100);
-    expect(w.get('[data-testid="order-msg"]').text()).toContain("QK1");
+  it("仓位档换算手数（向下取整到 100 股）", () => {
+    expect(positionVolume(1_000_000, 2, 10)).toBe(50_000);
+    expect(positionVolume(100_000, 4, 10)).toBe(2_500);
+    expect(positionVolume(100, 2, 10)).toBe(0);
+    expect(positionVolume(1_000_000, 3, 33)).toBe(10_100);
   });
 
-  it("熔断时买入按钮禁用", () => {
-    const w = mount(OrderDock, { props: { status: { ...status, killSwitch: true }, cash: 1_000_000 } });
-    expect(w.get('[data-testid="order-buy"]').attributes("disabled")).toBeDefined();
-    expect(w.get('[data-testid="order-mode"]').text()).toContain("已熔断");
+  it("提交校验：代码 / 价格 / 数量 / 熔断", () => {
+    expect(canSubmitQuickOrder({ code: "600519", price: 10, vol: 100, blocked: false })).toBe(true);
+    expect(canSubmitQuickOrder({ code: "60051", price: 10, vol: 100, blocked: false })).toBe(false);
+    expect(canSubmitQuickOrder({ code: "600519", price: 0, vol: 100, blocked: false })).toBe(false);
+    expect(canSubmitQuickOrder({ code: "600519", price: 10, vol: 0, blocked: false })).toBe(false);
+    expect(canSubmitQuickOrder({ code: "600519", price: 10, vol: 100, blocked: true })).toBe(false);
   });
 });
 ```
 
+> 校验 `positionVolume(1_000_000, 3, 33)`：`floor(333333.33 / 33 / 100) * 100 = floor(101.01) * 100 = 10_100`。
+
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm test tests/unit/order-dock.test.ts`
-Expected: FAIL（组件不存在）
+Run: `pnpm test tests/unit/order-model.test.ts`
+Expected: FAIL（`orderModel.ts` 不存在）
 
 - [ ] **Step 3: Write minimal implementation**
+
+`src/components/battle/orderModel.ts`:
+
+```ts
+// 下单条的纯计算：涨跌停、仓位档手数、提交校验（node 可测，不依赖 DOM）。
+export type PositionPct = 2 | 3 | 4;
+
+export function boardRatio(code: string): number {
+  return /^(30|68)/.test(code) ? 1.2 : 1.1;
+}
+
+export function limitPrices(code: string, prevClose: number): { up: number; down: number } {
+  if (!prevClose) return { up: 0, down: 0 };
+  const r = boardRatio(code);
+  return { up: +(prevClose * r).toFixed(2), down: +(prevClose * (2 - r)).toFixed(2) };
+}
+
+export function positionVolume(cash: number, position: PositionPct, price: number): number {
+  if (price <= 0 || cash <= 0) return 0;
+  const ratio = position === 2 ? 0.5 : position === 3 ? 1 / 3 : 0.25;
+  return Math.floor((cash * ratio) / price / 100) * 100;
+}
+
+export function canSubmitQuickOrder(a: {
+  code: string;
+  price: number;
+  vol: number;
+  blocked: boolean;
+}): boolean {
+  return !a.blocked && /^\d{6}$/.test(a.code) && a.price > 0 && a.vol > 0;
+}
+```
 
 `src/components/battle/OrderDock.vue`:
 
@@ -583,6 +608,7 @@ import { brokerQuickOrder, type BrokerStatus } from "../../broker/api";
 import { fetchOrderBook } from "../../api/market";
 import { useQuotesStore } from "../../stores/quotes";
 import { toast } from "../../composables/useToast";
+import { canSubmitQuickOrder, limitPrices, positionVolume, type PositionPct } from "./orderModel";
 import type { OrderBook } from "../../api/types";
 
 const props = defineProps<{ status: BrokerStatus | null; cash: number }>();
@@ -592,7 +618,7 @@ const quotes = useQuotesStore();
 const code = ref("");
 const price = ref(0);
 const vol = ref(100);
-const position = ref<2 | 3 | 4>(2);
+const position = ref<PositionPct>(2);
 const side = ref<"BUY" | "SELL">("BUY");
 const book = ref<OrderBook | null>(null);
 const confirmOpen = ref(false);
@@ -601,23 +627,22 @@ const lastMsg = ref("");
 
 const q = computed(() => quotes.map[code.value]);
 const name = computed(() => q.value?.name ?? book.value?.name ?? "");
-const boardRatio = computed(() => (/^(30|68)/.test(code.value) ? 1.2 : 1.1));
 const prevClose = computed(() => book.value?.prevClose ?? q.value?.prevClose ?? 0);
-const limitUp = computed(() => (prevClose.value ? +(prevClose.value * boardRatio.value).toFixed(2) : 0));
-const limitDown = computed(() => (prevClose.value ? +(prevClose.value * (2 - boardRatio.value)).toFixed(2) : 0));
+const limit = computed(() => limitPrices(code.value, prevClose.value));
 
 const chips = computed(() => [
   { label: "最新", value: q.value?.price ?? 0 },
   { label: "买一", value: book.value?.bids?.[0]?.price ?? 0 },
   { label: "卖一", value: book.value?.asks?.[0]?.price ?? 0 },
-  { label: "涨停", value: limitUp.value },
-  { label: "跌停", value: limitDown.value },
+  { label: "涨停", value: limit.value.up },
+  { label: "跌停", value: limit.value.down },
 ]);
 
-const codeValid = computed(() => /^\d{6}$/.test(code.value));
 const live = computed(() => !!props.status && props.status.kind !== "mock");
 const blocked = computed(() => !props.status || props.status.killSwitch || !props.status.connected);
-const canSubmit = computed(() => !blocked.value && codeValid.value && price.value > 0 && vol.value > 0);
+const canSubmit = computed(() =>
+  canSubmitQuickOrder({ code: code.value, price: price.value, vol: vol.value, blocked: blocked.value }),
+);
 const modeText = computed(() => {
   if (!props.status) return "未连接";
   if (props.status.killSwitch) return "已熔断";
@@ -636,10 +661,10 @@ async function loadBook(c: string) {
   }
 }
 
-function applyPosition(p: 2 | 3 | 4) {
+function applyPosition(p: PositionPct) {
   position.value = p;
-  const ratio = p === 2 ? 0.5 : p === 3 ? 1 / 3 : 0.25;
-  if (price.value > 0) vol.value = Math.max(100, Math.floor((props.cash * ratio) / price.value / 100) * 100);
+  const v = positionVolume(props.cash, p, price.value);
+  if (v > 0) vol.value = v;
 }
 
 function openConfirm(s: "BUY" | "SELL") {
@@ -773,13 +798,13 @@ defineExpose({ setCode });
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pnpm test tests/unit/order-dock.test.ts`
-Expected: PASS（2 tests）
+Run: `pnpm test tests/unit/order-model.test.ts`
+Expected: PASS（3 tests）
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/components/battle/OrderDock.vue tests/unit/order-dock.test.ts
+git add src/components/battle/orderModel.ts src/components/battle/OrderDock.vue tests/unit/order-model.test.ts
 git commit -m "feat(ui): 下单条（一次确认 + 模拟/实盘徽标）"
 ```
 
@@ -794,24 +819,37 @@ git commit -m "feat(ui): 下单条（一次确认 + 模拟/实盘徽标）"
 
 **Interfaces:**
 - Consumes: `computePhase`；`PhaseTimeline` / `PhasePanel` / `OrderDock`；`useWorkflowStore`；`brokerGetStatus` / `riskSnapshot`。
-- Produces: `BattleStation`（无 props）；`useBattleFlag()` 返回 `{ enabled, set }`。
+- Produces: `BattleStation`（无 props）；`useBattleFlag(storage?: FlagStorage)` 返回 `{ enabled, set }`，`FlagStorage` 为 `{ getItem, setItem }`。
 
 - [ ] **Step 1: Write the failing test（开关默认值）**
 
 `tests/unit/battle-flag.test.ts`:
 
 ```ts
-import { beforeEach, describe, expect, it } from "vitest";
-import { useBattleFlag } from "../../src/components/battle/useBattleFlag";
+import { describe, expect, it } from "vitest";
+import { useBattleFlag, type FlagStorage } from "../../src/components/battle/useBattleFlag";
+
+function memStorage(init: Record<string, string> = {}): FlagStorage & { map: Map<string, string> } {
+  const map = new Map(Object.entries(init));
+  return {
+    map,
+    getItem: (k) => map.get(k) ?? null,
+    setItem: (k, v) => { map.set(k, v); },
+  };
+}
 
 describe("useBattleFlag", () => {
-  beforeEach(() => localStorage.clear());
-
-  it("默认开启，关闭后持久化", () => {
-    const f = useBattleFlag();
+  it("默认开启，关闭后写入存储", () => {
+    const s = memStorage();
+    const f = useBattleFlag(s);
     expect(f.enabled.value).toBe(true);
     f.set(false);
-    expect(localStorage.getItem("battle_station_v2")).toBe("off");
+    expect(s.map.get("battle_station_v2")).toBe("off");
+    expect(f.enabled.value).toBe(false);
+  });
+
+  it("存储为 off 时默认关闭", () => {
+    const f = useBattleFlag(memStorage({ battle_station_v2: "off" }));
     expect(f.enabled.value).toBe(false);
   });
 });
@@ -830,12 +868,17 @@ Expected: FAIL（模块不存在）
 import { ref } from "vue";
 
 const KEY = "battle_station_v2";
-const enabled = ref(localStorage.getItem(KEY) !== "off");
 
-export function useBattleFlag() {
+export interface FlagStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+export function useBattleFlag(storage: FlagStorage = localStorage) {
+  const enabled = ref(storage.getItem(KEY) !== "off");
   function set(v: boolean) {
     enabled.value = v;
-    localStorage.setItem(KEY, v ? "on" : "off");
+    storage.setItem(KEY, v ? "on" : "off");
   }
   return { enabled, set };
 }
@@ -1208,7 +1251,7 @@ Run:
 
 ```powershell
 cmd /c "call `"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat`" >nul 2>&1 && cd /d `"D:\Doubao-pek\股票盯盘系统·灵动岛版\src-tauri`" && cargo test quick_order 2>&1"
-pnpm test tests/unit/order-dock.test.ts
+pnpm test tests/unit/order-model.test.ts
 ```
 
 Expected: Rust 测试 PASS（`quick_order_validation`、`create_confirmed_ticket_marks_confirmed`），前端测试 PASS。
@@ -1326,12 +1369,23 @@ test("默认模拟徽标 + 未启用实盘提示", async ({ page }) => {
   await openCockpit(page);
   await expect(page.getByTestId("order-mode")).toContainText("模拟");
 });
+
+test("旧版六步 / 新版作战台可切换", async ({ page }) => {
+  setFakeBrokerStatus({ killSwitch: false });
+  await page.clock.install({ time: new Date("2026-10-19T09:31:00+08:00") });
+  await openCockpit(page);
+  await page.locator(".battle-switch").click();
+  await expect(page.getByTestId("battle-station")).toHaveCount(0);
+  await expect(page.locator(".battle-switch")).toHaveText("新版作战台");
+  await page.locator(".battle-switch").click();
+  await expect(page.getByTestId("battle-station")).toBeVisible();
+});
 ```
 
 - [ ] **Step 3: Run e2e**
 
 Run: `pnpm exec playwright test tests/e2e/battle-station.spec.ts --reporter=line`
-Expected: 4 passed。若 `.dock-btn` 顺序变化导致找不到菜单，改为 `page.locator(".dock-btn").filter({ hasText: "交易" }).click()`。
+Expected: 5 passed。若 `.dock-btn` 顺序变化导致找不到菜单，改为 `page.locator(".dock-btn").filter({ hasText: "交易" }).click()`。
 
 - [ ] **Step 4: Full verification**
 
