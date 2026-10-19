@@ -105,7 +105,10 @@ P1-a 把「作战卡指令」接进已有的条件单触发引擎，并让作战
 pub fn workflow_instructions(ai: State<AiState>, trade_date: Option<String>) -> Result<Value, String>
 ```
 
-- 取 `plan_date = next_trade_date(trade_date)` 对应计划；
+- 计划解析采用**今天优先**：`trade_date` 当天有 `plan` 则用之，否则退回 `next_trade_date(trade_date)` 的计划；
+  - 原因：物化只发生在计划日当天，只查「下一交易日」会让计划日盘中的列表恒为空；
+  - `workflow_p1_products` 必须使用同一解析，保证作战卡与指令列表口径一致。
+- 读取前先执行一次幂等的 `materialize_today`（只处理今天 + confirmed 的计划）。
 - 单条 SQL 左联 `conditional_order` → `signal_ticket` → `broker_order`；
 - 返回：`id/tier/code/name/condition/action/positionHint/coId/triggerJson/state/triggeredAt/filledVol/filledAvgPrice`；
 - 计划不存在 → `{ plan: null, instructions: [] }`。
