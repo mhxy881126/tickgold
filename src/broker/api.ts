@@ -217,6 +217,17 @@ export function brokerSubmit(sigId: string) {
   return invoke<BrokerOrderInfo>("broker_submit", { sigId });
 }
 
+/** 下单条快速下单：后端经 submit_with_sig 全套风控校验后返回委托信息。 */
+export function brokerQuickOrder(
+  code: string,
+  side: "BUY" | "SELL",
+  price: number,
+  vol: number,
+  position?: number,
+) {
+  return invoke<BrokerOrderInfo>("broker_quick_order", { code, side, price, vol, position: position ?? null });
+}
+
 export function brokerCancel(sigId: string) {
   return invoke<void>("broker_cancel", { sigId });
 }
