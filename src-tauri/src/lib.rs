@@ -184,6 +184,7 @@ pub fn run() {
             broker::broker_connect,
             broker::broker_disconnect,
             broker::broker_submit,
+            broker::broker_quick_order,
             broker::portfolio_buy,
             broker::portfolio_sell,
             broker::risk_snapshot,

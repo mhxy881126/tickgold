@@ -108,6 +108,34 @@ pub fn create_ticket(conn: &Connection, input: SignalInput) -> Option<String> {
     Some(sig_id)
 }
 
+/// 下单条专用：创建并立即确认的信号票（复用 create_ticket 的字段与同日同向去重）。
+/// 数量由调用方决定（卖出按持仓、买入按仓位档），此处只登记确认态，不做任何重算。
+pub fn create_confirmed_ticket(conn: &Connection, input: SignalInput) -> Option<String> {
+    let price = input.ref_price;
+    let vol = input.vol;
+    let sig_id = create_ticket(conn, input)?;
+    let now = now_millis();
+    let amount = price * vol as f64;
+    let updated = conn
+        .execute(
+            "UPDATE signal_ticket SET status='confirmed', price=?1, vol=?2, amount=?3, updated_at=?4 \
+             WHERE sig_id=?5",
+            rusqlite::params![price, vol, amount, now, sig_id],
+        )
+        .unwrap_or(0);
+    if updated == 0 {
+        return None;
+    }
+    audit(
+        conn,
+        &sig_id,
+        "confirmed",
+        "下单条手动确认（一次确认）",
+        "dock",
+    );
+    Some(sig_id)
+}
+
 // ===== 下单指令模板 =====
 
 /// P1-3 默认关注提示：不预填买卖方向 / 数量，只提示行情特征与参考价（用户自行决定是否下单）。
@@ -719,5 +747,45 @@ mod tests {
         let t = build_order_text_tpl("   ", "BUY", "600519", "贵州茅台", 1500.0, 100, "同花顺");
         assert!(t.contains("买入"));
         assert!(t.contains("价格"));
+    }
+
+    #[test]
+    fn create_confirmed_ticket_marks_confirmed() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE signal_ticket(
+                id INTEGER PRIMARY KEY AUTOINCREMENT, sig_id TEXT UNIQUE, trade_date TEXT,
+                created_at INTEGER, code TEXT, name TEXT, side TEXT, source TEXT,
+                model_version TEXT, strategy TEXT, confidence REAL, ref_price REAL,
+                price REAL, vol INTEGER, amount REAL, reason TEXT, status TEXT, updated_at INTEGER);
+             CREATE TABLE signal_audit(
+                id INTEGER PRIMARY KEY AUTOINCREMENT, sig_id TEXT, action TEXT,
+                detail TEXT, actor TEXT, created_at INTEGER);",
+        )
+        .unwrap();
+        let input = SignalInput {
+            code: "600519".into(),
+            name: "贵州茅台".into(),
+            side: "BUY".into(),
+            source: "dock".into(),
+            model_version: "manual".into(),
+            strategy: "manual".into(),
+            confidence: 1.0,
+            ref_price: 1680.0,
+            vol: 100,
+            reason: "test".into(),
+            trade_date: "2026-10-19".into(),
+        };
+        let sig_id = create_confirmed_ticket(&conn, input).expect("ticket");
+        let (status, price, vol): (String, f64, i64) = conn
+            .query_row(
+                "SELECT status, price, vol FROM signal_ticket WHERE sig_id=?1",
+                [&sig_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(status, "confirmed");
+        assert_eq!(price, 1680.0);
+        assert_eq!(vol, 100);
     }
 }

@@ -1089,6 +1089,99 @@ pub async fn broker_submit(
     submit_with_sig(&app, &sig_id).await
 }
 
+/// 下单条直下：一次确认后走与信号桥完全相同的风控 / 写单 / 成交推进链路。
+/// `position` 仅作审计记录（写入委托原因），数量 `vol` 由前端按持仓/仓位档算好后原样透传，
+/// 后端不根据 `position` 重算数量。
+#[tauri::command]
+pub async fn broker_quick_order(
+    app: AppHandle,
+    code: String,
+    side: String,
+    price: f64,
+    vol: i64,
+    position: Option<i64>,
+) -> Result<protocol::BrokerOrderInfo, String> {
+    validate_quick_order(&code, &side, price, vol)?;
+    let code = code.trim().to_string();
+    let side = side.trim().to_ascii_uppercase();
+    let name = market::get_quotes(vec![code.clone()])
+        .await
+        .ok()
+        .and_then(|qs| {
+            qs.into_iter()
+                .find(|q| q.code == code)
+                .map(|q| q.name)
+        })
+        .unwrap_or_else(|| code.clone());
+    let dir = app.state::<crate::ai::AiState>().dir();
+    let input = crate::ai::bridge::SignalInput {
+        code: code.clone(),
+        name,
+        side: side.clone(),
+        source: "dock".to_string(),
+        model_version: "manual".to_string(),
+        strategy: "manual".to_string(),
+        confidence: 1.0,
+        ref_price: price,
+        vol,
+        reason: format!("下单条手动下单（仓位档 {position:?}）"),
+        trade_date: conditional::today_dashed(),
+    };
+    let sig_id = {
+        let conn = maindb::open_readwrite(&dir)?;
+        let sid = crate::ai::bridge::create_confirmed_ticket(&conn, input)
+            .ok_or_else(|| "创建委托单失败：同方向已有待确认单据或参数非法".to_string())?;
+        // 与信号确认命令一致：写后回灌 WAL，只读连接（委托列表）立即可见。
+        checkpoint(&conn);
+        sid
+    };
+    match submit_with_sig(&app, &sig_id).await {
+        Ok(info) => Ok(info),
+        Err(e) => {
+            if let Ok(conn) = maindb::open_readwrite(&dir) {
+                let n = conn
+                    .execute(
+                        "UPDATE signal_ticket SET status='rejected', updated_at=?1 \
+                         WHERE sig_id=?2 AND status='confirmed'",
+                        rusqlite::params![now_millis(), sig_id],
+                    )
+                    .unwrap_or(0);
+                if n > 0 {
+                    checkpoint(&conn);
+                }
+            }
+            Err(e)
+        }
+    }
+}
+
+/// 下单条参数前置校验：只做形状/边界检查，真正的风控在 submit_with_sig 内统一执行。
+pub(crate) fn validate_quick_order(
+    code: &str,
+    side: &str,
+    price: f64,
+    vol: i64,
+) -> Result<(), String> {
+    let c = code.trim();
+    if c.len() != 6 || !c.chars().all(|ch| ch.is_ascii_digit()) {
+        return Err("证券代码需为 6 位数字".to_string());
+    }
+    let s = side.trim().to_ascii_uppercase();
+    if s != "BUY" && s != "SELL" {
+        return Err("方向只能是 BUY 或 SELL".to_string());
+    }
+    if !price.is_finite() || price <= 0.0 {
+        return Err("委托价格无效".to_string());
+    }
+    if vol <= 0 {
+        return Err("委托数量无效".to_string());
+    }
+    if s == "BUY" && vol % 100 != 0 {
+        return Err("买入数量需为 100 股的整数倍".to_string());
+    }
+    Ok(())
+}
+
 /// 前端模拟交易买入：ensure + settle → 统一闸门 gate → portfolio 落账（统一账本）。
 #[tauri::command]
 pub async fn portfolio_buy(
@@ -2391,5 +2484,16 @@ mod tests {
         assert_eq!(with_suffix("000001"), "000001.SZ");
         assert_eq!(with_suffix("300750"), "300750.SZ");
         assert_eq!(with_suffix("830799"), "830799.BJ");
+    }
+
+    #[test]
+    fn quick_order_validation() {
+        assert!(validate_quick_order("600519", "BUY", 10.0, 100).is_ok());
+        assert!(validate_quick_order("600519", "SELL", 10.0, 150).is_ok());
+        assert!(validate_quick_order("60051", "BUY", 10.0, 100).is_err());
+        assert!(validate_quick_order("600519", "HOLD", 10.0, 100).is_err());
+        assert!(validate_quick_order("600519", "BUY", 0.0, 100).is_err());
+        assert!(validate_quick_order("600519", "BUY", 10.0, 150).is_err());
+        assert!(validate_quick_order("600519", "BUY", 10.0, 0).is_err());
     }
 }
