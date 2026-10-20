@@ -4,6 +4,7 @@ import PhaseTimeline from "./PhaseTimeline.vue";
 import PhasePanel from "./PhasePanel.vue";
 import InstructionList from "./InstructionList.vue";
 import OrderDock from "./OrderDock.vue";
+import CopilotBar from "./CopilotBar.vue";
 import { computePhase, type PhaseId } from "./useBattlePhase";
 import type { AlertRule } from "./instructionModel";
 import { formatHitRate } from "./hitRateModel";
@@ -239,6 +240,9 @@ function money(n: number) {
         >盯盘已启动</span
       >
     </header>
+
+    <!-- P3-a Copilot：独立第二行，避免挤压既有头部（资产 / 命中率 / 确认按钮）。 -->
+    <CopilotBar />
 
     <PhaseTimeline :state="state" :preview="preview" @preview="preview = $event" />
 

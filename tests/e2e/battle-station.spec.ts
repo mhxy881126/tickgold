@@ -2,7 +2,8 @@
 // 实盘未启用前端拦截、新旧作战台切换，P1-a 指令列表的状态徽标与触发提示，
 // 以及 P1-b 行内编辑触发条件 / 触发后一键下单 / 模拟盘自动开关，
 // P2-a 对账 chip（正常 / 冲突可跳转）与下单耗时展示，
-// P2-b1 B 快捷键（打开作战台 + 切买入方向 + 聚焦代码框）。
+// P2-b1 B 快捷键（打开作战台 + 切买入方向 + 聚焦代码框），
+// P3-a Copilot 自然语言条件单（解析预览 → 确认 → fake co_create 参数断言）。
 //
 // 熔断状态注入（重要）：`tests/e2e/support/backend.ts` 会被 Vite 的 e2e alias 打进浏览器 bundle，
 // 与 Node 侧的 Playwright 测试进程是两份模块实例——在 spec 里 import 任何 setter 都改不到页面状态。
@@ -457,4 +458,56 @@ test("下单耗时：确认下单成功后头部显示最近下单", async ({ pa
   await expect(timing).toBeVisible({ timeout: 10_000 });
   await expect(timing).toContainText("最近下单");
   await expect(timing).toContainText("2 击");
+});
+
+// —— P3-a Copilot 自然语言条件单验收 ——
+
+test("Copilot 一句话建条件单：解析预览 → 确认 → co_create 参数正确", async ({ page }) => {
+  await installOpenClock(page);
+  await openCockpit(page);
+
+  const input = page.getByTestId("copilot-input");
+  await expect(input).toBeVisible();
+  await input.fill("600519 跌破1680 买入100股");
+  await page.getByTestId("copilot-parse").click();
+
+  // 预览展示解析结果（价格 ≤1680），此时还没有创建任何条件单。
+  const preview = page.getByTestId("copilot-preview");
+  await expect(preview).toBeVisible();
+  await expect(preview).toContainText("1680");
+  await expect(preview).toContainText("买入 100 股");
+
+  await page.getByTestId("copilot-confirm").click();
+
+  // 成功提示 + 预览收起。
+  await expect(page.locator(".toast-success")).toContainText("条件单已创建");
+  await expect(preview).toHaveCount(0);
+
+  // fake co_create 记录本次参数：方向/数量/触发/备注正确，且不产生委托（仅条件单）。
+  const lastCo = (await page.evaluate(
+    () => (window as unknown as { __FAKE_LAST_CO?: unknown }).__FAKE_LAST_CO,
+  )) as
+    | {
+        code: string;
+        name: string;
+        side: string;
+        vol: number;
+        trigger: unknown[];
+        priceMode: string;
+        ttl: string;
+        autoConfirm: boolean;
+        note: string;
+      }
+    | undefined;
+  expect(lastCo).toMatchObject({
+    code: "600519",
+    name: "贵州茅台",
+    side: "BUY",
+    vol: 100,
+    priceMode: "trigger",
+    ttl: "day",
+    autoConfirm: true,
+    note: "copilot",
+  });
+  expect(lastCo?.trigger).toEqual([{ field: "price", op: "lte", value: 1680 }]);
 });

@@ -449,6 +449,35 @@ const handlers: Record<string, Handler> = {
   broker_query_position: () => ({
     positions: [{ code: "600519", name: "贵州茅台", vol: 1000, avail: 1000 }],
   }),
+  // P3-a Copilot：记录最近一次条件单草稿（e2e 断言方向/触发/数量），返回 ConditionalOrder 形状。
+  co_create: (a) => {
+    const now = Date.now();
+    const payload = {
+      code: String(a?.code ?? ""),
+      name: String(a?.name ?? ""),
+      side: String(a?.side ?? "BUY"),
+      trigger: (a?.trigger ?? []) as unknown[],
+      vol: Number(a?.vol ?? 0),
+      priceMode: String(a?.priceMode ?? "trigger"),
+      limitPrice: Number(a?.limitPrice ?? 0),
+      ttl: String(a?.ttl ?? "day"),
+      expireAt: Number(a?.expireAt ?? 0),
+      autoConfirm: Boolean(a?.autoConfirm),
+      note: String(a?.note ?? ""),
+    };
+    (window as unknown as { __FAKE_LAST_CO?: unknown }).__FAKE_LAST_CO = payload;
+    return {
+      id: 9,
+      coId: "CO9",
+      tradeDate: todayDashed(),
+      ...payload,
+      status: "active",
+      ticketId: "",
+      createdAt: now,
+      updatedAt: now,
+      triggeredAt: 0,
+    };
+  },
   workflow_get_today: () => null,
   // scope="today"：与 workflow_instructions 返回同一份 fakePlan（既有分支不变）；
   // scope="next"：返回 null（既有分支不变）；
