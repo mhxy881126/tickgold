@@ -75,7 +75,7 @@ describe("mergeDockGroups", () => {
 
   it("用户新增分组：保留出厂 + 追加新组，功能完整", () => {
     const store: DockGroupsStore = {
-      v: 1,
+      v: 2,
       groups: [...DOCK_GROUPS.map((g) => ({ name: g.name, items: g.items.map((i) => i.id) }))],
     };
     store.groups.push({ name: "自用", items: [] });
@@ -89,7 +89,7 @@ describe("mergeDockGroups", () => {
     const watch = DOCK_GROUPS.find((g) => g.items.some((i) => i.id === "watch"))!;
     const trade = DOCK_GROUPS.find((g) => g.name !== watch.name)!;
     const store: DockGroupsStore = {
-      v: 1,
+      v: 2,
       groups: DOCK_GROUPS.map((g) => ({ name: g.name, items: g.items.map((i) => i.id) })),
     };
     // 把 watch 从出厂组移到 trade 组
@@ -106,7 +106,7 @@ describe("mergeDockGroups", () => {
   it("用户删除出厂分组：其功能回到出厂分组，否则进第一个分组", () => {
     const removed = DOCK_GROUPS[0]!;
     const store: DockGroupsStore = {
-      v: 1,
+      v: 2,
       groups: DOCK_GROUPS.filter((g) => g.name !== removed.name)
         .map((g) => ({ name: g.name, items: g.items.map((i) => i.id) })),
     };
@@ -121,7 +121,7 @@ describe("mergeDockGroups", () => {
   it("新版本新增的出厂功能自动补入出厂分组", () => {
     // 模拟旧配置缺少某新功能（如不存在于任何用户组）
     const store: DockGroupsStore = {
-      v: 1,
+      v: 2,
       groups: DOCK_GROUPS.map((g) => ({
         name: g.name,
         items: g.items.filter((i) => i.id !== "chart").map((i) => i.id),
@@ -133,15 +133,69 @@ describe("mergeDockGroups", () => {
     expect(ids.has("chart")).toBe(true);
   });
 
-  it("序列化往返幂等", () => {
+  it("序列化往返幂等（v2）", () => {
     const groups = mergeDockGroups(null);
     const store = JSON.parse(serializeDockGroups(groups)) as DockGroupsStore;
+    expect(store.v).toBe(2);
     const again = mergeDockGroups(store);
     expect(again.map((g) => g.name)).toEqual(groups.map((g) => g.name));
     for (const g of again) {
       const orig = groups.find((x) => x.name === g.name)!;
       expect(g.items.map((i) => i.id)).toEqual(orig.items.map((i) => i.id));
     }
+  });
+});
+
+// ===== P2-b2：旧 6 组配置迁移到 4 场景组 =====
+describe("P2-b2 v1 配置迁移", () => {
+  const META_IDS = Object.keys(CARD_META) as CardId[];
+  const LEGACY_GROUPS = ["大盘总览", "盯盘模式", "情绪异动", "板块题材", "个股行情", "交易工具"];
+
+  it("v1 旧 6 组 + 自定义组：旧组丢弃、自定义保留，4 新组重新归位", () => {
+    // 46 张卡分散在旧 6 组，watch 放在自定义组「我的」里。
+    const pool = META_IDS.filter((id) => id !== "watch");
+    const per = Math.ceil(pool.length / LEGACY_GROUPS.length);
+    const groups: { name: string; items: string[] }[] = LEGACY_GROUPS.map((name, i) => ({
+      name,
+      items: pool.slice(i * per, (i + 1) * per),
+    }));
+    groups.push({ name: "我的", items: ["watch"] });
+    const store: DockGroupsStore = { v: 1, groups };
+
+    const merged = mergeDockGroups(store);
+    expect(merged.map((g) => g.name)).toEqual([
+      "行情·选股",
+      "盯盘·复盘",
+      "交易·执行",
+      "工具·系统",
+      "我的",
+    ]);
+    // 每张卡恰好一次
+    const ids = merged.flatMap((g) => g.items.map((i) => i.id));
+    expect([...ids].sort()).toEqual([...META_IDS].sort());
+    expect(new Set(ids).size).toBe(ids.length);
+    // 自定义组归属保持不变
+    expect(merged.find((g) => g.name === "我的")!.items.map((i) => i.id)).toEqual(["watch"]);
+  });
+
+  it("v2 配置：自定义组保持原顺序/归属，不做迁移", () => {
+    const base = mergeDockGroups(null);
+    const customItems = ["watch", "rank"];
+    const groups = [
+      { name: "我的", items: customItems },
+      ...base.map((g) => ({
+        name: g.name,
+        items: g.items.map((i) => i.id).filter((id) => !customItems.includes(id)),
+      })),
+    ];
+    const store: DockGroupsStore = { v: 2, groups };
+
+    const merged = mergeDockGroups(store);
+    // 顺序完全按 store：自定义组仍在最前，不被迁移逻辑前置/重排
+    expect(merged.map((g) => g.name)).toEqual(["我的", ...base.map((g) => g.name)]);
+    expect(merged[0]!.items.map((i) => i.id)).toEqual(customItems);
+    const ids = merged.flatMap((g) => g.items.map((i) => i.id));
+    expect([...ids].sort()).toEqual([...META_IDS].sort());
   });
 });
 

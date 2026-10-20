@@ -13,11 +13,15 @@ export interface DockGroupConfig {
   items: string[]; // DockItem.id
 }
 export interface DockGroupsStore {
-  v: 1;
+  /** 1 = P2-b2 之前的 6 组配置；2 = 4 场景组（当前） */
+  v: 1 | 2;
   groups: DockGroupConfig[];
 }
 
 export const DOCK_STORE_KEY = "dock_groups_v1";
+
+/** P2-b2 之前的 6 个出厂分组名：v1 配置迁移时丢弃，组内卡片按新 4 组重新归位 */
+export const LEGACY_FACTORY_NAMES = ["大盘总览", "盯盘模式", "情绪异动", "板块题材", "个股行情", "交易工具"];
 
 /** 新分组的预置图标池（几何图形 path，按分组序轮换） */
 const ICON_POOL = [
@@ -95,9 +99,20 @@ export function mergeDockGroups(store: DockGroupsStore | null): DockGroup[] {
     placed.add(id);
   };
 
+  // 0) P2-b2 迁移：v1（含更早）配置里的旧 6 个出厂组丢弃，自定义组保留；
+  //    旧组里的卡片随后按新出厂 4 组重新归位。
+  const isLegacy = !store || (store.v ?? 0) < 2;
+  const userGroups: DockGroupConfig[] =
+    store && Array.isArray(store.groups) ? store.groups : [];
+  const keptGroups = isLegacy
+    ? userGroups.filter(
+        (cfg) => !(typeof cfg.name === "string" && LEGACY_FACTORY_NAMES.includes(cfg.name.trim())),
+      )
+    : userGroups;
+
   // 1) 用户配置：按 store 顺序重建分组
-  if (store && Array.isArray(store.groups) && store.groups.length > 0) {
-    for (const cfg of store.groups) {
+  if (keptGroups.length > 0) {
+    for (const cfg of keptGroups) {
       const name = typeof cfg.name === "string" && cfg.name.trim() ? cfg.name.trim() : "";
       if (!name) continue;
       const seen = out.some((g) => g.name === name);
@@ -106,6 +121,12 @@ export function mergeDockGroups(store: DockGroupsStore | null): DockGroup[] {
       for (const id of cfg.items ?? []) pushItem(g, id);
       out.push(g);
     }
+  }
+
+  // 1.5) 旧配置迁移：补回新的 4 个出厂组（自定义组保留原相对顺序，排在其后）
+  if (isLegacy) {
+    const missing = DOCK_GROUPS.filter((g) => !out.some((o) => o.name === g.name));
+    out.unshift(...missing.map((g) => ({ name: g.name, icon: g.icon, items: [] })));
   }
 
   // 2) 出厂兜底：未分配功能 → 回其出厂分组（分组存在时）
@@ -134,10 +155,10 @@ export function mergeDockGroups(store: DockGroupsStore | null): DockGroup[] {
   return out;
 }
 
-/** 序列化为持久化 JSON */
+/** 序列化为持久化 JSON（v2 = 4 场景组配置） */
 export function serializeDockGroups(groups: DockGroup[]): string {
   const store: DockGroupsStore = {
-    v: 1,
+    v: 2,
     groups: groups.map((g) => ({ name: g.name, items: g.items.map((i) => i.id) })),
   };
   return JSON.stringify(store);
