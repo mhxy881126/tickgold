@@ -42,6 +42,7 @@ TickGold 客户端自动化 sidecar（P3）：以 stdio NDJSON(JSON-RPC) 操控�
 """
 import argparse
 import base64
+from collections import deque
 import contextlib
 import io
 import json
@@ -201,16 +202,19 @@ class BaseSidecar:
             wait = self.min_interval - (now - self.last_submit_ts)
             return None, f"下单限速冷却中，请 {wait:.1f}s 后再试"
         self.last_submit_ts = now
-        # P4 真实模式 sidecar 独立护栏（与 Rust 武装闸门纵深，任一被绕过都不下单）
+        # P4 真实模式 sidecar 独立护栏（与 Rust 武装闸门纵深，任一被绕过都不下单）。
+        # P0-2：闪电/盘口通道不填限价，此处基于参考价的金额仅为参考估算、次级兜底，
+        # 权威暴露上限以 Rust 快照边界为准，实际成交金额以成交回报为准。
         if self.live_guarded:
             amount = price * vol
             if self.whitelist and code not in self.whitelist:
                 return None, f"真实模式拦截：标的 {code} 不在实盘白名单（sidecar 兜底）"
             if self.max_amount and amount > self.max_amount + 1e-6:
-                return None, f"真实模式拦截：金额 {amount:.0f} 超过单笔上限 {self.max_amount:.0f}（sidecar 兜底）"
+                return None, (f"真实模式拦截：参考估算金额 {amount:.0f} 超过单笔上限 "
+                              f"{self.max_amount:.0f}（参考估算，sidecar 兜底）")
             if side == "BUY" and self.max_daily and self.live_bought_today + amount > self.max_daily + 1e-6:
-                return None, (f"真实模式拦截：单日累计买入将达 {self.live_bought_today + amount:.0f}，"
-                              f"超过上限 {self.max_daily:.0f}（sidecar 兜底）")
+                return None, (f"真实模式拦截：单日累计参考估算买入将达 {self.live_bought_today + amount:.0f}，"
+                              f"超过上限 {self.max_daily:.0f}（参考估算，sidecar 兜底）")
         return {"code": code, "side": side, "price": price, "vol": vol, "cid": cid}, ""
 
     # P12-4 跨日重置 T+1 冻结
@@ -448,24 +452,28 @@ class DryRunSidecar(BaseSidecar):
             total = round(self.cash + market_value, 2)
         emit({"event": "asset", "cash": round(self.cash, 2), "frozenCash": 0.0,
               "marketValue": market_value, "totalAsset": total,
-              "floatPnl": 0.0, "dayPnl": 0.0, "source": "dry-run"})
+              "floatPnl": 0.0, "dayPnl": 0.0, "ok": True, "ts": time.time(),
+              "source": "dry-run"})
 
     def do_query_position(self):
         with self.lock:
             out = [{"code": c, "vol": q["vol"], "avail": q["avail"],
                     "cost": round(q["cost"], 3), "marketValue": round(q["vol"] * q["cost"], 2)}
                    for c, q in self.positions.items()]
-        emit({"event": "position", "positions": out, "full": True, "source": "dry-run"})
+        emit({"event": "position", "positions": out, "full": True, "ok": True,
+              "ts": time.time(), "source": "dry-run"})
 
     # ---- P7：与真实通道对齐的查询 / 撤单 / 仓位 / 探测，便于无客户端端到端验证 ----
     def do_query_trades(self):
         with self.lock:
             trades = [dict(t) for t in self.trades]
-        emit({"event": "trades", "trades": trades, "full": True, "source": "dry-run"})
+        emit({"event": "trades", "trades": trades, "full": True, "ok": True,
+              "ts": time.time(), "source": "dry-run"})
 
     def do_query_pending(self):
         # dry-run 提交即成交，无在途挂单
-        emit({"event": "pending", "orders": [], "full": True, "source": "dry-run",
+        emit({"event": "pending", "orders": [], "full": True, "ok": True,
+              "ts": time.time(), "source": "dry-run",
               "note": "dry-run 提交即成交，无在途挂单"})
 
     def do_cancel_all(self, p):
@@ -669,6 +677,66 @@ def normalize_pending(row):
     }
 
 
+def classify_cancel_readback(target, pending):
+    """P0-3 撤单读回分类：只有目标委托在读回的挂单列表中消失，才确认 cancelled；
+    读回失败或目标仍在均返回非终态，本地绝不落 CANCELLED，留待对账。
+
+    target: {"code","side","vol","price"(可选)}；pending 为 normalize_pending 结果列表，
+    None 表示读回失败。price 仅作 ±1% 软匹配，不参与硬性判定。返回 (status, note)。
+    """
+    if pending is None:
+        return ("cancel_opened",
+                "撤单页已打开，未能读回挂单列表，请人工在客户端确认；本地不标记已撤，留待对账")
+    code = str(target.get("code") or "").strip()
+    side = str(target.get("side") or "").strip().upper()
+    vol = target.get("vol")
+    # 目标标识不足（拿不到 code/side/vol）→ 无法核对，fail-safe 非终态，绝不报 cancelled。
+    if not code or side not in ("BUY", "SELL") or not vol:
+        return ("cancel_opened",
+                "撤单页已打开，但缺少目标委托标识（代码/方向/数量），无法核对；本地不标记已撤，留待对账")
+    try:
+        want_vol = int(vol)
+    except (TypeError, ValueError):
+        return ("cancel_opened",
+                "撤单页已打开，目标委托数量非法，无法核对；本地不标记已撤，留待对账")
+    want_price = target.get("price")
+    for row in pending:
+        if str(row.get("code") or "").strip() != code:
+            continue
+        if str(row.get("side") or "").strip().upper() != side:
+            continue
+        if int(row.get("vol") or 0) != want_vol:
+            continue
+        # price 提供时仅作 ±1% 软匹配；不满足也不改变“仍在”的硬判定
+        if want_price and row.get("price"):
+            try:
+                tp, rp = float(want_price), float(row["price"])
+                if tp > 0 and abs(rp - tp) / tp > 0.01:
+                    continue
+            except (TypeError, ValueError):
+                pass
+        return ("cancel_pending",
+                "目标委托仍在挂单列表，未确认真实撤销，请在客户端核对或使用全撤；本地不标记已撤，留待对账")
+    return ("cancelled", "已读回挂单列表，目标委托已消失，确认撤销")
+
+
+def order_amount_is_authoritative(p):
+    """P0-2：仅限价（fillMode=limit/缺省）模式下 price*vol 是权威委托金额；
+    market（客户端盘口价）模式金额为参考估算、以成交回报为准，不产生权威限价金额。"""
+    return str(p.get("fillMode", "limit")).strip().lower() != "market"
+
+
+def read_is_failure(frame):
+    """P0-6：读取失败的显式判定——仅当帧带 ok is False 时才算失败；
+    缺 ok 的旧帧（QMT / 旧版 sidecar）按成功处理，向后兼容。
+
+    旧实现用「note 是否存在」当失败启发式，会把「成功但空仓 / 无成交 / 无挂单」
+    误判为读取失败；note 不再参与失败判定。失败帧数据键必须为空、带明确 note，
+    绝不伪装成空仓/无挂单的成功帧。
+    """
+    return frame.get("ok") is False
+
+
 def normalize_balance(fields):
     """资金控件字典（中文键）→ 协议 asset 字段。缺项为 None，由前端显示占位。"""
     return {
@@ -682,6 +750,220 @@ def normalize_balance(fields):
         "dayPnl": _num(fields.get("当日盈亏")),
         "dayPnlRatio": _num(fields.get("当日盈亏比")),
     }
+
+
+# ============================== P0-4：串行作业队列 / 退避重连 / 活性看门狗（纯组件，时钟·执行可注入，无真实 sleep） ==============================
+
+# 作业状态机：queued → running → success / timeout_failed / error；满拒入 rejected_full（不进队列）。
+QUEUE_JOB_STATES = ("queued", "running", "success", "timeout_failed", "error", "rejected_full")
+
+# 10s 硬截止 fail-safe 统一报错文案：只发 error，绝不补发 cancelled/filled。
+QUEUE_TIMEOUT_MESSAGE = "操作超时(10s)已安全放弃，未确认成交/撤单"
+
+
+class OperationJob:
+    """单个串行作业的状态记录（纯数据，不含线程 / IO）。"""
+
+    __slots__ = ("job_id", "kind", "params", "client_order_id", "state",
+                 "enqueued_at", "started_at", "finished_at", "result", "error",
+                 "timeout_budget")
+
+    def __init__(self, job_id, kind, params, client_order_id, enqueued_at,
+                 timeout_budget=None):
+        self.job_id = job_id
+        self.kind = kind
+        self.params = params or {}
+        self.client_order_id = client_order_id or ""
+        # 硬截止预算：有限秒数=仅清扫过期；None=交互作业，豁免硬截止，sweep 永不判 timeout_failed
+        self.timeout_budget = timeout_budget
+        self.state = "queued"
+        self.enqueued_at = enqueued_at
+        self.started_at = None
+        self.finished_at = None
+        self.result = None
+        self.error = None
+
+
+class OperationQueue:
+    """有界 FIFO 串行作业队列（P0-4）。
+
+    - 容量默认 16，满则 enqueue 返回 rejected_full 拒入反馈，不无限堆积；
+    - 单 worker 串行执行，作业之间不交错；
+    - 每作业硬截止默认 10s（monotonic）；超时 fail-safe 标记 timeout_failed、释放 FIFO 槽位，
+      只发 error 事件，绝不发 cancelled/filled；
+    - 时钟 clock 可注入、状态机与执行解耦，单测不依赖真实线程时序；本类自身不做真实 sleep。
+
+    边界说明：Python 无法强杀阻塞线程，live 模式下真正的“线程级打断 / 深度线程复位 /
+    进程重建”需真机注入卡滞验证，本切片明确延后（见 docs/review/v3.14-p0-4-slice-changes.md）；
+    队列层 fail-safe 负责状态记账、释放槽位与上报 error，阻塞线程由其自然返回。
+    """
+
+    def __init__(self, capacity=16, job_timeout=10.0, clock=None, event_sink=None):
+        self.capacity = max(1, int(capacity))
+        self.job_timeout = float(job_timeout)
+        self._clock = clock or time.monotonic
+        self._sink = event_sink or emit
+        self._lock = threading.Lock()
+        self._buf = deque()
+        self._seq = 0
+        self.active = None  # 当前 running 作业（单 worker 串行）
+        self.completed = []  # 终态作业（诊断 / 测试断言用）
+
+    # ---------- 入队 ----------
+    def enqueue(self, kind, params=None, client_order_id="", timeout_budget=10.0):
+        """入队；满容量返回 ("rejected_full", job) 并拒入，否则 ("queued", job)。"""
+        now = self._clock()
+        with self._lock:
+            if len(self._buf) >= self.capacity:
+                job = OperationJob(None, kind, params, client_order_id, now,
+                                   timeout_budget=timeout_budget)
+                job.state = "rejected_full"
+                self.completed.append(job)
+                self._sink({"event": "error", "client_order_id": client_order_id,
+                            "kind": kind, "state": "rejected_full",
+                            "message": f"作业队列已满（容量 {self.capacity}），{kind} 已拒入，请稍后重试"})
+                return "rejected_full", job
+            self._seq += 1
+            job = OperationJob(self._seq, kind, params or {}, client_order_id, now,
+                               timeout_budget=timeout_budget)
+            self._buf.append(job)
+            return "queued", job
+
+    def pending_count(self):
+        with self._lock:
+            return len(self._buf)
+
+    # ---------- 取队头开始执行（单 worker） ----------
+    def try_start_next(self):
+        """空闲且有等待作业时，取出队头并置 running 返回；否则返回 None。"""
+        with self._lock:
+            if self.active is not None:
+                return None
+            if not self._buf:
+                return None
+            job = self._buf.popleft()
+            job.state = "running"
+            job.started_at = self._clock()
+            self.active = job
+            return job
+
+    # ---------- 正常完成 ----------
+    def finish_success(self, job, result=None):
+        with self._lock:
+            if job.state != "running":
+                return  # 已被 sweep 判超时：保留 timeout_failed，不回写 success
+            job.state = "success"
+            job.result = result
+            job.finished_at = self._clock()
+            if self.active is job:
+                self.active = None
+            self.completed.append(job)
+
+    # ---------- 执行抛错 ----------
+    def finish_error(self, job, exc):
+        with self._lock:
+            if job.state != "running":
+                return
+            job.state = "error"
+            job.error = exc
+            job.finished_at = self._clock()
+            if self.active is job:
+                self.active = None
+            self.completed.append(job)
+        self._sink({"event": "error", "client_order_id": job.client_order_id,
+                    "kind": job.kind, "state": "error", "message": str(exc)})
+
+    # ---------- 超时清扫：过硬截止的 running 作业判 timeout_failed 并释放槽位 ----------
+    def sweep_timeouts(self, now=None):
+        now = self._clock() if now is None else now
+        timed = []
+        with self._lock:
+            job = self.active
+            if job is not None and job.state == "running" and job.started_at is not None:
+                # 交互作业（timeout_budget=None）豁免硬截止，sweep 永不判 timeout_failed；
+                # 仅清扫有有限预算且已过期的作业。
+                budget = job.timeout_budget
+                if budget is not None and budget >= 0 and now - job.started_at >= budget:
+                    job.state = "timeout_failed"
+                    job.finished_at = now
+                    self.active = None
+                    timed.append(job)
+        for job in timed:
+            # fail-safe：只发 error，绝不补发 cancelled/filled
+            self._sink({"event": "error", "client_order_id": job.client_order_id,
+                        "kind": job.kind, "state": "timeout_failed",
+                        "message": QUEUE_TIMEOUT_MESSAGE})
+            self.completed.append(job)
+        return timed
+
+
+class BackoffReconnectPolicy:
+    """重连退避纯状态机（P0-4）：1s,2s,4s,8s,16s…封顶 30s；成功即重置。
+
+    只维护尝试计数与退避序列，不接真实进程、不 sleep、不做重建（重建循环延后）。
+    """
+
+    def __init__(self, base=1.0, factor=2.0, cap=30.0):
+        self.base = float(base)
+        self.factor = float(factor)
+        self.cap = float(cap)
+        self.attempts = 0
+
+    def delay_for(self, attempt):
+        """第 attempt 次（0-based）失败后的退避秒数，封顶 cap。"""
+        return min(self.base * (self.factor ** attempt), self.cap)
+
+    def next_delay(self):
+        """取当前次退避并把尝试计数 +1。"""
+        delay = self.delay_for(self.attempts)
+        self.attempts += 1
+        return delay
+
+    def record_success(self):
+        """一次成功连通 → 计数归零，下次从 base 重新起退避。"""
+        self.attempts = 0
+
+    def reset(self):
+        self.attempts = 0
+
+
+class ActivityMonitor:
+    """活性 / 停滞看门狗（P0-4）：记录作业开始 / 结束时间戳，is_stale(now, threshold) 判悬挂。
+
+    时钟可注入；只做记账与判定，不触发任何重启（重建延后）。
+    """
+
+    def __init__(self, threshold=10.0, clock=None):
+        self.threshold = float(threshold)
+        self._clock = clock or time.monotonic
+        self._started = {}
+        self.last_activity = None
+
+    def mark_start(self, job_id, now=None):
+        ts = self._clock() if now is None else now
+        self._started[job_id] = ts
+        self.last_activity = ts
+
+    def mark_end(self, job_id, now=None):
+        ts = self._clock() if now is None else now
+        self._started.pop(job_id, None)
+        self.last_activity = ts
+
+    def active_jobs(self, now=None):
+        ts = self._clock() if now is None else now
+        return [{"job_id": j, "started_at": t, "age": ts - t}
+                for j, t in self._started.items()]
+
+    def stale_report(self, now=None, threshold=None):
+        ts = self._clock() if now is None else now
+        th = self.threshold if threshold is None else float(threshold)
+        active = self.active_jobs(ts)
+        stale = [a for a in active if a["age"] >= th]
+        return {"stale": bool(stale), "threshold": th, "active": active,
+                "stale_jobs": stale, "last_activity": self.last_activity}
+
+    def is_stale(self, now=None, threshold=None):
+        return self.stale_report(now, threshold)["stale"]
 
 
 # ============================== 真实模式：同花顺 UI 自动化（移植 THSAutoTrader 键盘精灵引擎） ==============================
@@ -1578,9 +1860,10 @@ class RealSidecar(BaseSidecar):
                 shot = self._win_shot(dialog)
                 emit({"event": "screenshot", "client_order_id": cid, "shot": shot,
                       "expect": {"code": code, "side": side, "price": price, "vol": vol,
-                                 "amount": amount, "lightning": True, "sim": self.sim,
-                                 "autoConfirm": self.auto_confirm, "validation": val},
-                      "message": "闪电下单按客户端盘口价，请核对截图中的代码/方向/数量/价格"})
+                                 "amount": amount, "fillMode": "market", "lightning": True,
+                                 "sim": self.sim, "autoConfirm": self.auto_confirm,
+                                 "validation": val},
+                      "message": "闪电下单按客户端盘口价成交（fillMode=market），金额为参考估算、以成交回报为准，请核对截图中的代码/方向/数量"})
                 emit({"event": "order", "client_order_id": cid, "status": "submitted",
                       "filled_vol": 0, "filled_avg_price": 0.0})
                 if not self.auto_confirm:
@@ -1762,8 +2045,15 @@ class RealSidecar(BaseSidecar):
             emit({"event": "error", "client_order_id": cid, "message": f"{label}中止：{e}"})
 
     def do_cancel(self, p):
-        # 闪电通道无“单笔精确撤单”（委托列表不含我们的 client_order_id），安全起见打开撤单页由人工/全撤处理。
+        # P0-3：打开撤单页后读回挂单表核对，只有目标委托消失才上报 cancelled；
+        # 读回失败/仍在均上报非终态，本地绝不落 CANCELLED，留待对账（Rust 忽略非终态，委托保持 submitted）。
         cid = p.get("client_order_id", "")
+        target = {
+            "code": bare_code(p.get("code", "")),
+            "side": p.get("side", ""),
+            "vol": p.get("vol"),
+            "price": p.get("price"),
+        }
         try:
             with self.engine.locked():
                 win = self._win()
@@ -1772,12 +2062,24 @@ class RealSidecar(BaseSidecar):
                 time.sleep(0.3)
                 self.engine.send_key("F3")
                 time.sleep(0.4)
+                # 复用委托查询读表模式：UIA 优先，失败回退剪贴板；任一环节失败 → pending=None
+                orders = None
+                try:
+                    tsv = self.engine.read_table_uia(win)
+                    if tsv is None:
+                        tsv = self._copy_with_captcha(win)
+                    rows = parse_tabular_data(tsv, required_headers=("证券代码",))
+                    orders = [o for o in (normalize_pending(r) for r in rows) if o]
+                except Exception:  # noqa: BLE001
+                    orders = None
+                status, note = classify_cancel_readback(target, orders)
                 shot = self._win_shot(win)
                 emit({"event": "screenshot", "client_order_id": cid, "shot": shot,
-                      "expect": {"cancelPage": True},
-                      "message": "已打开撤单页：单笔请在客户端勾选该委托后撤单，或使用“全撤/撤买/撤卖”"})
-                emit({"event": "order", "client_order_id": cid, "status": "cancelled",
+                      "expect": {"cancelPage": True, "readback": status},
+                      "message": note})
+                emit({"event": "order", "client_order_id": cid, "status": status,
                       "filled_vol": 0, "filled_avg_price": 0.0})
+                emit({"event": "note", "client_order_id": cid, "message": note})
         except Exception as e:  # noqa: BLE001
             emit({"event": "error", "client_order_id": cid, "message": f"打开撤单页中止：{e}"})
 
@@ -1797,11 +2099,13 @@ class RealSidecar(BaseSidecar):
                     el = els.get(cidv)
                     raw[name] = el.window_text().strip() if el is not None else None
                 asset = normalize_balance(raw)
-                asset.update({"event": "asset", "full": True, "source": "ths", "raw": raw})
+                asset.update({"event": "asset", "full": True, "source": "ths",
+                              "raw": raw, "ok": True, "ts": time.time()})
                 emit(asset)
                 self._hide_ok = True
         except Exception as e:  # noqa: BLE001
-            emit({"event": "asset", "note": f"资金读取失败：{e}"})
+            emit({"event": "asset", "ok": False, "ts": time.time(),
+                  "note": f"资金读取失败：{e}"})
         finally:
             self._restore_fg()
             if getattr(self, "_hide_ok", False):
@@ -1823,10 +2127,12 @@ class RealSidecar(BaseSidecar):
                     tsv = self._copy_with_captcha(win)
                 rows = parse_tabular_data(tsv, required_headers=("证券代码",))
                 positions = normalize_position(rows)
-                emit({"event": "position", "positions": positions, "full": True, "source": "ths"})
+                emit({"event": "position", "positions": positions, "full": True,
+                      "ok": True, "ts": time.time(), "source": "ths"})
                 self._hide_ok = True
         except Exception as e:  # noqa: BLE001
-            emit({"event": "position", "positions": [], "full": True, "note": f"持仓读取失败：{e}"})
+            emit({"event": "position", "positions": [], "full": True, "ok": False,
+                  "ts": time.time(), "note": f"持仓读取失败：{e}"})
         finally:
             self._restore_fg()
             if getattr(self, "_hide_ok", False):
@@ -1885,11 +2191,12 @@ class RealSidecar(BaseSidecar):
                 if not trades:
                     log(f"[trades] 当日成交 0 条（表头={rows[0] if rows else ''}）")
                 emit({"event": "trades", "trades": trades, "full": True, "source": "ths",
-                      "note": "" if trades else "当日暂无成交记录"})
+                      "ok": True, "ts": time.time(), "note": ""})
                 self._hide_ok = True
         except Exception as e:  # noqa: BLE001
             log(f"[trades] 读取失败：{e}")
-            emit({"event": "trades", "trades": [], "full": True, "note": f"当日成交读取失败：{e}"})
+            emit({"event": "trades", "trades": [], "full": True, "ok": False,
+                  "ts": time.time(), "note": f"当日成交读取失败：{e}"})
         finally:
             self._restore_fg()
             if getattr(self, "_hide_ok", False):
@@ -1927,11 +2234,12 @@ class RealSidecar(BaseSidecar):
                 if not orders:
                     log(f"[pending] 挂单 0 条（表头={rows[0] if rows else ''}）")
                 emit({"event": "pending", "orders": orders, "full": True, "source": "ths",
-                      "note": "" if orders else "当前无挂单"})
+                      "ok": True, "ts": time.time(), "note": ""})
                 self._hide_ok = True
         except Exception as e:  # noqa: BLE001
             log(f"[pending] 读取失败：{e}")
-            emit({"event": "pending", "orders": [], "full": True, "note": f"挂单读取失败：{e}"})
+            emit({"event": "pending", "orders": [], "full": True, "ok": False,
+                  "ts": time.time(), "note": f"挂单读取失败：{e}"})
         finally:
             self._restore_fg()
             if getattr(self, "_hide_ok", False):
@@ -2308,14 +2616,46 @@ def main():
         "current_page": (getattr(sc, "do_current_page", None), False),
     }
 
-    def run_bg(fn, params, takes_params):
-        def worker():
+    # P0-4：GUI 自动化方法改走有界串行作业队列（单 worker、10s 硬截止 fail-safe）。
+    # confirm/reject/captcha_input/heartbeat 仍是即时通道，绝不进队列被排队挡住。
+    opq = OperationQueue(capacity=16, job_timeout=10.0, event_sink=emit)
+    monitor = ActivityMonitor(threshold=10.0)
+
+    def _queue_invoke(job):
+        fn, takes_params = gui_methods[job.kind]
+        # submit 原本经 BaseSidecar.submit 再开线程；队列 worker 直接持有 do_submit，
+        # 使串行与硬截止归属本 worker（ApiServer 同步终态契约不受影响，仍走自身 _lock）。
+        if job.kind == "submit" and getattr(sc, "do_submit", None) is not None:
+            fn = sc.do_submit
+        monitor.mark_start(job.job_id)
+        try:
+            return fn(job.params) if takes_params else fn()
+        finally:
+            monitor.mark_end(job.job_id)
+
+    def _budget_for(method):
+        # 硬截止预算：None=交互作业（豁免10s，sweep 永不判 timeout_failed）；
+        # 有限秒数=仅清扫过期作业。半自动人工确认(≤300s)与验证码人工输入(≤120s)不得被10s误判为失败。
+        if method in ("submit", "position_order") and not sc.auto_confirm:
+            return None  # 半自动人工确认等待：交互，豁免硬截止
+        if method in ("query_position", "query_trades", "query_pending", "cancel"):
+            return 180.0  # 读表/撤单读回可能触发验证码人工输入(≤120s)：宽裕有限预算，真挂死仍终会失败
+        return 10.0  # 纯自动化查询/发送/点击/探测：10s fail-safe
+
+    def _op_worker():
+        while True:
+            opq.sweep_timeouts()
+            job = opq.try_start_next()
+            if job is None:
+                time.sleep(0.05)
+                continue
             try:
-                fn(params) if takes_params else fn()
+                result = _queue_invoke(job)
+                opq.finish_success(job, result)
             except Exception as e:  # noqa: BLE001
-                cid = params.get("client_order_id", "") if isinstance(params, dict) else ""
-                emit({"event": "error", "client_order_id": cid, "message": str(e)})
-        threading.Thread(target=worker, daemon=True).start()
+                opq.finish_error(job, e)
+
+    threading.Thread(target=_op_worker, daemon=True).start()
 
     for raw in sys.stdin:
         raw = raw.strip()
@@ -2330,8 +2670,8 @@ def main():
         cid = p.get("client_order_id", "") if isinstance(p, dict) else ""
         try:
             if method in gui_methods and gui_methods[method][0] is not None:
-                fn, takes_params = gui_methods[method]
-                run_bg(fn, p, takes_params)
+                # P0-4：GUI 自动化方法进有界串行队列，单 worker 执行；按类型给硬截止预算
+                opq.enqueue(method, p, cid, timeout_budget=_budget_for(method))
             elif method == "confirm":
                 sc.resolve(cid, True)
             elif method == "reject":

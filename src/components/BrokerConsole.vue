@@ -158,10 +158,14 @@ async function loadStatus() {
 async function loadAsset() {
   try {
     const r = await brokerQueryAsset();
-    // P12-9 资产查询失败（note-only 返回，无 cash）合并进统一错误条，避免与持仓错误重复堆叠
-    if (r && typeof r === "object" && "note" in r && !("cash" in r)) {
-      queryErr.value = String(r.note ?? "资产查询失败");
+    // P0-6：仅 ok===false 为显式读取失败——保留上次成功资产、只显示原因，绝不伪装空仓；
+    // 旧 note 启发式（note 存在且无 cash）已废弃。
+    if (r && r.ok === false) {
+      queryErr.value = String(r.note ?? "资产读取失败");
+      return;
     }
+    // 「正在向客户端查询…」为进行中状态，保持既有提示、不误清错；成功帧解除错误
+    if (!(r && r.note && isQueryingNote(r.note))) queryErr.value = "";
     asset.value = r;
   } catch (e) {
     queryErr.value = String(e);
@@ -170,8 +174,14 @@ async function loadAsset() {
 async function loadPositions() {
   try {
     const r = await brokerQueryPosition();
-    if (r.positions) positions.value = r.positions;
-    if (r.note && !r.positions) queryErr.value = r.note;
+    // P0-6：ok===false 显式失败 → 保留既有持仓列表、只显示原因，不清空伪装空仓；
+    // 成功（含空仓 ok:true）替换列表并解除错误。
+    if (r.ok === false) {
+      queryErr.value = r.note ?? "持仓读取失败";
+    } else {
+      positions.value = r.positions ?? [];
+      queryErr.value = "";
+    }
     lastSync.value = fmtClock(Date.now());
   } catch (e) {
     queryErr.value = String(e);
@@ -180,12 +190,15 @@ async function loadPositions() {
 async function loadTrades() {
   try {
     const r = await brokerClientQueryTrades();
-    if (r.trades) {
+    // P0-6：ok===false 显式读取失败 → 保留既有成交列表、只显示原因，不清空伪装「暂无成交」；
+    // 成功非空替换列表，成功为空（ok:true, trades:[]）清空列表并解除错误。
+    if (r.ok === false) {
+      queryErr.value = r.note ?? "当日成交读取失败";
+    } else if (r.trades !== undefined) {
       trades.value = r.trades;
-      queryErr.value = ""; // 数据回填即解除错误
+      queryErr.value = ""; // 成功（含空列表）回填即解除错误
     }
     // P12-15 「正在向客户端查询…」是查询进行中状态，不是失败，不设错误（等 sidecar 事件回填）
-    if (r.note && !r.trades && !isQueryingNote(r.note)) queryErr.value = r.note;
     lastSync.value = fmtClock(Date.now());
   } catch (e) {
     queryErr.value = String(e);
@@ -194,11 +207,14 @@ async function loadTrades() {
 async function loadPending() {
   try {
     const r = await brokerClientQueryPending();
-    if (r.orders) {
+    // P0-6：ok===false 显式读取失败 → 保留既有挂单列表、只显示原因，不清空伪装「暂无挂单」；
+    // 成功非空替换列表，成功为空（ok:true, orders:[]）清空列表并解除错误。
+    if (r.ok === false) {
+      queryErr.value = r.note ?? "挂单读取失败";
+    } else if (r.orders !== undefined) {
       pending.value = r.orders;
-      queryErr.value = ""; // 数据回填即解除错误
+      queryErr.value = ""; // 成功（含空列表）回填即解除错误
     }
-    if (r.note && !r.orders && !isQueryingNote(r.note)) queryErr.value = r.note;
     lastSync.value = fmtClock(Date.now());
   } catch (e) {
     queryErr.value = String(e);
@@ -628,16 +644,30 @@ onMounted(() => {
     void loadAsset();
     if (connected.value) void refreshTab();
   }, 30000);
-  listen<{ trades?: BrokerTrade[] }>("broker:trades", (ev) => {
-    if (ev.payload?.trades) {
-      trades.value = ev.payload.trades;
-      queryErr.value = ""; // P12-15 数据到达即解除错误
+  listen<{ trades?: BrokerTrade[]; ok?: boolean; note?: string }>("broker:trades", (ev) => {
+    const p = ev.payload;
+    if (!p) return;
+    // P0-6：ok===false 显式失败 → 保留既有列表、只显示原因，不清空伪装空态
+    if (p.ok === false) {
+      queryErr.value = p.note ?? "当日成交读取失败";
+      return;
+    }
+    if (p.trades !== undefined) {
+      trades.value = p.trades;
+      queryErr.value = ""; // 成功（含空列表）到达即解除错误
     }
   }).then((u) => unlisteners.push(u));
-  listen<{ orders?: BrokerPending[] }>("broker:pending", (ev) => {
-    if (ev.payload?.orders) {
-      pending.value = ev.payload.orders;
-      queryErr.value = ""; // P12-15 数据到达即解除错误
+  listen<{ orders?: BrokerPending[]; ok?: boolean; note?: string }>("broker:pending", (ev) => {
+    const p = ev.payload;
+    if (!p) return;
+    // P0-6：ok===false 显式失败 → 保留既有列表、只显示原因，不清空伪装空态
+    if (p.ok === false) {
+      queryErr.value = p.note ?? "挂单读取失败";
+      return;
+    }
+    if (p.orders !== undefined) {
+      pending.value = p.orders;
+      queryErr.value = ""; // 成功（含空列表）到达即解除错误
     }
   }).then((u) => unlisteners.push(u));
   listen<ClientAppState>("broker:app_state", (ev) => {

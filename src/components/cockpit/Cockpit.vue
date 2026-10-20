@@ -9,6 +9,7 @@ import {
   type StepState,
   type SignalRow,
 } from "../../stores/workflow";
+import { confirmEmergencyHalt } from "../../composables/emergencyHalt";
 
 import PilotPanel from "./PilotPanel.vue";
 
@@ -225,6 +226,9 @@ async function doWatchStart() {
   selected.value = null;
 }
 async function doEmergencyHalt() {
+  // v3.14 P0-5：统一确认口径（取消即 return，不动作）；底层仍走 workflow store（mock-aware），反馈路径不变。
+  const ok = await confirmEmergencyHalt();
+  if (!ok) return;
   await wf.emergencyHalt();
 }
 async function doReleaseHalt() {

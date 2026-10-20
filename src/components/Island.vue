@@ -13,6 +13,7 @@ import { signalList } from "../ai/api";
 import { useWatchlistStore } from "../stores/watchlist";
 import { brokerListOrders } from "../broker/api";
 import type { BrokerOrderInfo } from "../broker/api";
+import { confirmEmergencyHalt, formatEmergencyHaltResult } from "../composables/emergencyHalt";
 import type { Quote } from "../api/types";
 import { applyIslandSkin, ISLAND_SKIN_EVENT } from "../lib/islandSkins";
 import { usePaperStore, type PaperOrder } from "../stores/paper";
@@ -210,18 +211,20 @@ function oneClickTrade() {
   emit("island:open-card", "signalbridge");
   if (expanded.value) toggleExpand();
 }
-// v3.0.0-rc 一键急停（灵动岛无对话框宿主，用原生 confirm 做最后确认；
-// 全局快捷键 Ctrl+Alt+K 为零确认）
+// v3.0.0-rc 一键急停（灵动岛为独立 Webview、无 AppDialog 宿主：confirmEmergencyHalt 在无宿主时回退原生 confirm，文案与主窗口一致；
+// 全局快捷键 Ctrl+Alt+K 为零确认，不经过本函数）
 const halted = ref(false);
+const haltSummary = ref("");
 async function emergencyHalt() {
   if (halted.value) return;
-  if (!window.confirm("一键急停：立即封死新委托、停止自动执行、撤销全部条件单与在途委托并断开通道。\n恢复需手动操作，确认继续？")) {
-    return;
-  }
+  // v3.14 P0-5：统一确认口径，取消即 return；无宿主自动回退原生 confirm（见 emergencyHalt helper）。
+  const ok = await confirmEmergencyHalt();
+  if (!ok) return;
   try {
     const { brokerEmergencyHalt } = await import("../broker/api");
-    await brokerEmergencyHalt();
+    const r = await brokerEmergencyHalt();
     halted.value = true;
+    haltSummary.value = formatEmergencyHaltResult(r);
     void syncOrders();
   } catch (e) {
     console.error("emergency halt failed", e);
@@ -394,8 +397,14 @@ onMounted(async () => {
   await listen("broker:sidecar", () => void syncOrders());
   await listen("broker:kill", () => void syncOrders());
   // 快捷键 / 主窗口触发的急停：灵动岛同步显示不可关闭红条
-  await listen("risk:halted", () => {
+  await listen<{ coCount?: number; orderCount?: number }>("risk:halted", (ev) => {
     halted.value = true;
+    if (ev.payload) {
+      haltSummary.value = formatEmergencyHaltResult({
+        coCount: ev.payload.coCount ?? 0,
+        orderCount: ev.payload.orderCount ?? 0,
+      });
+    }
     void syncOrders();
   });
 
@@ -487,7 +496,7 @@ onBeforeUnmount(() => {
 
       <!-- 急停红条：不可关闭，恢复需手动解除→重连→重启自动执行 -->
       <div v-if="halted" class="halt-bar">
-        <span class="halt-dot" />交易已锁定，恢复需手动
+        <span class="halt-dot" />{{ haltSummary || "交易已锁定，恢复需手动" }}
       </div>
 
       <!-- tabs 分段控制器 -->

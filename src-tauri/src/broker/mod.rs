@@ -228,6 +228,13 @@ fn resolve_script_path(app: &AppHandle) -> Result<PathBuf, String> {
 
 // ===== sidecar 回报统一处理（第 2 步联调，框架已就绪）=====
 
+/// P0-6：读取失败显式判定——仅 ok:false 为失败；缺 ok 的旧帧（QMT/旧 sidecar）按成功处理，向后兼容。
+/// 旧实现用 note 是否存在当失败启发式，会把「成功但空仓/无成交/无挂单」误判为读取失败；
+/// note 仅用于转发提示，不再参与失败判定。
+fn frame_is_failure(v: &serde_json::Value) -> bool {
+    v.get("ok").and_then(|o| o.as_bool()) == Some(false)
+}
+
 pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
     let event = v["event"].as_str().unwrap_or("");
     match event {
@@ -378,9 +385,9 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
         }
         "trades" => {
             // P7 同花顺真实通道：当日成交全量回报缓存并转发。
-            // P12-7 失败帧（带 note）不覆盖缓存：保留旧数据并转发错误，下次轮询继续重查。
+            // P12-7 失败帧（ok:false）不覆盖缓存：保留旧数据并转发错误，下次轮询继续重查。
             if let Some(m) = try_manager(app) {
-                if v.get("note").is_some() {
+                if frame_is_failure(v) {
                     let _ = app.emit("broker:client_note", v.clone());
                     return;
                 }
@@ -390,9 +397,9 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
         }
         "pending" => {
             // P7 当日挂单（未成交委托）全量回报缓存并转发。
-            // P12-7 失败帧（带 note）不覆盖缓存：保留旧数据并转发错误。
+            // P12-7 失败帧（ok:false）不覆盖缓存：保留旧数据并转发错误。
             if let Some(m) = try_manager(app) {
-                if v.get("note").is_some() {
+                if frame_is_failure(v) {
                     let _ = app.emit("broker:client_note", v.clone());
                     return;
                 }
@@ -414,9 +421,9 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
         }
         "asset" => {
             // 缓存最近一次资产回报，broker_query_asset（QMT/客户端）直接读缓存
-            // P12-7 失败帧（带 note）不覆盖缓存：保留旧数据并转发错误。
+            // P12-7 失败帧（ok:false）不覆盖缓存：保留旧数据并转发错误。
             if let Some(m) = try_manager(app) {
-                if v.get("note").is_some() {
+                if frame_is_failure(v) {
                     let _ = app.emit("broker:client_note", v.clone());
                     return;
                 }
@@ -426,9 +433,9 @@ pub fn apply_sidecar_event(app: &AppHandle, dir: &Path, v: &serde_json::Value) {
         }
         "position" => {
             // 全量回报替换缓存；单只增量 upsert（vol=0 移除）。
-            // P12-7 失败帧（带 note）不覆盖缓存、不置 synced：保留旧数据并转发错误，下次轮询继续重查。
+            // P12-7 失败帧（ok:false）不覆盖缓存、不置 synced：保留旧数据并转发错误，下次轮询继续重查。
             if let Some(m) = try_manager(app) {
-                if v.get("note").is_some() {
+                if frame_is_failure(v) {
                     let _ = app.emit("broker:client_note", v.clone());
                     return;
                 }
@@ -1834,7 +1841,21 @@ pub(crate) async fn submit_with_sig(
             log_gate_reject(&conn, &cfg.kind, sig_id, &reason);
             return Err(reason);
         }
-        let amount = price * vol as f64;
+        // P0-2：client 闪电盘口通道弹窗只填数量、不填限价，下发参考价并非权威成交金额，
+        // 单笔/单日金额上限改用行情快照最坏边界重算（BUY=涨停×量，SELL=跌停×量）；
+        // 边界缺失 fail-safe 拒绝。mock / qmt 仍按下发限价 price*vol 计算，保持零回归。
+        let amount = if cfg.kind == "client" {
+            match risk::market_order_amount_bound(&side, vol, market) {
+                Some(b) => b,
+                None => {
+                    let reason = "行情未就绪，无法按盘口价估算金额上限，请稍后重试".to_string();
+                    log_gate_reject(&conn, &cfg.kind, sig_id, &reason);
+                    return Err(reason);
+                }
+            }
+        } else {
+            price * vol as f64
+        };
         if amount > cfg.live_max_order_amount {
             let reason = format!(
                 "单笔金额 {amount:.0} 元超过实盘单笔上限 {:.0} 元",
@@ -2668,6 +2689,28 @@ fn round2(v: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// P0-6：读取失败显式判定——ok:false 失败；ok:true / 缺 ok 非失败；
+    /// ok:false 即便携带空数据键仍判失败（失败帧绝不伪装成功）。
+    #[test]
+    fn frame_is_failure_explicit_ok_flag() {
+        // ok:false + note → 失败
+        assert!(frame_is_failure(&serde_json::json!({
+            "ok": false, "note": "资金读取失败：timeout"
+        })));
+        // ok:true（含空列表成功帧）→ 非失败
+        assert!(!frame_is_failure(&serde_json::json!({
+            "ok": true, "trades": []
+        })));
+        // 缺 ok 的旧帧（仅带 note）→ 按成功处理，向后兼容
+        assert!(!frame_is_failure(&serde_json::json!({
+            "positions": [], "note": "暂无持仓"
+        })));
+        // ok:false 即使带数据键仍判失败（失败帧不得靠数据键伪装成功）
+        assert!(frame_is_failure(&serde_json::json!({
+            "ok": false, "trades": []
+        })));
+    }
 
     #[test]
     fn suffix_mapping() {

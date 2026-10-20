@@ -2,6 +2,7 @@
 // 全局弹窗宿主（配合 composables/useDialog.ts）：深色主题、屏幕居中。
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useDialogState } from "../composables/useDialog";
+import { markDialogHostMounted } from "../composables/emergencyHalt";
 
 const s = useDialogState();
 const inputEl = ref<HTMLInputElement | null>(null);
@@ -48,7 +49,11 @@ watch(
   },
 );
 
-onMounted(() => window.addEventListener("keydown", onKey));
+onMounted(() => {
+  // 标记本 Webview 已挂载弹窗宿主：急停确认（emergencyHalt helper）据此决定走 confirmDialog 还是原生兜底。
+  markDialogHostMounted(true);
+  window.addEventListener("keydown", onKey);
+});
 onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 </script>
 

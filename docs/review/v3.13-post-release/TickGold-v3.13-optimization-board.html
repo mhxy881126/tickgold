@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TickGold 发版后深度复盘与优化看板（v3.13 起）</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='%230d1016' stroke='%23d4af37' stroke-width='2'/%3E%3Cpath d='M7 14l3-4 2.5 3L17 8' stroke='%23d4af37' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<script src="https://fastly.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script>if(typeof echarts==='undefined'){document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/dist/echarts.min.js"><\/script>');}</script>
+<style>
+:root{
+  --bg:#0d1016; --bg2:#131722; --panel:#171c28; --panel2:#1d2330; --line:#262d3d; --line2:#333c52;
+  --txt:#e6e9f0; --txt2:#9aa3b5; --txt3:#6b7488;
+  --gold:#d4af37; --gold2:#e8c878; --red:#e0455a; --green:#26d07c; --amber:#ffb13d; --blue:#36b8e8;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Consolas,monospace;
+  --sans:'Noto Sans SC',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+a{color:var(--gold2);text-decoration:none}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+/* ===== 顶部导航 ===== */
+header.top{position:sticky;top:0;z-index:50;background:rgba(13,16,22,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.top-in{display:flex;align-items:center;gap:18px;height:54px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:900;letter-spacing:1px;font-size:15px;white-space:nowrap}
+.brand .dot{width:9px;height:9px;background:var(--gold);border-radius:2px;transform:rotate(45deg)}
+.brand small{font-family:var(--mono);font-weight:400;color:var(--txt3);font-size:11.5px;letter-spacing:0}
+nav{display:flex;gap:4px;margin-left:auto;overflow-x:auto}
+nav a{font-size:12.5px;color:var(--txt2);padding:6px 10px;border-radius:6px;white-space:nowrap}
+nav a:hover{color:var(--gold2);background:var(--panel2)}
+/* ===== Hero ===== */
+.hero{padding:38px 0 22px;border-bottom:1px solid var(--line)}
+.kicker{font-family:var(--mono);font-size:12px;color:var(--gold);letter-spacing:2.5px;margin-bottom:14px}
+.hero h1{font-size:30px;line-height:1.3;font-weight:900;letter-spacing:-.5px;max-width:880px}
+.hero .meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.chip{font-family:var(--mono);font-size:12.5px;padding:5px 12px;border-radius:6px;border:1px solid var(--line2);background:var(--panel);color:var(--txt2)}
+.chip b{color:var(--gold2);font-weight:600}
+.alert{margin-top:20px;border:1px solid #6e2631;background:linear-gradient(180deg,#2a1419,#1f1215);border-left:4px solid var(--red);border-radius:10px;padding:16px 18px;display:flex;gap:14px;align-items:flex-start}
+.alert .ico{flex:0 0 auto;width:30px;height:30px}
+.alert h2{font-size:15.5px;color:#ff8d9c;font-weight:700;margin-bottom:4px}
+.alert p{font-size:13.5px;color:#e8c9cd}
+.strategy{margin-top:16px;border-left:3px solid var(--gold);background:var(--panel);padding:13px 18px;border-radius:0 8px 8px 0;font-size:14px;color:var(--txt2)}
+.strategy b{color:var(--gold2)}
+/* ===== 通用区块 ===== */
+section{padding:34px 0;border-bottom:1px solid var(--line)}
+.sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:20px;flex-wrap:wrap}
+.sec-no{font-family:var(--mono);color:var(--gold);font-size:13px;font-weight:700}
+.sec-head h2{font-size:21px;font-weight:900;letter-spacing:-.3px}
+.sec-head .sub{color:var(--txt3);font-size:13px}
+/* ===== KPI ===== */
+.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 16px 14px;position:relative;overflow:hidden}
+.kpi::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--gold)}
+.kpi .v{font-family:var(--mono);font-size:30px;font-weight:700;color:var(--txt);letter-spacing:-1px}
+.kpi .l{font-size:13px;color:var(--txt2);margin-top:2px}
+.kpi .n{font-family:var(--mono);font-size:11px;color:var(--txt3);margin-top:4px}
+.kpi.r::before{background:var(--red)} .kpi.a::before{background:var(--amber)} .kpi.g::before{background:var(--green)}
+.kpi-note{margin-top:12px;font-size:12.5px;color:var(--txt3);line-height:1.7}
+.kpi-note code{font-family:var(--mono);color:var(--gold2);background:#00000040;padding:1px 5px;border-radius:4px;font-size:11.5px}
+.scale-strip{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.scale-strip .chip{font-size:12px}
+/* ===== 图表 ===== */
+.chart-box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 14px 6px}
+.chart{width:100%;height:300px}
+.chart.tall{height:340px}
+.two-col{display:grid;grid-template-columns:1fr;gap:18px}
+/* ===== 分级 + P0 列表 ===== */
+.p0list{display:grid;grid-template-columns:1fr;gap:10px;margin-top:18px}
+.p0row{display:flex;gap:12px;align-items:flex-start;background:var(--panel);border:1px solid #42262e;border-radius:9px;padding:12px 14px}
+.p0row .tag{flex:0 0 auto;font-family:var(--mono);font-size:12px;font-weight:700;color:#ff8d9c;background:#31161c;border:1px solid #5e2530;padding:3px 9px;border-radius:6px;white-space:nowrap}
+.p0row .tt{font-size:14px;font-weight:700}
+.p0row .ds{font-size:12.5px;color:var(--txt2);margin-top:2px}
+/* ===== P0 闭环链 ===== */
+.stepper{display:flex;flex-wrap:wrap;gap:0;align-items:center;margin:6px 0 22px}
+.step{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;color:var(--txt2)}
+.step .b{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;border:1px solid #5e2530;background:#31161c;color:#ff8d9c;flex:0 0 auto}
+.step .ar{color:var(--txt3);margin:0 8px;font-size:15px}
+.p0chain{display:grid;grid-template-columns:1fr;gap:14px}
+.p0card{background:linear-gradient(180deg,#1f161b,#191419);border:1px solid #42262e;border-radius:12px;padding:16px 17px;display:flex;flex-direction:column;gap:9px}
+.p0card .hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.p0card .id{font-family:var(--mono);font-size:13px;font-weight:700;color:#ff8d9c}
+.p0card .new{font-family:var(--mono);font-size:10.5px;color:var(--amber);border:1px solid #5a461a;background:#2e2410;padding:2px 7px;border-radius:5px}
+.p0card .ver{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--blue);border:1px solid #1f3a4a;background:#162630;padding:2px 8px;border-radius:5px}
+.p0card h3{font-size:15.5px;font-weight:700;line-height:1.45}
+.p0card .one{font-size:13.5px;color:var(--txt2)}
+.ev{display:flex;flex-wrap:wrap;gap:6px}
+.ev code{font-family:var(--mono);font-size:11.5px;color:var(--gold2);background:#00000045;border:1px solid #33301c;padding:2px 7px;border-radius:5px}
+/* ===== 工作台对比 ===== */
+.cmp{width:100%;border-collapse:collapse;table-layout:fixed;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.cmp col.c-dim{width:16%} .cmp col.c-cur{width:42%} .cmp col.c-go{width:42%}
+.cmp th,.cmp td{padding:13px 15px;text-align:left;vertical-align:top;font-size:13.5px;border-bottom:1px solid var(--line)}
+.cmp thead th{font-size:13px;font-weight:700;background:var(--panel2);color:var(--txt2)}
+.cmp thead th.cur{color:#ff8d9c} .cmp thead th.go{color:var(--green)}
+.cmp td.dim{font-weight:700;color:var(--gold2);font-size:13.5px}
+.cmp td.cur{color:#d8a7ae;background:#1c1416}
+.cmp td.go{color:#bfe9d3;background:#122119}
+.cmp tr:last-child td{border-bottom:none}
+.cmp-wrap{overflow-x:auto;border-radius:12px}
+/* ===== 保压砍缓 ===== */
+.matrix{display:grid;grid-template-columns:1fr;gap:14px}
+.qcard{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
+.qcard .qh{padding:13px 16px;display:flex;align-items:center;gap:10px;font-weight:900;font-size:16px}
+.qcard .qh .tag{font-family:var(--mono);font-size:11.5px;padding:2px 9px;border-radius:6px}
+.qcard .qb{padding:14px 16px}
+.qcard ul{list-style:none;display:flex;flex-direction:column;gap:7px}
+.qcard li{font-size:13.5px;color:var(--txt2);padding-left:18px;position:relative}
+.qcard li::before{content:'';position:absolute;left:2px;top:9px;width:7px;height:7px;border-radius:2px}
+.qcard .fix{margin-top:12px;font-size:12.5px;padding:10px 12px;border-radius:8px;line-height:1.6}
+.qcard.keep .qh{color:var(--green)} .qcard.keep .qh .tag{background:#0f2a1d;color:var(--green);border:1px solid #1f4d36}
+.qcard.keep li::before{background:var(--green)} .qcard.keep .fix{background:#0f2a1d;color:#bfe9d3}
+.qcard.press .qh{color:var(--amber)} .qcard.press .qh .tag{background:#2e2410;color:var(--amber);border:1px solid #5a461a}
+.qcard.press li::before{background:var(--amber)} .qcard.press .fix{background:#2e2410;color:#ecd6a3}
+.qcard.cut .qh{color:#ff8d9c} .qcard.cut .qh .tag{background:#31161c;color:#ff8d9c;border:1px solid #5e2530}
+.qcard.cut li::before{background:var(--red)} .qcard.cut .fix{background:#31161c;color:#e8c9cd}
+.qcard.later .qh{color:var(--blue)} .qcard.later .qh .tag{background:#162630;color:var(--blue);border:1px solid #1f3a4a}
+.qcard.later li::before{background:var(--blue)} .qcard.later .fix{background:#162630;color:#b9ddee}
+/* ===== 路线时间轴 ===== */
+.roadmap{display:grid;grid-template-columns:1fr;gap:0;margin-top:8px}
+.rnode{display:grid;grid-template-columns:56px 1fr;gap:16px;position:relative;padding-bottom:22px}
+.rnode .rail{display:flex;flex-direction:column;align-items:center}
+.rnode .dot{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;font-size:12.5px;flex:0 0 auto;z-index:1}
+.rnode .line{flex:1;width:2px;background:var(--line2)}
+.rnode:last-child .line{display:none}
+.rnode .body{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:15px 17px}
+.rnode .rh{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.rnode .ver{font-family:var(--mono);font-size:16px;font-weight:700}
+.rnode .pd{font-family:var(--mono);font-size:11.5px;padding:2px 9px;border-radius:6px;border:1px solid var(--line2);background:var(--panel2);color:var(--txt2)}
+.rnode .theme{font-size:14.5px;font-weight:700;margin-top:5px}
+.rnode .content{font-size:13px;color:var(--txt2);margin-top:6px}
+.rnode .gate{margin-top:9px;font-size:12.5px;color:var(--green);border-top:1px dashed var(--line2);padding-top:9px}
+.rnode .gate b{color:var(--green)}
+.rnode.v1 .dot{background:#31161c;color:#ff8d9c;border:1px solid #5e2530}
+.rnode.v2 .dot{background:#31161c;color:#ff8d9c;border:1px solid #5e2530}
+.rnode.v3 .dot{background:#2e2410;color:var(--amber);border:1px solid #5a461a}
+.rnode.v4 .dot{background:#162630;color:var(--blue);border:1px solid #1f3a4a}
+.rnode.v5 .dot{background:var(--panel2);color:var(--txt3);border:1px solid var(--line2)}
+/* ===== 核心度量 ===== */
+.metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.metric{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.metric .tv{font-family:var(--mono);font-size:24px;font-weight:700;color:var(--green)}
+.metric .tl{font-size:13.5px;color:var(--txt2);margin-top:4px}
+.metric .tg{font-family:var(--mono);font-size:11px;color:var(--txt3);margin-top:6px}
+.foot{padding:26px 0 40px;color:var(--txt3);font-size:12.5px;line-height:1.8}
+.foot .disc{background:#16130c;border:1px solid #3a321a;border-radius:10px;padding:14px 18px;color:var(--gold2)}
+/* ===== 响应式 ===== */
+@media(min-width:640px){
+  .kpi-grid{grid-template-columns:repeat(3,1fr)}
+  .p0chain{grid-template-columns:repeat(2,1fr)}
+  .matrix{grid-template-columns:repeat(2,1fr)}
+  .metrics{grid-template-columns:repeat(3,1fr)}
+  .chart{height:320px}
+}
+@media(min-width:900px){
+  .kpi-grid{grid-template-columns:repeat(4,1fr)}
+  .two-col{grid-template-columns:1.15fr .85fr}
+  .p0chain{grid-template-columns:repeat(3,1fr)}
+  .matrix{grid-template-columns:repeat(4,1fr)}
+  .metrics{grid-template-columns:repeat(3,1fr)}
+  .hero h1{font-size:36px}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap top-in">
+    <div class="brand"><span class="dot"></span>TickGold <small>v3.13-post-release review</small></div>
+    <nav>
+      <a href="#kpi">规模基线</a>
+      <a href="#severity">问题分级</a>
+      <a href="#p0">P0 闭环链</a>
+      <a href="#workbench">工作台对比</a>
+      <a href="#matrix">保压砍缓</a>
+      <a href="#roadmap">版本路线</a>
+      <a href="#metrics">核心度量</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ===== 顶部概览头 ===== -->
+<div class="hero">
+  <div class="wrap">
+    <div class="kicker">POST-RELEASE DEEP REVIEW · 2026-10-20</div>
+    <h1>TickGold 发版后深度复盘与优化看板（v3.13 起）</h1>
+    <div class="meta">
+      <span class="chip">基线日期 <b>2026-10-20（周二）</b></span>
+      <span class="chip">当前版本 <b>v3.12.0（已公开发布）</b></span>
+      <span class="chip">技术栈 <b>Tauri 2(Rust) + Vue3/TS + Python sidecar</b></span>
+      <span class="chip">release run <b>39368007665 全绿</b></span>
+    </div>
+    <div class="alert">
+      <svg class="ico" viewBox="0 0 24 24" fill="none"><path d="M12 3L2.5 20h19L12 3z" stroke="#e0455a" stroke-width="1.8" fill="#31161c" stroke-linejoin="round"/><path d="M12 10v4.5" stroke="#ff8d9c" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="17" r="1.1" fill="#ff8d9c"/></svg>
+      <div>
+        <h2>最高风险：第 1–4 组真机手动冒烟全部未签收（跳过冒烟直接发版）</h2>
+        <p>v3.12.0 已公开发布、tickgold-public 已上 Windows / macOS 安装包，但 <code style="font-family:var(--mono)">docs/smoke/v3.12.0-signoff.md</code> 第 1–4 组（作战台 / 条件单 / 盘后流水线 / 8:45 提醒）结果列全部空白。一个执行通道未经真机验证的版本，已在公开渠道可被下载安装。</p>
+      </div>
+    </div>
+    <div class="strategy">
+      <b>核心策略：</b>从「功能扩张」转向「闭环验证与工程收口」，冻结新功能约 3~4 周，按 <b>发版后补验与回滚（v3.13.1）→ 执行层工程化（v3.14）→ 可信口径（v3.15）→ 工作台体验专项（v3.16）</b> 推进；合规红线不可让步。
+    </div>
+  </div>
+</div>
+
+<!-- ===== KPI ===== -->
+<section id="kpi">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">01</span><h2>关键指标 · 规模与测试基线</h2><span class="sub">本轮逐项核实（MD §1.4）</span></div>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="v num">256</div><div class="l">Tauri 命令（#[tauri::command] 全仓）</div><div class="n">分布 27 文件 · 官方口径一致</div></div>
+      <div class="kpi"><div class="v num">63</div><div class="l">数据库迁移（v1…v63 连续无缺）</div><div class="n">v63 = plan_instruction.tag TEXT DEFAULT ''</div></div>
+      <div class="kpi"><div class="v num">47</div><div class="l">前端卡片（CardId 联合类型）</div><div class="n">4 场景组 13/13/12/9 = 47</div></div>
+      <div class="kpi g"><div class="v num">295</div><div class="l">Rust 测试（cargo test）</div><div class="n">#[test] + #[tokio::test] · 51 文件</div></div>
+      <div class="kpi g"><div class="v num">861</div><div class="l">Vitest 用例（官方口径）</div><div class="n">本轮静态 it() 计数 818 / 86 文件</div></div>
+      <div class="kpi g"><div class="v num">37</div><div class="l">Playwright（3 skip，官方口径）</div><div class="n">8 spec · 静态 test()=38、skip=3</div></div>
+      <div class="kpi a"><div class="v num">2,353</div><div class="l">sidecar 客户端行数（LF 口径）</div><div class="n">同花顺 GUI 自动化 Python</div></div>
+      <div class="kpi"><div class="v num">4.1万 / 6.9万</div><div class="l">Rust 41,078 行 · 前端 68,708 行</div><div class="n">Get-Content 口径，量级一致</div></div>
+    </div>
+    <div class="kpi-note">
+      口径说明：Vitest 861、Playwright 37（3 skip）为官方口径（§1.4）；本轮未动态跑测（按约束），静态计数 <code>818 / 38</code>，差值未归因，发版以 <code>pnpm test</code> 实际数为准。行数口径：Windows PowerShell 5.1 对裸 LF 文件计数偏少，所有「文件:行号」以 Read/Grep 的 LF 行号为准。
+    </div>
+    <div class="two-col" style="margin-top:18px">
+      <div class="chart-box"><div id="chartTest" class="chart"></div></div>
+      <div class="chart-box"><div id="chartScale" class="chart"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 问题分级总览 ===== -->
+<section id="severity">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">02</span><h2>问题分级总览</h2><span class="sub">52 个证据条目（部分条目含多个子问题）· P0 6 / P1 9 / P2 37</span></div>
+    <div class="two-col">
+      <div class="chart-box"><div id="chartSev" class="chart tall"></div></div>
+      <div>
+        <div class="p0list">
+          <div class="p0row"><span class="tag">P0-1</span><div><div class="tt">发版后真机验证缺失，且无回滚预案（当前最高风险）</div><div class="ds">CI 全绿替代不了真机签收；同花顺通道无法被 Vitest / cargo / Playwright 覆盖。</div></div></div>
+          <div class="p0row"><span class="tag">P0-2 · B-01</span><div><div class="tt">闪电下单限价被静默丢弃，风控价与真实成交价脱钩</div><div class="ds">Python 只填数量不填价，按客户端盘口价成交，风控仍按被丢弃的参考价计算。</div></div></div>
+          <div class="p0row"><span class="tag">P0-3 · B-03</span><div><div class="tt">单笔撤单假成功、急停对 client 通道非真撤</div><div class="ds">只打开撤单页即回报 cancelled，券商侧委托可能仍存活成孤儿在途单。</div></div></div>
+          <div class="p0row"><span class="tag">P0-4</span><div><div class="tt">sidecar 无操作看门狗 / 串行队列 / 断连重建，链路可能假活</div><div class="ds">GUI 卡死全链排队持锁；心跳盲发，xiadan 死亡而 connected 仍为 true。</div></div></div>
+          <div class="p0row"><span class="tag">P0-5 · F-01</span><div><div class="tt">急停零确认、三口径</div><div class="ds">驾驶舱零确认 / 风险卡 confirmDialog / 灵动岛 window.confirm，同一动作三种行为。</div></div></div>
+          <div class="p0row"><span class="tag">P0-6</span><div><div class="tt">查询失败 / 空结果语义混淆（缺显式 ok:false）</div><div class="ds">Rust 遇非空 note 一律按失败帧丢缓存，空结果被误判为失败。</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- ===== P0 闭环链 ===== -->
+<section id="p0">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">03</span><h2>P0 闭环链 · 6 项必须在继续加功能前关闭</h2><span class="sub">P0-1 落 v3.13.1 补验回滚；P0-2 ~ P0-6 落 v3.14 执行层工程化</span></div>
+    <div class="stepper">
+      <div class="step"><span class="b">1</span>补验回滚</div><span class="ar">→</span>
+      <div class="step"><span class="b">2</span>价格真实送达</div><span class="ar">→</span>
+      <div class="step"><span class="b">3</span>真实撤单</div><span class="ar">→</span>
+      <div class="step"><span class="b">4</span>看门狗/队列</div><span class="ar">→</span>
+      <div class="step"><span class="b">5</span>统一急停确认</div><span class="ar">→</span>
+      <div class="step"><span class="b">6</span>ok:false 失败语义</div>
+    </div>
+    <div class="p0chain">
+
+      <div class="p0card">
+        <div class="hd"><span class="id">P0-1</span><span class="ver">→ v3.13.1（不改代码优先）</span></div>
+        <h3>发版后补验与回滚：真机签收 + 回滚预案就位</h3>
+        <div class="one">v3.12.0 已公开但第 1–4 组真机冒烟全空白；本轮不允许再以「CI 全绿」代替真机签收，先补五组冒烟、四表校准、文档勘误与回滚预案。</div>
+        <div class="ev">
+          <code>v3.12.0-signoff.md:18-55</code><code>v3.12.0-manual.md（五组）</code><code>§6 回滚条件/hotfix</code>
+        </div>
+      </div>
+
+      <div class="p0card">
+        <div class="hd"><span class="id">P0-2</span><span class="new">新发现 B-01</span><span class="ver">→ v3.14</span></div>
+        <h3>闪电下单价格真实送达：限价不得被静默丢弃</h3>
+        <div class="one">Python 闪电流程只填数量从不填价，实际按客户端盘口价成交；风控却用被丢弃的参考价算涨停/单笔/单日。处置：完整输入价格，或读回客户端真实价重算风控，确认单标注「盘口价/限价」。</div>
+        <div class="ev">
+          <code>sidecar_client.py:1570（只填数量）</code><code>:1583（自认盘口价）</code><code>risk.rs:181-184（涨停）</code><code>mod.rs:1837-1838（单笔）</code><code>mod.rs:1848-1849（单日）</code>
+        </div>
+      </div>
+
+      <div class="p0card">
+        <div class="hd"><span class="id">P0-3</span><span class="new">新发现 B-03</span><span class="ver">→ v3.14</span></div>
+        <h3>真实撤单：读回挂单表确认消失才落 CANCELLED</h3>
+        <div class="one">do_cancel 仅 F5/F3 打开撤单页就 emit cancelled，本地落 CANCELLED 而券商侧委托可能仍存活。拆出 cancel_page_opened / cancelled 两态；急停对 client 通道做真实撤买撤卖 + 读回确认。</div>
+        <div class="ev">
+          <code>sidecar_client.py:1764-1780</code><code>:1765（无单笔精确撤单）</code><code>:1779（直接 emit cancelled）</code><code>mod.rs:2192-2207</code><code>mod.rs:2431-2459（急停）</code>
+        </div>
+      </div>
+
+      <div class="p0card">
+        <div class="hd"><span class="id">P0-4</span><span class="ver">→ v3.14（旧 P0-2，仍开放）</span></div>
+        <h3>看门狗 / 串行队列 / 断连重建：链路不得假活</h3>
+        <div class="one">单 GUI 操作硬超时（建议 10s）→ 判定卡死 → 断连 → 重建执行线程、退休卡死线程 → 后续快速失败；单一 OperationQueue；心跳带存活判定；人工等待移出全局锁。</div>
+        <div class="ev">
+          <code>sidecar_client.py:740（30s 锁）</code><code>:2311-2318（每方法新建线程）</code><code>:303-306（心跳盲发）</code><code>sidecar.rs:168-195（无重连）</code>
+        </div>
+      </div>
+
+      <div class="p0card">
+        <div class="hd"><span class="id">P0-5</span><span class="new">新发现 F-01</span><span class="ver">→ v3.14（安全相关先做）</span></div>
+        <h3>统一急停确认：三处入口共用同一段风险文案与组件</h3>
+        <div class="one">确认下沉到 store 的 emergencyHalt / 统一 executeHalt() 门面；确认框列出后果清单（封新委托、撤 N 条件单、撤 M 在途、断 sidecar）；急停后全屏 chip + 解除路径（解除同样需确认）。</div>
+        <div class="ev">
+          <code>Cockpit.vue:227-229（零确认）</code><code>RiskDashboard.vue:230-238</code><code>Island.vue:218（window.confirm）</code><code>workflow.ts:971（无确认）</code>
+        </div>
+      </div>
+
+      <div class="p0card">
+        <div class="hd"><span class="id">P0-6</span><span class="ver">→ v3.14（旧 P0-3，更严重）</span></div>
+        <h3>ok:false 失败语义：失败绝不覆盖缓存、绝不参与对账</h3>
+        <div class="one">统一查询协议 {ok:bool, data, note, ts}：ok:false = 读取失败，保留缓存；ok:true + 空数组 = 真实空数据，正常清缓存。前端区分「空仓/无挂单」与「读取失败（点重试）」；HTTP 端点失败不返回 success。</div>
+        <div class="ev">
+          <code>sidecar_client.py:1887-1888（trades 空 note）</code><code>:1929-1930（pending 空 note）</code><code>mod.rs:383-386 / :395-398 / :419-422 / :431-434（遇 note 丢缓存）</code>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+<!-- ===== 工作台前后对比 ===== -->
+<section id="workbench">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">04</span><h2>工作台 / 作战台体验：现状 vs 目标（§3.4，9 维度）</h2><span class="sub">现状 v3.12.0 → 目标 v3.16 收口 · 重构而非新功能</span></div>
+    <div class="cmp-wrap">
+      <table class="cmp">
+        <colgroup><col class="c-dim"><col class="c-cur"><col class="c-go"></colgroup>
+        <thead>
+          <tr><th>维度</th><th class="cur">现状（v3.12.0）</th><th class="go">目标（v3.16 收口）</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="dim">空工作台</td><td class="cur">全量 47 卡栅格、desc 仅 tooltip、无实时数据</td><td class="go">时段+情绪条 / 6 个推荐大卡 / 全量折叠区</td></tr>
+          <tr><td class="dim">新手首启</td><td class="cur">两卡（作战流+控制台）高密度直接给</td><td class="go">分步铺卡 + 三步可勾选任务，5 分钟跑通模拟盘</td></tr>
+          <tr><td class="dim">非新手首启</td><td class="cur">时段预设不含自选</td><td class="go">时段 BENTO 底栏常驻自选</td></tr>
+          <tr><td class="dim">灵动岛</td><td class="cur">预警/信号/委托/报价/急停混装、独立轮询</td><td class="go">只看计数+跳转+全局急停，行情复用 store</td></tr>
+          <tr><td class="dim">下单确认</td><td class="cur">三路径口径不一、SELL 无可卖量</td><td class="go">统一 8 要素、显示可卖量、价类标注</td></tr>
+          <tr><td class="dim">急停</td><td class="cur">零确认 / confirmDialog / window.confirm 三口径</td><td class="go">统一确认组件、列后果清单</td></tr>
+          <tr><td class="dim">异常反馈</td><td class="cur">多处静默 catch</td><td class="go">统一 error + 重试，标题栏错误色点</td></tr>
+          <tr><td class="dim">快捷键</td><td class="cur">仅屏蔽输入框</td><td class="go">弹窗 / 按钮焦点双守卫</td></tr>
+          <tr><td class="dim">性能</td><td class="cur">全量长表、双路轮询、监听泄漏</td><td class="go">虚拟滚动、store 单轮询、守卫与清理齐全</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="kpi-note" style="margin-top:12px">
+      设计原则（§3.1）：一个主链一个焦点（计划→条件单→信号→风控→执行→对账→复盘）；岛=只看+跳转+全局急停，主窗=操作主战场；空态即任务不是功能墙；所有破坏性动作必有统一确认、所有失败必有可见反馈；卡片四态统一（loading 骨架 / 空态引导 / 错误+重试 / 正常）。
+    </div>
+  </div>
+</section>
+
+<!-- ===== 保压砍缓矩阵 ===== -->
+<section id="matrix">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">05</span><h2>功能迭代：保 / 压 / 砍 / 缓（§4.2）</h2><span class="sub">冻结新功能约 3~4 周，v3.13.1–v3.16 只做验证、止血、收口、体验</span></div>
+    <div class="matrix">
+      <div class="qcard keep">
+        <div class="qh"><span class="tag">保</span>主链 · 必做精</div>
+        <div class="qb"><ul>
+          <li>今日作战流（作战台）</li>
+          <li>计划即执行、本地条件单</li>
+          <li>信号确认桥、同花顺实盘通道</li>
+          <li>风控闸门、急停、自动对账</li>
+          <li>回测 / 信号质量</li>
+        </ul>
+        <div class="fix">集中资源真机打通并修复 P0-2 / P0-3 / P0-4，全部纳入冒烟门禁。</div></div>
+      </div>
+      <div class="qcard press">
+        <div class="qh"><span class="tag">压</span>已建 · 补严谨不加能力</div>
+        <div class="qb"><ul>
+          <li>Copilot 条件单</li>
+          <li>指令打标权重与真实胜率</li>
+          <li>连板天梯 / 连板选股器</li>
+          <li>风险仪表盘、模型接管、盘中解读</li>
+        </ul>
+        <div class="fix">补口径 / 边界 / 测试（P1-1、P1-2、§5 各版本），冻结新增能力。</div></div>
+      </div>
+      <div class="qcard cut">
+        <div class="qh"><span class="tag">砍</span>实验旁支 · 冻结或下线</div>
+        <div class="qb"><ul>
+          <li>bot/ IK 蜘蛛实验（移出仓库，320.6MB / 2,442 文件）</li>
+          <li>三套蜘蛛收敛为一个入口</li>
+          <li>QMT 半删残留彻底清理（或明确后排）</li>
+          <li>未完成入口不在主程序展示</li>
+        </ul>
+        <div class="fix">见 §4.3：autoexec 启停收敛为单一门面（G-05）。</div></div>
+      </div>
+      <div class="qcard later">
+        <div class="qh"><span class="tag">缓</span>明确不做 / 后排</div>
+        <div class="qb"><ul>
+          <li>自研移动端、Level-2 盗版数据</li>
+          <li>确定性走势预测、代客理财</li>
+          <li>社区 / 云同步、多账户（实盘稳定后）</li>
+          <li>代码签名、验证码 CRNN、巨石拆分</li>
+        </ul>
+        <div class="fix">写入「明确不做/后排」（附录 C），按 v3.14/v3.15 真机结论排序。</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- ===== 版本路线 ===== -->
+<section id="roadmap">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">06</span><h2>版本路线：v3.13.1 → v3.17+</h2><span class="sub">单人 + AI 辅助，PD 粗估；每版独立可发布可灰度，真机不过不发版</span></div>
+    <div class="two-col">
+      <div class="roadmap">
+        <div class="rnode v1">
+          <div class="rail"><div class="dot">13.1</div><div class="line"></div></div>
+          <div class="body">
+            <div class="rh"><span class="ver">v3.13.1</span><span class="pd">2~3 PD · patch</span></div>
+            <div class="theme">发版后补验与回滚准备（不改代码优先）</div>
+            <div class="content">真机签收四组 + 四表校准、文档勘误（闪电=盘口价、单笔撤单需客户端确认）、回滚预案就位、失败项录入结构化 backlog。</div>
+            <div class="gate"><b>发版门槛：</b>签收单逐条勾选；失败项录入 backlog（编号 / 优先级 / 所属版本）。</div>
+          </div>
+        </div>
+        <div class="rnode v2">
+          <div class="rail"><div class="dot">14</div><div class="line"></div></div>
+          <div class="body">
+            <div class="rh"><span class="ver">v3.14.0</span><span class="pd">10~12 PD</span></div>
+            <div class="theme">执行层工程化 + 新 P0 修复（落 §2.1 全部 P0）</div>
+            <div class="content">价格真实送达（P0-2）、真实撤单（P0-3）、看门狗/队列（P0-4）、ok:false（P0-6）、统一急停确认（P0-5）；快捷键双守卫、SELL 可卖量；全套测试与 clippy 绿。</div>
+            <div class="gate"><b>发版门槛：</b>模拟盘连续 1 交易日：四表零误判、进程不退出、卡死自愈、撤单可确认；实盘仍默认关闭。</div>
+          </div>
+        </div>
+        <div class="rnode v3">
+          <div class="rail"><div class="dot">15</div><div class="line"></div></div>
+          <div class="body">
+            <div class="rh"><span class="ver">v3.15.0</span><span class="pd">10~12 PD</span></div>
+            <div class="theme">可信口径 + 闸门闭环</div>
+            <div class="content">成交回报闭环（P1-1）、闸门旁路收口（P1-2）、断连冲突保留（P1-3）、回测/实盘统一时点防前视、真实 N 日收益胜率、手册补全；bot/ 移出、QMT 清理、蜘蛛入口收敛。</div>
+            <div class="gate"><b>发版门槛：</b>回测与模拟盘逐日可核对；旁路全部纳入闸门；手册覆盖 v3.12 主功能。</div>
+          </div>
+        </div>
+        <div class="rnode v4">
+          <div class="rail"><div class="dot">16</div><div class="line"></div></div>
+          <div class="body">
+            <div class="rh"><span class="ver">v3.16.0</span><span class="pd">12~15 PD</span></div>
+            <div class="theme">工作台体验专项（§3 全部落地）</div>
+            <div class="content">空态 / 引导 / 默认布局 / 岛职责 / 确认链路 / 异常态 / 快捷键 / 性能，按 §3.2 每主题验收逐条签收；配合已闭环执行层做端到端走查。</div>
+            <div class="gate"><b>发版门槛：</b>新用户 5 分钟跑通模拟盘；性能基线达标；§3 验收全过。</div>
+          </div>
+        </div>
+        <div class="rnode v5">
+          <div class="rail"><div class="dot">17+</div><div class="line"></div></div>
+          <div class="body">
+            <div class="rh"><span class="ver">v3.17.0+</span><span class="pd">按结论排序</span></div>
+            <div class="theme">后排工程化</div>
+            <div class="content">Windows Authenticode 签名 / macOS 公证、多账户原子切换、验证码本地 CRNN ONNX、巨石拆分（先 SettingsDialog / broker/mod.rs / eastmoney.rs / instruction.rs）、本地 API 只读默认 + token + 审计加固。</div>
+            <div class="gate" style="color:var(--txt3);border-top-color:var(--line)"><b style="color:var(--txt3)">门槛：</b>按 v3.14/v3.15 真机结论排序。</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="chart-box"><div id="chartPD" class="chart tall"></div></div>
+        <div class="kpi-note" style="margin-top:12px">
+          发版门禁（§5.7 强制）：静态 vue-tsc / clippy 0 error 0 warning；Vitest、cargo test、Playwright 全绿（含性能基线）；涉及同花顺/交易/盘后任务必须有真机（或改时钟）冒烟记录；任何「价格 / 撤单 / 急停」语义变更须有真机或注入测试证据。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 核心度量 ===== -->
+<section id="metrics">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">07</span><h2>核心度量目标（§9.2）</h2><span class="sub">实盘可靠 / 风控 / 可信 / 体验 / 工程</span></div>
+    <div class="metrics">
+      <div class="metric"><div class="tv num">≥99%</div><div class="tl">四表读取成功率（持仓/成交/挂单/资产）</div><div class="tg">实盘可靠 · 失败不得误判为空仓</div></div>
+      <div class="metric"><div class="tv num">100%</div><div class="tl">看门狗自愈率（注入卡死 10s 自愈）</div><div class="tg">实盘可靠 · 进程异常退出 = 0</div></div>
+      <div class="metric"><div class="tv num">= 0</div><div class="tl">闸门绕过次数（含调试命令 / HTTP /xiadan 旁路）</div><div class="tg">风控 · kill_switch 后任何通道不发新委托</div></div>
+      <div class="metric"><div class="tv num">100%</div><div class="tl">急停有效率；撤单读回确认率 100%</div><div class="tg">风控 · 本地已撤但券商仍挂列为显式冲突</div></div>
+      <div class="metric"><div class="tv num">5 分钟</div><div class="tl">新用户跑通模拟盘（加自选 + 模拟单 + 找到急停）</div><div class="tg">体验 · 空台引导完成率、错误态可见率</div></div>
+      <div class="metric"><div class="tv num">≥50 fps</div><div class="tl">47 卡切换帧率；5,000 行大表滚动 ≥30 fps</div><div class="tg">工程 · 纳入 Playwright 性能基线</div></div>
+    </div>
+    <div class="kpi-note" style="margin-top:14px">
+      其余度量：风控价与真实成交价一致率 100%；带历史命中率（或「样本不足」标灰）的实时信号占比 100%；回测/实盘口径一致；未推送提交数 ≤5；根目录临时文件数 0；文档与版本一致率。北极星：交易日被采纳并产生有效操作的信号数 / 信号→操作转化率。
+    </div>
+  </div>
+</section>
+
+<div class="foot">
+  <div class="wrap">
+    <div class="disc">免责声明：TickGold 行情来自公开免费接口，仅供学习与个人盯盘参考，不保证实时性与准确性，不构成投资建议。AI 输出均为辅助信息，所有交易决策与结果由用户自行承担；实盘仅面向用户本人授权账户，须遵守相关券商与监管规定，本项目不提供投资顾问或代客理财服务。</div>
+    <div style="margin-top:10px">数据来源：《TickGold·发版后深度复盘与完整优化方案（v3.13 起）》，基线 2026-10-20，当前版本 v3.12.0（已公开发布）。</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  if(typeof echarts==='undefined'){return;}
+  var C={gold:'#d4af37',gold2:'#e8c878',red:'#e0455a',green:'#26d07c',amber:'#ffb13d',blue:'#36b8e8',txt2:'#9aa3b5',txt3:'#6b7488',line:'#262d3d',panel:'#1d2330'};
+  var baseTooltip={backgroundColor:C.panel,borderColor:C.line,textStyle:{color:'#e6e9f0',fontSize:12},confine:true};
+  var axisStyle={axisLine:{lineStyle:{color:C.line}},axisLabel:{color:C.txt2,fontSize:12},splitLine:{lineStyle:{color:'rgba(255,255,255,0.06)'}}};
+  function mk(id,opt){var el=document.getElementById(id);if(!el)return;var ch=echarts.init(el);ch.setOption(opt);window.addEventListener('resize',function(){ch.resize();});}
+
+  /* 测试基线 */
+  mk('chartTest',{
+    tooltip:Object.assign({trigger:'axis',axisPointer:{type:'shadow'}},baseTooltip),
+    grid:{left:8,right:46,top:18,bottom:8,containLabel:true},
+    xAxis:Object.assign({type:'value',min:0},axisStyle),
+    yAxis:Object.assign({type:'category',data:['Playwright 37（3 skip）','Rust cargo test','Vitest 861']},axisStyle),
+    series:[{type:'bar',barWidth:20,data:[
+      {value:37,itemStyle:{color:C.blue}},
+      {value:295,itemStyle:{color:C.gold}},
+      {value:861,itemStyle:{color:C.green}}
+    ],label:{show:true,position:'right',color:C.txt2,fontFamily:'JetBrains Mono',fontSize:12,formatter:function(p){return p.value;}}}]
+  });
+
+  /* 规模行数 */
+  mk('chartScale',{
+    tooltip:Object.assign({trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){var d=p[0];return d.name+'：'+d.value.toLocaleString()+' 行';}},baseTooltip),
+    grid:{left:8,right:60,top:18,bottom:8,containLabel:true},
+    xAxis:Object.assign({type:'value',min:0},axisStyle),
+    yAxis:Object.assign({type:'category',data:['sidecar 客户端','Rust 全仓','前端全仓']},axisStyle),
+    series:[{type:'bar',barWidth:20,data:[
+      {value:2353,itemStyle:{color:C.amber}},
+      {value:41078,itemStyle:{color:C.gold}},
+      {value:68708,itemStyle:{color:C.blue}}
+    ],label:{show:true,position:'right',color:C.txt2,fontFamily:'JetBrains Mono',fontSize:11.5,formatter:function(p){return p.value.toLocaleString();}}}]
+  });
+
+  /* 问题分级横向条形（P0/P1/P2 分组着色，非饼图） */
+  mk('chartSev',{
+    tooltip:Object.assign({trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){var d=p[0];return d.name+'：'+d.value+' 项';}},baseTooltip),
+    grid:{left:8,right:44,top:18,bottom:8,containLabel:true},
+    xAxis:Object.assign({type:'value',min:0,max:40},axisStyle),
+    yAxis:Object.assign({type:'category',data:['P2 专业度/分发/长期','P1 可信/可维护','P0 真能用/真安全']},axisStyle),
+    series:[{type:'bar',barWidth:26,data:[
+      {value:37,itemStyle:{color:'#8a7a4a'}},
+      {value:9,itemStyle:{color:C.amber}},
+      {value:6,itemStyle:{color:C.red}}
+    ],label:{show:true,position:'right',color:'#e6e9f0',fontFamily:'JetBrains Mono',fontSize:13,fontWeight:700,formatter:function(p){return p.value+' 项';}}}]
+  });
+
+  /* 版本 PD 区间带（各版本自身 min→max，非累计排期） */
+  mk('chartPD',{
+    tooltip:Object.assign({trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){var v=p[0];return v.name+'：'+v.data.range+' PD（粗估）';}},baseTooltip),
+    legend:{show:false},
+    grid:{left:8,right:30,top:18,bottom:28,containLabel:true},
+    xAxis:Object.assign({type:'value',min:0,max:16,name:'PD（人日，粗估）',nameTextStyle:{color:C.txt3,fontSize:11}},axisStyle),
+    yAxis:Object.assign({type:'category',data:['v3.17+ 后排','v3.16.0','v3.15.0','v3.14.0','v3.13.1']},axisStyle),
+    series:[
+      {name:'offset',type:'bar',stack:'pd',itemStyle:{color:'transparent'},emphasis:{itemStyle:{color:'transparent'}},data:[0,0,0,0,0],silent:true},
+      {name:'区间',type:'bar',stack:'pd',barWidth:18,data:[
+        {value:0,range:'按结论排序',itemStyle:{color:'#3a4152'}},
+        {value:3,range:'12~15',itemStyle:{color:C.blue}},
+        {value:2,range:'10~12',itemStyle:{color:C.amber}},
+        {value:2,range:'10~12',itemStyle:{color:C.red}},
+        {value:1,range:'2~3',itemStyle:{color:C.gold}}
+      ],label:{show:true,position:'right',color:C.txt2,fontFamily:'JetBrains Mono',fontSize:11.5,formatter:function(p){return p.data.range;}}}
+    ]
+  });
+})();
+</script>
+</body>
+</html>

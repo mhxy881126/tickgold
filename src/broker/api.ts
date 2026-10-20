@@ -37,6 +37,7 @@ export interface BrokerAsset {
   floatPnl?: number; // 浮动盈亏
   dayPnl?: number; // 当日参考盈亏
   note?: string;
+  ok?: boolean; // P0-6 显式读取失败标志：false=读取失败（保留上次成功值）
 }
 
 export interface BrokerPosition {
@@ -244,7 +245,7 @@ export function brokerQueryAsset() {
 }
 
 export function brokerQueryPosition() {
-  return invoke<{ positions: BrokerPosition[]; note?: string }>("broker_query_position");
+  return invoke<{ positions: BrokerPosition[]; note?: string; ok?: boolean }>("broker_query_position");
 }
 
 export function brokerKillSwitch(cancelAll = false) {
@@ -429,12 +430,12 @@ export interface ClientCurrentPage {
 
 /** 当日成交：优先缓存，空则向客户端查询（结果经 broker:trades 事件回传）。 */
 export function brokerClientQueryTrades() {
-  return invoke<{ trades?: BrokerTrade[]; note?: string }>("broker_client_query_trades");
+  return invoke<{ trades?: BrokerTrade[]; note?: string; ok?: boolean }>("broker_client_query_trades");
 }
 
 /** 当日挂单（未成交委托）。 */
 export function brokerClientQueryPending() {
-  return invoke<{ orders?: BrokerPending[]; note?: string }>("broker_client_query_pending");
+  return invoke<{ orders?: BrokerPending[]; note?: string; ok?: boolean }>("broker_client_query_pending");
 }
 
 /** 一键撤单：kind = A(全撤) / X(撤买) / C(撤卖)。 */
@@ -498,6 +499,8 @@ export interface PathProbe {
   exists: boolean;
   suggested: string;
   hint: string;
+  /** 命中来源：manual / running-process / registry / filesystem / path（后端可空） */
+  source?: string;
 }
 
 export interface ProbeResult {
@@ -506,9 +509,19 @@ export interface ProbeResult {
   summary: { ok: number; bad: number };
 }
 
-/** 本机探测券商相关路径（python / qmt / 同花顺 / tesseract），mode 缺省用当前配置。 */
-export function brokerProbePaths(mode?: string | null) {
-  return invoke<ProbeResult>("broker_probe_paths", { mode: mode ?? null });
+/** 手填框即时覆盖值；空串/不传由后端回落已保存配置。 */
+export interface ProbeOptions {
+  pythonPath?: string | null;
+  clientPath?: string | null;
+}
+
+/** 本机探测券商相关路径（python / qmt / 同花顺 / tesseract），mode 缺省用当前配置；opts 传当前输入框值做即时校验。 */
+export function brokerProbePaths(mode?: string | null, opts?: ProbeOptions) {
+  return invoke<ProbeResult>("broker_probe_paths", {
+    mode: mode ?? null,
+    pythonPath: opts?.pythonPath ?? null,
+    clientPath: opts?.clientPath ?? null,
+  });
 }
 
 export interface FillResult {

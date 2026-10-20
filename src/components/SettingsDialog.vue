@@ -83,6 +83,7 @@ import {
 } from "../api/backup";
 import { exit as exitApp } from "@tauri-apps/plugin-process";
 import { confirmDialog } from "../composables/useDialog";
+import { confirmEmergencyHalt, formatEmergencyHaltResult } from "../composables/emergencyHalt";
 import { useLicenseStore } from "../stores/license";
 
 const props = defineProps<{ open: boolean; initialTab?: Tab }>();
@@ -1017,7 +1018,10 @@ async function bRefreshSelfcheck() {
   try {
     // 未连接：先做本机路径自检（Python / 客户端 / OCR，不依赖 sidecar），让「刷新自检」点一下就有结果
     if (!bStatus.value?.connected && bForm.value) {
-      bProbe.value = await brokerProbePaths(bForm.value.kind);
+      bProbe.value = await brokerProbePaths(bForm.value.kind, {
+        pythonPath: bForm.value.pythonPath,
+        clientPath: bForm.value.clientPath,
+      });
       const sum = bProbeSummary.value;
       if (sum) {
         bFlash(sum + (bProbe.value?.summary.bad ? "；修复后点「保存并连接」即可连接" : "；点「保存并连接」即可开始"));
@@ -1077,7 +1081,10 @@ async function bProbeRun() {
   if (!bForm.value) return;
   bProbeBusy.value = true;
   try {
-    bProbe.value = await brokerProbePaths(bForm.value.kind);
+    bProbe.value = await brokerProbePaths(bForm.value.kind, {
+        pythonPath: bForm.value.pythonPath,
+        clientPath: bForm.value.clientPath,
+      });
   } catch (e) {
     bProbe.value = null;
     bFlash(`路径自检失败：${e}`);
@@ -1129,7 +1136,10 @@ async function bProbeFill(field: string) {
   if (!bForm.value || bProbeBusy.value) return;
   bProbeBusy.value = true;
   try {
-    bProbe.value = await brokerProbePaths(bForm.value.kind);
+    bProbe.value = await brokerProbePaths(bForm.value.kind, {
+        pythonPath: bForm.value.pythonPath,
+        clientPath: bForm.value.clientPath,
+      });
     const p = bProbe.value?.probes.find((x) => x.field === field);
     if (p && p.status !== "ok" && p.suggested) {
       (bForm.value as unknown as Record<string, unknown>)[field] = p.suggested;
@@ -1463,17 +1473,12 @@ async function bDisconnect() {
 }
 // v3.0.0-rc 一键急停：封新委托 + 停自动执行 + 撤全部条件单 / 在途委托 + 断通道
 async function bEmergencyHalt() {
-  const ok = await confirmDialog({
-    title: "一键急停",
-    danger: true,
-    confirmText: "立即急停",
-    message:
-      "将立即执行：① 封死全部新委托 ② 停止自动执行 ③ 撤销全部条件单 ④ 撤销全部在途委托并断开券商通道。\n\n该操作不可撤销，恢复需手动解除、重连并重启自动执行。确认继续？",
-  });
+  // v3.14 P0-5：确认文案 / 成功反馈对齐共享口径，底层仍直调 brokerEmergencyHalt，行为不变。
+  const ok = await confirmEmergencyHalt();
   if (!ok) return;
   try {
     const r = await brokerEmergencyHalt();
-    bFlash(`已急停：撤销条件单 ${r.coCount} 个、在途委托 ${r.orderCount} 笔`);
+    bFlash(formatEmergencyHaltResult(r));
     await refreshBStatus();
   } catch (e) {
     bFlash(String(e));

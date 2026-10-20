@@ -193,7 +193,8 @@ import {
   riskSnapshot,
   type RiskSnapshot,
 } from "../../broker/api";
-import { confirmDialog } from "../../composables/useDialog";
+import { confirmEmergencyHalt, formatEmergencyHaltResult } from "../../composables/emergencyHalt";
+import { toast } from "../../composables/useToast";
 
 const snap = ref<RiskSnapshot | null>(null);
 const loading = ref(false);
@@ -228,18 +229,14 @@ async function load() {
 }
 
 async function emergencyHalt() {
-  const ok = await confirmDialog({
-    title: "一键急停",
-    danger: true,
-    confirmText: "立即急停",
-    message:
-      "将立即执行：① 封死全部新委托 ② 停止自动执行 ③ 撤销全部条件单 ④ 撤销全部在途委托并断开券商通道。\n\n该操作不可撤销，恢复需手动解除、重连并重启自动执行。确认继续？",
-  });
+  // v3.14 P0-5：统一确认口径（共享文案/危险色），取消即 return；底层仍直调 brokerEmergencyHalt，行为不变。
+  const ok = await confirmEmergencyHalt();
   if (!ok) return;
   halting.value = true;
   try {
-    await brokerEmergencyHalt();
+    const r = await brokerEmergencyHalt();
     halted.value = true;
+    toast.success(formatEmergencyHaltResult(r));
     await load();
   } catch (e) {
     console.error("emergency halt failed", e);

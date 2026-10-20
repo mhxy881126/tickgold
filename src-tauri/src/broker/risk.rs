@@ -175,7 +175,10 @@ pub fn check(
         return Err("A 股委托数量须为 100 的整数倍".to_string());
     }
 
-    // 3) 涨跌停反向拦截（有行情快照时）
+    // 3) 涨跌停反向拦截（有行情快照时）。
+    // 注意：client 闪电/盘口通道弹窗只填数量、不填限价，order.price 只是下发参考价，
+    // 此处基于参考价的涨跌停拦截属保守/建议性，保持原样不得削弱；该通道的权威暴露
+    // 上限以 market_order_amount_bound 的快照最坏边界为准（见 is_live 块）。
     if let Some(mk) = market {
         if order.side == "BUY" {
             if let Some(up) = mk.limit_up {
@@ -357,6 +360,26 @@ pub fn gate(
 /// 一律拒绝下单（防止数量级乌龙指，gate 以涨停价为买入硬边界）。
 pub fn limit_prices_ready(market: Option<MarketSnapshot>) -> bool {
     matches!(market, Some(m) if m.limit_up.is_some() && m.limit_down.is_some())
+}
+
+/// P0-2 闪电/市价（client 盘口通道）金额边界：弹窗只填数量、不填限价，下发参考价不是
+/// 权威成交金额，故以行情快照最坏边界重算暴露上限：
+/// BUY → 涨停价 × 数量（买入最坏成本）；SELL → 跌停价 × 数量（卖出最坏回款）。
+/// 所需涨跌停价缺失返回 None，由调用方 fail-safe 拒绝。
+pub fn market_order_amount_bound(
+    side: &str,
+    vol: i64,
+    market: Option<MarketSnapshot>,
+) -> Option<f64> {
+    let mk = market?;
+    let v = vol as f64;
+    if side.eq_ignore_ascii_case("BUY") {
+        mk.limit_up.map(|u| u * v)
+    } else if side.eq_ignore_ascii_case("SELL") {
+        mk.limit_down.map(|d| d * v)
+    } else {
+        None
+    }
 }
 
 /// A 股代码去交易所后缀（600519.SH → 600519；无后缀原样返回）。
@@ -1036,5 +1059,45 @@ mod tests {
         let (items2, _) = parse_position_event(&v2);
         assert_eq!(items2[0].1.name, "");
         assert_eq!(items2[0].1.price, 0.0);
+    }
+
+    // ===== P0-2 盘口通道金额边界：BUY 用涨停、SELL 用跌停、缺失返回 None =====
+
+    #[test]
+    fn market_bound_buy_uses_limit_up() {
+        let mk = MarketSnapshot {
+            limit_up: Some(11.0),
+            limit_down: Some(9.0),
+        };
+        assert_eq!(market_order_amount_bound("BUY", 100, Some(mk)), Some(1100.0));
+    }
+
+    #[test]
+    fn market_bound_sell_uses_limit_down() {
+        let mk = MarketSnapshot {
+            limit_up: Some(11.0),
+            limit_down: Some(9.0),
+        };
+        assert_eq!(market_order_amount_bound("SELL", 100, Some(mk)), Some(900.0));
+    }
+
+    #[test]
+    fn market_bound_missing_returns_none() {
+        // 无快照
+        assert_eq!(market_order_amount_bound("BUY", 100, None), None);
+        // BUY 缺涨停价
+        let mk_no_up = MarketSnapshot {
+            limit_up: None,
+            limit_down: Some(9.0),
+        };
+        assert_eq!(market_order_amount_bound("BUY", 100, Some(mk_no_up)), None);
+        // SELL 缺跌停价
+        let mk_no_dn = MarketSnapshot {
+            limit_up: Some(11.0),
+            limit_down: None,
+        };
+        assert_eq!(market_order_amount_bound("SELL", 100, Some(mk_no_dn)), None);
+        // 非法方向
+        assert_eq!(market_order_amount_bound("HOLD", 100, Some(mk_no_up)), None);
     }
 }
