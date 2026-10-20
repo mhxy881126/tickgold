@@ -309,6 +309,13 @@ pnpm install
 pnpm tauri dev        # 启动开发模式（Vite 热更新 + Rust 后端）
 ```
 
+Windows 若普通终端直接 `pnpm tauri dev` 报 `failed to find tool "cl.exe"`（未加载 MSVC 环境），改用仓库固化的启动脚本：自动定位 MSVC、合并 INCLUDE/LIB、再启动。
+
+```powershell
+.\scripts\dev-tauri.ps1 -Check    # 先自检工具链（不启动）
+.\scripts\dev-tauri.ps1           # 正式启动 tauri dev
+```
+
 仅验证前端：
 
 ```bash
