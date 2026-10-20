@@ -536,7 +536,7 @@ fn resolve_bare_or_relative(name: &str) -> Option<String> {
 }
 
 /// 1) 正在运行的 xiadan.exe / xiadan-plus.exe 进程可执行路径。
-/// wmic 优先，PowerShell CIM 回退；命令缺失/无进程/权限不足一律静默跳过，不报错。
+///    wmic 优先，PowerShell CIM 回退；命令缺失/无进程/权限不足一律静默跳过，不报错。
 fn running_client_process() -> Vec<ClientCandidate> {
     let mut out = Vec::new();
     if let Ok(o) = silent_cmd("wmic")
@@ -588,7 +588,7 @@ fn running_client_process() -> Vec<ClientCandidate> {
 }
 
 /// 2) 注册表 Uninstall（HKLM 64/32 视图 + HKCU），reg query /s 一次性取全量后按块解析，
-/// 仅保留同花顺系（DisplayName / DisplayIcon 命中关键词），失败静默跳过。
+///    仅保留同花顺系（DisplayName / DisplayIcon 命中关键词），失败静默跳过。
 fn registry_client_candidates() -> Vec<ClientCandidate> {
     const ROOTS: &[&str] = &[
         r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
@@ -1070,7 +1070,7 @@ mod tests {
     #[test]
     fn cmd_text_gbk_output_falls_back() {
         // 旧中文系统输出为 GBK：UTF-8 严格解码失败后应回退 GBK，结果一致
-        let gbk_bytes = encoding_rs::GBK.encode(&"D:\\360download\\同花顺\\xiadan.exe").0.into_owned();
+        let gbk_bytes = encoding_rs::GBK.encode("D:\\360download\\同花顺\\xiadan.exe").0.into_owned();
         assert_eq!(cmd_text(&gbk_bytes), "D:\\360download\\同花顺\\xiadan.exe");
     }
 
