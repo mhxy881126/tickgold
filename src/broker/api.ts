@@ -19,6 +19,8 @@ export interface BrokerOrderInfo {
   brokerAccount: string;
   brokerOrderId: string;
   code: string;
+  /** 股票名称：后端从 signal_ticket 关联补全，可能为空 */
+  name?: string;
   side: string;
   price: number;
   vol: number;

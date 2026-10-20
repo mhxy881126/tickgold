@@ -180,6 +180,9 @@ function fmtPnl(n: number) {
         <span class="pp-status" :class="isRunning ? 'on' : isPaused ? 'paused' : 'idle'">
           <span class="pp-dot" />{{ statusText }}
         </span>
+        <button v-if="!isRunning" class="pp-btn solid" :disabled="pilot.busy" @click="doStart">
+          {{ pilot.busy ? "启动中…" : "▶ 一键开始智驾" }}
+        </button>
         <button v-if="isRunning" class="pp-btn ghost" :disabled="pilot.busy" @click="doPause">暂停</button>
         <button v-if="isRunning || isPaused" class="pp-btn ghost" :disabled="pilot.busy" @click="doStop">停止</button>
       </div>

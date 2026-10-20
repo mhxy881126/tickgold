@@ -33,6 +33,28 @@ import {
   type ValidationDetail,
 } from "../broker/api";
 
+// 模型/策略英文标识 → 中文可读文案（信号来源一目了然）
+function modelText(v?: string | null): string {
+  if (!v) return "-";
+  const m: Record<string, string> = {
+    "conditional-engine": "本地条件单",
+    "manual": "手动新建",
+    "dock": "作战台",
+    "brain": "快脑信号",
+  };
+  return m[v] || v;
+}
+function strategyText(v?: string | null): string {
+  if (!v) return "-";
+  const m: Record<string, string> = {
+    "co.trigger": "条件单触发",
+    "co:trigger": "条件单触发",
+    "cc:trigger": "作战指令触发",
+    "manual": "手动确认",
+  };
+  return m[v] || v;
+}
+
 const TABS = [
   { k: "pending", t: "待确认" },
   { k: "confirmed", t: "已确认" },
@@ -565,8 +587,8 @@ onUnmounted(() => {
         </div>
 
         <div class="sig-meta">
-          <span class="m-item">模型 <b>{{ t.modelVersion || "-" }}</b></span>
-          <span class="m-item">策略 <b>{{ t.strategy || "-" }}</b></span>
+          <span class="m-item">模型 <b>{{ modelText(t.modelVersion) }}</b></span>
+          <span class="m-item">策略 <b>{{ strategyText(t.strategy) }}</b></span>
           <span class="m-item">
             置信
             <span

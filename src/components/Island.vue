@@ -612,7 +612,7 @@ onBeforeUnmount(() => {
         <div class="order-group-title">实盘交易</div>
         <div v-for="o in activeOrders" :key="o.sigId" class="order-row">
           <span class="ord-code">
-            <b>{{ o.code }}</b>
+            <b>{{ o.name || o.code }}</b><i v-if="o.name" class="code">{{ o.code }}</i>
             <span class="ord-vol">{{ o.filledVol }}/{{ o.vol }}</span>
           </span>
           <span class="ord-st live">{{ bkLabel(o.status) }}</span>

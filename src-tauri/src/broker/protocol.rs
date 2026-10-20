@@ -36,6 +36,8 @@ pub struct BrokerOrderInfo {
     pub broker_account: String,
     pub broker_order_id: String,
     pub code: String,
+    /// 股票名称：broker_order 无 name 列，由 signal_ticket 关联补全（可能为空）。
+    pub name: String,
     pub side: String,
     pub price: f64,
     pub vol: i64,
@@ -56,6 +58,7 @@ fn row_to_info(r: &rusqlite::Row) -> rusqlite::Result<BrokerOrderInfo> {
         broker_account: r.get("broker_account")?,
         broker_order_id: r.get("broker_order_id")?,
         code: r.get("code")?,
+        name: String::new(),
         side: r.get("side")?,
         price: r.get("price")?,
         vol: r.get("vol")?,
@@ -143,7 +146,15 @@ pub fn get_by_sig(conn: &Connection, sig_id: &str) -> Option<BrokerOrderInfo> {
     let mut stmt = conn
         .prepare("SELECT * FROM broker_order WHERE sig_id=?1")
         .ok()?;
-    stmt.query_row(rusqlite::params![sig_id], row_to_info).ok()
+    let mut info = stmt.query_row(rusqlite::params![sig_id], row_to_info).ok()?;
+    if let Ok(name) = conn.query_row(
+        "SELECT COALESCE(name, '') FROM signal_ticket WHERE sig_id=?1",
+        rusqlite::params![sig_id],
+        |r| r.get::<_, String>(0),
+    ) {
+        info.name = name;
+    }
+    Some(info)
 }
 
 pub fn list(conn: &Connection, status: Option<String>, limit: i64) -> Vec<BrokerOrderInfo> {
@@ -161,7 +172,22 @@ pub fn list(conn: &Connection, status: Option<String>, limit: i64) -> Vec<Broker
     } else {
         stmt.query_map(rusqlite::params![limit], row_to_info)
     };
-    rows.map(|r| r.flatten().collect()).unwrap_or_default()
+    let mut infos: Vec<BrokerOrderInfo> = rows.map(|r| r.flatten().collect()).unwrap_or_default();
+    fill_names(conn, &mut infos);
+    infos
+}
+
+/// broker_order 无 name 列：逐行从 signal_ticket 关联补全（表不存在/无记录时保持空串）。
+fn fill_names(conn: &Connection, infos: &mut [BrokerOrderInfo]) {
+    for o in infos.iter_mut() {
+        if let Ok(name) = conn.query_row(
+            "SELECT COALESCE(name, '') FROM signal_ticket WHERE sig_id=?1",
+            rusqlite::params![o.sig_id],
+            |r| r.get::<_, String>(0),
+        ) {
+            o.name = name;
+        }
+    }
 }
 
 #[cfg(test)]
