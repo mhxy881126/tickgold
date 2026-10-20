@@ -4,7 +4,8 @@
 // P2-a 对账 chip（正常 / 冲突可跳转）与下单耗时展示，
 // P2-b1 B 快捷键（打开作战台 + 切买入方向 + 聚焦代码框），
 // P3-a Copilot 自然语言条件单（解析预览 → 确认 → fake co_create 参数断言），
-// P3-b 盘口五档点击预填下单条（卖档买 / 买档卖 / 挂载时消费与运行中 watcher）。
+// P3-b 盘口五档点击预填下单条（卖档买 / 买档卖 / 挂载时消费与运行中 watcher），
+// P3-c 指令打标（下拉 → 后端记录 → chip 回显 / 清除）。
 //
 // 熔断状态注入（重要）：`tests/e2e/support/backend.ts` 会被 Vite 的 e2e alias 打进浏览器 bundle，
 // 与 Node 侧的 Playwright 测试进程是两份模块实例——在 spec 里 import 任何 setter 都改不到页面状态。
@@ -196,6 +197,39 @@ test("指令列表展示状态与触发提示", async ({ page }) => {
   await expect(list).toContainText("已触发");
   await expect(list).toContainText("已成交");
   await expect(list).toContainText("≥1680.00");
+});
+
+// —— P3-c 指令打标验收 ——
+
+test("指令打标：选择标签调用后端并回显 chip，清除后复位", async ({ page }) => {
+  await installOpenClock(page);
+  await openCockpit(page);
+
+  const list = page.getByTestId("instruction-list");
+  const firstRow = list.locator(".il-row").first();
+  const tagSelect = page.getByTestId("instr-tag").first();
+  await expect(tagSelect).toHaveValue("");
+  await expect(list.locator(".il-tag-chip")).toHaveCount(0);
+
+  // 第一行打「逻辑」标：fake 记录 { instrId: 1, tag: "logic" }，列表回显 chip。
+  await tagSelect.selectOption("logic");
+  await expect(tagSelect).toHaveValue("logic");
+  await expect(firstRow.locator(".il-tag-chip")).toHaveText("逻辑");
+  await expect(page.getByTestId("instr-action-msg")).toContainText("标签已保存");
+  const lastTag = await page.evaluate(
+    () => (window as unknown as { __FAKE_LAST_TAG?: unknown }).__FAKE_LAST_TAG,
+  );
+  expect(lastTag).toEqual({ instrId: 1, tag: "logic" });
+
+  // 清除：空值透传，chip 消失。
+  await tagSelect.selectOption("");
+  await expect(tagSelect).toHaveValue("");
+  await expect(list.locator(".il-tag-chip")).toHaveCount(0);
+  await expect(page.getByTestId("instr-action-msg")).toContainText("标签已清除");
+  const cleared = await page.evaluate(
+    () => (window as unknown as { __FAKE_LAST_TAG?: unknown }).__FAKE_LAST_TAG,
+  );
+  expect(cleared).toEqual({ instrId: 1, tag: "" });
 });
 
 // —— P1-b 执行闭环验收：行内编辑 / 触发后一键下单 / 模拟盘自动开关 ——

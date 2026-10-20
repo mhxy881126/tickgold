@@ -8,6 +8,8 @@ import {
   instructionActions,
   instructionStatusMeta,
   submitBlockReason,
+  tagLabel,
+  INSTRUCTION_TAG_OPTIONS,
   triggerHint,
   type AlertRule,
   type BrokerGateStatus,
@@ -28,6 +30,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "pick", code: string): void;
   (e: "save-trigger", instrId: number, rule: AlertRule): void;
+  (e: "set-tag", instrId: number, tag: string): void;
   (e: "submit", ticketId: number): void;
 }>();
 
@@ -61,6 +64,18 @@ function openEdit(r: InstructionRow) {
   saving.value = false;
   editorError.value = "";
 }
+
+// P3-c：打标下拉。先把手选值回滚到行数据，成功后由 store 返回的新列表驱动；
+// 失败时也保持原位（不把错误标签留在下拉框里）。
+function onTag(r: InstructionRow, e: Event) {
+  const el = e.target as HTMLSelectElement;
+  const next = el.value;
+  const current = r.tag ?? "";
+  if (next === current) return;
+  el.value = current;
+  emit("set-tag", r.id, next);
+}
+
 function closeEdit() {
   editingId.value = 0;
   saving.value = false;
@@ -158,6 +173,19 @@ defineExpose({ finishEdit, finishSubmit, settleSubmit });
             <span class="il-name">{{ r.name }}</span>
             <span class="il-hint">{{ triggerHint(r.triggerJson) }}</span>
           </button>
+          <!-- P3-c 指令打标：chip 回显 + 小下拉（清除/逻辑/情绪/跟风），标签用于次日代码权重。 -->
+          <span v-if="tagLabel(r.tag)" class="il-tag-chip">{{ tagLabel(r.tag) }}</span>
+          <select
+            class="il-tag"
+            data-testid="instr-tag"
+            :value="r.tag ?? ''"
+            title="指令标签（逻辑 / 情绪 / 跟风），用于次日代码权重"
+            @change="onTag(r, $event)"
+          >
+            <option v-for="o in INSTRUCTION_TAG_OPTIONS" :key="o.value" :value="o.value">
+              {{ o.label }}
+            </option>
+          </select>
           <!-- 状态徽标：已有委托按委托状态，否则由票面状态覆盖执行状态（confirmed→待提交、rejected→已拒绝）。 -->
           <span
             class="il-state"
@@ -210,6 +238,9 @@ defineExpose({ finishEdit, finishSubmit, settleSubmit });
 .il-code { flex: none; }
 .il-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .il-hint { flex: none; color: var(--text-dim); font-size: 10.5px; }
+.il-tag-chip { flex: none; padding: 0 5px; border-radius: 4px; font-size: 10px; color: var(--accent); border: 1px solid var(--accent); }
+.il-tag { flex: none; max-width: 58px; padding: 0 2px; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text-dim); font-size: 10.5px; cursor: pointer; }
+.il-tag:hover, .il-tag:focus { color: var(--accent); border-color: var(--accent); outline: none; }
 .il-state { flex: none; padding: 0 6px; border-radius: 4px; font-size: 10.5px; border: 1px solid var(--border); }
 .il-state.tone-info { color: #6aa6e8; border-color: #6aa6e8; }
 .il-state.tone-gold { color: var(--accent); border-color: var(--accent); }

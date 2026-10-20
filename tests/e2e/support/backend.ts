@@ -295,9 +295,9 @@ const fakePlan = {
 // 行 2 是触发后自动执行关闭、票仍 pending 的状态，供「确认下单」用例提交；
 // 行 3 已有委托（hasOrder），用来锁定「不显示动作按钮、只显示委托状态」。
 const fakeInstructions: Record<string, unknown>[] = [
-  { id: 1, tier: "candidate", code: "600519", name: "贵州茅台", condition: "", action: "", positionHint: "", coId: "CO1", triggerJson: '[{"field":"price","op":"gte","value":1680}]', state: "pending", triggeredAt: 0, filledVol: 0, filledAvgPrice: 0, ticketId: 0, ticketStatus: "", side: "BUY", vol: 100, price: 1680, autoConfirm: true, orderStatus: "", hasOrder: false },
-  { id: 2, tier: "trigger", code: "300750", name: "宁德时代", condition: "", action: "", positionHint: "", coId: "CO2", triggerJson: '[{"field":"pct","op":"gte","value":3}]', state: "triggered", triggeredAt: 1, filledVol: 0, filledAvgPrice: 0, ticketId: 2, ticketStatus: "pending", side: "BUY", vol: 100, price: 189, autoConfirm: false, orderStatus: "", hasOrder: false },
-  { id: 3, tier: "candidate", code: "000001", name: "平安银行", condition: "", action: "", positionHint: "", coId: "CO3", triggerJson: "", state: "filled", triggeredAt: 1, filledVol: 100, filledAvgPrice: 12.3, ticketId: 3, ticketStatus: "done", side: "SELL", vol: 100, price: 12.3, autoConfirm: true, orderStatus: "filled", hasOrder: true },
+  { id: 1, tier: "candidate", code: "600519", name: "贵州茅台", condition: "", action: "", positionHint: "", coId: "CO1", triggerJson: '[{"field":"price","op":"gte","value":1680}]', state: "pending", triggeredAt: 0, filledVol: 0, filledAvgPrice: 0, ticketId: 0, ticketStatus: "", side: "BUY", vol: 100, price: 1680, autoConfirm: true, orderStatus: "", hasOrder: false, tag: "" },
+  { id: 2, tier: "trigger", code: "300750", name: "宁德时代", condition: "", action: "", positionHint: "", coId: "CO2", triggerJson: '[{"field":"pct","op":"gte","value":3}]', state: "triggered", triggeredAt: 1, filledVol: 0, filledAvgPrice: 0, ticketId: 2, ticketStatus: "pending", side: "BUY", vol: 100, price: 189, autoConfirm: false, orderStatus: "", hasOrder: false, tag: "" },
+  { id: 3, tier: "candidate", code: "000001", name: "平安银行", condition: "", action: "", positionHint: "", coId: "CO3", triggerJson: "", state: "filled", triggeredAt: 1, filledVol: 100, filledAvgPrice: 12.3, ticketId: 3, ticketStatus: "done", side: "SELL", vol: 100, price: 12.3, autoConfirm: true, orderStatus: "filled", hasOrder: true, tag: "" },
 ];
 
 // —— P1-c 早盘：缺省 scope（无 scope）返回「今日 draft」计划 ——
@@ -563,6 +563,18 @@ const handlers: Record<string, Handler> = {
         }
         return next;
       }),
+    };
+  },
+  // P3-c 指令打标：记录 { instrId, tag }，返回更新了该行 tag 的同一份列表。
+  workflow_instruction_tag_set: (a) => {
+    (window as unknown as { __FAKE_LAST_TAG?: unknown }).__FAKE_LAST_TAG = a;
+    const instrId = Number(a?.instrId ?? 0);
+    const tag = String(a?.tag ?? "");
+    return {
+      plan: fakePlan,
+      instructions: fakeInstructions.map((r) =>
+        Number(r.id) === instrId ? { ...r, tag } : r,
+      ),
     };
   },
   // P1-b 触发后一键下单：记录提交参数（沿用触发时生成的票，不新建第二张），返回 mock 委托。

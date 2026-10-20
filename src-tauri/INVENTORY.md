@@ -1,7 +1,7 @@
 # TickGold 后端命令 / 迁移对照清单（v2.29.0 基线）
 
 > 巨石拆分（lib.rs → db/migrations.rs、commands.rs、setup.rs 模块化）的护栏。
-> 每次后端结构调整后，必须重新核对：**命令总数 243、迁移总数 62**，逐一对照无缺失。
+> 每次后端结构调整后，必须重新核对：**命令总数 243、迁移总数 63**，逐一对照无缺失。
 > （v2.30 起命令/迁移逐步增加，历史编号未全量回填；P0 新增条目见文末对应小节。）
 > 基线：v2.27.0（149 命令 / 48 迁移）；v2.28.0 净增 21 个命令
 > （资金流 3、组合层 2、风险仪表盘 1、异动阈值 2、板块日快照 3、备份中心 7、数据治理 3）
@@ -385,7 +385,7 @@
 
 ---
 
-## 二、数据库迁移：62 条（主库 sqlite:stock-dock.db）
+## 二、数据库迁移：63 条（主库 sqlite:stock-dock.db）
 
 | v | description |
 | --- | --- |
@@ -451,7 +451,11 @@
 | 60 | P6 pilot_config (one-row autopilot config) + pilot_daily_log (per-trading-day autopilot run log) |
 | 61 | P1-a plan_instruction: co_id / trigger_json / synced_at (instruction materialization & derived state) |
 | 62 | P1-a conditional_order: dedupe active plan notes + unique partial index on active plan note (materialization idempotence / reopen re-arm) |
+| 63 | P3-c plan_instruction: tag（指令打标 logic/情绪/跟风，供次日代码权重） |
 
 > P1-a：迁移 v61 给 plan_instruction 增加 co_id / trigger_json / synced_at 三列，供计划指令物化与状态展示使用。
 > P1-a：迁移 v62 先取消重复的 active `plan:%` 条件单（同 note 仅保留 MIN(id)），再给 `note` 建「active 行才入索引」的部分唯一索引；并发/崩溃后重复物化由唯一约束兜底并回填 co_id，指令重开（旧单 cancelled）可重新物化同 note 的新 active 单。
+> P3-c：迁移 v63 给 plan_instruction 增加 tag（TEXT DEFAULT ''，空=未标）；新增 2 个命令（实际注册总数 256）：
+> `workflow_instruction_tag_set`（打标并回显计划指令列表）与 `workflow_instruction_tag_stats`（只读标签统计）。
+> tag_stats / code_weight 只读聚合已确认计划（成交率代理口径，无现价网络请求），`workflow_plan` 按代码权重微调候选评分（0.8–1.2 夹取）。
 > ai.db 另有独立版本链（当前 v4），不在此表。

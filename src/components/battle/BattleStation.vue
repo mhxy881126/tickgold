@@ -7,6 +7,7 @@ import OrderDock from "./OrderDock.vue";
 import CopilotBar from "./CopilotBar.vue";
 import { computePhase, type PhaseId } from "./useBattlePhase";
 import type { AlertRule } from "./instructionModel";
+import { tagLabel } from "./instructionModel";
 import { formatHitRate } from "./hitRateModel";
 import { useWorkflowStore, todayStr } from "../../stores/workflow";
 import { useQuotesStore } from "../../stores/quotes";
@@ -173,6 +174,25 @@ async function onSaveTrigger(instrId: number, rule: AlertRule) {
   }
 }
 
+// P3-c 指令打标：store 用后端返回的最新列表覆盖，成功后提示标签，失败提示并把下拉复位。
+async function onSetTag(instrId: number, tag: string) {
+  try {
+    await wf.setInstructionTag(instrId, tag);
+    const row = wf.instructions.find((x) => x.id === instrId);
+    instrTone.value = "ok";
+    instrMsg.value = tag
+      ? `标签已保存${row ? `：${row.name || row.code}` : ""} → ${tagLabel(tag)}`
+      : `标签已清除${row ? `：${row.name || row.code}` : ""}`;
+  } catch (e) {
+    const msg = (e as Error)?.message || String(e);
+    instrTone.value = "bad";
+    instrMsg.value = msg;
+    toast.error(msg);
+    // 失败时用后端真值重刷，避免下拉停留在未落库的标签上。
+    await wf.refreshInstructions();
+  }
+}
+
 // P1-b 触发后一键下单：确认时只提交已有信号票，成功后刷新列表并显示结果。
 async function onSubmitTicket(ticketId: number) {
   let ok = false;
@@ -274,6 +294,7 @@ function money(n: number) {
         :message-tone="instrTone"
         @pick="pick"
         @save-trigger="onSaveTrigger"
+        @set-tag="onSetTag"
         @submit="onSubmitTicket"
       />
     </div>

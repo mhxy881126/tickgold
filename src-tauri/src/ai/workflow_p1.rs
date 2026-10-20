@@ -407,7 +407,15 @@ fn mood_of(limit_up: i64, broken_rate: f64, max_boards: i64) -> (&'static str, &
 }
 
 /// 从态势包 + 候选池构造规则作战卡（与 LLM 计划同构：title/marketView/instructions）。
-fn build_plan_json(plan_date: &str, briefing: &Value, candidates: &[Value]) -> Value {
+///
+/// 权重来自 `instruction::code_weight`（已确认计划 + 已打标指令的成交率代理），
+/// 仅作用于评分与分层判定，不改变候选原有顺序（保持候选池排名稳定）。
+fn build_plan_json_with_weights(
+    plan_date: &str,
+    briefing: &Value,
+    candidates: &[Value],
+    weights: &HashMap<String, f64>,
+) -> Value {
     let limit_up = briefing["limitUp"].as_i64().unwrap_or(0);
     let broken_rate = briefing["brokenRate"].as_f64().unwrap_or(0.0);
     let max_boards = briefing["maxBoards"].as_i64().unwrap_or(0);
@@ -420,7 +428,15 @@ fn build_plan_json(plan_date: &str, briefing: &Value, candidates: &[Value]) -> V
 
     let mut instructions: Vec<Value> = Vec::new();
     for c in candidates.iter().take(8) {
-        let score = c["score"].as_f64().unwrap_or(0.0);
+        let code = c["code"].as_str().unwrap_or("");
+        let base_score = c["score"].as_f64().unwrap_or(0.0);
+        // P3-c：只微调评分用于分层（0.8–1.2），候选顺序沿用候选池排名，不重排。
+        let weight = weights
+            .get(code)
+            .copied()
+            .unwrap_or(1.0)
+            .clamp(0.8, 1.2);
+        let score = (base_score * weight).clamp(0.0, 100.0);
         let boards = c["boards"].as_i64().unwrap_or(0);
         let tier = if score >= 80.0 || boards >= 3 {
             "candidate"
@@ -442,7 +458,7 @@ fn build_plan_json(plan_date: &str, briefing: &Value, candidates: &[Value]) -> V
         cond.push_str("；断板、低开走弱或无量一字则放弃，不追高");
         instructions.push(json!({
             "tier": tier,
-            "code": c["code"].as_str().unwrap_or(""),
+            "code": code,
             "name": c["name"].as_str().unwrap_or(""),
             "theme": c["industry"].as_str().unwrap_or(""),
             "condition": cond,
@@ -605,18 +621,24 @@ pub fn workflow_plan(
 ) -> Result<Value, String> {
     let date = trade_date.unwrap_or_else(workflow::today_str);
     let dir = state.dir().clone();
-    let (briefing, candidates, st_view) = {
+    let (briefing, candidates, weights, st_view) = {
         let c = open_readwrite(&dir)?;
         let st = mission_for_step(&c, &date, 2, "计划", force.unwrap_or(false))?;
         ensure_candidate_table(&c)?;
         let cands = load_candidates(&c, &date, 20)?;
-        (load_briefing(&c, &date), cands, mission_from_state(&date, &st))
+        // P3-c：只读聚合已确认计划的打标成交历史，给候选代码算次日权重（无历史 = 1.0）。
+        let weights: HashMap<String, f64> = cands
+            .iter()
+            .filter_map(|c| c["code"].as_str())
+            .map(|code| (code.to_string(), crate::ai::instruction::code_weight(&c, code)))
+            .collect();
+        (load_briefing(&c, &date), cands, weights, mission_from_state(&date, &st))
     };
     if candidates.is_empty() {
         return Err("候选池为空，请先完成第②步分析".to_string());
     }
     let plan_date = plan::next_trade_date(&date);
-    let pj = build_plan_json(&plan_date, &briefing, &candidates);
+    let pj = build_plan_json_with_weights(&plan_date, &briefing, &candidates, &weights);
     let saved = plan::save_external_plan(&dir, &plan_date, &date, "p1-rules", &pj)?;
     Ok(json!({ "mission": st_view, "plan": saved }))
 }
@@ -977,12 +999,43 @@ mod tests {
                 "industry": "机器人", "reasons": ["连板"]
             }));
         }
-        let pj = build_plan_json("2026-10-17", &briefing, &cands);
+        let pj = build_plan_json_with_weights("2026-10-17", &briefing, &cands, &HashMap::new());
         let ins = pj["instructions"].as_array().unwrap();
         assert_eq!(ins.len(), 8);
         assert_eq!(ins[0]["tier"], "candidate");
         assert!(ins[0]["condition"].as_str().unwrap().contains("连板"));
         assert!(pj["title"].as_str().unwrap().contains("2026-10-17"));
+    }
+
+    #[test]
+    fn build_plan_applies_code_weight_without_reordering() {
+        let briefing = json!({ "limitUp": 55, "brokenRate": 20.0, "maxBoards": 4 });
+        let cands = vec![
+            json!({
+                "code": "600001", "name": "加权股", "tactics": ["multi_board"],
+                "score": 70, "boards": 1, "industry": "机器人", "reasons": ["连板"]
+            }),
+            json!({
+                "code": "600002", "name": "普通股", "tactics": ["multi_board"],
+                "score": 70, "boards": 1, "industry": "机器人", "reasons": ["连板"]
+            }),
+        ];
+        // 无权重：两条同分都只能观察。
+        let plain = build_plan_json_with_weights("2026-10-17", &briefing, &cands, &HashMap::new());
+        let plain_ins = plain["instructions"].as_array().unwrap();
+        assert_eq!(plain_ins[0]["tier"], "watch");
+        assert_eq!(plain_ins[1]["tier"], "watch");
+
+        // 600001 次日权重 1.2 → 70*1.2=84 达到备选阈值；顺序保持候选池原序。
+        let mut weights = HashMap::new();
+        weights.insert("600001".to_string(), 1.2);
+        let weighted = build_plan_json_with_weights("2026-10-17", &briefing, &cands, &weights);
+        let ins = weighted["instructions"].as_array().unwrap();
+        assert_eq!(ins.len(), 2);
+        assert_eq!(ins[0]["code"], "600001");
+        assert_eq!(ins[0]["tier"], "candidate", "权重上调应改变分层");
+        assert_eq!(ins[1]["code"], "600002");
+        assert_eq!(ins[1]["tier"], "watch");
     }
 
     #[test]

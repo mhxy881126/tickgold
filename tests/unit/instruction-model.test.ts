@@ -15,11 +15,23 @@ import {
   instructionActions,
   instructionStatusMeta,
   submitActionLabel,
+  tagLabel,
   type InstructionGate,
   type TriggerForm,
 } from "../../src/components/battle/instructionModel";
 
 describe("instructionModel", () => {
+  it("P3-c 标签文案：逻辑 / 情绪 / 跟风，空与未知不展示", () => {
+    expect(tagLabel("logic")).toBe("逻辑");
+    expect(tagLabel("emotion")).toBe("情绪");
+    expect(tagLabel("follow")).toBe("跟风");
+    expect(tagLabel("")).toBe("");
+    expect(tagLabel(undefined)).toBe("");
+    expect(tagLabel(null)).toBe("");
+    expect(tagLabel("unknown")).toBe("");
+    expect(tagLabel(" LOGIC ")).toBe("逻辑");
+  });
+
   it("状态文案与色调", () => {
     expect(stateMeta("pending").label).toBe("待触发");
     expect(stateMeta("triggered").label).toBe("已触发");

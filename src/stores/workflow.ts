@@ -732,6 +732,23 @@ export const useWorkflowStore = defineStore("workflow", () => {
   }
 
   /**
+   * P3-c 指令打标：置 logic / emotion / follow，空串清除；后端返回同计划的最新指令列表，
+   * 直接用其覆盖本地（与触发条件保存同一刷新口径）。
+   */
+  async function setInstructionTag(instrId: number, tag: string): Promise<InstructionRow[]> {
+    try {
+      const r = await invoke<{ plan: BattlePlan | null; instructions: InstructionRow[] }>(
+        "workflow_instruction_tag_set",
+        { instrId, tag },
+      );
+      instructions.value = withAlertRules(r?.instructions ?? [], r?.plan ?? null);
+      return instructions.value;
+    } catch (e) {
+      throw new Error(invokeErrorText(e, "保存指令标签失败"));
+    }
+  }
+
+  /**
    * P1-b 触发后一键下单：确认并提交触发时生成的信号票（不新建第二张票）。
    * 唯一提交入口 submit_with_sig 与全部风控闸门都在后端；成功后由调用方刷新列表。
    */
@@ -1122,6 +1139,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
     refreshInstructions,
     loadHitRate,
     saveInstructionTrigger,
+    setInstructionTag,
     confirmSubmitInstruction,
     demoMode,
     runDemo,

@@ -1,5 +1,5 @@
 // 主库迁移清单（v2.27 巨石拆分：从 lib.rs 抽出）。
-// 追加式：只许新增版本，禁止改动已发布条目。共 62 条（v1..v62）。
+// 追加式：只许新增版本，禁止改动已发布条目。共 63 条（v1..v63）。
 // 数量护栏见 src-tauri/INVENTORY.md；改动后需与之一致。
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -1031,6 +1031,12 @@ pub fn migrations() -> Vec<Migration> {
                                                   WHERE note LIKE 'plan:%' AND status='active' GROUP BY note);
                                  CREATE UNIQUE INDEX IF NOT EXISTS uq_conditional_plan_note
                                  ON conditional_order(note) WHERE note LIKE 'plan:%' AND status='active';",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 63,
+                            description: "plan_instruction: tag TEXT DEFAULT '' (P3-c instruction tagging)",
+                            sql: "ALTER TABLE plan_instruction ADD COLUMN tag TEXT DEFAULT '';",
                             kind: MigrationKind::Up,
                         },
     ]

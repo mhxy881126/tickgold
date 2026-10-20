@@ -355,6 +355,30 @@ describe("workflow store — P1-b 指令动作", () => {
     );
   });
 
+  it("保存标签：透传 instrId/tag 并用返回的指令列表覆盖", async () => {
+    invokeMock.invoke.mockResolvedValueOnce({
+      plan: null,
+      instructions: [instrRow({ tag: "logic" })],
+    });
+    const s = useWorkflowStore();
+    const rows = await s.setInstructionTag(7, "logic");
+
+    expect(invokeMock.invoke).toHaveBeenCalledWith("workflow_instruction_tag_set", {
+      instrId: 7,
+      tag: "logic",
+    });
+    expect(rows).toHaveLength(1);
+    expect(s.instructions[0].tag).toBe("logic");
+  });
+
+  it("保存标签失败抛中文错误", async () => {
+    invokeMock.invoke.mockRejectedValueOnce("标签只能是 logic / emotion / follow，或传空清除");
+    const s = useWorkflowStore();
+    await expect(s.setInstructionTag(7, "garbage")).rejects.toThrow(
+      "标签只能是 logic / emotion / follow，或传空清除",
+    );
+  });
+
   it("确认下单：只提交票据 id，价格/数量取票面", async () => {
     invokeMock.invoke.mockResolvedValueOnce(orderInfo);
     const s = useWorkflowStore();

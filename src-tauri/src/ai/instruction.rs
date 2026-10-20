@@ -3,12 +3,53 @@
 
 use crate::ai::now_millis;
 use crate::broker::conditional::CoTrigger;
-use serde_json::Value;
-use std::collections::HashSet;
+use serde_json::{json, Value};
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// 已触发 / 已挂票 / 已结束的指令禁止改触发条件：否则会撤掉已成交路径（P1-b spec §七）。
 const TRIGGERED_EDIT_ERROR: &str = "已触发，不能修改触发条件";
+
+/// P3-c 指令标签（指令级打标 → 次日代码权重）：logic=逻辑、emotion=情绪、follow=跟风；
+/// 空串 = 未标。只做客观归类，不参与下单 / 风控路径。
+pub const TAGS: [&str; 3] = ["logic", "emotion", "follow"];
+
+/// 标签中文名（stats / 前端同口径；未知标签回退空串）。
+pub fn tag_label(tag: &str) -> &'static str {
+    match tag {
+        "logic" => "逻辑",
+        "emotion" => "情绪",
+        "follow" => "跟风",
+        _ => "",
+    }
+}
+
+/// 校验并规范化标签：允许空串清除；其余必须命中 `TAGS`（大小写 / 首尾空白容错）。
+fn normalize_tag(tag: &str) -> Result<&'static str, String> {
+    let t = tag.trim().to_ascii_lowercase();
+    if t.is_empty() {
+        return Ok("");
+    }
+    TAGS.iter()
+        .copied()
+        .find(|x| *x == t)
+        .ok_or_else(|| "标签只能是 logic / emotion / follow，或传空清除".to_string())
+}
+
+/// P3-c：给单条计划指令打标（空串 = 清除）。校验失败 / 指令不存在均返回中文错误。
+pub fn set_tag(conn: &rusqlite::Connection, instr_id: i64, tag: &str) -> Result<(), String> {
+    let normalized = normalize_tag(tag)?;
+    let changed = conn
+        .execute(
+            "UPDATE plan_instruction SET tag=?1 WHERE id=?2",
+            rusqlite::params![normalized, instr_id],
+        )
+        .map_err(|e| format!("保存指令标签失败: {e}"))?;
+    if changed == 0 {
+        return Err("指令不存在".to_string());
+    }
+    Ok(())
+}
 
 /// 触发条件可编辑键（P1-b spec §三）：未列出的键一律忽略，避免前端误传把 `alert_rule` 写脏。
 const EDITABLE_RULE_KEYS: [&str; 16] = [
@@ -201,7 +242,7 @@ pub fn list_instructions(conn: &rusqlite::Connection, plan_id: i64) -> Result<Ve
                     i.co_id,i.trigger_json,
                     c.status,c.triggered_at,
                     t.id,t.status,o.status,o.filled_vol,o.filled_avg_price,
-                    c.side,c.vol,c.limit_price,t.price,i.alert_rule,o.sig_id
+                    c.side,c.vol,c.limit_price,t.price,i.alert_rule,o.sig_id,i.tag
              FROM plan_instruction i
              LEFT JOIN conditional_order c ON c.co_id=i.co_id AND i.co_id<>''
              LEFT JOIN signal_ticket t ON t.sig_id=c.ticket_id AND c.ticket_id<>''
@@ -268,6 +309,8 @@ pub fn list_instructions(conn: &rusqlite::Connection, plan_id: i64) -> Result<Ve
                     .get("autoConfirm")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(true),
+                // P3-c：空串 = 未标（tag 列由迁移 v63 保证存在）。
+                "tag": r.get::<_, String>(22).unwrap_or_default(),
             }))
         })
         .map_err(|e| e.to_string())?;
@@ -310,6 +353,7 @@ fn list_instructions_legacy(
                 "vol": 100,
                 "price": 0.0,
                 "autoConfirm": true,
+                "tag": "",
             }))
         })
         .map_err(|e| e.to_string())?;
@@ -317,8 +361,122 @@ fn list_instructions_legacy(
         .map_err(|e| e.to_string())
 }
 
-/// 条件单是否仍在生效（未被取消 / 过期 / 完成）。
+/// 打标指令的执行统计 SQL 主体：只取已确认计划，左联条件单 → 券商委托。
 ///
+/// 触发口径与 `ai::hitrate` 一致（triggered_at / 已建票 / triggered|done），
+/// 成交按 `broker_order.status='filled'`；`wins` 只要求成交均价 > 0，不取现价、
+/// 不发网络请求——这是「成交率」的代理口径，不是真实胜率。
+const TAG_STATS_FROM: &str = "
+    FROM plan_instruction i
+    JOIN plan p ON p.id=i.plan_id AND p.status='confirmed'
+    LEFT JOIN conditional_order c ON c.co_id=i.co_id AND i.co_id<>''
+    LEFT JOIN broker_order o ON o.sig_id=c.ticket_id AND c.ticket_id<>''
+";
+
+fn tag_count_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<(String, i64, i64, i64, i64)> {
+    Ok((
+        r.get::<_, String>(0)?,
+        r.get::<_, i64>(1)?,
+        r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+        r.get::<_, Option<i64>>(3)?.unwrap_or(0),
+        r.get::<_, Option<i64>>(4)?.unwrap_or(0),
+    ))
+}
+
+/// 按标签聚合（tag → 指令数 / 触发数 / 成交数 / 有效成交数）。
+///
+/// 旧库缺 `tag` 列 / 关联表缺失时返回空表（tag_stats 降级为全零，不影响作战台）。
+fn load_tag_counts(
+    conn: &rusqlite::Connection,
+    code: Option<&str>,
+) -> HashMap<String, (i64, i64, i64, i64)> {
+    let filter = if code.is_some() {
+        "AND TRIM(i.code)=?1"
+    } else {
+        ""
+    };
+    let sql = format!(
+        "SELECT i.tag,
+                COUNT(*),
+                SUM(CASE WHEN COALESCE(c.triggered_at,0)>0
+                           OR COALESCE(c.ticket_id,'')<>''
+                           OR COALESCE(c.status,'') IN ('triggered','done') THEN 1 ELSE 0 END),
+                SUM(CASE WHEN COALESCE(o.status,'')='filled' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN COALESCE(o.status,'')='filled'
+                          AND COALESCE(o.filled_avg_price,0)>0 THEN 1 ELSE 0 END)
+         {TAG_STATS_FROM}
+         WHERE COALESCE(i.tag,'')<>'' {filter}
+         GROUP BY i.tag"
+    );
+    let mut out = HashMap::new();
+    let Ok(mut stmt) = conn.prepare(&sql) else {
+        return out;
+    };
+    let rows = match code {
+        Some(code) => stmt.query_map([code], tag_count_row),
+        None => stmt.query_map([], tag_count_row),
+    };
+    let Ok(rows) = rows else {
+        return out;
+    };
+    for row in rows.flatten() {
+        out.insert(row.0, (row.1, row.2, row.3, row.4));
+    }
+    out
+}
+
+/// P3-c 标签统计：每个标签的指令数 / 触发数 / 成交数 / 成交率（代理口径）。
+///
+/// 只读本地库，不取现价；`winRate` 为整数百分比（0–100），无成交样本时为 null。
+pub fn tag_stats(conn: &rusqlite::Connection) -> Value {
+    let counts = load_tag_counts(conn, None);
+    let mut tags: Vec<Value> = Vec::new();
+    for tag in TAGS {
+        let (instructions, triggered, filled, wins) =
+            counts.get(tag).copied().unwrap_or((0, 0, 0, 0));
+        let win_rate = if filled > 0 {
+            json!((wins as f64 * 100.0 / filled as f64).round() as i64)
+        } else {
+            Value::Null
+        };
+        tags.push(json!({
+            "tag": tag,
+            "label": tag_label(tag),
+            "instructions": instructions,
+            "triggered": triggered,
+            "filled": filled,
+            "wins": wins,
+            // 字段名为兼容既有前端叫 winRate；展示文案固定「成交率」（不是胜率）。
+            "winRate": win_rate,
+            "winRateLabel": "成交率",
+        }));
+    }
+    json!({
+        "tags": tags,
+        "note": "仅统计已确认计划中已打标的指令；成交率=成交均价>0 的已成交数/已成交数（不取现价的代理口径，不代表胜率）"
+    })
+}
+
+/// P3-c 次日代码权重：`0.8 + 0.4 * (wins / filled)`，无成交历史 → 1.0，夹取 0.8–1.2。
+///
+/// 只认「已确认计划 + 已打标 + 该代码」的成交；draft / 未标 / 无成交均不产生偏移。
+pub fn code_weight(conn: &rusqlite::Connection, code: &str) -> f64 {
+    let code = code.trim();
+    if code.is_empty() {
+        return 1.0;
+    }
+    let (mut filled, mut wins) = (0i64, 0i64);
+    for (_, _, f, w) in load_tag_counts(conn, Some(code)).values() {
+        filled += f;
+        wins += w;
+    }
+    if filled <= 0 {
+        return 1.0;
+    }
+    (0.8 + 0.4 * (wins as f64 / filled as f64)).clamp(0.8, 1.2)
+}
+
+/// 条件单是否仍在生效（未被取消 / 过期 / 完成）。
 /// 说明：`conditional::get_by_co_id` 当前为 `#[cfg(test)]`，而物化需要在正式构建里
 /// 判定幂等；本任务文件范围不含 `broker/conditional.rs`，故就地做存在性查询。
 ///
@@ -751,6 +909,41 @@ pub async fn workflow_instruction_trigger_set(
     Ok(serde_json::json!({ "plan": plan, "instructions": instructions }))
 }
 
+/// P3-c：只读标签统计（各标签指令数 / 触发数 / 成交数 / 成交率代理），供作战台后续展示。
+///
+/// 与 `tag_stats` 同口径；不取现价、不改库。
+#[tauri::command]
+pub fn workflow_instruction_tag_stats(
+    ai: tauri::State<'_, crate::ai::AiState>,
+) -> Result<Value, String> {
+    let dir = ai.dir();
+    let conn = crate::ai::maindb::open_readwrite(&dir)?;
+    Ok(tag_stats(&conn))
+}
+
+/// P3-c：给指令打标（logic / emotion / follow / 空清除），返回该计划的最新
+/// `{ plan, instructions }`（与 `workflow_instruction_trigger_set` 同一刷新口径）。
+#[tauri::command]
+pub async fn workflow_instruction_tag_set(
+    ai: tauri::State<'_, crate::ai::AiState>,
+    instr_id: i64,
+    tag: String,
+) -> Result<Value, String> {
+    let dir = ai.dir();
+    let conn = crate::ai::maindb::open_readwrite(&dir)?;
+    set_tag(&conn, instr_id, &tag)?;
+    let plan_id: i64 = conn
+        .query_row(
+            "SELECT plan_id FROM plan_instruction WHERE id=?1",
+            [instr_id],
+            |r| r.get(0),
+        )
+        .map_err(|_| "指令不存在".to_string())?;
+    let plan = crate::ai::plan::plan_to_json(&conn, plan_id)?;
+    let instructions = list_instructions(&conn, plan_id)?;
+    Ok(serde_json::json!({ "plan": plan, "instructions": instructions }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -920,9 +1113,14 @@ mod tests {
         )
         .unwrap();
 
+        // P3-c：标签随列表返回（空串 = 未标）。
+        conn.execute("UPDATE plan_instruction SET tag='logic' WHERE id=1", [])
+            .unwrap();
         let rows = list_instructions(&conn, 1).unwrap();
         assert_eq!(rows.len(), 5, "只返回目标计划的指令，且按 sort 排序");
         assert_eq!(rows[0]["id"].as_i64(), Some(1));
+        assert_eq!(rows[0]["tag"], "logic", "打标指令返回标签");
+        assert_eq!(rows[1]["tag"], "", "未打标返回空串");
         assert_eq!(rows[0]["state"], "pending", "条件单 active → 待触发");
         assert_eq!(rows[0]["coId"], "CO1");
         assert_eq!(
@@ -997,6 +1195,160 @@ mod tests {
         assert_eq!(rows[0]["triggeredAt"].as_i64(), Some(0));
         assert_eq!(rows[0]["filledVol"].as_i64(), Some(0));
         assert_eq!(rows[0]["filledAvgPrice"].as_f64(), Some(0.0));
+        assert_eq!(rows[0]["tag"], "", "旧库降级：标签为空串");
+    }
+
+    #[test]
+    fn set_tag_validates_and_persists() {
+        let conn = conn_with_tables();
+        insert_plan(&conn, 1, "2026-10-19");
+        conn.execute(
+            "INSERT INTO plan_instruction(id,plan_id,tier,code,name,alert_rule,status,sort)
+             VALUES(1,1,'candidate','600519','贵州茅台','{}','open',0)",
+            [],
+        )
+        .unwrap();
+
+        // 大小写 / 首尾空白容错，落库为规范值。
+        set_tag(&conn, 1, "  LOGIC ").unwrap();
+        let tag: String = conn
+            .query_row("SELECT tag FROM plan_instruction WHERE id=1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(tag, "logic");
+
+        // 空串 = 清除。
+        set_tag(&conn, 1, "").unwrap();
+        let cleared: String = conn
+            .query_row("SELECT tag FROM plan_instruction WHERE id=1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(cleared, "");
+
+        // 非白名单标签拒绝，且不改库。
+        set_tag(&conn, 1, "emotion").unwrap();
+        let err = set_tag(&conn, 1, "garbage").unwrap_err();
+        assert!(err.contains("logic"), "错误应提示可选标签: {err}");
+        let kept: String = conn
+            .query_row("SELECT tag FROM plan_instruction WHERE id=1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(kept, "emotion", "非法标签不得写入");
+
+        assert_eq!(set_tag(&conn, 99, "logic").unwrap_err(), "指令不存在");
+    }
+
+    /// 标签统计夹具：已确认计划 1 + 草稿计划 2，覆盖触发 / 成交 / 有效成交各分支。
+    fn seeded_tag_stats_conn() -> rusqlite::Connection {
+        let conn = conn_with_instruction_links();
+        insert_plan(&conn, 1, "2026-10-19");
+        insert_plan_with_status(&conn, 2, "2026-10-20", "draft");
+        conn.execute_batch(
+            "INSERT INTO plan_instruction(id,plan_id,tier,code,name,alert_rule,status,sort,co_id,tag) VALUES
+                (1,1,'candidate','600001','甲','{}','alerted',0,'C1','logic'),
+                (2,1,'candidate','600002','乙','{}','open',1,'','logic'),
+                (3,1,'trigger','600003','丙','{}','alerted',2,'C3','emotion'),
+                (4,1,'candidate','600004','丁','{}','alerted',3,'C4','follow'),
+                (5,2,'candidate','600005','戊','{}','alerted',4,'C5','logic'),
+                (6,1,'candidate','600006','己','{}','alerted',5,'C6',''),
+                (7,1,'candidate','600007','庚','{}','alerted',6,'C7','emotion'),
+                (8,1,'candidate','600008','辛','{}','alerted',7,'C8','follow');
+             INSERT INTO conditional_order(co_id,trade_date,code,side,trigger_json,vol,status,ticket_id,triggered_at,created_at) VALUES
+                ('C1','2026-10-19','600001','BUY','[]',100,'triggered','T1',1,1),
+                ('C3','2026-10-19','600003','BUY','[]',100,'triggered','T3',1,1),
+                ('C4','2026-10-19','600004','BUY','[]',100,'triggered','',1,1),
+                ('C5','2026-10-20','600005','BUY','[]',100,'triggered','T5',1,1),
+                ('C6','2026-10-19','600006','BUY','[]',100,'triggered','T6',1,1),
+                ('C7','2026-10-19','600007','BUY','[]',100,'triggered','T7',1,1),
+                ('C8','2026-10-19','600008','BUY','[]',100,'active','',0,1);
+             INSERT INTO signal_ticket(sig_id,status,price,vol) VALUES
+                ('T1','confirmed',10.0,100),('T3','confirmed',10.0,100),('T5','confirmed',10.0,100),
+                ('T6','confirmed',10.0,100),('T7','confirmed',12.0,100);
+             INSERT INTO broker_order(sig_id,status,filled_vol,filled_avg_price) VALUES
+                ('T1','filled',100,10.0),('T3','filled',100,0.0),('T5','filled',100,10.0),
+                ('T6','filled',100,10.0),('T7','filled',100,12.0);",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn tag_stats_aggregates_confirmed_plans_only() {
+        let conn = seeded_tag_stats_conn();
+        let v = tag_stats(&conn);
+        let tags = v["tags"].as_array().unwrap();
+        assert_eq!(tags.len(), 3, "固定返回逻辑 / 情绪 / 跟风三档");
+        assert_eq!(tags[0]["tag"], "logic");
+        assert_eq!(tags[0]["label"], "逻辑");
+        // 草稿计划里的 logic 指令不计入；未打标指令也不计入。
+        assert_eq!(tags[0]["instructions"].as_i64(), Some(2));
+        assert_eq!(tags[0]["triggered"].as_i64(), Some(1));
+        assert_eq!(tags[0]["filled"].as_i64(), Some(1));
+        assert_eq!(tags[0]["wins"].as_i64(), Some(1));
+        assert_eq!(tags[0]["winRate"].as_i64(), Some(100));
+        assert_eq!(tags[0]["winRateLabel"], "成交率");
+
+        // 成交均价为 0 的 filled 单计成交但不计 wins → 50%。
+        assert_eq!(tags[1]["tag"], "emotion");
+        assert_eq!(tags[1]["instructions"].as_i64(), Some(2));
+        assert_eq!(tags[1]["triggered"].as_i64(), Some(2));
+        assert_eq!(tags[1]["filled"].as_i64(), Some(2));
+        assert_eq!(tags[1]["wins"].as_i64(), Some(1));
+        assert_eq!(tags[1]["winRate"].as_i64(), Some(50));
+
+        // 无成交样本：winRate 为 null（不是 0%）。
+        assert_eq!(tags[2]["tag"], "follow");
+        assert_eq!(tags[2]["instructions"].as_i64(), Some(2));
+        assert_eq!(tags[2]["triggered"].as_i64(), Some(1));
+        assert_eq!(tags[2]["filled"].as_i64(), Some(0));
+        assert!(tags[2]["winRate"].is_null());
+    }
+
+    #[test]
+    fn code_weight_default_and_with_fill_history() {
+        let conn = conn_with_instruction_links();
+        insert_plan(&conn, 1, "2026-10-19");
+        insert_plan_with_status(&conn, 2, "2026-10-20", "draft");
+        conn.execute_batch(
+            "INSERT INTO plan_instruction(id,plan_id,tier,code,name,alert_rule,status,sort,co_id,tag) VALUES
+                (1,1,'candidate','600001','甲','{}','alerted',0,'C1','logic'),
+                (2,1,'candidate','600001','甲','{}','alerted',1,'C2','emotion'),
+                (3,1,'candidate','600002','乙','{}','alerted',2,'C3','emotion'),
+                (4,1,'candidate','600003','丙','{}','alerted',3,'C4','follow'),
+                (5,2,'candidate','600004','丁','{}','alerted',4,'C5','logic'),
+                (6,1,'candidate','600006','己','{}','alerted',5,'C6','');
+             INSERT INTO conditional_order(co_id,trade_date,code,side,trigger_json,vol,status,ticket_id,triggered_at,created_at) VALUES
+                ('C1','2026-10-19','600001','BUY','[]',100,'triggered','T1',1,1),
+                ('C2','2026-10-19','600001','BUY','[]',100,'triggered','T2',1,1),
+                ('C3','2026-10-19','600002','BUY','[]',100,'triggered','T3',1,1),
+                ('C4','2026-10-19','600003','BUY','[]',100,'triggered','T4',1,1),
+                ('C5','2026-10-20','600004','BUY','[]',100,'triggered','T5',1,1),
+                ('C6','2026-10-19','600006','BUY','[]',100,'triggered','T6',1,1);
+             INSERT INTO signal_ticket(sig_id,status,price,vol) VALUES
+                ('T1','confirmed',10.0,100),('T2','confirmed',10.0,100),('T3','confirmed',12.0,100),
+                ('T4','confirmed',10.0,100),('T5','confirmed',10.0,100),('T6','confirmed',10.0,100);
+             INSERT INTO broker_order(sig_id,status,filled_vol,filled_avg_price) VALUES
+                ('T1','filled',100,10.0),('T2','filled',100,0.0),('T3','filled',100,12.0),
+                ('T4','filled',100,0.0),('T5','filled',100,10.0),('T6','filled',100,10.0);",
+        )
+        .unwrap();
+
+        let near = |a: f64, b: f64| (a - b).abs() < 1e-9;
+        // 混合样本（2 成交 1 有效）→ 0.8 + 0.4*0.5 = 1.0
+        assert!(near(code_weight(&conn, "600001"), 1.0));
+        // 全部有效成交 → 上限 1.2
+        assert!(near(code_weight(&conn, "600002"), 1.2));
+        // 有成交但无有效成交 → 下限 0.8
+        assert!(near(code_weight(&conn, "600003"), 0.8));
+        // 无历史 / 只有草稿 / 未打标 / 空代码 → 1.0（不偏移）
+        assert!(near(code_weight(&conn, "600005"), 1.0));
+        assert!(near(code_weight(&conn, "600004"), 1.0));
+        assert!(near(code_weight(&conn, "600006"), 1.0));
+        assert!(near(code_weight(&conn, ""), 1.0));
+        assert!(near(code_weight(&conn, " 600001 "), 1.0), "代码首尾空白容错");
     }
 
     fn conn_with_tables() -> rusqlite::Connection {
@@ -1017,7 +1369,8 @@ mod tests {
                 id INTEGER PRIMARY KEY AUTOINCREMENT, plan_id INTEGER, tier TEXT, code TEXT,
                 name TEXT, theme TEXT, condition TEXT, action TEXT, position_hint TEXT,
                 alert_rule TEXT, status TEXT, sort INTEGER,
-                co_id TEXT DEFAULT '', trigger_json TEXT DEFAULT '', synced_at INTEGER DEFAULT 0);",
+                co_id TEXT DEFAULT '', trigger_json TEXT DEFAULT '', synced_at INTEGER DEFAULT 0,
+                tag TEXT DEFAULT '');",
         )
         .unwrap();
         conn

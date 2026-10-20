@@ -47,6 +47,30 @@ export interface InstructionRow {
   hasOrder: boolean;
   /** P1-b：原始 alert_rule 文本。行列本身不返回，由 store 从 plan.instructions 关联填充。 */
   alertRule?: string;
+  /** P3-c：指令标签（logic/emotion/follow），空串或缺失 = 未标。 */
+  tag?: string;
+}
+
+/** P3-c 指令标签：空串 = 未标；未知值按未标展示，不抛错。 */
+export type InstructionTag = "" | "logic" | "emotion" | "follow";
+
+/** 打标下拉选项（顺序固定：清除 / 逻辑 / 情绪 / 跟风）。 */
+export const INSTRUCTION_TAG_OPTIONS: ReadonlyArray<{ value: InstructionTag; label: string }> = [
+  { value: "", label: "清除" },
+  { value: "logic", label: "逻辑" },
+  { value: "emotion", label: "情绪" },
+  { value: "follow", label: "跟风" },
+];
+
+const TAG_LABEL: Record<string, string> = {
+  logic: "逻辑",
+  emotion: "情绪",
+  follow: "跟风",
+};
+
+/** 标签中文名；空串 / null / 未知值统一返回空串（UI 不渲染 chip）。 */
+export function tagLabel(tag: string | null | undefined): string {
+  return TAG_LABEL[(tag ?? "").trim().toLowerCase()] ?? "";
 }
 
 const META: Record<ExecState, StateMeta> = {
