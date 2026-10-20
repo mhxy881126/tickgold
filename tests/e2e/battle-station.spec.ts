@@ -3,13 +3,14 @@
 // 以及 P1-b 行内编辑触发条件 / 触发后一键下单 / 模拟盘自动开关，
 // P2-a 对账 chip（正常 / 冲突可跳转）与下单耗时展示，
 // P2-b1 B 快捷键（打开作战台 + 切买入方向 + 聚焦代码框），
-// P3-a Copilot 自然语言条件单（解析预览 → 确认 → fake co_create 参数断言）。
+// P3-a Copilot 自然语言条件单（解析预览 → 确认 → fake co_create 参数断言），
+// P3-b 盘口五档点击预填下单条（卖档买 / 买档卖 / 挂载时消费与运行中 watcher）。
 //
 // 熔断状态注入（重要）：`tests/e2e/support/backend.ts` 会被 Vite 的 e2e alias 打进浏览器 bundle，
 // 与 Node 侧的 Playwright 测试进程是两份模块实例——在 spec 里 import 任何 setter 都改不到页面状态。
 // 因此统一用 page.addInitScript 预置 `window.__FAKE_BROKER_STATUS`，由 backend.ts 初始化时合并。
 import { test, expect, type Page } from "@playwright/test";
-import { boot } from "./support/helpers";
+import { boot, openViaMega } from "./support/helpers";
 
 // 2026-10-19 是周一；09:31（Asia/Shanghai）处于「开盘」段，距盘中还有 29 分钟。
 const OPEN_AT = new Date("2026-10-19T09:31:00+08:00");
@@ -49,6 +50,11 @@ async function openCockpit(page: Page): Promise<void> {
   await page.waitForLoadState("domcontentloaded");
   await expect(page.locator(".dock-btn").first()).toBeVisible();
 
+  await openCockpitViaDock(page);
+}
+
+/** 从左侧 Dock 打开「今日作战流」（不重新加载页面，复用已有卡片状态）。 */
+async function openCockpitViaDock(page: Page): Promise<void> {
   // P2-b2 起出厂分组为 4 组，「交易·执行」是第 3 个；按钮只显示组名前两字，故按「交易」定位。
   const tradeGroup = page.locator(".dock-btn").filter({ hasText: "交易" });
   const groupBtn = (await tradeGroup.count()) > 0 ? tradeGroup.first() : page.locator(".dock-btn").nth(2);
@@ -510,4 +516,90 @@ test("Copilot 一句话建条件单：解析预览 → 确认 → co_create 参�
     note: "copilot",
   });
   expect(lastCo?.trigger).toEqual([{ field: "price", op: "lte", value: 1680 }]);
+});
+
+// —— P3-b 盘口点击预填验收 ——
+// 玻璃浮岛同一时刻只挂载一张主卡：K 线卡与作战台不会同屏，正好覆盖
+// 「作战台未挂载时预填保留 → 挂载时消费」这条真实链路；最后用动态 import
+// 直接投递一次预填，覆盖「作战台已挂载时 watcher 立即消费」的自由布局路径。
+test("盘口点击预填：卖档买入 / 买档卖出 / 挂载消费与运行中 watcher", async ({ page }) => {
+  await installOpenClock(page);
+  await boot(page);
+
+  // 打开 K 线卡，等盘口五档渲染（fake get_orderbook 提供 1681/1679 等档位）。
+  await openViaMega(page, "", "", "chart");
+  const ask1 = page.getByTestId("book-ask-1");
+  const bid1 = page.getByTestId("book-bid-1");
+  await expect(ask1).toBeVisible();
+  await expect(ask1).toContainText("1681");
+  await expect(bid1).toContainText("1679");
+
+  // 点卖一 → 以该档价预填买入；作战台尚未挂载，预填先保留。
+  await ask1.click();
+  await openCockpitViaDock(page);
+  await expect(page.getByTestId("order-price")).toHaveValue("1681");
+  await expect(page.getByTestId("order-code")).toHaveValue("600519");
+  await expect(page.getByTestId("order-buy")).toHaveClass(/active/);
+
+  // 切回 K 线点买一 → 预填卖出；切回作战台（重新挂载）时消费。
+  await page.locator('.glass-edge .ot-item[data-nav-id="chart"]').click();
+  await expect(bid1).toBeVisible();
+  await bid1.click();
+  await page.locator('.glass-edge .ot-item[data-nav-id="cockpit"]').click();
+  await expect(page.getByTestId("battle-station")).toBeVisible();
+  await expect(page.getByTestId("order-price")).toHaveValue("1679");
+  await expect(page.getByTestId("order-sell")).toHaveClass(/active/);
+
+  // 作战台已挂载时到达的预填：watcher 立即消费（同屏 K 线卡的运行中路径）。
+  await page.evaluate(async () => {
+    const m = await import("/src/stores/quickAction.ts");
+    m.requestOrderPrefill({ code: "600519", side: "BUY", price: 1682 });
+  });
+  await expect(page.getByTestId("order-price")).toHaveValue("1682");
+  await expect(page.getByTestId("order-buy")).toHaveClass(/active/);
+});
+
+type PendingPrefill = { code: string; side?: "BUY" | "SELL"; price: number } | null;
+
+/** 读取 quickAction 里待消费的预填（Vite dev 下与应用共享同一模块实例）。 */
+async function readPendingPrefill(page: Page): Promise<PendingPrefill> {
+  return page.evaluate(async () => {
+    const m = await import("/src/stores/quickAction.ts");
+    return m.pendingOrderPrefill.value as PendingPrefill;
+  });
+}
+
+test("分时点击预填：以点击价位填单、方向沿用当前方向", async ({ page }) => {
+  await installOpenClock(page);
+  await boot(page);
+  await openViaMega(page, "", "", "chart");
+
+  // 切到分时，等图表与右侧涨跌幅轴渲染完成。
+  await page.locator(".sc-tab", { hasText: "分时" }).click();
+  await expect(page.locator(".pct-axis")).toBeVisible();
+  await expect(page.locator(".chart-host canvas").first()).toBeVisible();
+  await page.waitForTimeout(500);
+
+  const host = page.locator(".chart-host");
+  const box = (await host.boundingBox())!;
+  const x = box.x + box.width * 0.5;
+
+  // 图上点两处不同高度：越靠下价格越低，证明取的是点击价位而非最新价。
+  await page.mouse.click(x, box.y + box.height * 0.3);
+  const high = await readPendingPrefill(page);
+  await page.waitForTimeout(600); // 避开双击判定窗口
+  await page.mouse.click(x, box.y + box.height * 0.55);
+  const low = await readPendingPrefill(page);
+
+  expect(high?.code).toBe("600519");
+  expect(low?.code).toBe("600519");
+  expect(low!.price).toBeLessThan(high!.price);
+  // 预填不带方向：消费时沿用下单条当前方向。
+  expect(low && "side" in low).toBe(false);
+
+  // 作战台挂载时消费：代码/价格一致，默认方向仍是 BUY。
+  await openCockpitViaDock(page);
+  await expect(page.getByTestId("order-code")).toHaveValue("600519");
+  await expect(page.getByTestId("order-price")).toHaveValue(low!.price.toFixed(2));
+  await expect(page.getByTestId("order-buy")).toHaveClass(/active/);
 });

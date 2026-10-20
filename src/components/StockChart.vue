@@ -76,7 +76,15 @@
     <!-- ===== 主体 ===== -->
     <div class="sc-body">
       <div class="sc-chart">
-        <div ref="host" class="chart-host" @contextmenu.prevent="onContextMenu" @mouseenter="onEnterChart" @mouseleave="onLeaveChart"></div>
+        <div
+          ref="host"
+          class="chart-host"
+          @click="onChartClick"
+          @mousedown="onChartPointerDown"
+          @contextmenu.prevent="onContextMenu"
+          @mouseenter="onEnterChart"
+          @mouseleave="onLeaveChart"
+        ></div>
         <div v-if="tabs[active].minute" class="pct-axis">
           <span
             v-for="(it, i) in rightAxisItems"
@@ -141,10 +149,18 @@
         </div>
       </div>
 
-      <!-- 五档盘口 -->
+      <!-- 五档盘口（点击档位 → 预填下单条；卖档买入、买档卖出） -->
       <div class="sc-book">
         <div class="ask">
-          <div v-for="i in [4,3,2,1,0]" :key="'a'+i" class="lvl ask-lvl">
+          <div
+            v-for="i in [4,3,2,1,0]"
+            :key="'a'+i"
+            class="lvl ask-lvl"
+            :class="{ clickable: (asks[i]?.price ?? 0) > 0 }"
+            :data-testid="'book-ask-' + (i + 1)"
+            :title="(asks[i]?.price ?? 0) > 0 ? '点击以卖' + (i + 1) + '价预填买入' : ''"
+            @click="onBookClick('BUY', asks[i]?.price)"
+          >
             <span class="lvl-tag">卖{{ i + 1 }}</span>
             <span class="lvl-px up">{{ fmtPx(asks[i]?.price) }}</span>
             <span class="lvl-vol">{{ fmtVol(asks[i]?.vol ?? 0) }}</span>
@@ -156,7 +172,15 @@
           <span class="bm-chg">{{ pct >= 0 ? "+" : "" }}{{ pct.toFixed(2) }}%</span>
         </div>
         <div class="bid">
-          <div v-for="i in [0,1,2,3,4]" :key="'b'+i" class="lvl bid-lvl">
+          <div
+            v-for="i in [0,1,2,3,4]"
+            :key="'b'+i"
+            class="lvl bid-lvl"
+            :class="{ clickable: (ob?.bids[i]?.price ?? 0) > 0 }"
+            :data-testid="'book-bid-' + (i + 1)"
+            :title="(ob?.bids[i]?.price ?? 0) > 0 ? '点击以买' + (i + 1) + '价预填卖出' : ''"
+            @click="onBookClick('SELL', ob?.bids[i]?.price)"
+          >
             <span class="lvl-tag">买{{ i + 1 }}</span>
             <span class="lvl-px down-g">{{ fmtPx(ob?.bids[i]?.price) }}</span>
             <span class="lvl-vol">{{ fmtVol(ob?.bids[i]?.vol ?? 0) }}</span>
@@ -263,6 +287,8 @@ import { useChartFloat } from "../composables/chart/useChartFloat";
 import { pushChart, popChart } from "../lib/tradingAxis";
 import { usePaperStore } from "../stores/paper";
 import { useWatchlistStore } from "../stores/watchlist";
+import { selectCode, selectedCode } from "../stores/selection";
+import { requestOrderPrefill, type OrderSide } from "../stores/quickAction";
 import {
   fmtVol, fmtAmt, limitRateOf, round2, toKData, buildAvgMap, findBarIndex,
 } from "../lib/chart";
@@ -273,6 +299,7 @@ import MinuteReplayPopup from "./MinuteReplayPopup.vue";
 import { confirmDialog } from "../composables/useDialog";
 
 const props = defineProps<{ code: string }>();
+const emit = defineEmits<{ (e: "select", code: string): void }>();
 
 const paper = usePaperStore();
 const wl = useWatchlistStore();
@@ -399,6 +426,68 @@ const limitDownPrice = computed(() => (prevClose.value > 0 ? round2(prevClose.va
 const myPos = computed(() => paper.positions.find((p) => p.code === props.code));
 const costPrice = computed(() => (myPos.value ? myPos.value.costAmount / myPos.value.vol : 0));
 const axTone = (p: number) => (p > 0.05 ? "up" : p < -0.05 ? "dn" : "zero");
+
+// ===== P3-b 盘口 / 分时点击 → 下单条预填 =====
+// 盘口：点卖档预填买入、点买档预填卖出（按该档价挂单），同时把该股设为全局选中。
+function onBookClick(side: OrderSide, px?: number | null) {
+  if (px == null || !(px > 0)) return;
+  selectCode(props.code);
+  requestOrderPrefill({ code: props.code, side, price: round2(px) });
+}
+
+/** 分时图点击位置 → 主图价格；不在主图区域内 / 取不到有效价时返回 null。 */
+function priceAtChartY(clientY: number): number | null {
+  if (!chart || !host.value) return null;
+  const rect = host.value.getBoundingClientRect();
+  const y = clientY - rect.top;
+  const box = chart.getSize("candle_pane", DomPosition.Main);
+  // Main 部件的 bounding 只有 width/height/left/top 有值（right/bottom 为 0），用 top+height 判界。
+  if (!box || y < box.top || y > box.top + box.height) return null;
+  const points = chart.convertFromPixel([{ y }], { paneId: "candle_pane", absolute: true }) as
+    | { value?: number }[]
+    | null;
+  const v = Number(points?.[0]?.value);
+  if (!Number.isFinite(v) || v <= 0) return null;
+  // 超出当日涨跌停的点击价没有可下单意义：夹到涨跌停区间内
+  const up = limitUpPrice.value;
+  const down = limitDownPrice.value;
+  const clamped = Math.min(up ?? v, Math.max(down ?? v, v));
+  return round2(clamped);
+}
+
+/**
+ * 分时图单击：以点击价位预填下单条（方向沿用下单条当前方向），并同步全局选中股。
+ * 双击留给历史分时复盘弹窗，画线模式下单击用于落点；拖拽（平移/缩放）不算点击。
+ */
+function onChartClick(e: MouseEvent) {
+  const down = lastChartDown;
+  lastChartDown = null;
+  if (!tabs[active.value].minute) return;
+  if (e.button !== 0 || e.detail > 1) return;
+  if (activeDraw.value) return;
+  if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return; // 平移拖拽不预填
+  const price = priceAtChartY(e.clientY);
+  if (price == null) return;
+  selectCode(props.code);
+  requestOrderPrefill({ code: props.code, price });
+}
+
+// 记录按下位置，用于区分「点击」与「拖拽平移图表」
+let lastChartDown: { x: number; y: number } | null = null;
+function onChartPointerDown(e: MouseEvent) {
+  lastChartDown = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
+}
+
+// 全局选中股联动：App 的 selected 已与 selection store 同源，props.code 会随之更新
+// （CardContent 用 :key=selected 重挂载），卡内仍以 props.code 为唯一数据源。
+// 这里只兜底「只改全局选中、props 未更新」的嵌入场景：下一帧仍是旧标的时才 emit
+// （正常路径下本实例已被重挂载，emit 不会触发，避免重复走一遍 pickStock）。
+watch(selectedCode, async (c) => {
+  if (!c || c === props.code) return;
+  await nextTick();
+  if (!c || c === props.code || c !== selectedCode.value) return;
+  emit("select", c);
+});
 
 const PANE_MINH = 12;
 // 副图窗格高度按容器自适应：矮卡片里压缩成交量/副图，保证主图窗格不被挤成 0

@@ -88,7 +88,7 @@ function retry() {
     <WatchList v-if="id === 'watch'" :selected="selected" @select="$emit('select', $event)" />
     <RankBoard v-else-if="id === 'rank'" @select="$emit('select', $event)" />
     <div v-else-if="id === 'chart'" class="chart-card">
-      <StockChart v-if="selected" :key="selected" :code="selected" />
+      <StockChart v-if="selected" :key="selected" :code="selected" @select="$emit('select', $event)" />
       <div v-else class="card-empty">从自选或榜单选择一只股票</div>
     </div>
     <AuctionBoard v-else-if="id === 'auction'" @select="$emit('select', $event)" />

@@ -65,6 +65,11 @@ function bar(i: number): KBar {
   const c = 10 + i * 0.02;
   return { timestamp: Date.now() - (100 - i) * 60000, open: c, close: c + 0.01, high: c + 0.05, low: c - 0.05, volume: 1000 };
 }
+// 分时/历史分时与头部盘口同价位（1680 附近），避免 P3-b 分时点击预填被涨跌停夹住。
+function minuteBar(i: number): KBar {
+  const c = 1680 + i * 0.02;
+  return { timestamp: Date.now() - (100 - i) * 60000, open: c, close: c + 0.01, high: c + 0.05, low: c - 0.05, volume: 1000 };
+}
 
 // —— 内存数据库（物理列名为 snake_case）——
 class FakeDb {
@@ -325,9 +330,9 @@ const handlers: Record<string, Handler> = {
     ),
   get_index_quotes: () => [quote("000001", 3200, 0.4, "上证指数"), quote("399001", 10200, -0.2, "深证成指"), quote("399006", 2010, 1.1, "创业板指")],
   get_kline: () => Array.from({ length: 60 }, (_, i) => bar(i)),
-  get_minute: () => Array.from({ length: 30 }, (_, i) => bar(i)),
-  get_hist_minute: () => Array.from({ length: 30 }, (_, i) => bar(i)),
-  get_hist_minute_days: () => Array.from({ length: 3 }, (_, d) => ({ date: `2026010${d + 1}`, bars: Array.from({ length: 30 }, (_, i) => bar(i)) })),
+  get_minute: () => Array.from({ length: 30 }, (_, i) => minuteBar(i)),
+  get_hist_minute: () => Array.from({ length: 30 }, (_, i) => minuteBar(i)),
+  get_hist_minute_days: () => Array.from({ length: 3 }, (_, d) => ({ date: `2026010${d + 1}`, bars: Array.from({ length: 30 }, (_, i) => minuteBar(i)) })),
   get_rank_page: () => [quote("600519", 1680, 5.2), quote("300750", 189, 4.1), quote("601318", 48, -2.3)],
   get_rank_board: (a) => {
     // 增强榜单（RankBoard.vue 使用）：按 sort 生成对应指标列的确定性 mock
@@ -364,7 +369,14 @@ const handlers: Record<string, Handler> = {
       }))
     );
   },
-  get_orderbook: () => ({ code: "600519", name: "贵州茅台", price: 1680, prevClose: 1660, open: 1665, high: 1690, low: 1660, volume: 12000, amount: 2e9, asks: [], bids: [] }),
+  get_orderbook: () => ({
+    code: "600519", name: "贵州茅台", price: 1680, prevClose: 1660, open: 1665, high: 1690, low: 1660,
+    volume: 12000, amount: 2e9,
+    // 盘口五档（P3-b 盘口点击预填 e2e 需要真实档位与价格）
+    asks: [1681, 1682, 1683, 1684, 1685].map((price, i) => ({ price, vol: 100 * (i + 1) })),
+    bids: [1679, 1678, 1677, 1676, 1675].map((price, i) => ({ price, vol: 100 * (i + 1) })),
+    bidTotal: 1500, askTotal: 1500, weiBi: 0, weiCha: 0, insideVol: 600, outsideVol: 640,
+  }),
   get_sectors: () => [{ code: "BK1", name: "半导体", changePct: 2.3, netAmount: 1e9, inAmount: 3e9, outAmount: 2e9, leadCode: "300750", leadName: "宁德时代", leadPct: 4.1 }],
   get_news_flash: () => [{ id: 1, time: "2026-01-01 09:45:00", text: "市场开盘活跃", tags: ["快讯"], url: "" }],
   get_screener: () => [quote("600519", 1680, 3.2)],

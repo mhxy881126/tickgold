@@ -10,7 +10,7 @@ import type { AlertRule } from "./instructionModel";
 import { formatHitRate } from "./hitRateModel";
 import { useWorkflowStore, todayStr } from "../../stores/workflow";
 import { useQuotesStore } from "../../stores/quotes";
-import { consumeOrderSide, pendingOrderSide } from "../../stores/quickAction";
+import { consumeOrderSide, pendingOrderSide, consumeOrderPrefill, pendingPrice } from "../../stores/quickAction";
 import { toast } from "../../composables/useToast";
 import { confirmDialog } from "../../composables/useDialog";
 import { formatMs, orderTimingSummary, type OrderTimingSummary } from "../../broker/timing";
@@ -42,6 +42,10 @@ onMounted(async () => {
   // 放在任何 await 之前，保证首帧就是目标方向（避免先 BUY 再跳 SELL 的闪烁）。
   const side = consumeOrderSide();
   if (side) dock.value?.focusSide(side);
+  // P3-b 盘口/分时点击：挂载前到达的预填同样先消费，首帧即填好代码/方向/价格。
+  // 放在 await 之前；预填自带方向时以后到的预填为准，未带方向则沿用上面的快捷键方向。
+  const prefill = consumeOrderPrefill();
+  if (prefill) dock.value?.applyPrefill(prefill);
   // 缺省 scope 走后端早盘启发式：今日未确认 → 今日作战卡；否则下一交易日。
   // 战斗台既要展示今日计划，也要承担盘后「确认明日作战卡」入口，故不再固定 scope="today"。
   void wf.loadToday();
@@ -66,6 +70,14 @@ watch(pendingOrderSide, (side) => {
   if (!side) return;
   const next = consumeOrderSide();
   if (next) dock.value?.focusSide(next);
+});
+
+// P3-b 盘口/分时点击：作战台已挂载时（自由布局里 K 线卡与作战台同屏）立即预填；
+// 未挂载时 pendingPrice 保留，等下次挂载由 onMounted 消费（与 pendingOrderSide 同一套逻辑）。
+watch(pendingPrice, (px) => {
+  if (px == null) return;
+  const prefill = consumeOrderPrefill();
+  if (prefill) dock.value?.applyPrefill(prefill);
 });
 
 // 只轮询本地状态：同花顺通道的 broker_query_position 会激活交易窗口并抢焦点（同 BrokerConsole 不自动刷新），

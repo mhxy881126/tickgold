@@ -25,6 +25,8 @@ const quotes = useQuotesStore();
 const code = ref("");
 // B/S 快捷键直达：模板 ref 用于切方向后把焦点落到代码输入框。
 const codeInput = ref<HTMLInputElement | null>(null);
+// 盘口/分时点击预填：焦点落到价格框，方便直接改价后下单。
+const priceInput = ref<HTMLInputElement | null>(null);
 const price = ref(0);
 const vol = ref(100);
 const position = ref<PositionPct>(2);
@@ -169,6 +171,27 @@ function setCode(c: string) {
 }
 
 /**
+ * P3-b 盘口/分时点击预填：填代码、方向（可选，缺省沿用当前方向）与价格，并聚焦价格框。
+ * 确认弹窗已打开时方向与价格已冻结，直接忽略，避免确认后下成另一笔。
+ * loadBook 只补名称/昨收/盘口，不会覆盖已预填的价格（空价格才回填）。
+ */
+function applyPrefill(p: { code: string; side?: "BUY" | "SELL"; price: number }) {
+  if (confirmOpen.value) return;
+  const code2 = (p?.code ?? "").trim();
+  const px = Number(p?.price);
+  if (!code2 || !Number.isFinite(px) || px <= 0) return;
+  code.value = code2;
+  if (p.side) side.value = p.side;
+  price.value = px;
+  book.value = null;
+  lastMsg.value = "";
+  void loadBook(code2);
+  void nextTick(() => {
+    priceInput.value?.focus();
+  });
+}
+
+/**
  * B/S 快捷键：切到指定方向并把焦点落到代码输入框。
  * 等下一帧再聚焦：快捷键回调发生在卡片刚打开 / 重挂载的同一次 flush 内，
  * 立刻 focus 会被随后的渲染覆盖。
@@ -182,7 +205,7 @@ function focusSide(s: "BUY" | "SELL") {
     codeInput.value?.select();
   });
 }
-defineExpose({ setCode, focusSide });
+defineExpose({ setCode, focusSide, applyPrefill });
 </script>
 
 <template>
@@ -201,8 +224,25 @@ defineExpose({ setCode, focusSide });
       />
       <span class="od-name">{{ name || "—" }}</span>
 
-      <input v-model.number="price" class="od-num mono" type="number" step="0.01" min="0" placeholder="价格" />
-      <input v-model.number="vol" class="od-num mono" type="number" step="100" min="0" placeholder="数量" />
+      <input
+        ref="priceInput"
+        v-model.number="price"
+        class="od-num mono"
+        type="number"
+        step="0.01"
+        min="0"
+        placeholder="价格"
+        data-testid="order-price"
+      />
+      <input
+        v-model.number="vol"
+        class="od-num mono"
+        type="number"
+        step="100"
+        min="0"
+        placeholder="数量"
+        data-testid="order-vol"
+      />
 
       <div class="od-chips">
         <button

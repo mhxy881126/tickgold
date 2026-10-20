@@ -73,6 +73,7 @@ import { useNovice } from "./composables/useNovice";
 import { useLicenseStore } from "./stores/license";
 import { coCancelAll } from "./broker/co";
 import { requestOrder } from "./stores/quickAction";
+import { selectedCode, selectCode } from "./stores/selection";
 
 const wl = useWatchlistStore();
 const quotes = useQuotesStore();
@@ -124,7 +125,9 @@ const {
   refitFocus,
 } = useCardFocus(bench);
 
-const selected = ref<string | null>(null);
+// 全局选中股：与 selection store 同源（P3-b），其它卡 / 盘口 / 分时点击都能改它，
+// K 线卡等按 selected 联动，无需各自再存一份。
+const selected = selectedCode;
 
 // 全局行情上下文层：微件总线的根层（卡级层在 WidgetCanvas 内覆盖）
 const rootMarket = createRootMarketContext({
@@ -456,7 +459,7 @@ function onPaletteKey(e: KeyboardEvent) {
 
 // ===== 联动：选中股票 → K线进入主卡大区域 =====
 function pickStock(code: string, name?: string) {
-  selected.value = code;
+  selectCode(code);
   if (name && !wl.codes.includes(code)) {
     wl.add(code, name);
     toast.success(`已添加「${name}」到自选`);
@@ -588,7 +591,7 @@ onMounted(async () => {
     if (v) bench.setMode(NOVICE_CARDS);
   });
   if (wl.codes.length) {
-    selected.value = wl.codes[0];
+    selectCode(wl.codes[0]);
   }
 
   // —— 插件生态：扫描内置/已装插件、动态注册微件、订阅启停事件 ——

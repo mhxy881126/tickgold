@@ -156,6 +156,9 @@
   gap: 4px; padding: 2.5px 8px; align-items: center; overflow: hidden;
 }
 .lvl-tag { color: #7b8294; z-index: 1; }
+.lvl.clickable { cursor: pointer; }
+.lvl.clickable:hover { background: rgba(255,255,255,.07); }
+.lvl.clickable:active { background: rgba(255,255,255,.12); }
 .lvl-px { z-index: 1; font-variant-numeric: tabular-nums; text-align: right; }
 .lvl-vol { color: #9aa1b1; z-index: 1; font-variant-numeric: tabular-nums; }
 .lvl-bar {
