@@ -6,7 +6,7 @@ use crate::logging;
 use crate::market;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{LogicalPosition, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 #[tauri::command]
 pub(crate) async fn get_quotes(codes: Vec<String>) -> Result<Vec<market::Quote>, String> {
@@ -993,6 +993,31 @@ pub(crate) fn pip_set_always_on_top(
         .get_webview_window(&label)
         .ok_or_else(|| "pip window not found".to_string())?;
     w.set_always_on_top(on).map_err(|e| e.to_string())
+}
+
+// ===== 灵动岛：顶部居中置顶 + 鼠标边缘隐藏（前端无 position ACL，统一在 Rust 移动）=====
+// hidden=false：恢复 y=12 正常置顶；hidden=true：移到屏幕顶边外只留 4px 悬边，
+// 悬边供鼠标 hover 唤回。x 始终按窗口所在显示器居中。
+#[tauri::command]
+pub(crate) fn island_set_peek(app: tauri::AppHandle, hidden: bool) -> Result<(), String> {
+    let w = app
+        .get_webview_window("island")
+        .ok_or_else(|| "island window not found".to_string())?;
+    let size = w.outer_size().map_err(|e| e.to_string())?;
+    let scale = w.scale_factor().map_err(|e| e.to_string())?;
+    let (ww, wh) = (size.width as f64 / scale, size.height as f64 / scale);
+    let (mw, _mh) = match w.current_monitor().map_err(|e| e.to_string())? {
+        Some(mon) => {
+            let s = mon.size();
+            let sc = mon.scale_factor();
+            (s.width as f64 / sc, s.height as f64 / sc)
+        }
+        None => (1920.0, 1080.0),
+    };
+    let x = (mw - ww) / 2.0;
+    let y = if hidden { 4.0 - wh } else { 12.0 };
+    w.set_position(LogicalPosition::new(x, y))
+        .map_err(|e| e.to_string())
 }
 
 #[allow(dead_code)]

@@ -293,7 +293,7 @@ pub(crate) fn init(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
     if let Some(monitor) = island.primary_monitor()? {
         let size = monitor.size();
         let scale = monitor.scale_factor();
-        let x = size.width as f64 / scale - 312.0;
+        let x = (size.width as f64 / scale - 300.0) / 2.0;
         let _ = island.set_position(LogicalPosition::new(x, 12.0));
     }
 

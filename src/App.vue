@@ -634,6 +634,11 @@ onMounted(async () => {
         if (!bench.isOpen("signalbridge")) bench.open("signalbridge");
       })
     );
+    // 前端内部事件：新版作战台「去设置武装实盘」→ 打开设置并定位券商页
+    window.addEventListener("open-broker-settings", () => {
+      settingsInitialTab.value = "broker";
+      showSettings.value = true;
+    });
     // 托盘菜单事件
     unlistenFns.push(await listen("open-settings", () => { settingsInitialTab.value = undefined; showSettings.value = true; }));
     unlistenFns.push(await listen("open-ai-settings", () => { settingsInitialTab.value = "ai"; showSettings.value = true; }));

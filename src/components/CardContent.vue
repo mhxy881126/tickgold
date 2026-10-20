@@ -194,7 +194,15 @@ function retry() {
   color: var(--text, #e6ecf5); font-size: 12px; cursor: pointer;
 }
 .crash-btn:hover { border-color: var(--accent, #e8c66a); }
-.cockpit-wrap { position: relative; height: 100%; }
+.cockpit-wrap {
+  /* 旧版六步滚动修复：.cockpit 依赖 flex:1 撑满并 overflow:auto，
+     父容器必须也是 flex 列布局，否则 flex 失效、高度自适应内容导致无法滚轮。 */
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .battle-switch {
   position: absolute; top: 4px; right: 8px; z-index: 6;
   padding: 1px 8px; font-size: 10.5px; border-radius: 5px;

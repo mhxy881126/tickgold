@@ -106,6 +106,7 @@ pub fn run() {
             commands::open_pip_window,
             commands::close_pip_window,
             commands::pip_set_always_on_top,
+    commands::island_set_peek,
             setup::open_in_app_browser,
             commands::save_export_file,
             commands::open_text_file,

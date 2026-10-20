@@ -119,6 +119,13 @@ const channelKindText = computed(() => {
   return "本地模拟";
 });
 
+// ===== 智驾安全红线前置提示：实盘通道下后端会拒绝启动（verify_paper_only），
+// 这里提前告知原因并给「去设置切换通道」入口，避免点按钮后才看到报错。=====
+const isLiveChannel = computed(() => live.value?.isLive === true);
+function goSwitchChannel() {
+  window.dispatchEvent(new CustomEvent("open-broker-settings"));
+}
+
 function openSettings() {
   showSettings.value = !showSettings.value;
   if (showSettings.value && st.value) {
@@ -176,6 +183,16 @@ function fmtPnl(n: number) {
         <button v-if="isRunning" class="pp-btn ghost" :disabled="pilot.busy" @click="doPause">暂停</button>
         <button v-if="isRunning || isPaused" class="pp-btn ghost" :disabled="pilot.busy" @click="doStop">停止</button>
       </div>
+    </div>
+
+    <!-- 智驾安全红线：实盘通道互斥（后端拒绝启动），提前说明并给切换入口 -->
+    <div v-if="isOff && isLiveChannel" class="pp-live-block" data-testid="pilot-live-block">
+      <div class="pp-live-block-t">当前为实盘通道：一键智驾仅限模拟盘（安全红线，实盘与智驾互斥）</div>
+      <div class="pp-live-block-s">
+        智驾会自动买卖，绝不能触碰真实资金。请在「设置 → 券商」把通道切回
+        <b>本地模拟</b> 或 <b>同花顺模拟</b> 后，即可一键开始自动交易。
+      </div>
+      <button type="button" class="pp-btn solid" @click="goSwitchChannel">去设置切换通道</button>
     </div>
 
     <!-- 主入口 / 运行状态行 -->
@@ -503,6 +520,19 @@ function fmtPnl(n: number) {
   border: 1px solid rgba(255, 77, 106, 0.35); background: rgba(255, 77, 106, 0.08);
   border-radius: 8px; padding: 7px 10px;
 }
+
+/* 智驾安全红线提示条 */
+.pp-live-block {
+  display: flex; flex-direction: column; gap: 7px;
+  border: 1px solid rgba(232, 200, 120, .45);
+  border-radius: 9px;
+  background: linear-gradient(135deg, rgba(232, 200, 120, .10), rgba(232, 200, 120, .03));
+  padding: 10px 12px;
+}
+.pp-live-block-t { font-size: 12px; font-weight: 800; color: #e8c878; }
+.pp-live-block-s { font-size: 11.5px; line-height: 1.6; color: var(--text-dim); }
+.pp-live-block-s b { color: var(--text); }
+.pp-live-block .pp-btn { align-self: flex-start; }
 
 /* 三问 */
 .pp-questions {

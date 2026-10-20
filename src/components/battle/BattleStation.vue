@@ -17,8 +17,10 @@ import { confirmDialog } from "../../composables/useDialog";
 import { formatMs, orderTimingSummary, type OrderTimingSummary } from "../../broker/timing";
 import {
   brokerGetStatus,
+  brokerLiveUsage,
   riskSnapshot,
   type BrokerStatus,
+  type LiveUsage,
   type RiskSnapshot,
 } from "../../broker/api";
 
@@ -29,6 +31,7 @@ const preview = ref<PhaseId | null>(null);
 const status = ref<BrokerStatus | null>(null);
 const snap = ref<RiskSnapshot | null>(null);
 const timing = ref<OrderTimingSummary | null>(null);
+const usage = ref<LiveUsage | null>(null);
 const dock = ref<InstanceType<typeof OrderDock> | null>(null);
 const listRef = ref<InstanceType<typeof InstructionList> | null>(null);
 const instrMsg = ref("");
@@ -88,6 +91,17 @@ async function refresh() {
     const s = await brokerGetStatus();
     if (disposed) return;
     status.value = s;
+    // 实盘通道且未武装时拉一次武装进度（本地查询，开销小；已武装则无需提示）。
+    const liveChannel = s && s.kind === "client" && !s.clientSim && s.windowSim !== true;
+    if (liveChannel && !s.liveEnabled) {
+      try {
+        usage.value = await brokerLiveUsage();
+      } catch {
+        usage.value = null;
+      }
+    } else if (liveChannel && s.liveEnabled) {
+      usage.value = null;
+    }
   } catch { /* 未连接时保持上次状态 */ }
   try {
     const r = await riskSnapshot();
@@ -110,6 +124,30 @@ const timingText = computed(() => {
 });
 const cash = computed(() => snap.value?.cash ?? 0);
 const pct = computed(() => (snap.value?.positionPct ?? 0).toFixed(1));
+
+// ===== P4 实盘武装进度卡：实盘通道已选但未武装时，告诉用户还差哪几步、一键去设置 =====
+// 通道语义与 OrderDock 一致：client 且非模拟窗口才算实盘通道。
+const isLiveChannel = computed(() => {
+  const s = status.value;
+  return !!s && s.kind === "client" && !s.clientSim && s.windowSim !== true;
+});
+// 可自动检测的武装步骤（第 4 步「合规确认 + 输入风险确认」在设置页完成，不在此计分）。
+const liveSteps = computed(() => {
+  const u = usage.value;
+  return [
+    { label: "实盘限额", done: !!u && u.singleLimit > 0 && u.dailyLimit > 0 },
+    { label: "标的白名单", done: !!u && u.whitelist.length > 0 },
+    { label: "模拟演练", done: !!u && u.drillPassed },
+  ];
+});
+const liveDoneCount = computed(() => liveSteps.value.filter((x) => x.done).length);
+const liveArmed = computed(() => !!status.value && status.value.liveEnabled === true);
+// 未连接 / 模拟通道 / 已武装时都不显示进度卡；仅实盘通道未武装时显示。
+const showLiveArmCard = computed(() => isLiveChannel.value && !liveArmed.value);
+function goArmSettings() {
+  // 与 App.vue 的 open-ai-settings / open-pro-settings 同一模式：通知主窗口打开设置并定位券商页。
+  window.dispatchEvent(new CustomEvent("open-broker-settings"));
+}
 
 // P1-c 计划确认入口：今日未确认作战卡（早盘提醒直达）或下一交易日 draft（盘后）。
 const planIsToday = computed(() => wf.battlePlan?.planDate === todayStr());
@@ -273,6 +311,26 @@ function money(n: number) {
       >
     </header>
 
+    <!-- P4 实盘武装进度卡：代替原来的「实盘未启用」红字，明确还差几步 + 一键去设置 -->
+    <div v-if="showLiveArmCard" class="bts-arm" data-testid="live-arm-card">
+      <div class="bts-arm-head">
+        <span class="bts-arm-title">实盘通道已就绪 · 还差 {{ 3 - liveDoneCount }} 步武装</span>
+        <button type="button" class="bts-arm-go" @click="goArmSettings">去设置武装实盘 →</button>
+      </div>
+      <div class="bts-arm-steps">
+        <span
+          v-for="(st, i) in liveSteps"
+          :key="st.label"
+          class="bts-arm-step"
+          :class="{ done: st.done }"
+        >
+          {{ st.done ? "✓" : `${i + 1}` }} {{ st.label }}
+        </span>
+      </div>
+      <div class="bts-arm-sub">第 4 步「合规确认 + 风险确认」在设置页完成；武装前不会提交任何真实委托。</div>
+    </div>
+    <div v-if="liveArmed" class="bts-arm-ok" data-testid="live-arm-ok">实盘已武装 · 每笔需人工确认</div>
+
     <!-- P3-a Copilot：独立第二行，避免挤压既有头部（资产 / 命中率 / 确认按钮）。 -->
     <CopilotBar />
 
@@ -328,6 +386,34 @@ function money(n: number) {
   flex: none; font-size: 11px; font-weight: 700; color: var(--down, #2fbf95);
   border: 1px solid rgba(47, 191, 149, .5); border-radius: 999px; padding: 1px 8px;
   white-space: nowrap;
+}
+/* P4 实盘武装进度卡 */
+.bts-arm {
+  display: flex; flex-direction: column; gap: 5px;
+  border: 1px solid rgba(232, 200, 120, .45);
+  border-radius: 9px;
+  background: linear-gradient(135deg, rgba(232, 200, 120, .10), rgba(232, 200, 120, .03));
+  padding: 8px 12px;
+}
+.bts-arm-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.bts-arm-title { font-size: 12px; font-weight: 700; color: #e8c878; }
+.bts-arm-go {
+  flex: none; font-size: 11px; font-weight: 700; color: #1a1408;
+  background: var(--accent, #e8c878); border: 1px solid transparent;
+  border-radius: 6px; padding: 3px 10px; cursor: pointer; white-space: nowrap;
+}
+.bts-arm-go:hover { filter: brightness(1.08); }
+.bts-arm-steps { display: flex; gap: 6px; flex-wrap: wrap; }
+.bts-arm-step {
+  font-size: 10.5px; padding: 1px 8px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--text-dim);
+}
+.bts-arm-step.done { color: var(--down, #2fbf95); border-color: rgba(47, 191, 149, .5); }
+.bts-arm-sub { font-size: 10.5px; color: var(--text-dim); }
+.bts-arm-ok {
+  flex: none; font-size: 11px; font-weight: 700; color: var(--down, #2fbf95);
+  border: 1px solid rgba(47, 191, 149, .5); border-radius: 999px; padding: 1px 8px;
+  align-self: flex-start; white-space: nowrap;
 }
 .bts-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
 .mono { font-variant-numeric: tabular-nums; }

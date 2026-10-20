@@ -6,7 +6,9 @@ import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { confirmDialog } from "../composables/useDialog";
 import {
   autoexecGetConfig,
+  autoexecSetConfig,
   signalCreateManual,
+  type AutoExecConfigInfo,
   signalDone,
   signalExpire,
   signalLaunchBroker,
@@ -24,7 +26,9 @@ import {
   brokerListOrders,
   brokerCancel,
   brokerClientConfirm,
+  brokerProbePaths,
   type BrokerOrderInfo,
+  type PathProbe,
   type ClientShot,
   type ValidationDetail,
 } from "../broker/api";
@@ -295,13 +299,46 @@ async function loadBrokerPath() {
     const c = await autoexecGetConfig();
     brokerPath.value = c.bridgeBrokerPath || "";
     orderTpl.value = c.bridgeOrderTemplate || "";
+    if (!brokerPath.value) await autoProbeBrokerPath(false);
   } catch {
     /* 忽略 */
   }
 }
+
+// ===== 券商路径自动探测：复用 broker_probe_paths 的后端探测（注册表/进程/文件系统），
+// 命中 clientPath 的 suggested 即自动填入，无需手动去设置里配。=====
+async function autoProbeBrokerPath(save: boolean): Promise<boolean> {
+  try {
+    const r = await brokerProbePaths("client");
+    const p: PathProbe | undefined = r.probes.find((x) => x.field === "clientPath");
+    const cand = p?.suggested || p?.configured;
+    if (!cand) {
+      flash("未探测到券商路径，请手动填写或到设置一键自检");
+      return false;
+    }
+    brokerPath.value = cand;
+    if (save) {
+      try {
+        const c = await autoexecGetConfig();
+        await autoexecSetConfig({ ...c, bridgeBrokerPath: cand } as AutoExecConfigInfo);
+      } catch {
+        /* 保存失败不影响本次唤起 */
+      }
+    }
+    flash(`已自动探测到券商路径：${cand}`);
+    return true;
+  } catch {
+    flash("路径探测失败（非 Tauri 环境或后端未就绪）");
+    return false;
+  }
+}
 async function onLaunch() {
-  const p = brokerPath.value.trim();
-  if (!p) return flash("请先在「设置 - AI - 信号桥」配置券商软件路径");
+  let p = brokerPath.value.trim();
+  if (!p) {
+    const ok = await autoProbeBrokerPath(false);
+    p = ok ? brokerPath.value.trim() : "";
+  }
+  if (!p) return flash("未配置券商路径且自动探测未命中，请手动填写或到设置一键自检");
   try {
     await signalLaunchBroker(p);
   } catch (e) {
@@ -639,6 +676,7 @@ onUnmounted(() => {
               placeholder="券商软件路径（.exe / .app）"
               spellcheck="false"
             />
+            <button class="act ghost" title="自动探测本机券商下单程序路径并填入" @click="autoProbeBrokerPath(true)">自动探测</button>
             <button class="act" @click="onLaunch">唤起券商</button>
           </div>
 

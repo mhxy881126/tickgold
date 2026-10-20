@@ -7,6 +7,7 @@ const STRONG_EXPAND_MS = 30_000;
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
+import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { fetchQuotes, type AlertEvent } from "../api/market";
 import { signalList } from "../ai/api";
@@ -176,6 +177,45 @@ async function toggleExpand() {
   expanded.value = !expanded.value;
   const h = expanded.value ? 400 : 52;
   await win.setSize(new LogicalSize(320, h));
+}
+
+// ===== 灵动岛 v2：顶部居中置顶 + 鼠标操作可隐藏显示 =====
+// 交互：hover 胶囊→展开；鼠标移出窗口 1.5s→收起并滑出屏幕顶边（留 4px 悬边）；
+// 鼠标移到顶部中央悬边→滑回并展开。click 切换仍保留。
+const peeked = ref(false);
+let hideTimer: ReturnType<typeof setTimeout> | null = null;
+async function setPeek(hidden: boolean) {
+  try {
+    await invoke("island_set_peek", { hidden });
+    peeked.value = hidden;
+  } catch {
+    /* 非 Tauri 环境忽略 */
+  }
+}
+function cancelHide() {
+  if (hideTimer) {
+    clearTimeout(hideTimer);
+    hideTimer = null;
+  }
+}
+async function onIslandEnter() {
+  cancelHide();
+  if (peeked.value) {
+    // 悬边唤回：先恢复置顶位置，再展开面板
+    await setPeek(false);
+    if (!expanded.value) await toggleExpand();
+    return;
+  }
+  if (!expanded.value) await toggleExpand();
+}
+function onIslandLeave() {
+  cancelHide();
+  hideTimer = setTimeout(() => {
+    void (async () => {
+      if (expanded.value) await toggleExpand();
+      await setPeek(true);
+    })();
+  }, 1500);
 }
 
 function backToQuotes() {
@@ -425,7 +465,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="island" :class="{ open: expanded, strong: strongSignal }">
+  <div class="island" :class="{ open: expanded, strong: strongSignal }" @mouseenter="onIslandEnter" @mouseleave="onIslandLeave">
     <!-- ===== 收起态 ===== -->
     <div v-if="!expanded" class="pill" data-tauri-drag-region @click="toggleExpand">
       <!-- 信号 -->
