@@ -1787,7 +1787,7 @@ async function clearL2Key(r: PluginRow) {
                   <div class="pro-badge">PRO</div>
                   <div class="pro-hero-title">TickGold <span>Pro</span></div>
                   <div class="pro-hero-sub">解锁 AI 盯盘助手与全部 Pro 高级能力</div>
-                  <div class="pro-price">¥99<span> / 年</span></div>
+                  <div class="pro-price">¥199<span> / 年</span></div>
                   <button class="pro-buy-btn" @click="goBuy">
                     <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5z" /></svg>
                     去面包多购买

@@ -76,7 +76,12 @@ fn verify_paper_only(bc: &BrokerConfig) -> Result<(), String> {
     if bc.live_armed_at > 0 {
         return Err("智驾模式仅限模拟盘：真实通道已武装（armed_at={})，请回退武装或改用武装向导流程".to_string());
     }
-    if !bc.client_sim {
+    // client_sim 仅对 kind=client 通道有意义：本地模拟（mock）天然是模拟盘；
+    // QMT 官方接口为真实通道，单独显式拒绝（不依赖 client_sim 的默认值）。
+    if bc.kind == "qmt" {
+        return Err("智驾模式仅限模拟盘：QMT 为真实通道，请切换到本地模拟或同花顺模拟环境".to_string());
+    }
+    if bc.is_client() && !bc.client_sim {
         return Err("智驾模式仅限模拟盘：客户端通道指向真实账户（client_sim=false），请切换为模拟环境".to_string());
     }
     Ok(())
@@ -671,6 +676,28 @@ mod tests {
         assert!(verify_paper_only(&bc).is_err());
         bc.client_sim = true;
         assert!(verify_paper_only(&bc).is_ok());
+    }
+
+    #[test]
+    fn paper_only_mock_channel_ok_even_without_client_sim() {
+        // 本地模拟（kind=mock）天然是模拟盘，不要求 client_sim（v3.14 修复：
+        // 切到 mock 后 client_sim 保持 false 也会被旧逻辑误拒）。
+        let bc = BrokerConfig {
+            kind: "mock".to_string(),
+            client_sim: false,
+            ..Default::default()
+        };
+        assert!(verify_paper_only(&bc).is_ok(), "mock 通道必须允许智驾");
+    }
+
+    #[test]
+    fn paper_only_qmt_rejected_as_live() {
+        // QMT 官方接口是真实通道，无论 client_sim 取值都必须拒绝智驾。
+        let bc = BrokerConfig {
+            kind: "qmt".to_string(),
+            ..Default::default()
+        };
+        assert!(verify_paper_only(&bc).is_err(), "QMT 真实通道必须拒绝智驾");
     }
 
     #[test]

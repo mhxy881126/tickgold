@@ -567,7 +567,8 @@ onBeforeUnmount(() => {
           @click="pickAlert(e)"
         >
           <span class="dir" :class="e.tone">{{ e.tone === 'up' ? '↑' : '↓' }}</span>
-          <span class="desc"><b>{{ e.name }}</b> {{ e.label }}</span>
+          <span class="desc"><b>{{ e.name }}</b><i class="code">{{ e.code }}</i><span class="lab">{{ e.label }}</span></span>
+          <span class="tm">{{ fmtHM(e.time) }}</span>
           <span class="val" :class="e.tone">{{ e.price.toFixed(2) }}</span>
         </div>
         <div v-if="alertEvents.length === 0" class="empty">
@@ -586,9 +587,11 @@ onBeforeUnmount(() => {
         >
           <div class="sig-head">
             <span class="sig-name">{{ s.name }}</span>
-            <span class="sig-side">{{ s.side === "BUY" ? "买入" : "卖出" }}</span>
+            <i class="code">{{ s.code }}</i>
+            <span class="tm">{{ fmtHM(s.time) }}</span>
+            <span class="sig-side" :class="s.side === 'BUY' ? 'buy' : 'sell'">{{ s.side === "BUY" ? "买入" : "卖出" }}</span>
           </div>
-          <div class="sig-meta">{{ s.source }} · {{ s.price.toFixed(2) }}<span v-if="s.vol"> · ×{{ s.vol }}</span></div>
+          <div class="sig-meta">{{ s.source }} · 参考 {{ s.price.toFixed(2) }}<span v-if="s.vol"> · {{ s.vol }}股</span></div>
         </div>
         <div v-if="signalEvents.length === 0" class="empty">暂无待确认信号</div>
       </div>
@@ -598,8 +601,9 @@ onBeforeUnmount(() => {
         <div class="order-group-title">模拟交易</div>
         <div v-for="o in recentOrders" :key="o.id" class="order-row">
           <span class="ord-code">
-            <span :class="o.side === 'buy' ? 'up' : 'down'">{{ o.side === 'buy' ? '买' : '卖' }}</span>
-            {{ o.name }} {{ o.vol }}股
+            <span class="ord-side" :class="o.side === 'buy' ? 'up' : 'down'">{{ o.side === 'buy' ? '买' : '卖' }}</span>
+            <b>{{ o.name }}</b><i class="code">{{ o.code }}</i>
+            <span class="ord-vol">{{ o.vol }}股</span>
           </span>
           <span class="ord-st">{{ bkLabel(o.status) }}</span>
         </div>
@@ -607,7 +611,10 @@ onBeforeUnmount(() => {
 
         <div class="order-group-title">实盘交易</div>
         <div v-for="o in activeOrders" :key="o.sigId" class="order-row">
-          <span class="ord-code">{{ o.code }} {{ o.filledVol }}/{{ o.vol }}</span>
+          <span class="ord-code">
+            <b>{{ o.code }}</b>
+            <span class="ord-vol">{{ o.filledVol }}/{{ o.vol }}</span>
+          </span>
           <span class="ord-st live">{{ bkLabel(o.status) }}</span>
         </div>
         <div v-if="activeOrders.length === 0" class="empty-sm">未连接实盘</div>
@@ -747,7 +754,8 @@ html[data-window="island"] #app {
   display: flex; flex-direction: column;
   background: linear-gradient(180deg, var(--bg-from), var(--bg-to));
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 20px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.05);
   overflow: hidden;
   padding: 12px;
 }
@@ -795,8 +803,8 @@ html[data-window="island"] #app {
 }
 
 .tabs {
-  display: flex; gap: 4px; background: rgba(0,0,0,.35);
-  padding: 3px; border-radius: 8px; margin-bottom: 10px;
+  display: flex; gap: 4px; background: rgba(0,0,0,.4);
+  padding: 3px; border-radius: 10px; margin-bottom: 10px;
 }
 .tab {
   flex: 1; text-align: center; font-size: 11px; padding: 5px 4px;
@@ -806,37 +814,65 @@ html[data-window="island"] #app {
 .tab.active { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent-soft); }
 .tab .count { opacity: .7; margin-left: 2px; }
 
-.tab-body { flex: 1; overflow-y: auto; }
+.tab-body { flex: 1; overflow-y: auto; padding-right: 2px; }
+.tab-body::-webkit-scrollbar { width: 5px; }
+.tab-body::-webkit-scrollbar-thumb { background: rgba(212,175,55,.25); border-radius: 3px; }
+.tab-body::-webkit-scrollbar-track { background: transparent; }
+
+.code {
+  font-style: normal; font-size: 10px; color: #6b7482;
+  font-variant-numeric: tabular-nums; letter-spacing: .2px;
+}
+.tm { font-size: 10px; color: #6b7482; font-variant-numeric: tabular-nums; flex: none; }
+.lab { font-size: 11px; color: #8a919e; margin-left: 4px; }
 
 .alert-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 7px 6px; border-radius: 6px; cursor: pointer;
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 8px; border-radius: 8px; cursor: pointer;
+  transition: background .12s;
 }
-.alert-row:hover { background: rgba(255,255,255,.04); }
-.alert-row .dir { font-size: 12px; width: 14px; text-align: center; }
+.alert-row:hover { background: rgba(212,175,55,.07); }
+.alert-row .dir { font-size: 12px; width: 14px; text-align: center; flex: none; }
 .alert-row .dir.up { color: #f23645; }
 .alert-row .dir.down { color: #08db94; }
-.alert-row .desc { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.alert-row .desc b { color: #e8eaed; margin-right: 4px; }
-.alert-row .val { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.alert-row .desc { flex: 1; min-width: 0; font-size: 12px; display: flex; align-items: baseline; gap: 4px; overflow: hidden; }
+.alert-row .desc b { color: #e8eaed; flex: none; }
+.alert-row .desc .lab { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alert-row .val { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; flex: none; }
 .alert-row .val.up { color: #f23645; }
 .alert-row .val.down { color: #08db94; }
 
 .sig-row {
   padding: 8px; background: color-mix(in srgb, var(--accent) 6%, transparent);
-  border-radius: 8px; margin-bottom: 6px;
+  border-radius: 9px; margin-bottom: 6px;
   border-left: 3px solid var(--accent);
+  transition: background .12s;
 }
-.sig-row .sig-head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
-.sig-row .sig-side { color: #f23645; font-weight: 600; }
-.sig-row.sell .sig-side { color: #08db94; }
+.sig-row:hover { background: color-mix(in srgb, var(--accent) 11%, transparent); }
+.sig-row .sig-head { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 4px; }
+.sig-row .sig-name { color: #e8eaed; font-weight: 600; flex: none; }
+.sig-row .sig-head .code { flex: 1; }
+.sig-row .sig-side {
+  flex: none; font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 8px;
+}
+.sig-row .sig-side.buy { color: #ff5b4d; background: rgba(242,54,69,.16); }
+.sig-row .sig-side.sell { color: #1fd69a; background: rgba(8,219,148,.14); }
 .sig-row .sig-meta { font-size: 11px; color: #8a919e; }
 
 .order-row {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 7px 6px; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 12px;
+  padding: 7px 8px; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 12px;
+  border-radius: 6px; transition: background .12s;
 }
+.order-row:hover { background: rgba(255,255,255,.04); }
 .order-row:last-child { border: none; }
+.ord-code { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+.ord-code b { color: #e8eaed; flex: none; }
+.ord-code .code { flex: none; }
+.ord-side { flex: none; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 5px; }
+.ord-side.up { color: #ff5b4d; background: rgba(242,54,69,.16); }
+.ord-side.down { color: #1fd69a; background: rgba(8,219,148,.14); }
+.ord-vol { font-size: 11px; color: #8a919e; flex: none; }
 .order-group-title {
   font-size: 10px; color: var(--accent-soft); opacity: .7;
   padding: 8px 4px 4px; letter-spacing: 1px;

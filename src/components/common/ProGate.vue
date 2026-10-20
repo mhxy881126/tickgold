@@ -35,7 +35,7 @@ function goSubscribe() {
     <div class="pg-badge">PRO</div>
     <div class="pg-title">{{ title || "Pro 订阅专享" }}</div>
     <div class="pg-desc">{{ desc || "激活年卡后解锁完整内容与能力" }}</div>
-    <button class="pg-btn" @click="goSubscribe">订阅 Pro · ¥99/年</button>
+    <button class="pg-btn" @click="goSubscribe">订阅 Pro · ¥199/年</button>
   </div>
 </template>
 
