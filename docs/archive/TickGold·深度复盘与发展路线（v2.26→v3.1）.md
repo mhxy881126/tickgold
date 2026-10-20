@@ -1,5 +1,8 @@
 # TickGold・深度复盘与发展路线（v2.26 → v3.1）
 
+> **已归档（2026-10-20）**：本文件为历史路线 / 旧版启动说明，仅作历史参考，不再代表当前规划。当前权威路线见根目录 `ROADMAP.md` 与《TickGold·系统性优化方案（v3.12→v3.15）》。
+
+
 > **基线版本：v2.26.0**（package.json / tauri.conf.json / Cargo.toml 三处已统一；在途：AI 三卡流式渲染 + 本地缓存秒开）
 > **复盘日期：** 2026-10-11
 > **技术栈：** Tauri 2（Rust 2021，142 个 command）+ Vue 3.5 / TS 5.6 / Pinia / Vite 6 / ECharts 6 + SQLite（47 迁移）+ QuickJS

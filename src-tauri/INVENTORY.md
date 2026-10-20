@@ -11,9 +11,9 @@
 > v2.30 / v2.31 / v2.32 陆续新增命令（含 v2.32 `get_depth_enhance`），
 > 全表逐行重新编号在发版核对时统一进行（#20）；下列编号仅基线快照。
 
-## 一、Tauri Commands：193 个
+## 一、Tauri Commands（基线快照；现行命令总数 256，全表重编号见 #20）
 
-> 编号严格按 `lib.rs` 中 `generate_handler!` 的出现顺序。
+> 下列编号为 v2.29 基线快照，非现行总数；编号严格按 `lib.rs` 中 `generate_handler!` 的出现顺序。
 
 ### 本地命令（commands.rs + setup.rs）：97 个
 

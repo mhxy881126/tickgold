@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TickGold · 系统性优化方案看板 v3.12→v3.15</title>
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230e1116'/%3E%3Cpath d='M6 20 L12 14 L17 18 L26 8' stroke='%23d4af37' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='26' cy='8' r='2.2' fill='%23e0455a'/%3E%3C/svg%3E">
+<script src="https://fastly.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  :root{
+    --bg:#0d1016; --bg2:#131722; --panel:#171c28; --panel2:#1d2330; --line:#262d3d;
+    --txt:#e6e9f0; --txt2:#9aa3b5; --txt3:#6b7488;
+    --gold:#d4af37; --gold2:#e8c878; --red:#e0455a; --green:#26d07c; --amber:#ffb13d; --blue:#36b8e8; --purple:#b07cff;
+    --mono:'JetBrains Mono',ui-monospace,Consolas,monospace; --sans:'Noto Sans SC',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1240px;margin:0 auto;padding:0 24px 80px}
+  a{color:var(--gold2);text-decoration:none}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+  /* ===== 顶栏 ===== */
+  header.top{border-bottom:1px solid var(--line);background:linear-gradient(180deg,#11151f,#0d1016);position:sticky;top:0;z-index:50;backdrop-filter:blur(8px)}
+  .top-in{max-width:1240px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:900;letter-spacing:1px;font-size:16px}
+  .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 8px var(--red)}
+  .brand small{font-family:var(--mono);font-weight:400;color:var(--txt3);font-size:12px;letter-spacing:0}
+  .top-tag{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--gold2);border:1px solid #3a321a;background:#1e1a10;padding:4px 10px;border-radius:4px}
+
+  /* ===== Hero ===== */
+  .hero{padding:56px 0 32px}
+  .kicker{font-family:var(--mono);font-size:12.5px;color:var(--gold);letter-spacing:2px;margin-bottom:14px}
+  .hero h1{font-size:38px;line-height:1.25;font-weight:900;letter-spacing:-.5px;max-width:920px}
+  .hero h1 .hl{color:var(--gold2)}
+  .hero h1 .bad{color:var(--red)}
+  .hero p.lead{margin-top:18px;font-size:17px;color:var(--txt2);max-width:900px}
+  .pivot{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:30px}
+  .pivot .p{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:18px 20px}
+  .pivot .p .t{font-weight:700;font-size:17px;margin-bottom:6px}
+  .pivot .p .d{font-size:13.5px;color:var(--txt2)}
+  .pivot .p .ic{font-family:var(--mono);font-size:11px;letter-spacing:1px;margin-bottom:10px}
+  .p1 .ic{color:var(--blue)} .p2 .ic{color:var(--gold)} .p3 .ic{color:var(--green)}
+
+  /* ===== KPI ===== */
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:8px}
+  .kpi{background:var(--panel);padding:16px 14px}
+  .kpi .v{font-family:var(--mono);font-size:26px;font-weight:700;line-height:1.1}
+  .kpi .l{font-size:12px;color:var(--txt3);margin-top:5px}
+  .kpi.warn .v{color:var(--amber)} .kpi.bad .v{color:var(--red)} .kpi.ok .v{color:var(--green)} .kpi.gold .v{color:var(--gold2)}
+
+  /* ===== 章节 ===== */
+  section{margin-top:54px}
+  .sec-h{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
+  .sec-h .no{font-family:var(--mono);color:var(--gold);font-size:14px;font-weight:700}
+  .sec-h h2{font-size:23px;font-weight:800;letter-spacing:-.3px}
+  .sec-sub{color:var(--txt2);font-size:14px;margin-bottom:22px;max-width:880px}
+
+  /* ===== 闭环链 ===== */
+  .chain{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:stretch}
+  .node{border:1px solid var(--line);border-radius:9px;padding:14px 12px;background:var(--panel);position:relative;display:flex;flex-direction:column}
+  .node .st{font-family:var(--mono);font-size:10.5px;letter-spacing:.5px;padding:2px 7px;border-radius:20px;align-self:flex-start;margin-bottom:9px}
+  .st.ok{background:#0f2a1d;color:var(--green);border:1px solid #1f4d36}
+  .st.warn{background:#2e2410;color:var(--amber);border:1px solid #5a461a}
+  .st.bad{background:#31161c;color:var(--red);border:1px solid #5e2530}
+  .node .nt{font-weight:700;font-size:14px;margin-bottom:5px}
+  .node .nd{font-size:12px;color:var(--txt2);line-height:1.5}
+  .node .arrow{position:absolute;right:-11px;top:50%;transform:translateY(-50%);color:var(--txt3);z-index:2;font-size:15px}
+  .node:last-child .arrow{display:none}
+  .loopnote{margin-top:16px;border-left:3px solid var(--red);background:#1c1416;padding:12px 16px;border-radius:0 8px 8px 0;font-size:13.5px;color:#e8c9cd}
+  .loopnote b{color:var(--red)}
+
+  /* ===== 双栏 ===== */
+  .grid2{display:grid;grid-template-columns:1.05fr .95fr;gap:20px}
+  .card{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:20px}
+  .card h3{font-size:15.5px;font-weight:700;margin-bottom:4px}
+  .card .hint{font-size:12.5px;color:var(--txt3);margin-bottom:14px}
+  .chart{width:100%;height:300px}
+  .chart.tall{height:340px}
+
+  /* P0 问题卡 */
+  .p0item{border:1px solid #42262e;background:linear-gradient(180deg,#1f161b,#191419);border-radius:9px;padding:13px 15px;margin-bottom:11px}
+  .p0item .h{display:flex;align-items:center;gap:9px;margin-bottom:4px}
+  .p0item .tag{font-family:var(--mono);font-size:10.5px;background:var(--red);color:#fff;padding:1px 7px;border-radius:4px;font-weight:700}
+  .p0item .h .t{font-weight:700;font-size:14px}
+  .p0item .b{font-size:12.8px;color:var(--txt2);line-height:1.55}
+  .p0item .b code{font-family:var(--mono);font-size:11.5px;color:var(--gold2);background:#00000040;padding:1px 5px;border-radius:4px}
+
+  /* 保压砍缓 */
+  .quad{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .q{border-radius:10px;padding:16px;border:1px solid var(--line);background:var(--panel)}
+  .q .qh{display:flex;align-items:center;gap:8px;font-weight:800;font-size:16px;margin-bottom:4px}
+  .q .qh .k{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:5px}
+  .q .qd{font-size:12px;color:var(--txt3);margin-bottom:12px}
+  .q ul{list-style:none}
+  .q li{font-size:13px;padding:7px 0 7px 18px;position:relative;border-top:1px dashed var(--line);color:var(--txt2)}
+  .q li:first-of-type{border-top:none}
+  .q li::before{content:"";position:absolute;left:2px;top:13px;width:7px;height:7px;border-radius:2px}
+  .q.keep .k{background:#0f2a1d;color:var(--green)} .q.keep li::before{background:var(--green)}
+  .q.press .k{background:#2e2410;color:var(--amber)} .q.press li::before{background:var(--amber)}
+  .q.cut .k{background:#31161c;color:var(--red)} .q.cut li::before{background:var(--red)}
+  .q.later .k{background:#162630;color:var(--blue)} .q.later li::before{background:var(--blue)}
+
+  /* ===== 时间轴 ===== */
+  .road{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:10px;position:relative}
+  .road::before{content:"";position:absolute;top:17px;left:6%;right:6%;height:2px;background:linear-gradient(90deg,var(--red),var(--amber),var(--gold),var(--blue))}
+  .ver{position:relative;padding:0 14px}
+  .ver .pt{width:14px;height:14px;border-radius:50%;margin:10px auto 16px;position:relative;z-index:2;border:3px solid var(--bg)}
+  .ver.v1 .pt{background:var(--red)} .ver.v2 .pt{background:var(--amber)} .ver.v3 .pt{background:var(--gold)} .ver.v4 .pt{background:var(--blue)}
+  .ver .vbox{border:1px solid var(--line);border-radius:9px;padding:15px;background:var(--panel)}
+  .ver .vn{font-family:var(--mono);font-weight:700;font-size:15px}
+  .ver .vt{font-size:13px;font-weight:700;margin:2px 0 4px}
+  .ver .pd{font-family:var(--mono);font-size:11px;color:var(--txt3);margin-bottom:10px}
+  .ver ul{list-style:none}
+  .ver li{font-size:12.3px;color:var(--txt2);padding:4px 0 4px 14px;position:relative;line-height:1.5}
+  .ver li::before{content:"";position:absolute;left:0;top:11px;width:5px;height:5px;border-radius:50%;background:var(--gold)}
+  .ver .gate{margin-top:10px;font-size:11.5px;border-top:1px dashed var(--line);padding-top:9px;color:var(--gold2)}
+
+  /* 行动 / 合规 */
+  .grid2b{display:grid;grid-template-columns:1.15fr .85fr;gap:20px}
+  .act li{list-style:none;display:flex;gap:11px;padding:10px 0;border-bottom:1px dashed var(--line);font-size:13.8px;align-items:flex-start}
+  .act li:last-child{border-bottom:none}
+  .box{width:17px;height:17px;border:1.5px solid var(--gold);border-radius:4px;flex-shrink:0;margin-top:2px}
+  .act .meta{font-family:var(--mono);font-size:10.5px;color:var(--red);border:1px solid #5e2530;background:#31161c;padding:1px 6px;border-radius:4px;margin-right:4px}
+  .comp li{list-style:none;font-size:13px;color:var(--txt2);padding:8px 0 8px 20px;position:relative;border-bottom:1px dashed var(--line)}
+  .comp li:last-child{border-bottom:none}
+  .comp li::before{content:"!";position:absolute;left:0;top:8px;width:15px;height:15px;border-radius:50%;background:var(--red);color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;text-align:center;line-height:15px}
+
+  /* 表格 */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--txt3);font-weight:500;font-size:12px;font-family:var(--mono)}
+  td .c{font-family:var(--mono);font-size:12px}
+
+  footer{margin-top:60px;border-top:1px solid var(--line);padding-top:24px;color:var(--txt3);font-size:12px;line-height:1.8}
+  .disclaim{margin-top:14px;background:#16130c;border:1px solid #3a321a;border-radius:8px;padding:12px 16px;color:var(--gold2);font-size:12.5px}
+
+  @media(max-width:980px){
+    .pivot{grid-template-columns:1fr}
+    .kpis{grid-template-columns:repeat(3,1fr)}
+    .chain{grid-template-columns:1fr}
+    .node .arrow{display:none}
+    .grid2,.grid2b{grid-template-columns:1fr}
+    .quad{grid-template-columns:1fr 1fr}
+    .road{grid-template-columns:1fr;gap:18px}
+    .road::before{display:none}
+    .ver .pt{margin:0 0 10px}
+    .hero h1{font-size:28px}
+  }
+  @media(max-width:560px){
+    .kpis{grid-template-columns:repeat(2,1fr)}
+    .quad{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="brand"><span class="dot"></span>TICKGOLD <small>股票盯盘系统 · 灵动岛版</small></div>
+    <div class="top-tag">SYSTEMATIC OPTIMIZATION · v3.12 → v3.15</div>
+  </div>
+</header>
+
+<div class="wrap">
+<!-- ===== HERO ===== -->
+<div class="hero">
+  <div class="kicker">2026-10-20 · 基线 v3.12.0 · 全项目梳理与优化方案</div>
+  <h1>功能广度已经<span class="hl">「够用」</span>，但产品卡在<span class="bad">「敢不敢真用」</span>的门槛上</h1>
+  <p class="lead">47 张卡片、AI 双脑、信号桥、条件单、回测、风控、作战台 2.0 全部落地；但同花顺实盘链路未真机验证、文档与代码三套口径、64 个提交未推送、工程地基债反弹。<b style="color:var(--txt)">核心策略：从「功能扩张」转向「闭环验证与工程收口」，冻结新功能 2–3 周。</b></p>
+  <div class="pivot">
+    <div class="p p1"><div class="ic">TRUST · 可验</div><div class="t">信号与策略敢信</div><div class="d">每个信号挂历史命中率、回测与实盘同口径，结论可核验、可回放。</div></div>
+    <div class="p p2"><div class="ic">CONTROL · 可控</div><div class="t">一本账一条闸门</div><div class="d">持仓唯一事实源、五通道过同一风控闸门、急停 100% 有效、实盘失败可自愈。</div></div>
+    <div class="p p3"><div class="ic">CONSOLIDATE · 收口</div><div class="t">稳下来再扩张</div><div class="d">真机验证、文档对齐、仓库清理、暂停留新功能，打三个稳定版。</div></div>
+  </div>
+</div>
+
+<!-- ===== KPI ===== -->
+<div class="kpis">
+  <div class="kpi"><div class="v num">47</div><div class="l">功能卡片</div></div>
+  <div class="kpi"><div class="v num">256+</div><div class="l">Rust 命令 / 63 迁移</div></div>
+  <div class="kpi ok"><div class="v num">1193</div><div class="l">单测（Rust 295 / JS 861）</div></div>
+  <div class="kpi bad"><div class="v num">64</div><div class="l">未推送提交（v3.12 未发版）</div></div>
+  <div class="kpi warn"><div class="v num">3 套</div><div class="l">文档口径互相打架</div></div>
+  <div class="kpi warn"><div class="v num">~520MB</div><div class="l">工作目录临时/构建产物</div></div>
+</div>
+
+<!-- ===== 1 闭环 ===== -->
+<section id="chain">
+  <div class="sec-h"><span class="no">01</span><h2>核心决策链：7 个环节，断点在「实盘执行」</h2></div>
+  <div class="sec-sub">主链 = 计划 → 条件单 → 信号 → 风控 → 执行 → 对账 → 复盘。绿=已打通，琥珀=静态通过/口径待补，红=真机未验证。</div>
+  <div class="chain">
+    <div class="node"><span class="st ok">已打通</span><div class="nt">行情 / 异动</div><div class="nd">5 源容灾、短线精灵、快脑信号</div><span class="arrow">→</span></div>
+    <div class="node"><span class="st warn">口径待补</span><div class="nt">信号 / 胜率归因</div><div class="nd">命中率延迟一次查询、权重 score-only、胜率用成交率代理</div><span class="arrow">→</span></div>
+    <div class="node"><span class="st warn">静态通过</span><div class="nt">计划 / 条件单物化</div><div class="nd">作战台 2.0 已落地；盘后流水线与 8:45 提醒未真机验证</div><span class="arrow">→</span></div>
+    <div class="node"><span class="st warn">静态通过</span><div class="nt">触发 / 下单</div><div class="nd">5s 触发循环、九道闸门；模拟盘 e2e 过，实盘链路未跑</div><span class="arrow">→</span></div>
+    <div class="node"><span class="st bad">真机未验证</span><div class="nt">同花顺实盘</div><div class="nd">四表读取失败、隐形被禁用、无看门狗，最后一公里悬空</div><span class="arrow">→</span></div>
+    <div class="node"><span class="st warn">部分</span><div class="nt">成交 / 持仓对账</div><div class="nd">自动对账触发分支未测、断连静默清冲突、状态 chip 会陈旧</div><span class="arrow">→</span></div>
+    <div class="node"><span class="st ok">已打通</span><div class="nt">复盘 / 回灌</div><div class="nd">回测、打标、版本对照；回测/实盘时点口径待统一</div></div>
+  </div>
+  <div class="loopnote"><b>最致命断点：</b>「同花顺实盘执行」是整条主链唯一的红色环节。前面六环的 AI 与计划做得再强，最后一公里连不上、读不准、卡死不能自愈，用户就无法把真金白银的决策建立在系统之上。</div>
+</section>
+
+<!-- ===== 2 问题 ===== -->
+<section id="problems">
+  <div class="sec-h"><span class="no">02</span><h2>问题清单：4 个 P0、6 个 P1、4 个 P2</h2></div>
+  <div class="sec-sub">P0 影响「真能用」，必须在继续加功能前关闭；P1 影响「可信/可维护」；P2 影响「专业度/分发」。</div>
+  <div class="grid2">
+    <div class="card">
+      <h3>问题分布（按严重度 × 领域）</h3>
+      <div class="hint">同一领域的问题越集中，越要优先整建制收口。</div>
+      <div id="chartProblem" class="chart tall"></div>
+    </div>
+    <div class="card">
+      <h3>P0 阻塞项（必须先解决）</h3>
+      <div class="hint">每项均附代码 / 提交证据。</div>
+      <div class="p0item"><div class="h"><span class="tag">P0-1</span><span class="t">同花顺实盘通道未真机验证</span></div><div class="b">SW_HIDE 隐形导致 xiadan 退出，<code>_maybe_hide()</code> 已改 no-op（隐形功能实际不存在）；成交/挂单导航修到 P12-14 但<b>未复测</b>。</div></div>
+      <div class="p0item"><div class="h"><span class="tag">P0-2</span><span class="t">sidecar 无操作看门狗 / 串行队列</span></div><div class="b">仅 30s 互斥锁；界面卡死时操作排队陪葬、持锁不释放，缺「超时→断连重建→退休线程」。</div></div>
+      <div class="p0item"><div class="h"><span class="tag">P0-3</span><span class="t">查询失败语义不显式</span></div><div class="b">靠空数组+note 表达失败，缺 <code>ok:false</code>；下游可能把「读失败」误判为「空仓/无挂单」。</div></div>
+      <div class="p0item"><div class="h"><span class="tag">P0-4</span><span class="t">64 提交未推送、v3.12 未发版、冒烟未跑</span></div><div class="b">tag 停在 v3.11.1；作战台 2.0 仅静态验证；单点故障即丢失全部工作。</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 3 成熟度 ===== -->
+<section id="maturity">
+  <div class="sec-h"><span class="no">03</span><h2>能力成熟度：终端形态满分，交易与可验是短板</h2></div>
+  <div class="sec-sub">9 个能力域按 1–5 星评估。广度已超越多数免费软件，短板集中在「交易实盘」与「可验体系」。</div>
+  <div class="card"><div id="chartMaturity" class="chart tall"></div></div>
+</section>
+
+<!-- ===== 4 保压砍缓 ===== -->
+<section id="priority">
+  <div class="sec-h"><span class="no">04</span><h2>功能需求重排：保 / 压 / 砍 / 缓</h2></div>
+  <div class="sec-sub">不再线性新增卡片，把资源集中到主链，冻结或剥离旁支实验。</div>
+  <div class="quad">
+    <div class="q keep">
+      <div class="qh"><span class="k">保</span>主链做精</div>
+      <div class="qd">真机打通，纳入冒烟门禁</div>
+      <ul>
+        <li>作战台 / 计划即执行</li>
+        <li>条件单 / 信号确认桥</li>
+        <li>同花顺实盘通道</li>
+        <li>风控闸门 / 一键急停</li>
+        <li>自动对账</li>
+        <li>回测 / 信号质量</li>
+      </ul>
+    </div>
+    <div class="q press">
+      <div class="qh"><span class="k">压</span>补严谨度</div>
+      <div class="qd">已建但补口径/边界/测试</div>
+      <ul>
+        <li>Copilot 自然语言条件单</li>
+        <li>指令打标权重 / 胜率口径</li>
+        <li>连板天梯 / 连板选股器</li>
+        <li>风险仪表盘</li>
+        <li>模型接管四阶段</li>
+      </ul>
+    </div>
+    <div class="q cut">
+      <div class="qh"><span class="k">砍</span>冻结剥离</div>
+      <div class="qd">实验旁支，不占当前迭代</div>
+      <ul>
+        <li>bot/ IK 蜘蛛爬虫实验（320MB）</li>
+        <li>未完成的 AI 爬虫入口</li>
+        <li>QMT 通道（已删，保持删除）</li>
+        <li>根目录一次性脚本</li>
+      </ul>
+    </div>
+    <div class="q later">
+      <div class="qh"><span class="k">缓</span>明确后排</div>
+      <div class="qd">实盘稳定后再评估</div>
+      <ul>
+        <li>多账户原子切换</li>
+        <li>代码签名 / macOS 恢复</li>
+        <li>验证码 CRNN ONNX</li>
+        <li>移动端 / 云同步 / 社区</li>
+        <li>确定性预测（永不做）</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 5 路线 ===== -->
+<section id="roadmap">
+  <div class="sec-h"><span class="no">05</span><h2>版本路线：三个稳定版收口</h2></div>
+  <div class="sec-sub">v3.13 先止血、v3.14 补实盘工程化、v3.15 统一口径与文档；每版独立可发布，真机验证不过不发版。</div>
+  <div class="road">
+    <div class="ver v1">
+      <div class="pt"></div>
+      <div class="vbox">
+        <div class="vn">v3.13.0</div>
+        <div class="vt">止血与稳定收口</div>
+        <div class="pd">本周 · 3–5 PD</div>
+        <ul>
+          <li>推送 64 提交 + 打 v3.12 tag</li>
+          <li>真机执行冒烟清单</li>
+          <li>同花顺四表读取校准</li>
+          <li>根目录清理约 500MB</li>
+          <li>文档统一为单一权威入口</li>
+        </ul>
+        <div class="gate">门槛：冒烟逐条过，代码不丢</div>
+      </div>
+    </div>
+    <div class="ver v2">
+      <div class="pt"></div>
+      <div class="vbox">
+        <div class="vn">v3.14.0</div>
+        <div class="vt">实盘执行层工程化</div>
+        <div class="pd">第 2 周 · 8–10 PD</div>
+        <ul>
+          <li>操作看门狗 + 串行队列 + 线程退休</li>
+          <li>失败协议 ok:false + 缓存保护</li>
+          <li>隐形操作屏幕外移屏 + 过程可视化</li>
+          <li>控件 ID 兜底 + 窗口巡检</li>
+          <li>市价策略按名称匹配</li>
+          <li>对账一致性修复</li>
+        </ul>
+        <div class="gate">门槛：模拟盘真机运行 1 个交易日零误判</div>
+      </div>
+    </div>
+    <div class="ver v3">
+      <div class="pt"></div>
+      <div class="vbox">
+        <div class="vn">v3.15.0</div>
+        <div class="vt">可信口径与体验收口</div>
+        <div class="pd">第 3 周 · 8–10 PD</div>
+        <ul>
+          <li>回测/实盘统一时点、防前视</li>
+          <li>胜率改真实 N 日收益口径</li>
+          <li>作战台/计划边界项关闭</li>
+          <li>用户手册补全新功能</li>
+          <li>引导向导更新到 4 场景组</li>
+          <li>天梯/选股器需求-实现核对</li>
+        </ul>
+        <div class="gate">门槛：文档与代码口径一致</div>
+      </div>
+    </div>
+    <div class="ver v4">
+      <div class="pt"></div>
+      <div class="vbox">
+        <div class="vn">v3.16.0+</div>
+        <div class="vt">后排（按真机结论排序）</div>
+        <div class="pd">稳定后</div>
+        <ul>
+          <li>Windows Authenticode 签名</li>
+          <li>多账户原子切换</li>
+          <li>验证码 CRNN ONNX</li>
+          <li>本地 API 只读默认加固</li>
+          <li>巨石组件/模块拆分</li>
+        </ul>
+        <div class="gate">实盘：信号+人工确认+最小限额</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 6 行动 + 合规 ===== -->
+<section id="actions">
+  <div class="sec-h"><span class="no">06</span><h2>本周立即行动 与 合规红线</h2></div>
+  <div class="sec-sub">左侧动作今天即可启动、不依赖开发；右侧红线不可让步。</div>
+  <div class="grid2b">
+    <div class="card act">
+      <h3>立即行动清单</h3>
+      <div class="hint">完成后即构成 v3.13 发版依据。</div>
+      <ul>
+        <li><span class="box"></span><span><span class="meta">P0-4</span>git push 推送 64 提交并打 v3.12.0 tag</span></li>
+        <li><span class="box"></span><span><span class="meta">P0-1</span>启动同花顺模拟盘，按冒烟清单复测四表读取并留证</span></li>
+        <li><span class="box"></span><span><span class="meta">P0-1</span>登记「隐形操作」现状，屏幕外移屏方案排入 v3.14</span></li>
+        <li><span class="box"></span><span><span class="meta">P0-2/3</span>看门狗、串行队列、ok:false 失败协议列入 v3.14 第一批</span></li>
+        <li><span class="box"></span><span><span class="meta">P1-2</span>修正冒烟清单日志路径（com.stockdock.desktop）</span></li>
+        <li><span class="box"></span><span><span class="meta">P2-1</span>清理根目录临时脚本与约 500MB 产物，建 scripts/ 与 docs/archive/</span></li>
+        <li><span class="box"></span><span><span class="meta">P1-2</span>归档 3 份旧路线，ROADMAP 改为单一权威版</span></li>
+        <li><span class="box"></span><span><span class="meta">P2-3</span>建 docs/backlog.md，把 deferred 项与问题清单结构化录入</span></li>
+      </ul>
+    </div>
+    <div class="card comp">
+      <h3>合规与安全红线</h3>
+      <div class="hint">同花顺 UI 自动化存在真实政策风险。</div>
+      <ul>
+        <li>不破解/不注入/不修改同花顺客户端，仅模拟用户本人操作</li>
+        <li>实盘默认关闭，开启需武装+限额+价格偏离+二次确认+全量审计</li>
+        <li>不做投顾、代客理财、收益承诺、确定性预测</li>
+        <li>风控/执行是确定性代码，AI 永远不可绕过</li>
+        <li>行业警示：easytrader 已被监管整体清空，长期保留「模拟可用、实盘仅授权辅助」定位</li>
+        <li>HTTP API 仅 127.0.0.1、默认只读、下单显式开启+token+审计</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div>TickGold · 系统性优化方案（v3.12→v3.15）｜配套完整文档：<b>TickGold·系统性优化方案（v3.12→v3.15）.md</b>（仓库根目录，含问题证据、文件索引与验收标准）</div>
+  <div>技术栈：Tauri 2 + Rust 4.0 万行 / Vue3+TS 6.8 万行 / Python sidecar 2.4k 行 ｜ 测试基线：Rust 295 · Vitest 861 · Playwright 37</div>
+  <div class="disclaim">免责声明：行情数据来自公开免费接口，仅供学习与个人盯盘参考，不保证实时性与准确性，不构成投资建议。所有交易决策与结果由用户自行承担；实盘仅面向用户本人授权账户，须遵守相关券商与监管规定。</div>
+</footer>
+</div>
+
+<script>
+const C={gold:'#d4af37',red:'#e0455a',green:'#26d07c',amber:'#ffb13d',blue:'#36b8e8',purple:'#b07cff',txt2:'#9aa3b5',line:'#262d3d'};
+const baseGrid={left:8,right:18,top:24,bottom:8,containLabel:true};
+const axisStyle={axisLine:{lineStyle:{color:C.line}},axisLabel:{color:C.txt2,fontSize:11.5},axisTick:{show:false}};
+
+/* ===== 问题分布（横向堆叠条）===== */
+(function(){
+  const dom=document.getElementById('chartProblem');
+  const chart=echarts.init(dom);
+  const domains=['交易执行(同花顺)','交付与版本','可验口径/对账','文档治理','功能需求收敛','工程质量/巨石','合规分发/环境'];
+  const p0=[3,1,0,0,0,0,0];
+  const p1=[1,0,2,1,1,1,0];
+  const p2=[0,0,0,0,1,2,1];
+  chart.setOption({
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},backgroundColor:'#1d2330',borderColor:C.line,textStyle:{color:'#e6e9f0',fontSize:12}},
+    legend:{data:['P0 阻塞','P1 可信/维护','P2 专业/分发'],top:0,textStyle:{color:C.txt2,fontSize:11.5},itemWidth:11,itemHeight:11},
+    grid:{left:8,right:24,top:34,bottom:4,containLabel:true},
+    xAxis:{type:'value',minInterval:1,splitLine:{lineStyle:{color:C.line,opacity:.4}},...axisStyle},
+    yAxis:{type:'category',data:domains,inverse:true,splitLine:{show:false},...axisStyle,axisLabel:{color:C.txt2,fontSize:12}},
+    series:[
+      {name:'P0 阻塞',type:'bar',stack:'t',data:p0,itemStyle:{color:C.red},barWidth:17,label:{show:true,color:'#fff',fontSize:11,formatter:p=>p.value>0?p.value:''}},
+      {name:'P1 可信/维护',type:'bar',stack:'t',data:p1,itemStyle:{color:C.amber},label:{show:true,color:'#1a1a1a',fontSize:11,formatter:p=>p.value>0?p.value:''}},
+      {name:'P2 专业/分发',type:'bar',stack:'t',data:p2,itemStyle:{color:C.blue},label:{show:true,color:'#fff',fontSize:11,formatter:p=>p.value>0?p.value:''}}
+    ]
+  });
+  window.addEventListener('resize',()=>chart.resize());
+})();
+
+/* ===== 能力成熟度（横向条形）===== */
+(function(){
+  const dom=document.getElementById('chartMaturity');
+  const chart=echarts.init(dom);
+  const data=[
+    ['终端形态（卡片/灵动岛/场景）',5,C.green],
+    ['行情采集（5 源容灾）',4,C.green],
+    ['本地数据（时序/题材/历史库）',4,C.green],
+    ['AI 双脑（慢脑/快脑/复盘）',4,C.green],
+    ['预警 v2（条件树）',4,C.green],
+    ['工程化（CI/发布/备份）',4,C.green],
+    ['交易链路（桥/条件单/风控）',3,C.amber],
+    ['可验体系（回测/胜率/选股）',3,C.amber],
+    ['插件生态（QuickJS 沙箱）',3,C.amber]
+  ].sort((a,b)=>a[1]-b[1]);
+  chart.setOption({
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},backgroundColor:'#1d2330',borderColor:C.line,textStyle:{color:'#e6e9f0',fontSize:12},formatter:p=>p[0].name+'：'+p[0].value+' / 5'},
+    grid:{left:8,right:40,top:10,bottom:8,containLabel:true},
+    xAxis:{type:'value',min:0,max:5,minInterval:1,splitLine:{lineStyle:{color:C.line,opacity:.4}},...axisStyle},
+    yAxis:{type:'category',data:data.map(d=>d[0]),splitLine:{show:false},...axisStyle,axisLabel:{color:C.txt2,fontSize:12}},
+    series:[{
+      type:'bar',data:data.map(d=>({value:d[1],itemStyle:{color:d[2],borderRadius:[0,4,4,0]}})),barWidth:15,
+      label:{show:true,position:'right',color:C.txt2,fontSize:11.5,formatter:'{c} ★'},
+      markLine:{symbol:'none',data:[{xAxis:3.5,label:{formatter:'可用线',color:C.red,fontSize:10,position:'end'}}],lineStyle:{color:C.red,type:'dashed',opacity:.6}}
+    }]
+  });
+  window.addEventListener('resize',()=>chart.resize());
+})();
+</script>
+</body>
+</html>
