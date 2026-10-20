@@ -48,14 +48,14 @@ async function openCockpit(page: Page): Promise<void> {
   await page.waitForLoadState("domcontentloaded");
   await expect(page.locator(".dock-btn").first()).toBeVisible();
 
-  // 出厂分组里「交易工具」是第 6 个（nth(5)）；这里优先按文本定位，分组顺序被自定义调整时不会点错。
+  // P2-b2 起出厂分组为 4 组，「交易·执行」是第 3 个；按钮只显示组名前两字，故按「交易」定位。
   const tradeGroup = page.locator(".dock-btn").filter({ hasText: "交易" });
-  const groupBtn = (await tradeGroup.count()) > 0 ? tradeGroup.first() : page.locator(".dock-btn").nth(5);
+  const groupBtn = (await tradeGroup.count()) > 0 ? tradeGroup.first() : page.locator(".dock-btn").nth(2);
   await groupBtn.click();
 
   const panel = page.locator(".dock-panel").first();
   await expect(panel).toBeVisible();
-  await expect(panel.locator(".dp-head h3")).toHaveText("交易工具");
+  await expect(panel.locator(".dp-head h3")).toHaveText("交易·执行");
   await panel.locator(".dp-item").filter({ hasText: "今日作战流" }).click();
 
   // 浮出面板固定在主卡左侧（left:68 / width:250）会盖住卡片，点空白解除 Dock 锁定并收起。

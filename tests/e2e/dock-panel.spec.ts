@@ -12,7 +12,7 @@ test("左侧 Dock：hover 分组按钮浮出功能面板，且完整在视口内
 
   const panel = page.locator(".dock-panel").first();
   await panel.waitFor({ state: "visible", timeout: 5000 });
-  await expect(panel.locator(".dp-head h3")).toHaveText("大盘总览");
+  await expect(panel.locator(".dp-head h3")).toHaveText("行情·选股");
 
   // 等待 dpop 进入动画（translateX(-8px)→0）结束，再取静止后的位置
   await page.waitForTimeout(220);
@@ -35,7 +35,7 @@ test("左侧 Dock：hover 切换分组，点击锁定后面板保持可见", asy
   await btns.nth(1).hover();
   const panel = page.locator(".dock-panel").first();
   await panel.waitFor({ state: "visible", timeout: 5000 });
-  await expect(panel.locator(".dp-head h3")).toHaveText("盯盘模式");
+  await expect(panel.locator(".dp-head h3")).toHaveText("盯盘·复盘");
 
   // 点击按钮锁定面板（真实 WebView2 下 hover 时序易使面板一闪即关，点击后须保持）
   await btns.nth(1).click();
@@ -43,5 +43,5 @@ test("左侧 Dock：hover 切换分组，点击锁定后面板保持可见", asy
 
   // hover 第三个分组时面板切换到对应分组
   await btns.nth(2).hover();
-  await expect(panel.locator(".dp-head h3")).toHaveText("情绪异动");
+  await expect(panel.locator(".dp-head h3")).toHaveText("交易·执行");
 });

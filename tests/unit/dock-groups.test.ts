@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CARD_META, type CardId } from "../../src/lib/cards";
 import { DOCK_GROUPS } from "../../src/lib/dock";
 import {
   mergeDockGroups,
@@ -15,6 +16,44 @@ function allFactoryIds(): string[] {
   for (const g of DOCK_GROUPS) for (const it of g.items) set.add(it.id);
   return [...set];
 }
+
+// ===== P2-b2：菜单重组为 4 个场景组 =====
+describe("DOCK_GROUPS 4 场景组", () => {
+  const META_IDS = Object.keys(CARD_META) as CardId[];
+
+  it("恰好 4 组，组名与顺序固定", () => {
+    expect(DOCK_GROUPS).toHaveLength(4);
+    expect(DOCK_GROUPS.map((g) => g.name)).toEqual([
+      "行情·选股",
+      "盯盘·复盘",
+      "交易·执行",
+      "工具·系统",
+    ]);
+  });
+
+  it("每张 CardId 恰好出现一次（无丢失、无重复）", () => {
+    const ids = DOCK_GROUPS.flatMap((g) => g.items.map((it) => it.id));
+    // 与 CARD_META 的键集合完全一致：不多不少
+    expect([...ids].sort()).toEqual([...META_IDS].sort());
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of META_IDS) {
+      expect(ids.filter((x) => x === id)).toHaveLength(1);
+    }
+  });
+
+  it("每个功能项 label / icon / desc 均非空", () => {
+    for (const g of DOCK_GROUPS) {
+      expect(g.name.trim()).not.toBe("");
+      expect(g.icon.trim()).not.toBe("");
+      expect(g.items.length).toBeGreaterThan(0);
+      for (const it of g.items) {
+        expect(it.label.trim(), `${it.id} label`).not.toBe("");
+        expect(it.icon.trim(), `${it.id} icon`).not.toBe("");
+        expect(it.desc.trim(), `${it.id} desc`).not.toBe("");
+      }
+    }
+  });
+});
 
 describe("mergeDockGroups", () => {
   it("无用户配置时返回完整出厂分组", () => {
