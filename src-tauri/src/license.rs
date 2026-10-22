@@ -158,7 +158,7 @@ pub fn current_machine_id() -> Option<String> {
             .find(|l| l.contains("MachineGuid") && l.contains("REG_SZ"))?;
         let val = line.split("REG_SZ").nth(1).map(|s| s.trim()).filter(|s| !s.is_empty())?;
         let h = format!("{:x}", Sha256::digest(val.as_bytes()));
-        return Some(h[..16].to_string());
+        Some(h[..16].to_string())
     }
     #[cfg(target_os = "macos")]
     {
@@ -381,20 +381,16 @@ fn build_status(app: &AppHandle) -> LicenseStatus {
     let active = !rollback && !expired && !need_relocate;
 
     // AI 次数包余额 + 今日已用（有主授权才读）
-    let ai_balance;
-    let today_used;
-    let daily_quota;
-    if !need_relocate && !expired {
+    let (ai_balance, today_used, daily_quota) = if !need_relocate && !expired {
         let q = load_ai_quota(app, &state, mid.as_deref());
-        ai_balance = q.balance;
-        // 今日已用：若 day.date 不是今天则为 0
-        today_used = Some(if q.day.date == today_str() { q.day.count } else { 0 });
-        daily_quota = Some(daily_quota_for_plan(&state.plan));
+        (
+            q.balance,
+            Some(if q.day.date == today_str() { q.day.count } else { 0 }),
+            Some(daily_quota_for_plan(&state.plan)),
+        )
     } else {
-        ai_balance = None;
-        today_used = Some(0);
-        daily_quota = Some(0);
-    }
+        (None, Some(0), Some(0))
+    };
 
     let msg = if rollback {
         "检测到系统时间回拨，Pro 已暂停，请校正系统时间".to_string()
