@@ -174,15 +174,22 @@ void invoke<string>("app_version")
   .then((v) => (appVersion.value = v))
   .catch(() => {});
 
-// 面包多购买链接（TickGold Pro 年卡商品，2026-10-15 更新发布地址）
-const PRO_PURCHASE_URL = "https://mbd.pub/o/bread/YZaVmppuZg==";
-function goBuy() {
-  void openInAppBrowser(PRO_PURCHASE_URL);
+// 面包多购买链接
+const PLAN_URLS = {
+  monthly: "https://mbd.pub/o/bread/YZaVm59rbA==",
+  quarterly: "https://mbd.pub/o/bread/YZaVm59rbQ==",
+  annual: "https://mbd.pub/o/bread/YZaVmppuZg==",
+};
+const TOPUP_URLS = {
+  500: "https://mbd.pub/o/bread/YZaVm51vZQ==",
+  1000: "https://mbd.pub/o/bread/YZaVm59sZQ==",
+  2000: "https://mbd.pub/o/bread/YZaVm59sZw==",
+};
+function goBuy(plan: keyof typeof PLAN_URLS = "annual") {
+  void openInAppBrowser(PLAN_URLS[plan]);
 }
-// AI 次数包购买（同一面包多商品页内选择）
-const AI_TOPUP_URL = "https://mbd.pub/o/bread/YZaVmppuZg==";
-function goBuyTopup() {
-  void openInAppBrowser(AI_TOPUP_URL);
+function goBuyTopup(count: keyof typeof TOPUP_URLS = 1000) {
+  void openInAppBrowser(TOPUP_URLS[count]);
 }
 const codeInput = ref("");
 const actBusy = ref(false);
@@ -1961,21 +1968,21 @@ async function clearL2Key(r: PluginRow) {
                 <div class="pro-upgrade-grid">
                   <div class="pro-plan-card" :class="{ hot: license.plan === 'monthly' }">
                     <div class="pro-plan-name">月卡</div>
-                    <div class="pro-plan-price">¥29<span>/月</span></div>
+                    <div class="pro-plan-price">¥19<span>/月</span></div>
                     <div class="pro-plan-quota">50 次 AI/天</div>
-                    <button class="pro-plan-btn" @click="goBuy">升级</button>
+                    <button class="pro-plan-btn" @click="goBuy('monthly')">升级</button>
                   </div>
                   <div class="pro-plan-card" :class="{ hot: license.plan === 'quarterly' }">
                     <div class="pro-plan-name">季卡</div>
                     <div class="pro-plan-price">¥69<span>/季</span></div>
                     <div class="pro-plan-quota">80 次 AI/天</div>
-                    <button class="pro-plan-btn" @click="goBuy">升级</button>
+                    <button class="pro-plan-btn" @click="goBuy('quarterly')">升级</button>
                   </div>
                   <div class="pro-plan-card hot" :class="{ active: license.plan === 'annual' || license.plan === 'pro-annual' }">
                     <div class="pro-plan-name">年卡</div>
                     <div class="pro-plan-price">¥199<span>/年</span></div>
                     <div class="pro-plan-quota">100 次 AI/天</div>
-                    <button class="pro-plan-btn" @click="goBuy">{{ (license.plan === 'annual' || license.plan === 'pro-annual') ? '当前套餐' : '升级' }}</button>
+                    <button class="pro-plan-btn" @click="goBuy('annual')">{{ (license.plan === 'annual' || license.plan === 'pro-annual') ? '当前套餐' : '升级' }}</button>
                   </div>
                 </div>
 
@@ -1985,20 +1992,29 @@ async function clearL2Key(r: PluginRow) {
                   <div class="pro-topup-card">
                     <div class="pro-topup-name">500 次</div>
                     <div class="pro-topup-price">¥19</div>
-                    <button class="pro-topup-btn" @click="goBuyTopup">购买</button>
+                    <button class="pro-topup-btn" @click="goBuyTopup(500)">购买</button>
                   </div>
                   <div class="pro-topup-card">
                     <div class="pro-topup-name">1000 次</div>
                     <div class="pro-topup-price">¥35</div>
-                    <button class="pro-topup-btn" @click="goBuyTopup">购买</button>
+                    <button class="pro-topup-btn" @click="goBuyTopup(1000)">购买</button>
                   </div>
                   <div class="pro-topup-card hot">
                     <div class="pro-topup-name">2000 次</div>
                     <div class="pro-topup-price">¥59</div>
                     <div class="pro-topup-tag">超值</div>
-                    <button class="pro-topup-btn" @click="goBuyTopup">购买</button>
+                    <button class="pro-topup-btn" @click="goBuyTopup(2000)">购买</button>
                   </div>
                 </div>
+
+                <!-- 激活码输入（试用期内购买后激活） -->
+                <div class="pro-section-title" style="margin-top:20px">激活升级</div>
+                <div class="pro-activate">
+                  <textarea v-model="codeInput" rows="2" class="pro-code-input" placeholder="粘贴购买后获得的激活码（TG.xxx.xxx）"></textarea>
+                  <button class="pro-act-btn" :disabled="actBusy" @click="onActivate">{{ actBusy ? "激活中…" : "激活" }}</button>
+                </div>
+                <div v-if="actMsg" class="pro-msg">{{ actMsg }}</div>
+                <div class="pro-note" style="margin-top:6px">试用期内购买升级，粘贴激活码即可立即生效，试用期剩余天数自动折算。</div>
               </template>
               <template v-else-if="license.needRelocate">
                 <div class="pro-relocate">
@@ -2023,7 +2039,7 @@ async function clearL2Key(r: PluginRow) {
                   <div class="pro-plans">
                     <div class="pro-plan-card">
                       <div class="pro-plan-name">月卡</div>
-                      <div class="pro-plan-price">¥29<span>/月</span></div>
+                      <div class="pro-plan-price">¥19<span>/月</span></div>
                       <div class="pro-plan-quota">50 次 AI/天</div>
                     </div>
                     <div class="pro-plan-card">

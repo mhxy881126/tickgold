@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, provide, watch, nextTick } from "vue";
 import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
+import { check } from "@tauri-apps/plugin-updater";
 import CardShell from "./components/CardShell.vue";
 import CardContextMenu from "./components/CardContextMenu.vue";
 import CardContent from "./components/CardContent.vue";
@@ -683,6 +685,22 @@ onMounted(async () => {
   } catch (e) {
     console.error("[app] listeners", e);
   }
+
+  // —— 启动时自动检查更新（延迟 5 秒，不影响启动速度）——
+  setTimeout(async () => {
+    try {
+      const curVer = await getVersion();
+      const dismissed = localStorage.getItem("update_dismissed_ver") || "";
+      const u = await check();
+      if (u && u.version !== curVer && u.version !== dismissed) {
+        showUpdate.value = true;
+        // 记住已提醒的版本，下次启动不再自动弹
+        localStorage.setItem("update_dismissed_ver", u.version);
+      }
+    } catch (e) {
+      console.warn("[app] auto check update failed:", e);
+    }
+  }, 5000);
 });
 onBeforeUnmount(() => {
   unlistenFns.forEach((f) => f());
