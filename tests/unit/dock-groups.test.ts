@@ -17,17 +17,18 @@ function allFactoryIds(): string[] {
   return [...set];
 }
 
-// ===== P2-b2：菜单重组为 4 个场景组 =====
-describe("DOCK_GROUPS 4 场景组", () => {
+// ===== P2-b2：菜单重组为 5 个场景组（含 Pro 会员）=====
+describe("DOCK_GROUPS 5 场景组", () => {
   const META_IDS = Object.keys(CARD_META) as CardId[];
 
-  it("恰好 4 组，组名与顺序固定", () => {
-    expect(DOCK_GROUPS).toHaveLength(4);
+  it("恰好 5 组，组名与顺序固定", () => {
+    expect(DOCK_GROUPS).toHaveLength(5);
     expect(DOCK_GROUPS.map((g) => g.name)).toEqual([
       "行情·选股",
       "盯盘·复盘",
       "交易·执行",
       "工具·系统",
+      "Pro 会员",
     ]);
   });
 
