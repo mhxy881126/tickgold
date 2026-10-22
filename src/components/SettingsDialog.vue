@@ -2053,7 +2053,7 @@ async function clearL2Key(r: PluginRow) {
                       <div class="pro-plan-quota">100 次 AI/天</div>
                     </div>
                   </div>
-                  <button class="pro-buy-btn" @click="goBuy">
+                  <button class="pro-buy-btn" @click="goBuy()">
                     <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5z" /></svg>
                     去面包多购买
                   </button>
@@ -2444,7 +2444,7 @@ async function clearL2Key(r: PluginRow) {
                 <div class="ai-lock-title">AI 功能为 Pro 订阅专享</div>
                 <div class="ai-lock-sub">激活 Pro 后可使用内置智谱 GLM-4.5 开箱即用，每日 100 次调用配额；本地 Ollama / 云端 API 模型源同样仅在 Pro 下生效。</div>
                 <div v-if="license.aiBalance != null" class="ai-lock-sub" style="margin-top:6px;color:var(--q-accent,#22d3c5)">AI 次数包剩余：<b>{{ license.aiBalance }} 次</b>（用完后可购买 AI 次数卡在 Pro 页充值，不限当日次数）。</div>
-                <button class="pro-buy-btn" @click="goBuy">订阅 Pro 解锁 AI</button>
+                <button class="pro-buy-btn" @click="goBuy()">订阅 Pro 解锁 AI</button>
               </div>
               <template v-else>
               <!-- 第一步：选 AI 模型 -->
