@@ -14,6 +14,7 @@ import {
 import { fieldSpec } from "./fields";
 import { playAlert } from "../utils/sound";
 import { pushToast, pushIsland, navPickStock, navOpenOrderBook } from "./bus";
+import { isTrading, isAuction } from "../utils/sessions";
 
 let started = false;
 const provider = new ContextProvider();
@@ -42,7 +43,11 @@ export function startAlertEngineV2(): void {
     () => quotes.lastUpdate,
     async () => {
       if (!store.loaded || store.rules.length === 0) return;
-      const now = Date.now();
+      // 交易时间限制：只在集合竞价 + 连续竞价时段评估预警，非交易时间直接跳过
+      const now = new Date();
+      if (!isTrading(now) && !isAuction(now)) return;
+
+      const nowMs = Date.now();
       const groupCodes = (gid: number) =>
         wl.stocksOf(gid).map((s) => s.code);
 
@@ -57,17 +62,17 @@ export function startAlertEngineV2(): void {
         return;
       }
 
-      await provider.refresh(targets, quotes.map, now);
+      await provider.refresh(targets, quotes.map, nowMs);
 
       for (const { rule, codes } of targets) {
         for (const code of codes) {
-          const ctx = { now, code, resolve: provider.resolver(code) };
+          const ctx = { now: nowMs, code, resolve: provider.resolver(code) };
           const result = evalTree(ctx, rule.tree);
           if (!result.hit) continue;
 
-          const gate = checkGate({ rule, now, state: gates });
+          const gate = checkGate({ rule, now: nowMs, state: gates });
           if (!gate.pass) continue;
-          markGateFired(gates, rule.id, now);
+          markGateFired(gates, rule.id, nowMs);
 
           const q = quotes.map[code];
           const price = q?.price ?? result.matched[0]?.actual ?? 0;
@@ -93,12 +98,12 @@ export function startAlertEngineV2(): void {
             pct,
             target,
             tone,
-            now,
+            now: nowMs,
           });
 
           dispatch(rule, {
             ruleId: rule.id, code, name, ruleName: rule.name,
-            message, tone, now, price, pct,
+            message, tone, now: nowMs, price, pct,
           });
         }
       }

@@ -11,7 +11,13 @@
         <div v-if="step === 0" class="ob-pane">
           <div class="ob-logo">TickGold</div>
           <h2>欢迎使用 TickGold</h2>
-          <p class="ob-lead">跨平台 A 股盯盘桌面终端 · 灵动岛版<br />实时行情、智能预警、分时复盘，一个工作台全搞定。</p>
+          <p class="ob-lead">
+            跨平台 A 股盯盘桌面终端 · 灵动岛版<br />
+            实时行情、智能预警、AI 操盘、题材轮动，一个工作台全搞定。
+          </p>
+          <div class="ob-trial-badge">
+            🎁 新用户自动赠送 <b>7 天 Pro 试用</b>，每日 20 次 AI 调用配额
+          </div>
         </div>
 
         <!-- 1 核心能力 -->
@@ -21,17 +27,22 @@
             <div class="ob-feat">
               <div class="ob-fi" style="color: var(--up)">◈</div>
               <div class="ob-ft">实时盯盘</div>
-              <div class="ob-fd">自选 / 榜单 / 板块 / 资金流，多源容灾、毫秒级刷新，支持卡片自由布局与主从聚焦。</div>
+              <div class="ob-fd">自选 / 榜单 / 板块 / 资金流，多源容灾、毫秒级刷新，支持卡片自由布局。</div>
             </div>
             <div class="ob-feat">
               <div class="ob-fi" style="color: var(--accent)">♨</div>
               <div class="ob-ft">智能预警</div>
-              <div class="ob-fd">价格边沿、跳水、封板 / 炸板、换手率等多类条件，触发即系统通知 + 提示音，历史可回溯。</div>
+              <div class="ob-fd">价格边沿、跳水、封板 / 炸板、换手率等多类条件，触发即灵动岛提醒 + 提示音。</div>
             </div>
             <div class="ob-feat">
-              <div class="ob-fi" style="color: var(--blue)">⟳</div>
-              <div class="ob-ft">分时复盘</div>
-              <div class="ob-fd">双击 K 线蜡烛打开复盘工作台，逐分钟回放、多日分时叠加、量比副图，盘后推演更从容。</div>
+              <div class="ob-fi" style="color: #54FCFC">🤖</div>
+              <div class="ob-ft">AI 操盘</div>
+              <div class="ob-fd">规则脑免费即用，大模型分析更智能；支持本地 Ollama 模型，隐私安全。</div>
+            </div>
+            <div class="ob-feat">
+              <div class="ob-fi" style="color: #ff9800">⟳</div>
+              <div class="ob-ft">题材轮动</div>
+              <div class="ob-fd">板块日级快照 + 题材轮动矩阵，萌芽 → 发酵 → 高潮 → 退潮，主线一目了然。</div>
             </div>
           </div>
         </div>
@@ -80,10 +91,14 @@
               <span class="ob-knob"></span>
             </button>
           </div>
-          <p class="ob-lead">
+          <p class="ob-lead" style="margin-bottom:16px">
             按 <b>Ctrl/⌘ + K</b> 打开命令面板快速跳转；<br />
             按 <b>Ctrl/⌘ + /</b> 随时查看全部快捷键。
           </p>
+          <div class="ob-tip-box">
+            💡 试用期内可在「设置 → 订阅 Pro」查看配额，<br />
+            也可以随时升级到月卡 / 年卡解锁更多 AI 次数。
+          </div>
         </div>
 
         <!-- 底部导航 -->
@@ -189,6 +204,21 @@ void (null as unknown as ThemeId);
   color: var(--accent); margin: 26px 0 14px;
   padding: 10px 26px; border: 1px solid var(--border-light); border-radius: 12px;
   background: var(--bg-card);
+}
+.ob-trial-badge {
+  align-self: center; margin-top: 16px;
+  padding: 8px 16px; border-radius: 20px;
+  background: rgba(255, 193, 7, 0.12);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  color: #ffc107; font-size: 13px;
+}
+.ob-tip-box {
+  align-self: center; margin-top: 8px;
+  padding: 10px 16px; border-radius: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  color: var(--text-dim); font-size: 12.5px; line-height: 1.7;
+  text-align: center;
 }
 
 /* 核心能力 */

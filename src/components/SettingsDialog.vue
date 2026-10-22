@@ -1007,6 +1007,7 @@ const histBusy = ref(false);
 const histScope = ref<"watchlist" | "all" | "custom">("watchlist");
 const histAdj = ref<HistAdj>("qfq");
 const histYears = ref(5);
+const histAdvancedOpen = ref(false);
 const histCustom = ref("");
 const histLastFailures = ref<string[]>([]);
 let histPoll: ReturnType<typeof setInterval> | undefined;
@@ -1911,10 +1912,12 @@ async function clearL2Key(r: PluginRow) {
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M3 6l9-3 9 3v12l-9 3-9-3V6zm9 1.5L6 9.5v5l6 2 6-2v-5l-6-2zM7 15h2v2H7v-2zm8 0h2v2h-2v-2z" /></svg>
               券商交易
             </button>
+            <!-- 插件生态（beta，暂隐藏）
             <button class="nav-item" :class="{ on: tab === 'plugins' }" @click="pickTab('plugins')">
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M10 3h4v5h5v4h-5v4h-4v-4H5V8h5V3zM4 18h16v2H4v-2z" /></svg>
               插件生态
             </button>
+            -->
             <button class="nav-item" :class="{ on: tab === 'logs' }" @click="pickTab('logs')">
               <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M3 13h2l2-6 3 12 3-9 2 3h6v-2h-4.6l-1.2-1.8L12 5.2 9.2 16 7.3 8.6 6.4 11H3z" /></svg>
               诊断日志
@@ -2225,66 +2228,26 @@ async function clearL2Key(r: PluginRow) {
 
             <!-- 数据中心：本地时序采集状态 -->
             <div v-else-if="tab === 'data'" class="data-center">
+              <!-- 采集状态 -->
               <div class="dc-banner">
                 <span class="dc-dot" :class="{ on: tsStatus.running }"></span>
                 <div class="dc-bt">
-                  <div class="dc-title">本地时序采集引擎</div>
+                  <div class="dc-title">本地数据引擎</div>
                   <div class="dc-sub">{{ tsStatus.running ? "运行中 · 盘中自动采集，收盘自动归档" : "未运行" }}</div>
                 </div>
                 <span class="dc-daily" :class="{ ok: tsStatus.todayDaily }">
-                  {{ tsStatus.todayDaily ? "今日已收盘归档" : "今日未归档" }}
+                  {{ tsStatus.todayDaily ? "今日已归档" : "今日未归档" }}
                 </span>
               </div>
 
-              <div class="section-title">最近采集</div>
-              <div class="dc-rows">
-                <div class="dc-row"><span class="dr-k">市场情绪</span><span class="dr-v">{{ fmtTime(tsStatus.lastMarketTs) }}</span></div>
-                <div class="dc-row"><span class="dr-k">指数</span><span class="dr-v">{{ fmtTime(tsStatus.lastIndexTs) }}</span></div>
-                <div class="dc-row"><span class="dr-k">板块</span><span class="dr-v">{{ fmtTime(tsStatus.lastSectorTs) }}</span></div>
-                <div class="dc-row"><span class="dr-k">公告催化</span><span class="dr-v">{{ fmtTime(collectorStatus.lastAnnouncement) }} · {{ collectorStatus.announcementCount }} 条</span></div>
-                <div class="dc-row"><span class="dr-k">互动易（e互动待校准）</span><span class="dr-v">{{ fmtTime(collectorStatus.lastIrm) }} · {{ collectorStatus.irmCount }} 条</span></div>
-                <div class="dc-row"><span class="dr-k">题材归因</span><span class="dr-v">{{ collectorStatus.lastAttribution || "未运行" }}</span></div>
+              <div v-if="tsStatus.makeupPending > tsStatus.makeupDone" class="dc-note" style="margin-top:8px">
+                正在补采缺失的历史数据：{{ tsStatus.makeupDone }} / {{ tsStatus.makeupPending }}
               </div>
+              <div v-if="tsStatus.lastError" class="dc-err" style="margin-top:8px">采集异常：{{ tsStatus.lastError }}</div>
 
-              <div class="section-title">本地数据量</div>
-              <div class="dc-stats">
-                <div class="dc-stat"><b>{{ tsStatus.marketRows }}</b><span>情绪分时</span></div>
-                <div class="dc-stat"><b>{{ tsStatus.indexRows }}</b><span>指数分时</span></div>
-                <div class="dc-stat"><b>{{ tsStatus.sectorRows }}</b><span>板块分时</span></div>
-                <div class="dc-stat"><b>{{ tsStatus.dayRows }}</b><span>交易日(日级)</span></div>
-              </div>
-
-              <div class="dc-note">分时明细保留最近 60 天；收盘日级长期保留，用于情绪周期与题材轮动分析。</div>
-              <div v-if="tsStatus.makeupPending > tsStatus.makeupDone" class="dc-note">
-                正在补采缺失交易日板块快照：{{ tsStatus.makeupDone }} / {{ tsStatus.makeupPending }}
-              </div>
-              <div v-if="tsStatus.lastError" class="dc-err">采集异常：{{ tsStatus.lastError }}</div>
-
-              <!-- 数据治理（v2.29）-->
-              <div class="section-title" style="margin-top:24px">数据治理</div>
-              <div class="section-sub">查看占用、清理恢复留证等孤儿文件、压缩主库空闲空间</div>
-              <div v-if="storageStats" class="dc-rows">
-                <div class="dc-row">
-                  <span class="dr-k">数据目录总占用</span>
-                  <span class="dr-v">{{ fmtBytes(storageStats.totalBytes) }}</span>
-                </div>
-                <div
-                  v-for="f in storageStats.files"
-                  :key="f.name"
-                  class="dc-row"
-                >
-                  <span class="dr-k">{{ f.name }}</span>
-                  <span class="dr-v">{{ fmtBytes(f.size) }}</span>
-                </div>
-              </div>
-              <div v-if="storageStats && storageStats.tableRows.length" class="dc-note">
-                <span v-for="(trow) in storageStats.tableRows" :key="trow[0]" class="gov-trow">
-                  {{ trow[0].replace("ts_", "") }} {{ trow[1] }}
-                </span>
-              </div>
-
-              <!-- 过期策略 -->
-              <div class="section-sub" style="margin-top:12px">过期策略：分时明细与知识库 / 历史对话可按保留天数清理（日级快照长期保留）；填 0 表示该项不清理</div>
+              <!-- 数据保留策略 -->
+              <div class="section-title" style="margin-top:24px">数据保留</div>
+              <div class="section-sub">分时明细与知识库按保留天数自动清理，日级快照长期保留</div>
               <div class="hist-form">
                 <div class="hist-field">
                   <label>分时明细保留天数</label>
@@ -2295,144 +2258,134 @@ async function clearL2Key(r: PluginRow) {
                   <input v-model.number="keepAiDays" type="number" min="0" step="1" spellcheck="false" />
                 </div>
               </div>
-              <div v-if="purgePlan && purgePlan.targets.length" class="dc-rows" style="margin-top:6px">
-                <div v-for="t in purgePlan.targets" :key="t.key" class="dc-row">
-                  <span class="dr-k">{{ t.label }}</span>
-                  <span class="dr-v">将清理 {{ t.rows }} 行</span>
-                </div>
-                <div v-if="purgePlan.totalRows === 0" class="dc-note">当前保留期内没有可清理数据</div>
-              </div>
-              <div class="ai-actions">
-                <button type="button" class="logs-btn" :disabled="govBusy" @click="onPurgePreview">预览过期数据</button>
-                <button type="button" class="logs-btn" :disabled="govBusy || !purgePlan || purgePlan.totalRows === 0" @click="onPurgeRun">执行清理</button>
-              </div>
-
-              <div class="ai-actions">
-                <button type="button" class="logs-btn" :disabled="govBusy" @click="loadStorageStats">
-                  {{ govBusy ? "统计中…" : "重新统计" }}
+              <div class="ai-actions" style="margin-top:12px">
+                <button type="button" class="logs-btn" :disabled="govBusy" @click="onPurgeRun">
+                  {{ govBusy ? "清理中…" : "立即清理过期数据" }}
                 </button>
-                <button type="button" class="logs-btn" :disabled="govBusy" @click="onCleanupOrphans">清理孤儿文件</button>
-                <button type="button" class="logs-btn" :disabled="govBusy" @click="onVacuum">压缩主库</button>
               </div>
-              <div v-if="govMsg" class="ai-msg" :class="{ ok: /成功|完成|释放|清理/.test(govMsg) }">{{ govMsg }}</div>
+              <div v-if="govMsg" class="ai-msg" :class="{ ok: /成功|完成|释放|清理/.test(govMsg) }" style="margin-top:8px">{{ govMsg }}</div>
 
-              <!-- 备份 / 恢复中心（v2.29）-->
-              <div class="section-title" style="margin-top:24px">备份 / 恢复中心</div>
-              <div class="section-sub">备份主库（含成交流水 / 委托）、知识库、券商配置与本地配置（自选 / 布局 / 设置）；恢复前做完整性校验，恢复时自动重启</div>
-              <div class="ai-actions">
-                <button type="button" class="logs-btn primary" :disabled="backupBusy" @click="onCreateBackup">
-                  {{ backupBusy ? "备份中…" : "立即备份" }}
-                </button>
-                <button type="button" class="logs-btn" @click="loadBackupSets">刷新列表</button>
-              </div>
-              <div v-if="backupMsg" class="ai-msg" :class="{ ok: /成功|完成/.test(backupMsg) }">{{ backupMsg }}</div>
-
-              <div v-for="b in backupSets" :key="b.id" class="backup-row">
-                <div class="backup-info">
-                  <div class="backup-id">{{ fmtBackupTime(b.createdMs) }}</div>
-                  <div class="backup-meta">
-                    {{ b.files.map((f) => f.name.replace(".db", "")).join(" · ") }}
-                    · {{ fmtBytes(b.totalBytes) }}
-                  </div>
-                  <div class="backup-verify" :class="{ ok: b.verified, bad: !b.verified }">
-                    {{ b.verified ? "完整性校验通过" : "校验未通过，恢复将被拒绝" }}
-                  </div>
-                </div>
-                <button type="button" class="logs-btn" :disabled="backupBusy || !b.verified" @click="onRestoreBackup(b)">恢复</button>
-                <button type="button" class="logs-btn" :disabled="backupBusy" @click="onDeleteBackup(b)">删除</button>
-              </div>
-
-              <!-- 板块日级快照（v2.29）-->
+              <!-- 板块日级快照 -->
               <div class="section-title" style="margin-top:24px">板块日级快照</div>
-              <div class="section-sub">收盘自动归档行业 / 概念板块涨跌幅、成交额、主力净流入、涨跌家数，供题材轮动矩阵使用</div>
+              <div class="section-sub">用于题材轮动矩阵，收盘自动归档</div>
               <div class="dc-rows">
                 <div class="dc-row"><span class="dr-k">已归档交易日</span><span class="dr-v">{{ sectorDayCount }} 天</span></div>
               </div>
-              <div class="hist-form">
+              <div class="hist-form" style="margin-top:12px">
                 <div class="hist-field">
-                  <label>补采指定交易日（YYYY-MM-DD）</label>
+                  <label>补采指定日期（YYYY-MM-DD）</label>
                   <input v-model="sectorDayInput" type="text" spellcheck="false" placeholder="如 2026-10-10" />
                 </div>
               </div>
-              <div class="ai-actions">
+              <div class="ai-actions" style="margin-top:8px">
                 <button type="button" class="logs-btn primary" :disabled="sectorDayBusy || !sectorDayInput.trim()" @click="onSectorDaySnapshot">
-                  {{ sectorDayBusy ? "采集中…" : "补采该日" }}
+                  {{ sectorDayBusy ? "采集中…" : "补采" }}
                 </button>
               </div>
-              <div v-if="sectorDayMsg" class="ai-msg" :class="{ ok: /成功|完成/.test(sectorDayMsg) }">{{ sectorDayMsg }}</div>
+              <div v-if="sectorDayMsg" class="ai-msg" :class="{ ok: /成功|完成/.test(sectorDayMsg) }" style="margin-top:8px">{{ sectorDayMsg }}</div>
 
-              <!-- 多年历史 K 线库（v2.27）-->
-              <div class="section-title" style="margin-top:24px">多年历史 K 线库</div>
-              <div class="section-sub">本地增量回填多年日 K，供深度复盘与回测；数据仅保存在本机</div>
+              <!-- 多年历史 K 线库 -->
+              <div class="section-title" style="margin-top:24px">历史 K 线库</div>
+              <div class="section-sub">用于深度复盘与回测，数据仅保存在本机</div>
 
-              <div class="dc-stats">
-                <div class="dc-stat"><b>{{ histStats?.rows ?? "-" }}</b><span>K 线条数</span></div>
+              <div class="dc-stats" style="margin-bottom:16px">
+                <div class="dc-stat"><b>{{ histStats?.rows ?? "-" }}</b><span>K 线总数</span></div>
                 <div class="dc-stat"><b>{{ histStats?.codes ?? "-" }}</b><span>覆盖股票</span></div>
                 <div class="dc-stat"><b>{{ histStats?.earliest ?? "-" }}</b><span>最早日期</span></div>
                 <div class="dc-stat"><b>{{ histStats?.latest ?? "-" }}</b><span>最新日期</span></div>
               </div>
-              <div class="dc-rows">
-                <div class="dc-row"><span class="dr-k">交易日历</span><span class="dr-v">{{ histStats?.calendarDays ?? 0 }} 个交易日</span></div>
-                <div class="dc-row"><span class="dr-k">数据库占用</span><span class="dr-v">{{ fmtBytes(histStats?.dbSizeBytes ?? 0) }}</span></div>
-              </div>
 
-              <div class="hist-form">
-                <div class="hist-field">
-                  <label>回填范围</label>
-                  <div class="seg">
-                    <button type="button" class="seg-btn" :class="{ on: histScope === 'watchlist' }" @click="histScope = 'watchlist'">自选股</button>
-                    <button type="button" class="seg-btn" :class="{ on: histScope === 'all' }" @click="histScope = 'all'">全市场 A 股</button>
-                    <button type="button" class="seg-btn" :class="{ on: histScope === 'custom' }" @click="histScope = 'custom'">自定义</button>
-                  </div>
-                </div>
-                <div v-if="histScope === 'custom'" class="hist-field">
-                  <label>股票代码（逗号/空格/换行分隔）</label>
-                  <input v-model="histCustom" type="text" spellcheck="false" placeholder="如 600519, 000001, 300750" />
-                </div>
-                <div class="hist-field-row">
-                  <div class="hist-field">
-                    <label>复权口径</label>
-                    <div class="seg">
-                      <button type="button" class="seg-btn" :class="{ on: histAdj === 'qfq' }" @click="histAdj = 'qfq'">前复权</button>
-                      <button type="button" class="seg-btn" :class="{ on: histAdj === 'hfq' }" @click="histAdj = 'hfq'">后复权</button>
-                      <button type="button" class="seg-btn" :class="{ on: histAdj === 'none' }" @click="histAdj = 'none'">不复权</button>
-                    </div>
-                  </div>
-                  <div class="hist-field hist-years">
-                    <label>回填年数</label>
-                    <select v-model.number="histYears">
-                      <option :value="1">1 年</option>
-                      <option :value="3">3 年</option>
-                      <option :value="5">5 年</option>
-                      <option :value="10">10 年</option>
-                      <option :value="20">20 年</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div v-if="histProgress && histProgress.running" class="hist-prog">
+              <!-- 进度条 -->
+              <div v-if="histProgress && histProgress.running" class="hist-prog" style="margin-top:12px">
                 <div class="hist-prog-bar">
                   <div class="hist-prog-fill" :style="{ width: histPercent + '%' }"></div>
                 </div>
                 <div class="hist-prog-txt">
                   {{ histProgress.done }} / {{ histProgress.total }} · 成功 {{ histProgress.ok }} · 失败 {{ histProgress.fail }}
-                  <span v-if="histProgress.lastCode"> · 当前 {{ histProgress.lastCode }}</span>
                 </div>
               </div>
 
-              <div class="ai-actions">
+              <!-- 主操作按钮 -->
+              <div class="ai-actions" style="margin-top:12px">
                 <button v-if="histProgress && histProgress.running" type="button" class="logs-btn" @click="onHistStop">停止</button>
                 <button type="button" class="logs-btn primary" :disabled="histBusy || (histProgress?.running ?? false)" @click="onHistBackfill">
-                  {{ histBusy ? "准备中…" : "开始回填" }}
+                  {{ histBusy ? "准备中…" : "回填自选股历史K线" }}
                 </button>
-                <button type="button" class="logs-btn" :disabled="histBusy || (histProgress?.running ?? false)" @click="onHistSyncCalendar">同步交易日历</button>
-                <button v-if="histLastFailures.length" type="button" class="logs-btn" :disabled="histBusy" @click="onHistRetry">重试失败 ({{ histLastFailures.length }})</button>
+                <button v-if="histLastFailures.length" type="button" class="logs-btn" :disabled="histBusy" @click="onHistRetry">
+                  重试失败 ({{ histLastFailures.length }})
+                </button>
               </div>
-              <div v-if="histMsg" class="ai-msg" :class="{ ok: /成功|完成|已同步/.test(histMsg) }">{{ histMsg }}</div>
-              <div v-if="histLastFailures.length" class="hist-fails">
-                <div v-for="(f, i) in histLastFailures.slice(0, 20)" :key="i" class="hist-fail-line">{{ f }}</div>
-                <div v-if="histLastFailures.length > 20" class="dc-note">其余 {{ histLastFailures.length - 20 }} 条失败未展开</div>
+
+              <!-- 高级设置（默认折叠） -->
+              <div style="margin-top:16px">
+                <div
+                  style="font-size:13px; color:#888; cursor:pointer; user-select:none; display:flex; align-items:center; gap:6px"
+                  @click="histAdvancedOpen = !histAdvancedOpen"
+                >
+                  <span style="transition:transform 0.2s" :style="{ transform: histAdvancedOpen ? 'rotate(90deg)' : 'rotate(0deg)' }">▶</span>
+                  高级设置
+                </div>
+                <div v-if="histAdvancedOpen" style="margin-top:12px">
+                  <div class="hist-form">
+                    <div class="hist-field">
+                      <label>回填范围</label>
+                      <div class="seg">
+                        <button type="button" class="seg-btn" :class="{ on: histScope === 'watchlist' }" @click="histScope = 'watchlist'">自选股</button>
+                        <button type="button" class="seg-btn" :class="{ on: histScope === 'all' }" @click="histScope = 'all'">全市场</button>
+                        <button type="button" class="seg-btn" :class="{ on: histScope === 'custom' }" @click="histScope = 'custom'">自定义</button>
+                      </div>
+                    </div>
+                    <div v-if="histScope === 'custom'" class="hist-field">
+                      <label>股票代码（逗号分隔）</label>
+                      <input v-model="histCustom" type="text" spellcheck="false" placeholder="如 600519, 000001" />
+                    </div>
+                    <div class="hist-field-row">
+                      <div class="hist-field">
+                        <label>复权口径</label>
+                        <div class="seg">
+                          <button type="button" class="seg-btn" :class="{ on: histAdj === 'qfq' }" @click="histAdj = 'qfq'">前复权</button>
+                          <button type="button" class="seg-btn" :class="{ on: histAdj === 'hfq' }" @click="histAdj = 'hfq'">后复权</button>
+                          <button type="button" class="seg-btn" :class="{ on: histAdj === 'none' }" @click="histAdj = 'none'">不复权</button>
+                        </div>
+                      </div>
+                      <div class="hist-field hist-years">
+                        <label>回填年数</label>
+                        <select v-model.number="histYears">
+                          <option :value="1">1 年</option>
+                          <option :value="3">3 年</option>
+                          <option :value="5">5 年</option>
+                          <option :value="10">10 年</option>
+                          <option :value="20">20 年</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="histMsg" class="ai-msg" :class="{ ok: /成功|完成/.test(histMsg) }" style="margin-top:8px">{{ histMsg }}</div>
+
+              <!-- 备份 / 恢复 -->
+              <div class="section-title" style="margin-top:24px">备份与恢复</div>
+              <div class="section-sub">备份自选股、布局、设置与成交流水；恢复时自动重启</div>
+              <div class="ai-actions" style="margin-top:12px">
+                <button type="button" class="logs-btn primary" :disabled="backupBusy" @click="onCreateBackup">
+                  {{ backupBusy ? "备份中…" : "立即备份" }}
+                </button>
+                <button type="button" class="logs-btn" @click="loadBackupSets">刷新</button>
+              </div>
+              <div v-if="backupMsg" class="ai-msg" :class="{ ok: /成功|完成/.test(backupMsg) }" style="margin-top:8px">{{ backupMsg }}</div>
+
+              <div v-for="b in backupSets" :key="b.id" class="backup-row" style="margin-top:12px">
+                <div class="backup-info">
+                  <div class="backup-id">{{ fmtBackupTime(b.createdMs) }}</div>
+                  <div class="backup-meta">{{ fmtBytes(b.totalBytes) }}</div>
+                  <div class="backup-verify" :class="{ ok: b.verified, bad: !b.verified }">
+                    {{ b.verified ? "校验通过" : "校验未通过" }}
+                  </div>
+                </div>
+                <button type="button" class="logs-btn" :disabled="backupBusy || !b.verified" @click="onRestoreBackup(b)">恢复</button>
+                <button type="button" class="logs-btn" :disabled="backupBusy" @click="onDeleteBackup(b)">删除</button>
               </div>
             </div>
 
@@ -2617,37 +2570,40 @@ async function clearL2Key(r: PluginRow) {
                   </div>
                 </div>
 
-                <!-- 规则脑指标说明 + 开关 -->
-                <div v-if="fbCfg.brainMode === 'rule'" class="rule-indicators">
-                  <div class="ri-title">📊 规则脑指标开关（关掉=该指标不参与打分）</div>
-                  <div class="ri-grid">
-                    <div v-for="ind in indicatorList" :key="ind.key" class="ri-item" :class="{ off: fbCfg.indicatorsEnabled?.[ind.key] === false }">
-                      <div class="ri-head">
-                        <b>{{ ind.name }}</b>
-                        <button type="button" class="switch sm" :class="{ on: fbCfg.indicatorsEnabled?.[ind.key] !== false }"
-                          @click="toggleIndicator(ind.key)">
-                          <span class="knob"></span>
-                        </button>
+                <!-- 规则脑指标说明 + 开关（折叠） -->
+                <details v-if="fbCfg.brainMode === 'rule'" class="bk-advanced" style="margin-top:14px">
+                  <summary>📊 指标开关 + 🎯 战法选择（默认全部开启，一般不用改）</summary>
+                  <div style="margin-top:12px">
+                    <div class="ri-title">📊 规则脑指标开关（关掉=该指标不参与打分）</div>
+                    <div class="ri-grid">
+                      <div v-for="ind in indicatorList" :key="ind.key" class="ri-item" :class="{ off: fbCfg.indicatorsEnabled?.[ind.key] === false }">
+                        <div class="ri-head">
+                          <b>{{ ind.name }}</b>
+                          <button type="button" class="switch sm" :class="{ on: fbCfg.indicatorsEnabled?.[ind.key] !== false }"
+                            @click="toggleIndicator(ind.key)">
+                            <span class="knob"></span>
+                          </button>
+                        </div>
+                        <span>{{ ind.desc }}</span>
                       </div>
-                      <span>{{ ind.desc }}</span>
                     </div>
-                  </div>
 
-                  <!-- 选择战法 -->
-                  <div class="ri-title" style="margin-top:16px">🎯 选择战法（关掉=该战法不发出信号）</div>
-                  <div class="ri-grid">
-                    <div v-for="s in strategyList" :key="s.key" class="ri-item" :class="{ off: fbCfg.strategiesEnabled?.[s.key] === false }">
-                      <div class="ri-head">
-                        <b>{{ s.name }}</b>
-                        <button type="button" class="switch sm" :class="{ on: fbCfg.strategiesEnabled?.[s.key] !== false }"
-                          @click="toggleStrategy(s.key)">
-                          <span class="knob"></span>
-                        </button>
+                    <!-- 选择战法 -->
+                    <div class="ri-title" style="margin-top:16px">🎯 选择战法（关掉=该战法不发出信号）</div>
+                    <div class="ri-grid">
+                      <div v-for="s in strategyList" :key="s.key" class="ri-item" :class="{ off: fbCfg.strategiesEnabled?.[s.key] === false }">
+                        <div class="ri-head">
+                          <b>{{ s.name }}</b>
+                          <button type="button" class="switch sm" :class="{ on: fbCfg.strategiesEnabled?.[s.key] !== false }"
+                            @click="toggleStrategy(s.key)">
+                            <span class="knob"></span>
+                          </button>
+                        </div>
+                        <span>{{ s.desc }}</span>
                       </div>
-                      <span>{{ s.desc }}</span>
                     </div>
                   </div>
-                </div>
+                </details>
 
                 <!-- 折叠：高级参数 -->
                 <details class="bk-advanced" style="margin-top:14px">
@@ -2713,48 +2669,54 @@ async function clearL2Key(r: PluginRow) {
             <div v-else-if="tab === 'knowledge'" class="ai-tab">
               <div class="section-title">📚 知识库</div>
               <div class="section-sub">
-                导入你的研报、笔记、新闻 PDF，AI 问答时会自动参考这些资料。不用可以忽略。
+                导入你的研报、笔记、PDF，AI 回答问题时会自动参考这些资料。
               </div>
 
               <div class="startup-row" style="margin-top:16px">
                 <div class="startup-info">
                   <div class="startup-name">每日自动入库</div>
-                  <div class="section-sub" style="margin:3px 0 0">收盘后自动把当日资料切块入知识库</div>
+                  <div class="section-sub" style="margin:3px 0 0">收盘后自动把当日新闻、研报存入知识库</div>
                 </div>
                 <button type="button" class="switch" :class="{ on: aiCfg.enableAutoIndex }" @click="aiCfg.enableAutoIndex = !aiCfg.enableAutoIndex"><span class="knob"></span></button>
               </div>
 
-              <div class="dc-stats kb-stats" style="margin-top:16px">
-                <div class="dc-stat"><b>{{ kbData.total }}</b><span>总分块</span></div>
-                <div class="dc-stat"><b>{{ kbData.embedded }}</b><span>已嵌入</span></div>
-                <div class="dc-stat"><b>{{ kbSizeText }}</b><span>体积</span></div>
-                <div class="dc-stat"><b>{{ kbDocs.length }}</b><span>文档数</span></div>
-              </div>
-
               <div v-if="kbIndexing" class="kb-prog-wrap">
                 <div class="kb-prog-label">
-                  {{ kbProgress.phase === 'embed' ? '向量嵌入中' : '资料收集中' }} · {{ kbProgress.done }}/{{ kbProgress.total }}
+                  {{ kbProgress.phase === 'embed' ? '处理中' : '收集中' }} · {{ kbProgress.done }}/{{ kbProgress.total }}
                 </div>
                 <div class="kb-prog"><div class="kb-prog-bar" :style="{ width: kbProgPct + '%' }"></div></div>
               </div>
 
-              <div class="ai-actions kb-actions" style="margin-top:16px">
-                <button type="button" class="logs-btn primary" :disabled="kbBusy" @click="onImportDocs">📄 导入文档</button>
-                <button type="button" class="logs-btn" :disabled="kbBusy" @click="onIndexToday">📥 入库今日</button>
-                <button type="button" class="logs-btn" :disabled="kbBusy" @click="onReindex">🔄 重建嵌入</button>
+              <div class="ai-actions" style="margin-top:20px">
+                <button type="button" class="logs-btn primary" style="padding:12px 24px" :disabled="kbBusy" @click="onImportDocs">
+                  📄 导入文档
+                </button>
               </div>
 
-              <div class="kb-docs" style="margin-top:16px">
-                <div v-if="!kbDocs.length" class="logs-empty" style="padding:30px 0; text-align:center">
-                  📭 暂无文档<br>
-                  <span style="font-size:11px; color:var(--text-dim)">点上方"导入文档"上传研报/笔记，或"入库今日"自动收当日资料</span>
-                </div>
+              <div v-if="kbDocs.length" style="margin-top:20px">
+                <div class="section-sub" style="margin-bottom:8px">已导入的文档：</div>
                 <div v-for="d in kbDocs" :key="d[0]" class="kb-doc">
                   <span class="kbd-name" :title="d[0]">{{ d[0] }}</span>
-                  <span class="kbd-chunks">{{ d[1] }} 块</span>
                   <button type="button" class="kbd-del" title="删除" @click="onDeleteDoc(d[0])">✕</button>
                 </div>
               </div>
+
+              <!-- 高级设置（折叠） -->
+              <details style="margin-top:24px">
+                <summary style="font-size:13px; color:#888; cursor:pointer">高级设置</summary>
+                <div style="margin-top:12px">
+                  <div class="dc-stats kb-stats">
+                    <div class="dc-stat"><b>{{ kbData.total }}</b><span>总分块</span></div>
+                    <div class="dc-stat"><b>{{ kbData.embedded }}</b><span>已嵌入</span></div>
+                    <div class="dc-stat"><b>{{ kbSizeText }}</b><span>体积</span></div>
+                    <div class="dc-stat"><b>{{ kbDocs.length }}</b><span>文档数</span></div>
+                  </div>
+                  <div class="ai-actions" style="margin-top:12px">
+                    <button type="button" class="logs-btn" :disabled="kbBusy" @click="onIndexToday">📥 入库今日</button>
+                    <button type="button" class="logs-btn" :disabled="kbBusy" @click="onReindex">🔄 重建索引</button>
+                  </div>
+                </div>
+              </details>
             </div>
 
             <!-- 券商交易（v2.6）-->
