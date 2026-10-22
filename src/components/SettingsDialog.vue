@@ -12,6 +12,7 @@ import { useWindowControls } from "../composables/useWindowControls";
 import { tsStatus } from "../composables/useTimeSeries";
 import { collectorStatus } from "../composables/useCollector";
 import { logger, type LogLevel } from "../utils/logger";
+import { toast } from "../composables/useToast";
 import { isEnabled as autoStartEnabled, enable as enableAutoStart, disable as disableAutoStart } from "@tauri-apps/plugin-autostart";
 import {
   brokerGetStatus,
