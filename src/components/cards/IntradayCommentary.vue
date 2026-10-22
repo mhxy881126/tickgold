@@ -179,6 +179,7 @@ onBeforeUnmount(() => {
           </svg>
           <span>AI 解读</span>
         </div>
+        <span class="quota-badge" title="每次生成消耗 1 次 AI 配额">🎫 1次</span>
         <h3 class="head-title">盘中解读</h3>
         <span v-if="fromCache" class="cache-tag" title="当前为缓存数据，后台正在刷新">缓存</span>
       </div>
@@ -355,6 +356,11 @@ onBeforeUnmount(() => {
   font-size: 11px; font-weight: 700;
 }
 .ai-badge svg { width: 13px; height: 13px; }
+.quota-badge {
+  padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;
+  background: rgba(255, 193, 7, .15); color: #ffc107; border: 1px solid rgba(255, 193, 7, .3);
+  cursor: help;
+}
 .head-title { font-size: 14px; font-weight: 700; color: var(--text, #e6ecf5); margin: 0; }
 .cache-tag {
   font-size: 9px; padding: 2px 6px;

@@ -77,7 +77,7 @@
         <div v-for="h in hits" :key="h.code" class="ss-row">
           <div class="ss-head" @click="open = open === h.code ? '' : h.code">
             <span class="ss-code">{{ h.code }}</span>
-            <span class="ss-name">{{ h.name }}</span>
+            <span class="ss-name" @click.stop="emit('select', h.code)" title="点击查看K线图">{{ h.name }}</span>
             <span class="ss-badges">
               <i v-for="t in h.tactics" :key="t" class="ss-badge">{{ tacLabel(t) }}</i>
             </span>
@@ -135,6 +135,10 @@ const hits = ref<TacticHit[]>([]);
 const loading = ref(false);
 const open = ref("");
 const watch = useWatchlistStore();
+
+const emit = defineEmits<{
+  (e: "select", code: string): void;
+}>();
 
 function toggle(id: string) {
   const next = new Set(chosen.value);
@@ -313,6 +317,8 @@ async function toggleRuns(s: ScreenSubscription) {
 }
 
 onMounted(async () => {
+  // 默认自动全市场扫描
+  void run();
   try {
     unlistenSub = await listen<{ name: string; hitCount: number }>("screen-sub:run", () => {
       // 全局 Toast 由 App.vue 统一弹；卡片打开时仅刷新订阅状态
@@ -428,6 +434,11 @@ onBeforeUnmount(() => unlistenSub?.());
 .ss-name {
   color: var(--text, #e6ecf5);
   font-weight: 600;
+  cursor: pointer;
+}
+.ss-name:hover {
+  color: #ff3232;
+  text-decoration: underline;
 }
 .ss-badges {
   display: flex;

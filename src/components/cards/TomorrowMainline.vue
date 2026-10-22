@@ -123,7 +123,7 @@ async function refresh(backgroundRefresh = false) {
   }, 10000); // 明日主线数据量大，给 10 秒再提示慢
 
   try {
-    streamHandle = await aiTomorrowMainlineStream();
+    streamHandle = await aiTomorrowMainlineStream(!backgroundRefresh);
     streamHandle.onCached((full) => {
       const parsed = parseMainline(full);
       if (parsed) {
@@ -195,6 +195,7 @@ onBeforeUnmount(() => {
     <div class="card-header">
       <div class="header-left">
         <span class="header-badge">AI</span>
+        <span class="quota-badge" title="每次刷新消耗 1 次 AI 配额（30 分钟内重复打开不消耗）">🎫 1次</span>
         <span class="header-title">今日题材热度</span>
         <span class="header-sub">涨停梯队 · 板块 · 快讯</span>
         <span v-if="fromCache" class="cache-tag" title="当前为缓存数据">缓存</span>
@@ -338,6 +339,11 @@ onBeforeUnmount(() => {
   padding: 2px 8px; border-radius: 4px;
   background: linear-gradient(135deg, var(--accent, #e8b860), #b8923a);
   color: #000; font-size: 10px; font-weight: 800; letter-spacing: 1px;
+}
+.quota-badge {
+  padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;
+  background: rgba(255, 193, 7, .15); color: #ffc107; border: 1px solid rgba(255, 193, 7, .3);
+  cursor: help;
 }
 .header-title { font-size: 13px; font-weight: 700; color: var(--text, #e6ecf5); }
 .header-sub { font-size: 10px; color: var(--text-dim, #6b7280); margin-left: 2px; }

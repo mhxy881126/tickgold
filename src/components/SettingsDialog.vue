@@ -85,6 +85,7 @@ import { exit as exitApp } from "@tauri-apps/plugin-process";
 import { confirmDialog } from "../composables/useDialog";
 import { confirmEmergencyHalt, formatEmergencyHaltResult } from "../composables/emergencyHalt";
 import { useLicenseStore } from "../stores/license";
+import { planLabel } from "../lib/license";
 
 const props = defineProps<{ open: boolean; initialTab?: Tab }>();
 const emit = defineEmits<{ "update:open": [boolean]; "replay-onboarding": []; "check-update": [] }>();
@@ -177,6 +178,11 @@ const PRO_PURCHASE_URL = "https://mbd.pub/o/bread/YZaVmppuZg==";
 function goBuy() {
   void openInAppBrowser(PRO_PURCHASE_URL);
 }
+// AI 次数包购买（同一面包多商品页内选择）
+const AI_TOPUP_URL = "https://mbd.pub/o/bread/YZaVmppuZg==";
+function goBuyTopup() {
+  void openInAppBrowser(AI_TOPUP_URL);
+}
 const codeInput = ref("");
 const actBusy = ref(false);
 const actMsg = ref("");
@@ -194,6 +200,57 @@ async function onActivate() {
     if (ok) codeInput.value = "";
   } finally {
     actBusy.value = false;
+  }
+}
+
+// ===== Debug：清除激活码回到免费版（仅 dev 构建可见）=====
+const IS_DEV = import.meta.env.DEV;
+const clearBusy = ref(false);
+async function onClearLicense() {
+  const yes = await confirmDialog({
+    title: "清除激活码",
+    message: "将删除本地 Pro 授权与 AI 次数包，回到免费版状态。确定继续？",
+    confirmText: "清除",
+    danger: true,
+  });
+  if (!yes) return;
+  clearBusy.value = true;
+  try {
+    await license.deactivate();
+    await license.load();
+  } finally {
+    clearBusy.value = false;
+  }
+}
+
+// ===== v3.4 设备绑定 / 换机授权 =====
+const relocInput = ref("");
+const relocBusy = ref(false);
+const relocMsg = ref("");
+async function onRelocate() {
+  relocMsg.value = "";
+  const c = relocInput.value.trim();
+  if (!c) {
+    relocMsg.value = "请先粘贴卖家给的换机授权码";
+    return;
+  }
+  relocBusy.value = true;
+  try {
+    const ok = await license.relocate(c);
+    relocMsg.value = ok ? "换机成功，Pro 已在本机生效" : (license.error || "换机失败");
+    if (ok) relocInput.value = "";
+  } finally {
+    relocBusy.value = false;
+  }
+}
+async function copyRelocReq() {
+  const v = license.relocateRequest;
+  if (!v) { relocMsg.value = "没有可复制的申请码"; return; }
+  try {
+    await navigator.clipboard.writeText(v);
+    relocMsg.value = "申请码已复制，请发给卖家";
+  } catch {
+    relocMsg.value = "复制失败，请手动选择复制：" + v;
   }
 }
 watch(() => props.open, (v) => {
@@ -285,6 +342,103 @@ const connResult = ref<ConnTest | null>(null);
 // 拉取到的云端可用模型列表（测试连接后自动填充）
 const availableModels = ref<string[]>([]);
 const fetchingModels = ref(false);
+
+// ===== Ollama 模型管理 =====
+interface OllamaModel {
+  name: string;
+  size: number;
+  modified_at: string;
+}
+const ollamaInstalled = ref<OllamaModel[]>([]);
+const ollamaLoading = ref(false);
+const ollamaError = ref("");
+const downloadingModel = ref("");
+const downloadProgress = ref(0);
+
+// 推荐模型列表（按显存档位）
+const RECOMMENDED_MODELS = [
+  { name: "qwen2.5:7b", size: "4.7GB", ram: "8GB+", desc: "通义千问 7B，中文最好，性价比首选" },
+  { name: "qwen2.5:14b", size: "9GB", ram: "16GB+", desc: "通义千问 14B，效果更好，速度适中" },
+  { name: "deepseek-r1:7b", size: "4.7GB", ram: "8GB+", desc: "DeepSeek R1 推理模型，逻辑强" },
+  { name: "llama3.1:8b", size: "4.9GB", ram: "8GB+", desc: "Llama 3.1 8B，英文好，通用" },
+];
+
+async function refreshOllamaModels() {
+  ollamaLoading.value = true;
+  ollamaError.value = "";
+  try {
+    const base = aiCfg.value.baseUrl || "http://localhost:11434";
+    const models = await invoke<OllamaModel[]>("ollama_list", { baseUrl: base });
+    ollamaInstalled.value = models;
+  } catch (e: any) {
+    ollamaError.value = e?.message || "无法连接 Ollama，请确认已安装并运行 Ollama";
+    ollamaInstalled.value = [];
+  } finally {
+    ollamaLoading.value = false;
+  }
+}
+
+const downloadSpeed = ref(0);
+
+async function pullOllamaModel(name: string) {
+  downloadingModel.value = name;
+  downloadProgress.value = 0;
+  downloadSpeed.value = 0;
+  try {
+    const base = aiCfg.value.baseUrl || "http://localhost:11434";
+    // 监听进度事件
+    const unlisten = await listen<{ name: string; percent: number | null; status: string; completed: number; total: number; speed: number }>(
+      "ollama:pull-progress",
+      (e) => {
+        if (e.payload.name === name) {
+          if (e.payload.percent != null) {
+            downloadProgress.value = e.payload.percent!;
+          }
+          if (e.payload.speed != null) {
+            downloadSpeed.value = e.payload.speed;
+          }
+        }
+      }
+    );
+    await invoke("ollama_pull", { baseUrl: base, name });
+    unlisten();
+    toast.success(`模型 ${name} 下载完成`);
+    await refreshOllamaModels();
+  } catch (e: any) {
+    toast.error(`下载失败：${e?.message || e}`);
+  } finally {
+    downloadingModel.value = "";
+    downloadProgress.value = 0;
+    downloadSpeed.value = 0;
+  }
+}
+
+function formatSpeed(bytesPerSec: number): string {
+  if (bytesPerSec > 1e6) return (bytesPerSec / 1e6).toFixed(1) + " MB/s";
+  if (bytesPerSec > 1e3) return (bytesPerSec / 1e3).toFixed(0) + " KB/s";
+  return bytesPerSec + " B/s";
+}
+
+async function removeOllamaModel(name: string) {
+  try {
+    const base = aiCfg.value.baseUrl || "http://localhost:11434";
+    await invoke("ollama_delete", { baseUrl: base, name });
+    toast.success(`已删除 ${name}`);
+    await refreshOllamaModels();
+  } catch (e: any) {
+    toast.error(`删除失败：${e?.message || e}`);
+  }
+}
+
+function formatSize(bytes: number) {
+  if (bytes > 1e9) return (bytes / 1e9).toFixed(1) + "GB";
+  if (bytes > 1e6) return (bytes / 1e6).toFixed(0) + "MB";
+  return bytes + "B";
+}
+
+function openOllamaSite() {
+  void openInAppBrowser("https://ollama.com/download");
+}
 
 // 快脑 / Laya 控制台
 const DEFAULT_FB_CFG: AutoExecConfigInfo = {
@@ -438,6 +592,7 @@ async function onTestAi() {
 function pickAi(p: "ollama" | "cloud") {
   aiCfg.value.useBuiltin = false;
   aiCfg.value.provider = p;
+  if (p === "ollama") void refreshOllamaModels();
 }
 
 /** 单独拉取模型列表（不强制保存配置），用于手动刷新下拉选项 */
@@ -1775,10 +1930,87 @@ async function clearL2Key(r: PluginRow) {
                     <span class="pro-active-dot"></span>
                     <span class="pro-active-title">Pro 订阅生效中</span>
                   </div>
-                  <div class="pro-active-row"><span>订阅计划</span><b>{{ license.plan || "pro-annual" }}</b></div>
+                  <div class="pro-active-row"><span>订阅计划</span><b>{{ planLabel(license.plan) }}</b></div>
                   <div class="pro-active-row"><span>到期时间</span><b>{{ license.expiresAt }}</b></div>
                   <div class="pro-active-row"><span>剩余天数</span><b>{{ license.daysLeft }} 天</b></div>
+                  <div class="pro-active-row">
+                    <span>每日 AI 配额</span>
+                    <b>
+                      <span style="color:var(--q-accent,#22d3c5)">{{ license.todayUsed ?? 0 }}</span>
+                      <span style="opacity:.6"> / {{ license.dailyQuota ?? 0 }} 次</span>
+                    </b>
+                  </div>
+                  <div class="pro-active-row">
+                    <span>AI 次数包</span>
+                    <b v-if="license.aiBalance != null" style="color:var(--q-accent,#22d3c5)">剩余 {{ license.aiBalance }} 次</b>
+                    <b v-else style="opacity:.5">未购买（叠加包不占用每日配额）</b>
+                  </div>
+                  <div class="pro-active-row"><span>设备绑定</span><b v-if="license.needRelocate" style="color:var(--q-err,#e04b4b)">需换机授权</b><b v-else>已绑定本机</b></div>
                   <div v-if="license.status?.rollback_detected" class="pro-rollback">检测到系统时间回拨，Pro 已暂停，请校正系统时间后重新打开软件。</div>
+                  <div v-if="IS_DEV" class="pro-debug-zone">
+                    <div class="pro-debug-tip">DEBUG 构建 · 测试专用</div>
+                    <button class="pro-debug-btn" :disabled="clearBusy" @click="onClearLicense">
+                      {{ clearBusy ? "清除中…" : "清除激活码 · 回到免费版" }}
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 升级套餐 -->
+                <div class="pro-section-title">升级套餐</div>
+                <div class="pro-upgrade-grid">
+                  <div class="pro-plan-card" :class="{ hot: license.plan === 'monthly' }">
+                    <div class="pro-plan-name">月卡</div>
+                    <div class="pro-plan-price">¥29<span>/月</span></div>
+                    <div class="pro-plan-quota">50 次 AI/天</div>
+                    <button class="pro-plan-btn" @click="goBuy">升级</button>
+                  </div>
+                  <div class="pro-plan-card" :class="{ hot: license.plan === 'quarterly' }">
+                    <div class="pro-plan-name">季卡</div>
+                    <div class="pro-plan-price">¥69<span>/季</span></div>
+                    <div class="pro-plan-quota">80 次 AI/天</div>
+                    <button class="pro-plan-btn" @click="goBuy">升级</button>
+                  </div>
+                  <div class="pro-plan-card hot" :class="{ active: license.plan === 'annual' || license.plan === 'pro-annual' }">
+                    <div class="pro-plan-name">年卡</div>
+                    <div class="pro-plan-price">¥199<span>/年</span></div>
+                    <div class="pro-plan-quota">100 次 AI/天</div>
+                    <button class="pro-plan-btn" @click="goBuy">{{ (license.plan === 'annual' || license.plan === 'pro-annual') ? '当前套餐' : '升级' }}</button>
+                  </div>
+                </div>
+
+                <!-- AI 次数包 -->
+                <div class="pro-section-title">AI 次数包 <span class="pro-section-sub">不占用每日配额，叠加使用</span></div>
+                <div class="pro-topup-grid">
+                  <div class="pro-topup-card">
+                    <div class="pro-topup-name">500 次</div>
+                    <div class="pro-topup-price">¥19</div>
+                    <button class="pro-topup-btn" @click="goBuyTopup">购买</button>
+                  </div>
+                  <div class="pro-topup-card">
+                    <div class="pro-topup-name">1000 次</div>
+                    <div class="pro-topup-price">¥35</div>
+                    <button class="pro-topup-btn" @click="goBuyTopup">购买</button>
+                  </div>
+                  <div class="pro-topup-card hot">
+                    <div class="pro-topup-name">2000 次</div>
+                    <div class="pro-topup-price">¥59</div>
+                    <div class="pro-topup-tag">超值</div>
+                    <button class="pro-topup-btn" @click="goBuyTopup">购买</button>
+                  </div>
+                </div>
+              </template>
+              <template v-else-if="license.needRelocate">
+                <div class="pro-relocate">
+                  <div class="pro-reloc-title">需要换机授权</div>
+                  <div class="pro-msg">检测到该激活码已绑定其他设备，当前 Pro 已暂停。请复制下面的申请码发给卖家，获取换机授权码后粘贴提交（授权码 7 天内有效）。</div>
+                  <div class="reloc-req">
+                    <code>{{ license.relocateRequest }}</code>
+                    <button class="pro-act-btn" @click="copyRelocReq">复制申请码</button>
+                  </div>
+                  <textarea v-model="relocInput" rows="2" class="pro-code-input" placeholder="粘贴卖家给的换机授权码（TGR.xxx.xxx）"></textarea>
+                  <button class="pro-act-btn" :disabled="relocBusy" @click="onRelocate">{{ relocBusy ? "提交中…" : "确认换机" }}</button>
+                  <div v-if="relocMsg" class="pro-msg">{{ relocMsg }}</div>
+                  <div class="pro-note">换机授权码由卖家签发，与本机指纹绑定，不可转用于其他设备；新授权码 7 天内有效。</div>
                 </div>
               </template>
               <template v-else>
@@ -1787,7 +2019,23 @@ async function clearL2Key(r: PluginRow) {
                   <div class="pro-badge">PRO</div>
                   <div class="pro-hero-title">TickGold <span>Pro</span></div>
                   <div class="pro-hero-sub">解锁 AI 盯盘助手与全部 Pro 高级能力</div>
-                  <div class="pro-price">¥199<span> / 年</span></div>
+                  <div class="pro-plans">
+                    <div class="pro-plan-card">
+                      <div class="pro-plan-name">月卡</div>
+                      <div class="pro-plan-price">¥29<span>/月</span></div>
+                      <div class="pro-plan-quota">50 次 AI/天</div>
+                    </div>
+                    <div class="pro-plan-card">
+                      <div class="pro-plan-name">季卡</div>
+                      <div class="pro-plan-price">¥69<span>/季</span></div>
+                      <div class="pro-plan-quota">80 次 AI/天</div>
+                    </div>
+                    <div class="pro-plan-card hot">
+                      <div class="pro-plan-name">年卡</div>
+                      <div class="pro-plan-price">¥199<span>/年</span></div>
+                      <div class="pro-plan-quota">100 次 AI/天</div>
+                    </div>
+                  </div>
                   <button class="pro-buy-btn" @click="goBuy">
                     <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5z" /></svg>
                     去面包多购买
@@ -1815,7 +2063,7 @@ async function clearL2Key(r: PluginRow) {
                   <button class="pro-act-btn" :disabled="actBusy" @click="onActivate">{{ actBusy ? "激活中…" : "激活 Pro" }}</button>
                 </div>
                 <div v-if="actMsg" class="pro-msg">{{ actMsg }}</div>
-                <div class="pro-note">激活后立即生效，到期自动降级免费版。卡密仅供本人使用，请勿转售。</div>
+                <div class="pro-note">激活后立即生效，到期自动降级免费版。激活码绑定首次激活的设备；换机或重装导致绑定失效时，请联系卖家授权。</div>
               </template>
             </div>
             <!-- 外观 / 配色 -->
@@ -2178,27 +2426,29 @@ async function clearL2Key(r: PluginRow) {
                 <svg class="ai-lock-icon" viewBox="0 0 24 24" width="34" height="34"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm0 2a3 3 0 0 1 3 3v3H9V7a3 3 0 0 1 3-3zm0 8.5a1.5 1.5 0 0 1 1 2.65V18a1 1 0 0 1-2 0v-2.85a1.5 1.5 0 0 1 1-2.65z"/></svg>
                 <div class="ai-lock-title">AI 功能为 Pro 订阅专享</div>
                 <div class="ai-lock-sub">激活 Pro 后可使用内置智谱 GLM-4.5 开箱即用，每日 100 次调用配额；本地 Ollama / 云端 API 模型源同样仅在 Pro 下生效。</div>
+                <div v-if="license.aiBalance != null" class="ai-lock-sub" style="margin-top:6px;color:var(--q-accent,#22d3c5)">AI 次数包剩余：<b>{{ license.aiBalance }} 次</b>（用完后可购买 AI 次数卡在 Pro 页充值，不限当日次数）。</div>
                 <button class="pro-buy-btn" @click="goBuy">订阅 Pro 解锁 AI</button>
               </div>
               <template v-else>
               <!-- 第一步：选 AI 模型 -->
               <div class="section-title">AI 模型</div>
-              <div class="section-sub">选本地或云端模型，用于智能问答和选股分析</div>
               <div class="seg ai-provider">
                 <button type="button" class="seg-btn" :class="{ on: aiCfg.useBuiltin }" @click="aiCfg.useBuiltin = true">内置模型（推荐）</button>
                 <button type="button" class="seg-btn" :class="{ on: !aiCfg.useBuiltin && aiCfg.provider === 'ollama' }" @click="pickAi('ollama')">本地 Ollama</button>
                 <button type="button" class="seg-btn" :class="{ on: !aiCfg.useBuiltin && aiCfg.provider === 'cloud' }" @click="pickAi('cloud')">云端 API</button>
               </div>
 
-              <div v-if="aiCfg.useBuiltin" class="builtin-tip">
-                <div class="builtin-title">内置智谱 GLM-4.5 · 开箱即用</div>
-                <div class="section-sub" style="margin-top:4px">订阅 Pro 激活后 AI 功能直接可用，无需配置模型或密钥。每日 AI 调用设有合理配额（100 次/天），防止账号滥用，次日自动重置。</div>
+              <!-- 当前模型简短提示 -->
+              <div class="current-model-tip">
+                <span v-if="aiCfg.useBuiltin">⭐ 内置智谱 GLM-4.5 · 开箱即用，每日 20-100 次配额（按套餐）</span>
+                <span v-else-if="aiCfg.provider === 'ollama'">🖥️ 本地 Ollama · 离线运行，不耗配额，需先安装 Ollama 并下载模型</span>
+                <span v-else>☁️ 云端 API · 用你自己的 Key，不耗 TickGold 配额，API 费用由第三方收取</span>
               </div>
 
-              <template v-else>
+              <template v-if="!aiCfg.useBuiltin">
                 <div class="ai-field">
                   <label>接口地址 Base URL</label>
-                  <input v-model="aiCfg.baseUrl" type="text" spellcheck="false" :placeholder="aiCfg.provider === 'ollama' ? 'http://localhost:11434' : 'https://api.deepseek.com/v1'" />
+                  <input v-model="aiCfg.baseUrl" type="text" spellcheck="false" :placeholder="aiCfg.provider === 'ollama' ? 'http://localhost:11434（不要加 /v1）' : 'https://api.deepseek.com/v1'" />
                 </div>
 
                 <div class="ai-field-row">
@@ -2206,6 +2456,9 @@ async function clearL2Key(r: PluginRow) {
                     <label>对话模型
                       <button v-if="aiCfg.provider === 'cloud'" type="button" class="mini-link" :disabled="fetchingModels" @click.prevent="onFetchModels">
                         ↻ 拉取模型列表
+                      </button>
+                      <button v-if="aiCfg.provider === 'ollama'" type="button" class="mini-link" :disabled="ollamaLoading" @click.prevent="refreshOllamaModels">
+                        ↻ 刷新
                       </button>
                     </label>
                     <input v-model="aiCfg.chatModel" type="text" spellcheck="false"
@@ -2220,6 +2473,69 @@ async function clearL2Key(r: PluginRow) {
                     <label>嵌入模型（知识库用）</label>
                     <input v-model="aiCfg.embedModel" type="text" spellcheck="false"
                       placeholder="bge-m3 / text-embedding-3-small" />
+                  </div>
+                </div>
+
+                <!-- Ollama 模型管理面板 -->
+                <div v-if="aiCfg.provider === 'ollama'" class="ollama-panel">
+                  <div class="ollama-head">
+                    <span class="ollama-title">本地模型管理</span>
+                    <span class="ollama-status" :class="{ ok: !ollamaError }">
+                      <span class="ollama-dot" :class="{ ok: !ollamaError }"></span>
+                      {{ ollamaError ? '未连接' : '已连接' }}
+                    </span>
+                    <button class="logs-btn" :disabled="ollamaLoading" @click="refreshOllamaModels">
+                      {{ ollamaLoading ? "加载中…" : "刷新列表" }}
+                    </button>
+                  </div>
+
+                  <div v-if="ollamaError" class="ollama-error">
+                    <div class="ollama-error-title">⚠️ 本地 Ollama 未连接</div>
+                    <div class="ollama-error-desc">你还没有安装 Ollama 软件，或 Ollama 没有在运行。Ollama 是本地大模型运行环境，模型需要在它上面跑。</div>
+                    <div class="ollama-steps">
+                      <div class="ollama-step">1. 下载并安装 Ollama（免费开源）</div>
+                      <div class="ollama-step">2. 安装后自动后台运行，无需手动启动</div>
+                      <div class="ollama-step">3. 回到这里点「刷新列表」</div>
+                    </div>
+                    <button class="ollama-install-btn" @click="openOllamaSite">
+                      下载 Ollama 官网 →
+                    </button>
+                  </div>
+
+                  <!-- 已安装模型 -->
+                  <div v-if="ollamaInstalled.length" class="ollama-section">
+                    <div class="ollama-sec-title">已安装（{{ ollamaInstalled.length }}）</div>
+                    <div v-for="m in ollamaInstalled" :key="m.name" class="ollama-model-row">
+                      <span class="ollama-model-name">{{ m.name }}</span>
+                      <span class="ollama-model-size">{{ formatSize(m.size) }}</span>
+                      <button class="ollama-use-btn" :class="{ active: aiCfg.chatModel === m.name }"
+                        @click="aiCfg.chatModel = m.name">
+                        {{ aiCfg.chatModel === m.name ? '使用中' : '设为对话模型' }}
+                      </button>
+                      <button class="ollama-del-btn" @click="removeOllamaModel(m.name)">卸载</button>
+                    </div>
+                  </div>
+
+                  <!-- 推荐模型 -->
+                  <div class="ollama-section">
+                    <div class="ollama-sec-title">推荐下载</div>
+                    <div v-for="r in RECOMMENDED_MODELS" :key="r.name" class="ollama-model-row">
+                      <span class="ollama-model-name">{{ r.name }}</span>
+                      <span class="ollama-model-size">{{ r.size }} · {{ r.ram }}</span>
+                      <span class="ollama-model-desc" :title="r.desc">{{ r.desc }}</span>
+                      <button v-if="downloadingModel === r.name" class="ollama-dl-btn disabled">
+                        下载中…
+                      </button>
+                      <button v-else class="ollama-dl-btn" :disabled="!!ollamaError" @click="pullOllamaModel(r.name)">
+                        下载
+                      </button>
+                    </div>
+                    <div v-if="downloadingModel" class="ollama-progress">
+                      <div class="ollama-progress-bar">
+                        <div class="ollama-progress-fill" :style="{ width: downloadProgress + '%' }"></div>
+                      </div>
+                      <span>{{ downloadingModel }} · {{ downloadProgress }}% · {{ formatSpeed(downloadSpeed) }}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -2239,8 +2555,8 @@ async function clearL2Key(r: PluginRow) {
               <div class="ai-actions">
                 <button type="button" class="logs-btn" :disabled="testingAi" @click="onTestAi">{{ testingAi ? "测试中…" : "测试连接" }}</button>
                 <button type="button" class="logs-btn primary" @click="saveAiTab">保存模型配置</button>
-                <span v-if="aiMsg" class="ai-msg" :class="{ ok: /成功|已保存/.test(aiMsg) }">{{ aiMsg }}</span>
               </div>
+              <div v-if="aiMsg" class="ai-msg" :class="{ ok: /成功|已保存/.test(aiMsg) }" style="margin-top: 6px;">{{ aiMsg }}</div>
               </template>
 
             </div>
@@ -2249,14 +2565,20 @@ async function clearL2Key(r: PluginRow) {
             <div v-else-if="tab === 'autotrade'" class="ai-tab">
               <div v-if="fbCfg">
                 <div class="section-title">盘中决策引擎</div>
-                <div class="section-sub">自动扫描自选股信号，规则脑默认可用；Laya 是更强的本地模型（可选）</div>
+                <div class="section-sub">选择 AI 分析行情的方式：规则脑免费即用，大模型分析更智能</div>
                 <div class="seg ai-provider">
                   <button type="button" class="seg-btn" :class="{ on: fbCfg.brainMode === 'rule' }" @click="fbCfg.brainMode = 'rule'">技术指标规则脑</button>
-                  <button type="button" class="seg-btn" :class="{ on: fbCfg.brainMode === 'cloud_llm' }" @click="fbCfg.brainMode = 'cloud_llm'">云端大模型</button>
+                  <button type="button" class="seg-btn" :class="{ on: fbCfg.brainMode === 'cloud_llm' }" @click="fbCfg.brainMode = 'cloud_llm'">AI 大模型</button>
                 </div>
 
+                <div v-if="fbCfg.brainMode === 'rule'" class="section-sub" style="margin-top:8px; color: var(--accent-2)">
+                  💡 基于内置技术指标自动扫描信号，无需 API Key，免费使用
+                </div>
                 <div v-if="fbCfg.brainMode === 'cloud_llm'" class="section-sub" style="margin-top:8px; color: var(--accent-2)">
-                  💡 使用上方配置的云端大模型（DeepSeek/GPT等）归纳行情特征（仅做特征归纳，不构成投资建议），API Key 在 AI模型 里设置
+                  💡 使用「AI模型」页配置的模型分析行情
+                  <span v-if="aiCfg.useBuiltin" style="margin-left:8px; padding:2px 8px; border-radius:4px; background:rgba(255,215,0,0.15); color:#ffd700">当前：内置模型</span>
+                  <span v-else-if="aiCfg.provider === 'ollama'" style="margin-left:8px; padding:2px 8px; border-radius:4px; background:rgba(100,200,255,0.15); color:#64c8ff">当前：本地 Ollama · 离线运行</span>
+                  <span v-else-if="aiCfg.provider === 'cloud'" style="margin-left:8px; padding:2px 8px; border-radius:4px; background:rgba(100,255,100,0.15); color:#64ff64">当前：云端 API</span>
                 </div>
 
                 <!-- 交易模式选择 -->
@@ -3085,6 +3407,65 @@ async function clearL2Key(r: PluginRow) {
 .bridge-tpl { width:100%; box-sizing:border-box; background:var(--bg-input,#0e1117); border:1px solid var(--border,#2a3344); border-radius:6px; color:var(--text,#e6ecf5); padding:6px 8px; font-size:11px; resize:vertical; font-family:inherit; line-height:1.5; }
 .tpl-hint { color:var(--text-dim,#7d8698); font-size:10px; line-height:1.6; }
 .ai-provider { align-self: flex-start; margin-bottom: 4px; }
+/* ===== AI 模型对比卡片 ===== */
+.ai-compare { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.ai-compare-row { display: flex; gap: 12px; padding: 12px 14px; border-radius: 10px;
+  background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.06); transition: all .15s; }
+.ai-compare-row.active { border-color: rgba(0,255,213,.4); background: rgba(0,255,213,.04); }
+.ai-compare-icon { font-size: 22px; flex: none; }
+.ai-compare-body { flex: 1; min-width: 0; }
+.ai-compare-name { font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+.ai-compare-desc { font-size: 11.5px; color: #9fb3d1; line-height: 1.6; margin-bottom: 6px; }
+.ai-compare-tags { display: flex; gap: 5px; flex-wrap: wrap; }
+.ai-tag { font-size: 10px; padding: 2px 7px; border-radius: 4px; font-weight: 500; }
+.ai-tag.green { color: #00ffd5; background: rgba(0,255,213,.1); border: 1px solid rgba(0,255,213,.25); }
+.ai-tag.yellow { color: #ffd76a; background: rgba(255,215,106,.1); border: 1px solid rgba(255,215,106,.25); }
+.ai-tag.orange { color: #ffa94d; background: rgba(255,169,77,.1); border: 1px solid rgba(255,169,77,.25); }
+.current-model-tip { padding: 10px 14px; border-radius: 8px; font-size: 12px; color: #9fb3d1;
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); margin: 10px 0; }
+
+/* ===== Ollama 模型管理面板 ===== */
+.ollama-panel { margin: 12px 0; padding: 14px; border-radius: 10px;
+  background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.08); }
+.ollama-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.ollama-title { font-size: 13px; font-weight: 600; color: #e6ecf5; }
+.ollama-head .logs-btn { margin-left: auto; }
+.ollama-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: #9fb3d1; }
+.ollama-dot { width: 8px; height: 8px; border-radius: 50%; background: #666; }
+.ollama-dot.ok { background: #4ade80; box-shadow: 0 0 6px rgba(74,222,128,.5); }
+.ollama-status.ok { color: #4ade80; }
+.ollama-error { padding: 14px 16px; border-radius: 10px;
+  background: rgba(255,169,77,.08); border: 1px solid rgba(255,169,77,.3); }
+.ollama-error-title { font-size: 13px; font-weight: 600; color: #ffa94d; margin-bottom: 6px; }
+.ollama-error-desc { font-size: 11.5px; color: #9fb3d1; line-height: 1.6; margin-bottom: 10px; }
+.ollama-steps { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.ollama-step { font-size: 11.5px; color: #9fb3d1; }
+.ollama-install-btn { padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600;
+  border: none; background: linear-gradient(135deg, #ffa94d, #ff6b35); color: #fff; cursor: pointer; }
+.ollama-install-btn:hover { opacity: 0.9; }
+.ollama-section { margin-top: 10px; }
+.ollama-sec-title { font-size: 11px; font-weight: 600; color: #9fb3d1; margin-bottom: 6px; }
+.ollama-model-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+  border-radius: 6px; background: rgba(0,0,0,.2); margin-bottom: 4px; font-size: 12px; }
+.ollama-model-name { color: #e6ecf5; font-weight: 500; font-family: monospace; min-width: 140px; }
+.ollama-model-size { color: #6b7f9b; font-size: 11px; min-width: 80px; }
+.ollama-model-desc { color: #6b7f9b; font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ollama-use-btn { padding: 3px 10px; border-radius: 5px; font-size: 11px; cursor: pointer;
+  border: 1px solid rgba(0,255,213,.3); background: rgba(0,255,213,.08); color: #00ffd5; }
+.ollama-use-btn.active { background: rgba(0,255,213,.2); font-weight: 600; }
+.ollama-del-btn { padding: 3px 8px; border-radius: 5px; font-size: 11px; cursor: pointer;
+  border: 1px solid rgba(255,95,87,.3); background: rgba(255,95,87,.08); color: #ff5f57; }
+.ollama-del-btn:hover { background: rgba(255,95,87,.15); }
+.ollama-dl-btn { padding: 3px 12px; border-radius: 5px; font-size: 11px; cursor: pointer;
+  border: 1px solid rgba(232,200,120,.3); background: rgba(232,200,120,.08); color: #e8c878; }
+.ollama-dl-btn:hover:not(.disabled) { background: rgba(232,200,120,.15); }
+.ollama-dl-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ollama-dl-btn.disabled { opacity: .6; cursor: default; }
+.ollama-progress { margin-top: 8px; }
+.ollama-progress-bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; margin-bottom: 4px; }
+.ollama-progress-fill { height: 100%; background: linear-gradient(90deg, #e8c878, #00ffd5); transition: width .3s; }
+.ollama-progress span { font-size: 11px; color: #9fb3d1; }
+
 .builtin-tip {
   margin: 0 0 12px; padding: 12px 14px;
   border: 1px solid rgba(0,255,213,.35); border-radius: 10px;
@@ -3398,6 +3779,17 @@ async function clearL2Key(r: PluginRow) {
 .pro-hero-sub { margin-top: 7px; font-size: 12.5px; color: #9fb3d1; }
 .pro-price { margin-top: 15px; font-size: 27px; font-weight: 800; color: #00ffd5; }
 .pro-price span { font-size: 12px; color: #6b7f9b; font-weight: 500; }
+
+/* ===== v3.14 三档价格卡片 ===== */
+.pro-plans { margin-top: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pro-plan-card { padding: 12px 10px; border-radius: 10px; text-align: center;
+  background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); }
+.pro-plan-card.hot { background: rgba(0,255,213,.08); border-color: rgba(0,255,213,.4); }
+.pro-plan-name { font-size: 12px; color: #8aa0bd; margin-bottom: 6px; }
+.pro-plan-card.hot .pro-plan-name { color: #00ffd5; }
+.pro-plan-price { font-size: 20px; font-weight: 800; color: #e8f1ff; }
+.pro-plan-price span { font-size: 11px; color: #6b7f9b; font-weight: 500; margin-left: 2px; }
+.pro-plan-quota { font-size: 11px; color: #6b7f9b; margin-top: 6px; }
 .pro-buy-btn { margin-top: 15px; display: inline-flex; align-items: center; gap: 6px;
   padding: 10px 28px; border: none; border-radius: 10px; cursor: pointer;
   font-size: 13.5px; font-weight: 700; color: #04121a;
@@ -3450,6 +3842,58 @@ async function clearL2Key(r: PluginRow) {
 .pro-active-row b { font-size: 13px; color: var(--text); font-weight: 600; }
 .pro-rollback { margin-top: 14px; padding: 10px 12px; border-radius: 8px; font-size: 12.5px;
   color: #ff5f57; background: rgba(255,95,87,.08); border: 1px solid rgba(255,95,87,.3); }
+
+/* ===== Debug 清除激活码（仅 dev 构建）===== */
+.pro-debug-zone { margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(255,255,255,.12); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pro-debug-tip { font-size: 11px; color: rgba(255,255,255,.45); letter-spacing: .5px; }
+.pro-debug-btn { padding: 7px 14px; border-radius: 8px; font-size: 12.5px; font-weight: 600;
+  color: #ff8a80; background: rgba(255,95,87,.1); border: 1px solid rgba(255,95,87,.35); cursor: pointer;
+  transition: background .15s, color .15s; }
+.pro-debug-btn:hover:not(:disabled) { background: rgba(255,95,87,.22); color: #ffd0cc; }
+.pro-debug-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ===== v3.7 升级套餐 + AI 次数包 ===== */
+.pro-section-title { margin: 20px 0 10px; font-size: 13px; font-weight: 700; color: #e8c878; letter-spacing: .5px; display: flex; align-items: baseline; gap: 8px; }
+.pro-section-sub { font-size: 11px; font-weight: 400; color: #6b7f9b; }
+.pro-upgrade-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pro-plan-card { position: relative; padding: 16px 14px; border-radius: 12px; text-align: center;
+  background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); transition: all .15s; }
+.pro-plan-card:hover { border-color: rgba(232,200,120,.4); background: rgba(232,200,120,.05); }
+.pro-plan-card.hot { border-color: rgba(232,200,120,.4); background: rgba(232,200,120,.06); }
+.pro-plan-card.active { border-color: rgba(0,255,213,.5); background: rgba(0,255,213,.06); }
+.pro-plan-name { font-size: 12px; color: #9fb3d1; margin-bottom: 6px; }
+.pro-plan-price { font-size: 24px; font-weight: 800; color: #fff; }
+.pro-plan-price span { font-size: 12px; font-weight: 400; color: #6b7f9b; margin-left: 2px; }
+.pro-plan-quota { font-size: 11px; color: #6b7f9b; margin-top: 4px; margin-bottom: 10px; }
+.pro-plan-btn { width: 100%; padding: 6px 0; border-radius: 7px; font-size: 12px; font-weight: 600;
+  border: 1px solid rgba(232,200,120,.35); background: rgba(232,200,120,.1); color: #e8c878; cursor: pointer;
+  transition: all .15s; }
+.pro-plan-btn:hover { background: rgba(232,200,120,.2); }
+.pro-plan-card.active .pro-plan-btn { opacity: .5; cursor: default; }
+
+.pro-topup-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pro-topup-card { position: relative; padding: 16px 14px; border-radius: 12px; text-align: center;
+  background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); transition: all .15s; }
+.pro-topup-card:hover { border-color: rgba(0,255,213,.4); background: rgba(0,255,213,.05); }
+.pro-topup-card.hot { border-color: rgba(0,255,213,.4); background: rgba(0,255,213,.06); }
+.pro-topup-name { font-size: 13px; color: #e6ecf5; font-weight: 600; margin-bottom: 6px; }
+.pro-topup-price { font-size: 22px; font-weight: 800; color: #00ffd5; margin-bottom: 10px; }
+.pro-topup-tag { position: absolute; top: 8px; right: 8px; font-size: 9px; font-weight: 700;
+  color: #000; background: #00ffd5; padding: 2px 6px; border-radius: 4px; }
+.pro-topup-btn { width: 100%; padding: 6px 0; border-radius: 7px; font-size: 12px; font-weight: 600;
+  border: 1px solid rgba(0,255,213,.35); background: rgba(0,255,213,.1); color: #00ffd5; cursor: pointer;
+  transition: all .15s; }
+.pro-topup-btn:hover { background: rgba(0,255,213,.2); }
+
+/* ===== v3.4 换机授权 ===== */
+.pro-relocate { border: 1px dashed rgba(255,149,0,.45); border-radius: 12px; padding: 16px;
+  background: linear-gradient(160deg, rgba(40,22,4,.35), rgba(10,18,30,.8)); margin-top: 2px; }
+.pro-reloc-title { font-size: 15px; font-weight: 800; color: #ffa94d; margin-bottom: 10px; }
+.pro-relocate .pro-code-input { margin-top: 12px; }
+.pro-relocate .pro-act-btn { margin-top: 10px; }
+.reloc-req { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.reloc-req code { flex: 1; min-width: 220px; font-size: 11.5px; color: #ffd9a8; word-break: break-all;
+  background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.08); border-radius: 8px; padding: 8px 10px; }
 
 
 /* ===== v3.0.9 AI 配置锁定态 ===== */

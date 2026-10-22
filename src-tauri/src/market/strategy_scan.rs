@@ -344,7 +344,8 @@ pub async fn scan(req: &StrategyScanReq) -> Result<Vec<TacticHit>, String> {
 
 #[tauri::command]
 pub async fn strategy_scan_run(req: StrategyScanReq, app: tauri::AppHandle) -> Result<Vec<TacticHit>, String> {
-    crate::license::require_pro_ai(&app)?;
+    // 本地策略匹配，不调模型：只校验 Pro 身份，不扣 AI 配额
+    crate::license::require_pro(&app)?;
     scan(&req).await
 }
 

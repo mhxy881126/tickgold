@@ -129,7 +129,7 @@ lazy_static::lazy_static! {
     static ref AI_RESULT_CACHE: Mutex<HashMap<String, CacheEntry<String>>> = Mutex::new(HashMap::new());
 }
 const CACHE_TTL: Duration = Duration::from_secs(10);
-const AI_CACHE_TTL: Duration = Duration::from_secs(180);
+const AI_CACHE_TTL: Duration = Duration::from_secs(1800);
 
 fn get_cached<T: Clone>(cache: &Mutex<Option<CacheEntry<T>>>) -> Option<T> {
     let guard = cache.lock().ok()?;
@@ -837,7 +837,10 @@ pub async fn ai_tomorrow_mainline_stream(
     state: tauri::State<'_, super::AiState>,
     app_handle: tauri::AppHandle,
     stream_id: String,
-app: tauri::AppHandle) -> Result<(), String> {
+    app: tauri::AppHandle,
+    force: Option<bool>,
+) -> Result<(), String> {
+    let force = force.unwrap_or(false);
     let use_builtin = crate::ai::config::load_config(
         &crate::ai::vectordb::open(&state.dir().join("ai.db"))?.0,
     )
@@ -892,12 +895,16 @@ app: tauri::AppHandle) -> Result<(), String> {
     };
     let user = format!("【涨停池】\n{}\n【炸板池】{}\n【板块】{}\n【最新快讯】\n{}\n\n请基于以上数据，梳理次日值得跟踪的方向线索（非涨跌预测）。", zt_text, zb_text, sec, news);
 
-    if let Some(cached) = get_ai_cache("tomorrow_mainline") {
-        emit_stream(
-            &app_handle,
-            &stream_id,
-            &json!({"type":"cached","full_text":cached}),
-        );
+    // 缓存命中且非强制刷新：直接返回缓存，不调 LLM（省配额、秒开）
+    if !force {
+        if let Some(cached) = get_ai_cache("tomorrow_mainline") {
+            emit_stream(
+                &app_handle,
+                &stream_id,
+                &json!({"type":"cached","full_text":cached}),
+            );
+            return Ok(());
+        }
     }
 
     let app = app_handle.clone();

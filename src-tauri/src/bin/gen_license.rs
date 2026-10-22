@@ -55,6 +55,8 @@ fn main() {
     let mut days = 365i64;
     let mut out = "codes.txt".to_string();
     let mut key_path: Option<String> = None;
+    let mut plan = DEFAULT_PLAN.to_string();
+    let mut ai_quota: Option<u32> = None;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -69,6 +71,14 @@ fn main() {
             "--days" => {
                 i += 1;
                 days = args[i].parse().unwrap_or(365);
+            }
+            "--plan" => {
+                i += 1;
+                plan = args[i].clone();
+            }
+            "--ai-quota" => {
+                i += 1;
+                ai_quota = Some(args[i].parse().unwrap_or(0));
             }
             "--out" => {
                 i += 1;
@@ -90,6 +100,7 @@ fn main() {
     let sk = SigningKey::<Sha256>::new_unprefixed(key);
     let mut rng = ThreadRng::default();
 
+    // ai-topup 卡不写 expires_at 限制（或给远期），其余按 days
     let expires = Local::now().date_naive() + Duration::days(days);
     let expires_s = expires.format("%Y-%m-%d").to_string();
     let mut f = fs::File::create(&out).expect("create out");
@@ -97,12 +108,15 @@ fn main() {
     let mut n = 0usize;
     while n < count {
         let nonce: u128 = rand::Rng::gen(&mut rng);
-        let payload = serde_json::json!({
-            "plan": DEFAULT_PLAN,
+        let mut payload = serde_json::json!({
+            "plan": plan,
             "product": DEFAULT_PRODUCT,
             "expires_at": expires_s,
             "nonce": nonce.to_string(),
         });
+        if let Some(q) = ai_quota {
+            payload["ai_quota"] = serde_json::json!(q);
+        }
         let pbytes = serde_json::to_vec(&payload).expect("json");
         let sig = sk.sign(&pbytes);
         let code = format!(
@@ -116,6 +130,7 @@ fn main() {
         }
     }
     println!(
-        "wrote {count} codes (plan={DEFAULT_PLAN}, expires_at={expires_s}, days={days}) -> {out}"
+        "wrote {count} codes (plan={plan}, expires_at={expires_s}, days={days}{ai}) -> {out}",
+        ai = ai_quota.map(|q| format!(", ai_quota={q}")).unwrap_or_default()
     );
 }

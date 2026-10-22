@@ -341,6 +341,7 @@ async function askExample(q: string) {
           <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18" /></svg>
         </button>
         <span class="tb-title">{{ currentTitle }}</span>
+        <span class="quota-badge" title="每条消息消耗 1 次 AI 配额">🎫 1次/条</span>
         <span v-if="streaming" class="tb-live"><span class="live-dot" />思考中</span>
       </header>
 
@@ -682,6 +683,11 @@ async function askExample(q: string) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.quota-badge {
+  padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;
+  background: rgba(255, 193, 7, .15); color: #ffc107; border: 1px solid rgba(255, 193, 7, .3);
+  cursor: help; white-space: nowrap;
 }
 .tb-live {
   margin-left: auto;

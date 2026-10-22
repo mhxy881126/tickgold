@@ -503,7 +503,8 @@ pub(crate) async fn ai_build_decision_pack(
     state: tauri::State<'_, ai::AiState>,
     date: Option<String>,
 app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    crate::license::require_pro_ai(&app)?;
+    // 纯本地数据组装，不调模型：只校验 Pro 身份，不扣 AI 配额
+    crate::license::require_pro(&app)?;
     let dir = state.dir();
     tauri::async_runtime::spawn_blocking(move || ai::decision::build_pack(&dir, date.as_deref()))
         .await
@@ -516,7 +517,8 @@ pub(crate) async fn ai_build_review_report(
     state: tauri::State<'_, ai::AiState>,
     date: Option<String>,
 app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    crate::license::require_pro_ai(&app)?;
+    // 纯本地数据组装，不调模型：只校验 Pro 身份，不扣 AI 配额
+    crate::license::require_pro(&app)?;
     let dir = state.dir();
     tauri::async_runtime::spawn_blocking(move || ai::report::build_report(&dir, date.as_deref()))
         .await
@@ -1202,4 +1204,141 @@ pub(crate) fn rust_set_log_level(level: String) -> Result<bool, String> {
 #[tauri::command]
 pub(crate) fn app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+// ===== Ollama 本地模型管理（绕过浏览器跨域）=====
+#[derive(serde::Serialize)]
+pub(crate) struct OllamaModelInfo {
+    pub name: String,
+    pub size: u64,
+    pub modified_at: String,
+}
+
+/// 列出本机已安装的 Ollama 模型
+#[tauri::command]
+pub(crate) async fn ollama_list(base_url: String) -> Result<Vec<OllamaModelInfo>, String> {
+    // 自动去掉 /v1 后缀（用户可能误加）
+    let base = base_url.trim_end_matches('/').trim_end_matches("/v1");
+    let url = format!("{}/api/tags", base);
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| format!("Ollama 未响应：{e}（请确认已安装并运行 Ollama）"))?;
+    if !resp.status().is_success() {
+        return Err(format!("Ollama 返回错误：{}", resp.status()));
+    }
+    let v: serde_json::Value = resp.json().await.map_err(|e| format!("解析失败：{e}"))?;
+    let models = v["models"]
+        .as_array()
+        .unwrap_or(&vec![])
+        .iter()
+        .map(|m| OllamaModelInfo {
+            name: m["name"].as_str().unwrap_or("").to_string(),
+            size: m["size"].as_u64().unwrap_or(0),
+            modified_at: m["modified_at"].as_str().unwrap_or("").to_string(),
+        })
+        .collect();
+    Ok(models)
+}
+
+/// 下载 Ollama 模型（流式进度通过事件推送）
+#[tauri::command]
+pub(crate) async fn ollama_pull(
+    app: tauri::AppHandle,
+    base_url: String,
+    name: String,
+) -> Result<(), String> {
+    use tauri::Emitter;
+    let base = base_url.trim_end_matches('/').trim_end_matches("/v1");
+    let url = format!("{}/api/pull", base);
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&serde_json::json!({ "name": name, "stream": true }))
+        .send()
+        .await
+        .map_err(|e| format!("下载请求失败：{e}"))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Ollama 返回 {}：{}", status, body));
+    }
+    // 读取流式响应，解析进度并推送事件
+    use futures_util::StreamExt;
+    let mut stream = resp.bytes_stream();
+    let mut last_pct: u32 = 0;
+    let mut last_completed: u64 = 0;
+    let mut last_time = std::time::Instant::now();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("读取流失败：{e}"))?;
+        let text = String::from_utf8_lossy(&chunk);
+        for line in text.split('\n') {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+                let status = v["status"].as_str().unwrap_or("").to_string();
+                let completed = v["completed"].as_u64().unwrap_or(0);
+                let total = v["total"].as_u64().unwrap_or(0);
+                let pct = if total > 0 {
+                    (completed as f64 / total as f64 * 100.0) as u32
+                } else {
+                    0
+                };
+                // 计算下载速度（字节/秒）
+                let now = std::time::Instant::now();
+                let elapsed = now.duration_since(last_time).as_secs_f64();
+                let speed = if elapsed > 0.1 && completed > last_completed {
+                    let s = ((completed - last_completed) as f64 / elapsed) as u64;
+                    last_time = now;
+                    last_completed = completed;
+                    s
+                } else {
+                    0
+                };
+                // 只在进度变化时推送，减少事件数量
+                if pct != last_pct || status.contains("success") {
+                    last_pct = pct;
+                    let _ = app.emit(
+                        "ollama:pull-progress",
+                        serde_json::json!({
+                            "name": name,
+                            "status": status,
+                            "completed": completed,
+                            "total": total,
+                            "percent": pct,
+                            "speed": speed,
+                        }),
+                    );
+                }
+                if status == "success" {
+                    return Ok(());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 删除 Ollama 模型
+#[tauri::command]
+pub(crate) async fn ollama_delete(base_url: String, name: String) -> Result<(), String> {
+    let base = base_url.trim_end_matches('/').trim_end_matches("/v1");
+    let url = format!("{}/api/delete", base);
+    let client = reqwest::Client::new();
+    let resp = client
+        .delete(&url)
+        .json(&serde_json::json!({ "name": name }))
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| format!("删除失败：{e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("Ollama 返回错误：{}", resp.status()));
+    }
+    Ok(())
 }

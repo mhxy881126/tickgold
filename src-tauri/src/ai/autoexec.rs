@@ -852,7 +852,7 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                 }
             }
             let pack = json!({"side":side,"features":features,"code":item.code,"name":item.name});
-            // 读取云端 LLM 配置（如果 brain_mode=cloud_llm）
+            // 读取 AI 大模型配置（如果 brain_mode=cloud_llm）
             let cloud = if cfg.brain_mode == "cloud_llm" {
                 let aidb = crate::ai::vectordb::open(&data_dir.join("ai.db")).ok();
                 aidb.as_ref().and_then(|db| {
@@ -862,7 +862,12 @@ pub async fn run_loop(app: AppHandle, ctl: Arc<AutoExecCtl>, data_dir: std::path
                         user: "default".to_string(),
                     };
                     let eff = crate::ai::config::effective_cfg(&ai_cfg);
-                    let key = crate::ai::config::effective_key(&ai_cfg, &secret).ok()??;
+                    // Ollama 不需要 API Key，填占位符即可；内置/云端用真实 Key
+                    let key = if ai_cfg.provider == "ollama" && !ai_cfg.use_builtin {
+                        "ollama".to_string()
+                    } else {
+                        crate::ai::config::effective_key(&ai_cfg, &secret).ok()??
+                    };
                     Some((eff.base_url, key, eff.chat_model))
                 })
             } else {

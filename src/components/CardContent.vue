@@ -146,7 +146,7 @@ function retry() {
       <Backtest />
     </ProGate>
     <ProGate v-else-if="id === 'strategyscan'" title="战法选股" desc="订阅 Pro 后解锁战法扫描与候选标的">
-      <StrategyScan />
+      <StrategyScan @select="$emit('select', $event)" />
     </ProGate>
     <ProGate v-else-if="id === 'reviewreport'" title="复盘报告" desc="订阅 Pro 后解锁每日复盘报告">
       <ReviewReport />

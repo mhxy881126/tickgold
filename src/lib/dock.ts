@@ -77,36 +77,44 @@ const ALL: Record<CardId, DockItem> = {
   spiderbot: { id: "spiderbot", label: "爬虫机器人", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z", desc: "AI 自动盯盘/选股/信号生成（实盘须人工确认）", star: true },
 };
 
-// 4 个场景组：仅描述分组与卡片归属，文案/图标统一从 ALL 取
+// 5 个场景组：免费功能按「我现在要做什么」分组，Pro 付费功能独立成组
 const GROUP_DEFS: { name: string; icon: string; ids: CardId[] }[] = [
   {
     name: "行情·选股",
     icon: "M6 3h2v4H6zm0 14h2v4H6zM5 8h4v8H5zm11-9h2v3h-2zm0 12h2v5h-2zm-1-7h4v7h-4z",
     ids: [
-      "watch", "rank", "intradayai", "auction", "limitpool", "radar", "spider",
-      "sector", "sectorheat", "sectorevent", "screener", "strategyscan", "sieve",
+      "watch", "rank", "auction", "limitpool", "radar", "spider",
+      "sector", "sectorheat", "sectorevent", "screener", "sieve",
     ],
   },
   {
     name: "盯盘·复盘",
     icon: "M12 2A10 10 0 1 0 22 12h-2A8 8 0 1 1 12 4zM12 6v6l5 2-1 1.7L11 13V6z",
     ids: [
-      "reviewtimeline", "dragon", "multigrid", "heatmatrix", "mainline", "rotation",
-      "themelib", "news", "newsdigest", "alert", "journal", "review", "reviewreport",
+      "reviewtimeline", "dragon", "multigrid", "heatmatrix",
+      "themelib", "news", "newsdigest", "alert", "journal", "rotation",
     ],
   },
   {
     name: "交易·执行",
     icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8z",
     ids: [
-      "cockpit", "brokerconsole", "signalbridge", "co", "battleplan", "trade",
-      "risk", "performance", "evolution", "decisionlog", "backtest", "ai",
+      "cockpit", "brokerconsole", "co", "battleplan", "trade",
+      "risk", "performance", "decisionlog", "spiderbot",
     ],
   },
   {
     name: "工具·系统",
     icon: "M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z",
-    ids: ["chart", "trades", "f10", "calendar", "ipo", "calc", "export", "strategy", "spiderbot"],
+    ids: ["chart", "trades", "f10", "calendar", "ipo", "calc", "export", "strategy"],
+  },
+  {
+    name: "Pro 会员",
+    icon: "M12 2l2.9 6.3 6.8.7-5 4.6 1.4 6.7L12 17l-6.1 3.3 1.4-6.7-5-4.6 6.8-.7z",
+    ids: [
+      "ai", "review", "intradayai", "mainline",
+      "backtest", "strategyscan", "signalbridge", "evolution", "reviewreport",
+    ],
   },
 ];
 

@@ -257,7 +257,7 @@ async function doMove(toGroup: string) {
             </div>
           </div>
         </template>
-        <div v-else class="dp-grid">
+        <div v-else class="dp-grid" :class="{ 'pro-grid': current.name === 'Pro 会员' }">
           <div
             v-for="it in current.items"
             :key="it.id"
@@ -443,7 +443,7 @@ async function doMove(toGroup: string) {
 .dp-head span { font-size: 9px; color: var(--text-dim); letter-spacing: 0; }
 .dp-x { background: transparent; border: 0; color: var(--text-dim); font-size: 12px; cursor: pointer; padding: 0 2px; }
 .dp-x:hover { color: var(--text); }
-.dp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.dp-grid { display: grid; grid-template-columns: 1fr; gap: 4px; }
 .dp-section { margin-bottom: 8px; }
 .dp-sec-head {
   font-size: 10px; font-weight: 700; color: var(--text-dim);
@@ -503,6 +503,18 @@ async function doMove(toGroup: string) {
   color: var(--text-dim); font-size: 10.5px; line-height: 1.6;
 }
 .dp-empty b { color: #e8c878; }
+
+/* Pro 会员组：金色边框 + 锁标记 */
+.pro-grid .dp-item {
+  border-left: 2px solid rgba(232, 184, 96, 0.4);
+  padding-left: 6px;
+}
+.pro-grid .dp-item .dpi-t::before {
+  content: "🔒";
+  font-size: 9px;
+  opacity: 0.6;
+  margin-right: 2px;
+}
 
 /* 新增/管理/移动表单面板 */
 .dock-form { width: 190px; }

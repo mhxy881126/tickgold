@@ -499,35 +499,35 @@ function decisionLogsSection(d: ReviewReportData): string {
 }
 
 const HTML_STYLE = `
-  :root { color-scheme: light; }
+  :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin:0; padding:32px; background:#f4f1e8; color:#23201a;
-    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif; font-size:14px; line-height:1.6; }
-  .wrap { max-width:980px; margin:0 auto; }
-  header.report { border-bottom:3px solid #c9a24a; padding-bottom:16px; margin-bottom:8px; }
-  header.report h1 { margin:0 0 6px; font-size:26px; color:#1a1508; }
-  header.report .sub { color:#6b6355; font-size:13px; }
-  .disclaimer { background:#fdf6e3; border:1px solid #e0c674; border-radius:10px;
-    padding:14px 18px; margin:18px 0; color:#7a5b14; font-weight:600; }
-  section { background:#fffdf7; border:1px solid #e7e0cf; border-radius:12px;
-    padding:20px 24px; margin:16px 0; }
-  h2 { font-size:18px; margin:0 0 14px; color:#1a1508; }
-  h3 { font-size:14px; margin:18px 0 8px; color:#4a4436; }
-  .kv-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; }
-  .kv { display:flex; flex-direction:column; gap:2px; background:#f7f3e8;
-    border:1px solid #ece5d2; border-radius:8px; padding:9px 12px; }
-  .kv-k { font-size:11px; color:#8a8170; }
-  .kv-v { font-size:16px; font-weight:700; color:#1a1508; }
-  table { width:100%; border-collapse:collapse; margin:6px 0; font-size:12.5px; }
-  th,td { text-align:left; padding:7px 10px; border-bottom:1px solid #efe9d9; vertical-align:top; }
-  th { background:#f7f3e8; color:#5a5344; font-weight:600; white-space:nowrap; }
-  tr:hover td { background:#fbf8ef; }
-  .note,.meta { color:#8a8170; font-size:12px; }
-  .empty { color:#a39b88; font-style:italic; }
-  .summary { background:#f7f3e8; border-radius:8px; padding:10px 14px; }
+  body { margin:0; padding:24px; background:#0d0f14; color:#e6ecf5;
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif; font-size:13px; line-height:1.6; }
+  .wrap { max-width:960px; margin:0 auto; }
+  header.report { border-bottom:2px solid #c9a24a; padding-bottom:14px; margin-bottom:6px; }
+  header.report h1 { margin:0 0 6px; font-size:24px; color:#e8c878; letter-spacing:1px; }
+  header.report .sub { color:#8a93a6; font-size:12px; }
+  .disclaimer { background:rgba(201,162,74,.08); border:1px solid rgba(201,162,74,.3); border-radius:8px;
+    padding:10px 14px; margin:14px 0; color:#c9a24a; font-size:11px; font-weight:500; }
+  section { background:#15181f; border:1px solid #232a3a; border-radius:10px;
+    padding:16px 20px; margin:12px 0; }
+  h2 { font-size:15px; margin:0 0 12px; color:#e8c878; font-weight:600; }
+  h3 { font-size:13px; margin:14px 0 6px; color:#9aa4b8; font-weight:600; }
+  .kv-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:8px; }
+  .kv { display:flex; flex-direction:column; gap:2px; background:#1a1e28;
+    border:1px solid #263043; border-radius:8px; padding:8px 12px; }
+  .kv-k { font-size:10px; color:#6b7488; }
+  .kv-v { font-size:15px; font-weight:700; color:#e6ecf5; font-variant-numeric:tabular-nums; }
+  table { width:100%; border-collapse:collapse; margin:6px 0; font-size:12px; }
+  th,td { text-align:left; padding:6px 10px; border-bottom:1px solid #232a3a; vertical-align:top; }
+  th { background:#1a1e28; color:#9aa4b8; font-weight:600; white-space:nowrap; font-size:11px; }
+  tr:hover td { background:rgba(232,200,120,.04); }
+  .note,.meta { color:#6b7488; font-size:11px; }
+  .empty { color:#4a5265; font-style:italic; font-size:12px; }
+  .summary { background:#1a1e28; border-radius:6px; padding:8px 12px; font-size:12px; }
   pre.content { white-space:pre-wrap; word-break:break-word; font-family:inherit;
-    background:#faf7ee; border:1px solid #efe9d9; border-radius:8px; padding:12px 14px; margin:8px 0; }
-  footer { text-align:center; color:#a39b88; font-size:12px; margin:24px 0 8px; }
+    background:#1a1e28; border:1px solid #263043; border-radius:6px; padding:10px 12px; margin:6px 0; font-size:12px; }
+  footer { text-align:center; color:#4a5265; font-size:11px; margin:20px 0 8px; }
 `;
 
 export function renderHtml(d: ReviewReportData): string {

@@ -2,7 +2,7 @@
 // v2.32 盯盘复盘报告导出：拉取后端聚合数据包，前端渲染单文件 HTML / Markdown，
 // 通过原生保存框落盘。报告只如实记录，不出现荐股措辞，固定附免责声明。
 import ComplianceFooter from "./ComplianceFooter.vue";
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { buildReviewReport } from "../ai/api";
 import { renderHtml, renderMarkdown } from "../utils/reviewReport";
@@ -22,8 +22,8 @@ function stamp() {
   return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}_${pad2(d.getHours())}${pad2(d.getMinutes())}`;
 }
 
-async function preview() {
-  if (previewHtml.value) { previewHtml.value = ""; return; }  // 再点收起
+async function loadPreview() {
+  if (previewHtml.value) return;
   previewBusy.value = true;
   try {
     const data = await buildReviewReport();
@@ -36,6 +36,10 @@ async function preview() {
     previewBusy.value = false;
   }
 }
+
+onMounted(() => {
+  void loadPreview();
+});
 
 async function exportAs(kind: "html" | "md") {
   busy.value = true;
@@ -54,7 +58,7 @@ async function exportAs(kind: "html" | "md") {
       const content = renderMarkdown(data);
       await invoke("save_export_file", {
         defaultName: `盯盘复盘报告_${day}_${stamp()}.md`,
-        content: "\uFEFF" + content,
+        content: "﻿" + content,
       });
     }
     ok.value = true;
@@ -71,57 +75,49 @@ async function exportAs(kind: "html" | "md") {
 
 <template>
   <div class="rr">
+    <!-- 顶部标题栏 -->
     <div class="rr-head">
       <div class="rr-title">当日盯盘复盘报告</div>
-      <div class="rr-sub">汇总市场情绪、指数板块、我的信号 / 成交、AI 复盘与绩效快照</div>
+      <div class="rr-sub">汇总市场情绪、指数板块、信号 / 成交、AI 复盘与绩效快照</div>
     </div>
 
-    <div class="rr-btns">
+    <!-- 操作按钮栏 -->
+    <div class="rr-toolbar">
       <button class="rr-btn html" :disabled="busy" @click="exportAs('html')">
-        <b>导出 HTML</b>
-        <span>排版精美的单文件网页</span>
+        <span class="rr-btn-ic">📄</span>
+        <span>导出 HTML</span>
       </button>
       <button class="rr-btn md" :disabled="busy" @click="exportAs('md')">
-        <b>导出 Markdown</b>
-        <span>纯文本，便于二次编辑</span>
+        <span class="rr-btn-ic">📝</span>
+        <span>导出 Markdown</span>
       </button>
-      <button class="rr-btn prev" :disabled="busy" @click="preview">
-        <b>{{ previewHtml ? '收起预览' : '预览报告' }}</b>
-        <span>{{ previewHtml ? '关闭内嵌预览' : '内嵌查看完整报告' }}</span>
+      <button class="rr-btn refresh" :disabled="previewBusy" @click="loadPreview">
+        <span class="rr-btn-ic">🔄</span>
+        <span>{{ previewBusy ? "生成中…" : "刷新" }}</span>
       </button>
+      <span v-if="msg" class="rr-msg" :class="{ good: ok, bad: !ok }">{{ msg }}</span>
     </div>
 
-    <div v-if="previewBusy" class="rr-busy">正在生成预览…</div>
-    <div v-if="previewHtml" class="rr-preview">
-      <div class="rr-preview-bar">
-        <span>{{ previewDay }} 复盘报告预览</span>
-        <button @click="previewHtml = ''">关闭</button>
+    <!-- 预览区域 -->
+    <div class="rr-preview">
+      <div v-if="previewBusy" class="rr-loading">
+        <div class="rr-loading-spinner" />
+        <span>正在生成报告预览…</span>
       </div>
-      <iframe class="rr-preview-frame" :srcdoc="previewHtml" sandbox="allow-same-origin"></iframe>
+      <iframe
+        v-else-if="previewHtml"
+        class="rr-frame"
+        :srcdoc="previewHtml"
+        sandbox="allow-same-origin"
+      />
+      <div v-else class="rr-empty">
+        <div class="rr-empty-icon">📊</div>
+        <div>暂无报告数据</div>
+        <div class="rr-empty-hint">点击「刷新」重新生成</div>
+      </div>
     </div>
-
-    <div v-if="busy" class="rr-busy">正在生成…</div>
-    <div v-if="msg" class="rr-msg" :class="{ good: ok, bad: !ok }">{{ msg }}</div>
-
-    <div class="rr-outline">
-      <div class="rr-ol-title">报告包含</div>
-      <ol>
-        <li>市场情绪总览（涨跌 / 涨停 / 炸板 / 封板资金 / 情绪指标）</li>
-        <li>指数表现</li>
-        <li>板块与题材（行业 / 概念 / 资金 / 活跃题材）</li>
-        <li>近期催化剂</li>
-        <li>连板股定格</li>
-        <li>我的交易与绩效（成交流水 / 当日已实现盈亏）</li>
-        <li>预警触发记录</li>
-        <li>AI 复盘记录</li>
-        <li>当日作战计划</li>
-        <li>决策日志</li>
-      </ol>
-    </div>
-
-    <div class="rr-disclaimer">本报告仅为个人盯盘记录与数据复盘，不构成任何投资建议。</div>
   </div>
-<ComplianceFooter />
+  <ComplianceFooter />
 </template>
 
 <style scoped>
@@ -131,65 +127,146 @@ async function exportAs(kind: "html" | "md") {
   flex-direction: column;
   gap: 10px;
   padding: 14px;
-  overflow-y: auto;
   background: var(--bg-card);
   color: var(--text);
   font-size: 12px;
 }
-.rr-title { font-size: 15px; font-weight: 700; color: var(--text); }
-.rr-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
 
-.rr-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+.rr-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+.rr-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* 工具栏 */
+.rr-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .rr-btn {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-  align-items: flex-start;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(232, 200, 120, 0.25);
+  border-radius: 8px;
+  background: rgba(232, 200, 120, 0.05);
+  padding: 7px 14px;
+  cursor: pointer;
+  color: #e8c878;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+.rr-btn:hover:not(:disabled) {
+  background: rgba(232, 200, 120, 0.15);
+  border-color: rgba(232, 200, 120, 0.5);
+  box-shadow: 0 0 12px rgba(232, 200, 120, 0.15);
+}
+.rr-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.rr-btn-ic {
+  font-size: 14px;
+}
+.rr-btn.html {
+  background: linear-gradient(135deg, rgba(232, 200, 120, 0.2), rgba(201, 162, 74, 0.15));
+  border-color: rgba(232, 200, 120, 0.4);
+}
+.rr-btn.refresh {
+  margin-left: auto;
+}
+
+.rr-msg {
+  font-size: 11px;
+}
+.rr-msg.good {
+  color: #1dbe7d;
+}
+.rr-msg.bad {
+  color: #ff5b5b;
+}
+
+/* 预览区域 */
+.rr-preview {
+  flex: 1;
+  min-height: 0;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--bg-card2);
-  padding: 12px 14px;
-  cursor: pointer;
+  overflow: hidden;
+  background: #0d0f14;
+  position: relative;
+}
+.rr-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+/* 加载状态 */
+.rr-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.rr-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(232, 200, 120, 0.2);
+  border-top-color: #e8c878;
+  border-radius: 50%;
+  animation: rr-spin 0.8s linear infinite;
+}
+@keyframes rr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 空状态 */
+.rr-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--bg-card);
   color: var(--text-dim);
 }
-.rr-btn b { font-size: 14px; color: var(--text); }
-.rr-btn span { font-size: 10px; }
-.rr-btn:hover { border-color: var(--accent); }
-.rr-btn:hover b { color: var(--accent); }
-.rr-btn:disabled { opacity: .55; cursor: default; }
-
-.rr-busy { font-size: 11px; color: var(--text-dim); }
-.rr-msg { font-size: 11px; }
-.rr-msg.good { color: var(--down); }
-.rr-msg.bad { color: var(--up); }
-
-.rr-outline { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
-.rr-ol-title { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
-.rr-outline ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; color: var(--text); }
-
-.rr-disclaimer {
-  margin-top: auto;
+.rr-empty-icon {
+  font-size: 40px;
+  opacity: 0.5;
+}
+.rr-empty-hint {
   font-size: 11px;
-  color: #7a5b14;
-  background: rgba(201, 162, 74, .12);
-  border: 1px solid rgba(201, 162, 74, .4);
-  border-radius: 8px;
-  padding: 8px 12px;
+  opacity: 0.7;
 }
 
-.rr-btn.prev { grid-column: 1 / -1; border-color: var(--accent, #3370ff); color: var(--accent, #3370ff); }
-.rr-preview { display: flex; flex-direction: column; gap: 6px; min-height: 0; flex: 1; }
-.rr-preview-bar {
-  display: flex; align-items: center; justify-content: space-between;
-  font-size: 12px; font-weight: 600; color: var(--text);
-}
-.rr-preview-bar button {
-  border: 1px solid var(--border); background: var(--bg-card2); color: var(--text);
-  border-radius: 6px; padding: 2px 10px; font-size: 11px; cursor: pointer;
-}
-.rr-preview-frame {
-  width: 100%; flex: 1; min-height: 0;
-  border: 1px solid var(--border); border-radius: 10px;
-  background: #fff;
+/* 底部免责 */
+.rr-disclaimer {
+  font-size: 10px;
+  color: #7a5b14;
+  background: rgba(201, 162, 74, 0.1);
+  border: 1px solid rgba(201, 162, 74, 0.3);
+  border-radius: 6px;
+  padding: 6px 10px;
+  text-align: center;
 }
 </style>

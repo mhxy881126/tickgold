@@ -124,7 +124,7 @@ function genStreamId(): string {
   return `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-async function startStream(command: string): Promise<StreamHandle> {
+async function startStream(command: string, extra?: Record<string, unknown>): Promise<StreamHandle> {
   const streamId = genStreamId();
   let deltaCb: ((t: string) => void) | null = null;
   let doneCb: ((t: string) => void) | null = null;
@@ -142,7 +142,7 @@ async function startStream(command: string): Promise<StreamHandle> {
   });
 
   // fire-and-forget，不等待 command 返回
-  invoke(command, { streamId }).catch((e) => {
+  invoke(command, { streamId, ...(extra ?? {}) }).catch((e) => {
     if (errorCb) errorCb(String(e));
   });
 
@@ -166,6 +166,6 @@ export function aiNewsDigestStream(): Promise<StreamHandle> {
 }
 
 /** 明日主线（流式） */
-export function aiTomorrowMainlineStream(): Promise<StreamHandle> {
-  return startStream("ai_tomorrow_mainline_stream");
+export function aiTomorrowMainlineStream(force = false): Promise<StreamHandle> {
+  return startStream("ai_tomorrow_mainline_stream", { force });
 }

@@ -4,6 +4,7 @@ import {
   licenseStatus,
   licenseActivate,
   licenseDeactivate,
+  licenseRelocate,
   type LicenseStatus,
 } from "../lib/license";
 
@@ -20,6 +21,16 @@ export const useLicenseStore = defineStore("license", {
     expiresAt: (s) => s.status?.expires_at ?? null,
     plan: (s) => s.status?.plan ?? null,
     message: (s) => s.status?.message ?? "",
+    /** 是否因换机被锁定（需换机授权）。 */
+    needRelocate: (s) => !!s.status?.need_relocate,
+    /** 换机申请码（发给卖家换取授权码）。 */
+    relocateRequest: (s) => s.status?.relocate_request ?? "",
+    /** 剩余 AI 总次数包（null 表示无次数包，走每日配额）。 */
+    aiBalance: (s) => (s.status?.ai_balance != null ? s.status.ai_balance : null),
+    /** 当前 plan 每日 AI 配额 */
+    dailyQuota: (s) => s.status?.daily_quota ?? 0,
+    /** 今日已用 AI 次数 */
+    todayUsed: (s) => s.status?.today_used ?? 0,
   },
   actions: {
     async load() {
@@ -38,6 +49,19 @@ export const useLicenseStore = defineStore("license", {
       this.error = "";
       try {
         this.status = await licenseActivate(code);
+        return !!this.status?.active;
+      } catch (e) {
+        this.error = String(e);
+        return false;
+      } finally {
+        this.loading = false;
+      }
+    },
+    async relocate(authCode: string): Promise<boolean> {
+      this.loading = true;
+      this.error = "";
+      try {
+        this.status = await licenseRelocate(authCode);
         return !!this.status?.active;
       } catch (e) {
         this.error = String(e);

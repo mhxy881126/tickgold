@@ -303,6 +303,8 @@ pub fn run() {
             license::license_status,
             license::license_activate,
             license::license_deactivate,
+            // ===== v3.4 加固：换机授权（设备指纹绑定）=====
+            license::license_relocate,
             // ===== P0 AI 作战流编排（daily_mission 六步状态机）=====
             ai::workflow::workflow_get_today,
             ai::workflow::workflow_advance,
@@ -330,7 +332,11 @@ pub fn run() {
             ai::pilot::pilot_config_get,
             ai::pilot::pilot_config_set,
             // ===== v3.0.7 关于页版本号 =====
-            app_version
+            app_version,
+            // ===== v3.7 Ollama 本地模型管理 =====
+            commands::ollama_list,
+            commands::ollama_pull,
+            commands::ollama_delete
         ])
         .run(tauri::generate_context!())
         .expect("error while running stock-dock");
