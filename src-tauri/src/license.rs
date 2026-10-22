@@ -120,6 +120,28 @@ fn state_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("license_state.json"))
 }
 
+/// 持久化的首次试用日期（存在用户主目录，卸载应用不会删，防反复重装白嫖）。
+fn trial_start_path(app: &AppHandle) -> Option<PathBuf> {
+    let home = app.path().home_dir().ok()?;
+    Some(home.join(".tickgold").join("trial_start"))
+}
+
+/// 读取持久化的首次试用日期（YYYY-MM-DD）。
+fn read_persisted_trial_start(app: &AppHandle) -> Option<String> {
+    let p = trial_start_path(app)?;
+    fs::read_to_string(p).ok()?.trim().to_string().into()
+}
+
+/// 写入持久化的首次试用日期。
+fn write_persisted_trial_start(app: &AppHandle, date: &str) {
+    if let Some(p) = trial_start_path(app) {
+        if let Some(parent) = p.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::write(p, date);
+    }
+}
+
 fn load_state(app: &AppHandle) -> Option<LicenseState> {
     let p = state_path(app).ok()?;
     let s = fs::read_to_string(p).ok()?;
@@ -297,17 +319,28 @@ fn days_left(expires_at: &str) -> Option<i64> {
 /// 由状态构建对外状态，并做防回拨检查（顺带更新 last_run_date）。
 fn build_status(app: &AppHandle) -> LicenseStatus {
     // 首次启动：无任何授权状态时自动给 7 天 trial（绑本机指纹）。
+    // 防作弊：首次试用日期存在用户主目录，卸载重装不会重置。
     if load_state(app).is_none() {
         if let Some(mid) = current_machine_id() {
-            let exp = (Local::now().date_naive() + Duration::days(TRIAL_DAYS))
+            let today = Local::now().date_naive();
+            // 读取持久化的首次试用日期；如果有就用它，没有就用今天
+            let start_date = read_persisted_trial_start(app)
+                .and_then(|s| NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok())
+                .unwrap_or(today);
+            // 如果是新用户（没有持久化记录），写入首次日期
+            if read_persisted_trial_start(app).is_none() {
+                write_persisted_trial_start(app, &today.format("%Y-%m-%d").to_string());
+            }
+            // 到期日 = 首次试用日期 + 7天（不是今天 + 7天）
+            let exp = (start_date + Duration::days(TRIAL_DAYS))
                 .format("%Y-%m-%d")
                 .to_string();
             let trial = LicenseState {
                 code_hash: "trial".to_string(),
                 plan: "trial".to_string(),
                 expires_at: exp,
-                activated_at: today_str(),
-                last_run_date: Some(today_str()),
+                activated_at: start_date.format("%Y-%m-%d").to_string(),
+                last_run_date: Some(today.format("%Y-%m-%d").to_string()),
                 machine_id: Some(mid),
             };
             let _ = save_state(app, &trial);
