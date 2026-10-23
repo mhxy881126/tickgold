@@ -33,8 +33,10 @@
         </div>
         <div class="qb-chips">
           <div class="tm-badge" :class="badgeClass">{{ badgeText }}</div>
-          <div v-if="best" class="tm-badge scan" @click="onScanPick" title="点击切换到该票查看做T详情">
-            🎯 {{ best.name }} 最值得做 · {{ best.score }}分
+          <div v-if="best" class="tm-badge scan" @click="onScanPick"
+            :title="best.code === code ? '当前持仓中的最佳做T标的（按振幅/成交额/换手/动能评分）' : '全场扫描出的最佳做T标的，点击切换查看其做T信号'">
+            <template v-if="best.code === code">✓ 当前最佳做T · {{ best.name }} {{ best.score }}分</template>
+            <template v-else>🎯 最佳做T · {{ best.name }} {{ best.score }}分</template>
           </div>
           <div v-if="tm.stale.value" class="tm-badge stale" title="行情时间戳已陈旧，信号已暂停">
             ⏳ 行情陈旧 {{ tm.staleSec.value }}s
@@ -276,45 +278,63 @@
               {{ tm.btLoading.value ? "回测中…" : "跑回测" }}
             </button>
             <button class="ts-bt-run" @click="tm.buildDailyReport()">生成日报</button>
-            <span class="ts-h-num">样本 {{ tm.btArchiveDays.value }} 天</span>
+            <span class="ts-h-num">历史样本 {{ tm.btArchiveDays.value }} 天</span>
             <span class="ts-h-num" v-if="btArchTxt">{{ btArchTxt }}</span>
             <span class="ts-h-num" v-if="sigStats" :class="sigStats.hitRate >= 50 ? 'up' : 'down'">30min命中 {{ sigStats.hitRate.toFixed(0) }}%</span>
           </div>
+          <div v-if="!bt && !tm.btLoading.value" class="ts-bt-tip">
+            用最近 {{ tm.btArchiveDays.value }} 天分钟数据，按当前信号规则模拟做T，验证这套参数能不能赚钱。点「跑回测」开始。
+          </div>
           <template v-if="bt">
             <div class="ts-h-line">
-              <span class="ts-h-num">{{ bt.count }}笔</span>
-              <span class="ts-h-num" :class="bt.winRate >= bt.breakEvenWinRate ? 'up' : 'down'">{{ bt.winRate.toFixed(0) }}%胜</span>
-              <span class="ts-h-num">保本{{ bt.breakEvenWinRate.toFixed(0) }}%</span>
-              <span class="ts-h-num" :class="bt.totalPnl >= 0 ? 'up' : 'down'">净{{ bt.totalPnl >= 0 ? "+" : "" }}{{ bt.totalPnl.toFixed(0) }}元</span>
-              <span class="ts-h-num">单笔 {{ bt.avgPnl >= 0 ? "+" : "" }}{{ bt.avgPnl.toFixed(1) }}元</span>
+              <span class="ts-h-num">共 {{ bt.count }} 笔做T</span>
+              <span class="ts-h-num" :class="bt.winRate >= bt.breakEvenWinRate ? 'up' : 'down'">胜率 {{ bt.winRate.toFixed(0) }}%</span>
+              <span class="ts-h-num" :class="bt.totalPnl >= 0 ? 'up' : 'down'">净收益 {{ bt.totalPnl >= 0 ? "+" : "" }}{{ bt.totalPnl.toFixed(0) }} 元</span>
+              <span class="ts-h-num">盈亏比 {{ bt.profitFactor.toFixed(2) }}</span>
             </div>
             <div class="ts-h-line sub">
-              <span>盈亏比{{ bt.profitFactor.toFixed(2) }}</span>
-              <span>回撤{{ bt.maxDrawdown.toFixed(0) }}元</span>
-              <span>对照{{ bt.baselinePnl >= 0 ? "+" : "" }}{{ bt.baselinePnl.toFixed(0) }}元</span>
-              <span>正T {{ bt.long.count }}笔({{ bt.long.winRate.toFixed(0) }}%)</span>
-              <span>倒T {{ bt.short.count }}笔({{ bt.short.winRate.toFixed(0) }}%)</span>
-              <span>强平{{ bt.forcedCloseCount }}</span>
+              <span>正T {{ bt.long.count }} 笔（胜 {{ bt.long.winRate.toFixed(0) }}%）</span>
+              <span>倒T {{ bt.short.count }} 笔（胜 {{ bt.short.winRate.toFixed(0) }}%）</span>
+              <span>强平 {{ bt.forcedCloseCount }}</span>
+              <span>单笔均 {{ bt.avgPnl >= 0 ? "+" : "" }}{{ bt.avgPnl.toFixed(1) }} 元</span>
             </div>
-            <div class="ts-bt-notes">按模拟盘当日闭环口径运行；A股 T+1 实盘正T需隔日，仅供参数参考</div>
+            <div class="ts-bt-notes">不做T对照 {{ bt.baselinePnl >= 0 ? "+" : "" }}{{ bt.baselinePnl.toFixed(0) }} 元（持有不动）· 最大回撤 {{ bt.maxDrawdown.toFixed(0) }} 元 · 保本需胜率 {{ bt.breakEvenWinRate.toFixed(0) }}%。A股 T+1 实盘正T需隔日，结果仅供参数参考</div>
           </template>
           <details class="ts-bt-params">
-            <summary>参数（改后点重跑）</summary>
+            <summary>⚙ 回测参数（怎么用？改完点「按参数重跑」）</summary>
             <div class="ts-bt-grid">
-              <label>开仓线 <input type="number" v-model.number="tm.btParams.value.scoreOpen" min="0" max="100" step="1"></label>
-              <label>止损% <input type="number" v-model.number="tm.btParams.value.stopMinPct" min="0.5" max="3" step="0.1"></label>
-              <label>目标倍数 <input type="number" v-model.number="tm.btParams.value.targetMult" min="0.8" max="3" step="0.1"></label>
-              <label>日上限 <input type="number" v-model.number="tm.btParams.value.maxPerDay" min="1" max="10" step="1"></label>
-              <label>滑点% <input type="number" v-model.number="tm.btParams.value.slipPct" min="0" max="0.5" step="0.01"></label>
+              <label class="tp">
+                <span class="tp-lab">开仓信号分 <input type="number" v-model.number="tm.btParams.value.scoreOpen" min="0" max="100" step="1"></span>
+                <span class="tp-tip">信号得分 ≥ 该值才开仓，越高越严格、做T次数越少</span>
+              </label>
+              <label class="tp">
+                <span class="tp-lab">止损幅度 <input type="number" v-model.number="tm.btParams.value.stopMinPct" min="0.5" max="3" step="0.1">%</span>
+                <span class="tp-tip">开仓后亏损到该幅度强制平仓</span>
+              </label>
+              <label class="tp">
+                <span class="tp-lab">止盈倍数 <input type="number" v-model.number="tm.btParams.value.targetMult" min="0.8" max="3" step="0.1">×</span>
+                <span class="tp-tip">盈利达到止损幅度的 N 倍时止盈</span>
+              </label>
+              <label class="tp">
+                <span class="tp-lab">每日上限 <input type="number" v-model.number="tm.btParams.value.maxPerDay" min="1" max="10" step="1">次</span>
+                <span class="tp-tip">一天最多开仓次数，防过度交易</span>
+              </label>
+              <label class="tp">
+                <span class="tp-lab">成交滑点 <input type="number" v-model.number="tm.btParams.value.slipPct" min="0" max="0.5" step="0.01">%</span>
+                <span class="tp-tip">模拟成交相对盘口的偏差，越接近真实越好</span>
+              </label>
             </div>
-            <button class="ts-bt-run" :disabled="tm.btLoading.value" @click="tm.runBacktestNow()">按参数重跑</button>
-            <button class="ts-bt-run" :disabled="tm.optLoading.value" @click="tm.runOptimizeNow()">
-              {{ tm.optLoading.value ? "寻优中…（54 组×内外切分）" : "⚙ 参数寻优" }}
-            </button>
+            <div class="ts-bt-opt-btns">
+              <button class="ts-bt-run" :disabled="tm.btLoading.value" @click="tm.runBacktestNow()">按参数重跑</button>
+              <button class="ts-bt-run" :disabled="tm.optLoading.value" @click="tm.runOptimizeNow()">
+                {{ tm.optLoading.value ? "寻优中…（54 组×内外切分）" : "⚙ 自动寻优" }}
+              </button>
+              <span class="ts-h-num">自动试 54 套参数组合，推荐样本外最赚的一组</span>
+            </div>
           </details>
           <template v-if="opt">
-            <div class="ts-bt-notes">寻优 {{ opt.combos }} 组 × 样本 {{ opt.sampleDays }} 天（内 {{ opt.inDays }} / 外 {{ opt.outDays }}），按样本外期望排序</div>
             <div class="ts-bt-opt">
+              <div class="ts-bt-opt-head">寻优结果（{{ opt.combos }} 组 × 样本 {{ opt.sampleDays }} 天，内 {{ opt.inDays }} / 外 {{ opt.outDays }}）—— 组合：开仓分/止损%/止盈倍数/日上限</div>
               <div v-for="(row, ri) in opt.rows" :key="ri" class="ts-bt-opt-row">
                 <span class="ts-bt-opt-params">开{{ row.params.scoreOpen }} 止{{ row.params.stopMinPct }}% 倍{{ row.params.targetMult }} 日{{ row.params.maxPerDay }}</span>
                 <span :class="row.out.avgPnl >= 0 ? 'up' : 'down'">外{{ row.out.count }}笔/{{ row.out.avgPnl.toFixed(1) }}元</span>
@@ -1034,9 +1054,15 @@ function onKey(e: KeyboardEvent) {
 .ts-bt-run:hover:not(:disabled) { background: rgba(120,90,255,.28); }
 .ts-bt-run:disabled { opacity: .5; cursor: not-allowed; }
 .ts-bt-notes { font-size: 9px; color: var(--t3); line-height: 1.3; }
+.ts-bt-tip { font-size: 9px; color: var(--t3); line-height: 1.4; padding: 1px 0; }
+.ts-bt-opt-btns { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.ts-bt-opt-btns .ts-h-num { font-size: 9px; }
+.ts-bt-opt-head { font-size: 9px; color: var(--t3); padding: 1px 0 2px; border-bottom: 1px dashed var(--line); margin-bottom: 2px; line-height: 1.35; }
 .ts-bt-params summary { font-size: 9px; color: var(--t3); cursor: pointer; }
-.ts-bt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px 6px; padding: 3px 0; }
-.ts-bt-grid label { font-size: 9px; color: var(--t3); display: flex; justify-content: space-between; align-items: center; }
+.ts-bt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; padding: 4px 0 2px; }
+.ts-bt-grid .tp { font-size: 9px; color: var(--t3); display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 1px; }
+.tp-lab { display: flex; align-items: center; gap: 4px; font-size: 9px; color: var(--t3); white-space: nowrap; }
+.tp-tip { font-size: 8px; color: var(--t3); opacity: .72; line-height: 1.35; }
 .ts-bt-grid input {
   width: 46px; background: rgba(255,255,255,.06); border: 1px solid var(--line);
   color: var(--t1); border-radius: 3px; font-size: 10px; text-align: right; padding: 0 2px;
