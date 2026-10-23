@@ -20,6 +20,25 @@ const running = computed(() => engine.running.value);
 const autoTrade = computed(() => engine.autoTrade.value);
 const semiAuto = computed(() => engine.semiAuto.value);
 
+// P0: 今日精选标的（从引擎取）
+const todayPicks = computed(() => engine.todayPicks.value);
+
+// P0: 持仓监控（从引擎取）
+const positions = computed(() => engine.positionInfos.value);
+
+// P1: 盘前准备数据
+const themeHotList = computed(() => engine.themeHotList.value);
+const dragonPoolList = computed(() => engine.dragonPoolList.value);
+const auctionList = computed(() => engine.auctionList.value);
+
+// 题材热度阶段中文
+const stageText = (stage: string) => ({
+  climax: "高潮",
+  ferment: "发酵",
+  sprout: "萌芽",
+  ebb: "退潮",
+}[stage] || stage);
+
 // ===== 时段状态机 =====
 const currentPhase = computed(() => getTradingPhase());
 const PHASES = [
@@ -53,6 +72,17 @@ const selectedDetail = computed(() => {
 
 // ===== 工作区 Tab（复盘 / 日志）=====
 const activeWorkTab = ref<"review" | "logs">("review");
+
+// ===== 主Tab：AI交易助理5大模块 =====
+type MainTabKey = "plan" | "premarket" | "intraday" | "review" | "settings";
+const activeMainTab = ref<MainTabKey>("plan");
+const mainTabs = computed(() => [
+  { key: "plan" as const, icon: "📋", label: "今日作战计划", badge: "" },
+  { key: "premarket" as const, icon: "📊", label: "盘前准备", badge: "" },
+  { key: "intraday" as const, icon: "🎯", label: "盘中监控", badge: "" },
+  { key: "review" as const, icon: "📈", label: "盘后复盘", badge: "" },
+  { key: "settings" as const, icon: "⚙️", label: "设置", badge: "" },
+]);
 
 // ===== 自动交易配置 =====
 const aiCfg = ref<any>(null);
@@ -110,21 +140,16 @@ async function start() {
   if (!aiCfg.value) await loadAiCfg();
   aiBusy.value = true;
   try {
-    if (aiCfg.value) {
-      const patch = autoTrade.value
-        ? { tradeMode: "full" as const, fullAutoMode: true, bridgeEnabled: false }
-        : { tradeMode: "manual" as const, fullAutoMode: false, bridgeEnabled: true };
-      await autoexecStart({ ...aiCfg.value, enabled: true, ...patch });
-    }
-    engine.start((cardId) => { emit("switchCard", cardId); return true; });
+    // P3: 通过事件通知全局覆盖层启动，和快捷键一样，不要直接调用 engine.start()
+    window.dispatchEvent(new CustomEvent("spider-overlay-start"));
     startMockScanLoop();
   } finally { aiBusy.value = false; }
 }
 async function stop() {
   aiBusy.value = true;
   try {
-    await autoexecStop();
-    engine.stop();
+    // P3: 通过事件通知全局覆盖层停止
+    window.dispatchEvent(new CustomEvent("spider-overlay-stop"));
     stopMockScanLoop();
   } finally { aiBusy.value = false; }
 }
@@ -143,7 +168,12 @@ const scanCards = [
   { id: "sector", name: "板块", icon: "🏭" },
   { id: "radar", name: "涨停雷达", icon: "🚀" },
 ];
-function startMockScanLoop() { mockStep = 0; tickMock(); mockTimer = window.setInterval(tickMock, 2500); }
+function startMockScanLoop() {
+  mockStep = 0;
+  tickMock();
+  // P3: 延长间隔，让动画持续运行，不要 2-3 秒就停
+  mockTimer = window.setInterval(tickMock, 5000);
+}
 function stopMockScanLoop() { if (mockTimer) { clearInterval(mockTimer); mockTimer = null; } }
 function tickMock() {
   const card = scanCards[mockStep % scanCards.length];
@@ -262,6 +292,29 @@ const logEntries = computed<SpiderLogEntry[]>(() =>
   })
 );
 const filteredLogs = computed(() => activeLogTab.value === "all" ? logEntries.value : logEntries.value.filter((l) => l.category === activeLogTab.value));
+
+// P2: 盘中监控 - 实时信号 & 今日交易
+const realtimeSignals = computed(() => logEntries.value.filter(l => l.category === "signal").slice(0, 10));
+const todayTrades = computed(() => logEntries.value.filter(l => l.category === "trade").slice(0, 10));
+
+// P4: 设置 - 数据源
+const sourceKeys = ["watch", "rank", "sector", "concept", "radar", "market", "dragon", "screener", "auction", "elf", "themelib"] as const;
+const sourceNames: Record<string, string> = {
+  watch: "自选股",
+  rank: "涨跌幅榜",
+  sector: "行业板块",
+  concept: "概念板块",
+  radar: "涨停雷达",
+  market: "大盘指数",
+  dragon: "龙虎榜",
+  screener: "条件选股",
+  auction: "集合竞价",
+  elf: "短线精灵",
+  themelib: "题材库",
+};
+function toggleAutoTrade() {
+  engine.setAutoTrade(!engine.autoTrade.value);
+}
 const logCounts = computed(() => {
   const counts: Record<string, number> = { all: logEntries.value.length };
   for (const t of logTabs) { if (t.key !== "all") counts[t.key] = logEntries.value.filter((l) => l.category === t.key).length; }
@@ -360,7 +413,7 @@ onMounted(() => {
   if (engine.logs.value.length === 0) {
     engine.logs.value.push({
       time: new Date().toLocaleTimeString("zh-CN", { hour12: false }),
-      text: `🕷 AI 爬虫机器人就绪 | 当前策略：${engine.strategyNames[engine.currentStrategy.value]}`,
+      text: `🤖 AI 交易助理就绪 | 当前策略：${engine.strategyNames[engine.currentStrategy.value]}`,
       type: "info",
     });
   }
@@ -392,15 +445,15 @@ onUnmounted(() => { stopMockScanLoop(); });
     <div class="sb-ctrl">
       <span class="sb-title">
         <svg width="17" height="17" viewBox="0 0 32 32"><g fill="none" stroke="#00e8d8" stroke-width="1.8"><circle cx="16" cy="16" r="9"/><path d="M16 7v18M7 16h18"/></g><circle cx="16" cy="16" r="3" fill="#ffd76a"/></svg>
-        AI爬虫机器人
+        AI交易助理
       </span>
       <span class="pill" :class="running ? 'pill-run' : 'pill-idle'">
         <span class="pdot"></span>
-        <span>{{ running ? `运行中 · ${currentCardName}` : `休市 · 待机` }}</span>
+        <span>{{ running ? `运行中 · 自动监控` : `休市 · 待机` }}</span>
       </span>
       <span class="spacer"></span>
       <button class="btn btn-main" :class="{ run: running }" :disabled="aiBusy" @click="running ? stop() : start()">
-        {{ running ? "⏸ 停止爬取" : "▶ 启动爬虫" }}
+        {{ running ? "⏸ 停止" : "▶ 启动助理" }}
       </button>
       <button class="btn btn-mode" :class="{ 'on-semi': semiAuto }" :disabled="!running" @click="setSemi(!semiAuto)">
         <span class="mdot"></span>半自动<span class="mstate">{{ semiAuto ? "ON" : "OFF" }}</span>
@@ -409,6 +462,21 @@ onUnmounted(() => { stopMockScanLoop(); });
         <span class="mdot"></span>全自动·模拟盘<span class="mstate">{{ autoTrade ? "ON" : "OFF" }}</span>
       </button>
       <button class="btn btn-danger" :disabled="!running" @click="emergencyStop">🛑 急停</button>
+    </div>
+
+    <!-- ========== Tab 导航 ========== -->
+    <div class="ai-tabs">
+      <button
+        v-for="tab in mainTabs"
+        :key="tab.key"
+        class="ai-tab"
+        :class="{ active: activeMainTab === tab.key }"
+        @click="activeMainTab = tab.key"
+      >
+        <span class="at-icon">{{ tab.icon }}</span>
+        <span class="at-label">{{ tab.label }}</span>
+        <span v-if="tab.badge" class="at-badge">{{ tab.badge }}</span>
+      </button>
     </div>
 
     <!-- ========== 横向时段轴 ========== -->
@@ -446,58 +514,174 @@ onUnmounted(() => { stopMockScanLoop(); });
       </div>
     </div>
 
-    <!-- ========== 舞台区 ========== -->
-    <div class="sb-stage-area">
-      <div class="panel panel-c sb-stage">
-        <span class="stage-tag">
-          <i :class="{ active: running }"></i>
-          {{ running ? `扫描中 · ${currentCardName} · 第${scanStep}轮` : "休市 · 蛛网待机" }}
-        </span>
-        <svg viewBox="0 0 400 320" preserveAspectRatio="xMidYMid meet" class="spider-svg">
-          <defs>
-            <filter id="glowE"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-            <radialGradient id="beamE" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#00dcff" stop-opacity=".25"/><stop offset="100%" stop-color="#00dcff" stop-opacity="0"/></radialGradient>
-          </defs>
-          <g opacity=".05">
-            <line v-for="i in 10" :key="'h'+i" x1="0" :y1="32*i" x2="400" :y2="32*i" stroke="#00dcff" stroke-width=".5"/>
-            <line v-for="i in 12" :key="'v'+i" :x1="33.3*i" y1="0" :x2="33.3*i" y2="320" stroke="#00dcff" stroke-width=".5"/>
-          </g>
-          <circle cx="200" cy="160" r="130" fill="url(#beamE)"/>
-          <circle v-for="r in [40,78,116]" :key="r" cx="200" cy="160" :r="r" fill="none" stroke="#0a8ab0" stroke-width=".7" stroke-dasharray="3 4" opacity=".3"/>
-          <g v-for="(node, i) in stockNodes" :key="i">
-            <line x1="200" y1="160" :x2="node.x" :y2="node.y" stroke="#0a8ab0" stroke-width=".7" stroke-dasharray="2 3" opacity=".35"/>
-            <circle v-for="j in 2" :key="'p'+j" r="1.6" fill="#bff" :opacity="node.isCurrent ? 1 : .5">
-              <animateMotion :dur="(2.2 + i * .15) + 's'" repeatCount="indefinite" :path="node.path" :begin="(j*.7)+'s'"/>
-            </circle>
-            <circle :cx="node.x" :cy="node.y" :r="node.isCurrent ? 7 : 5"
-              :fill="node.signalType === 'buy' ? '#ff5096' : node.signalType === 'sell' ? '#00e0a0' : '#00d4ff'" opacity=".2"/>
-            <circle :cx="node.x" :cy="node.y" :r="node.isCurrent ? 4 : 3.2"
-              :fill="node.signalType === 'buy' ? '#ff5096' : node.signalType === 'sell' ? '#00e0a0' : '#00d4ff'"
-              filter="url(#glowE)" :class="{ np: node.isCurrent }"/>
-            <text :x="node.x" :y="node.y - 11" text-anchor="middle"
-              :fill="node.isCurrent ? '#00ffff' : '#8aa'" font-size="9.5" font-family="Consolas,monospace">{{ node.name || node.code }}</text>
-            <text :x="node.x" :y="node.y + 16" text-anchor="middle"
-              :fill="node.pct >= 0 ? '#ff8aa0' : '#5fd6b0'" font-size="8.5" font-family="Consolas,monospace">
-              {{ node.price ? node.price.toFixed(2) : "--" }} {{ node.pct >= 0 ? "+" : "" }}{{ node.pct.toFixed(1) }}%
-            </text>
-          </g>
-          <!-- 中心蜘蛛 -->
-          <g class="spider-body" :class="{ crawling: running }">
-            <circle cx="200" cy="160" r="27" fill="#00d4ff" opacity=".07"/>
-            <circle cx="200" cy="160" r="19" fill="#00d4ff" opacity=".12"/>
-            <template v-for="sx in [-1,1]" :key="'lx'+sx">
-              <path :d="`M ${200+sx*11} 155 Q ${200+sx*24} 154 ${200+sx*30} 144`" fill="none" stroke="#00d4ff" stroke-width="1.3" opacity=".85"/>
-              <path :d="`M ${200+sx*11} 162 Q ${200+sx*24} 166 ${200+sx*30} 176`" fill="none" stroke="#00d4ff" stroke-width="1.3" opacity=".85"/>
-            </template>
-            <ellipse cx="200" cy="164" rx="12" ry="10" fill="#0a1628" stroke="#00d4ff" stroke-width="1.2" filter="url(#glowE)"/>
-            <circle cx="200" cy="153" r="7.5" fill="#0a1628" stroke="#00d4ff" stroke-width="1.2" filter="url(#glowE)"/>
-            <circle cx="197.4" cy="152" r="1.7" fill="#fff"/>
-            <circle cx="202.6" cy="152" r="1.7" fill="#fff"/>
-            <circle cx="197.4" cy="152.4" r=".8" fill="#ff5096"/>
-            <circle cx="202.6" cy="152.4" r=".8" fill="#ff5096"/>
-          </g>
-          <text v-if="!stockNodes.length" x="200" y="164" text-anchor="middle" fill="#4a5a52" font-size="12">等待自选股数据...</text>
-        </svg>
+    <!-- ========== Tab 1: 今日作战计划 ========== -->
+    <div v-show="activeMainTab === 'plan'" class="tab-pane plan-pane">
+      <div class="battle-plan">
+        <!-- 左边：今日精选标的 -->
+        <div class="panel panel-c plan-left">
+          <div class="panel-head">
+            <span class="panel-title">🎯 今日精选标的（{{ todayPicks.length }}只）</span>
+            <span class="panel-sub">AI精选 · 少而精</span>
+          </div>
+          <div class="plan-body">
+            <div v-if="todayPicks.length === 0" class="empty-tip">
+              {{ running ? "正在精选中..." : "启动助理后自动精选" }}
+            </div>
+            <div v-for="(pick, i) in todayPicks" :key="i" class="pick-item">
+              <div class="pick-header">
+                <span class="pick-name">{{ pick.name }}</span>
+                <span class="pick-code">{{ pick.code }}</span>
+                <span class="pick-score" :class="{ high: pick.score >= 8 }">{{ pick.score }}分</span>
+              </div>
+              <div class="pick-reason">{{ pick.reason }}</div>
+              <div class="pick-price">
+                <span class="pp-buy">买入 {{ pick.buyPrice?.toFixed(2) }}</span>
+                <span class="pp-stop">止损 {{ pick.stopLoss?.toFixed(2) }}</span>
+                <span class="pp-target">目标 {{ pick.targetPrice?.toFixed(2) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右边：持仓监控 -->
+        <div class="panel panel-c plan-right">
+          <div class="panel-head">
+            <span class="panel-title">📊 持仓监控（{{ positions.length }}只）</span>
+            <span class="panel-sub">自动止损止盈</span>
+          </div>
+          <div class="plan-body">
+            <div v-if="positions.length === 0" class="empty-tip">
+              暂无持仓
+            </div>
+            <div v-for="(pos, i) in positions" :key="i" class="pos-item">
+              <div class="pos-header">
+                <span class="pos-name">{{ pos.name }}</span>
+                <span class="pos-code">{{ pos.code }}</span>
+                <span class="pos-pct" :class="(pos.profitPct ?? 0) >= 0 ? 'up' : 'down'">
+                  {{ (pos.profitPct ?? 0) >= 0 ? "+" : "" }}{{ (pos.profitPct ?? 0).toFixed(1) }}%
+                </span>
+              </div>
+              <div class="pos-price">
+                <span>成本 {{ pos.costPrice?.toFixed(2) }}</span>
+                <span>现价 {{ pos.currentPrice?.toFixed(2) }}</span>
+              </div>
+              <div class="pos-action" :class="pos.actionType">
+                {{ pos.actionText }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== Tab 2: 盘前准备 ========== -->
+    <div v-show="activeMainTab === 'premarket'" class="tab-pane premarket-pane">
+      <!-- 顶部：市场情绪概览 -->
+      <div class="pm-overview">
+        <div class="pm-ov-card">
+          <div class="pm-ov-label">市场状态</div>
+          <div class="pm-ov-value" :class="sentimentLevelClass">{{ sentimentLevelText }}</div>
+        </div>
+        <div class="pm-ov-card">
+          <div class="pm-ov-label">涨停 / 跌停</div>
+          <div class="pm-ov-value">{{ sentiment.limitUp }} <span class="pm-sep">/</span> <span class="pm-down">{{ sentiment.limitDown }}</span></div>
+        </div>
+        <div class="pm-ov-card">
+          <div class="pm-ov-label">炸板率</div>
+          <div class="pm-ov-value">{{ (sentiment.bombRate * 100).toFixed(0) }}%</div>
+        </div>
+        <div class="pm-ov-card">
+          <div class="pm-ov-label">最高连板</div>
+          <div class="pm-ov-value pink">{{ sentiment.maxBoard }} 板</div>
+        </div>
+        <div class="pm-ov-card pm-ov-summary">
+          <div class="pm-ov-label">盘前研判</div>
+          <div class="pm-ov-text">
+            {{ sentiment.limitUp > 30 ? "情绪火热，可积极操作" : sentiment.limitUp > 15 ? "情绪中性，精选个股" : "情绪冷清，控制仓位" }}
+          </div>
+        </div>
+      </div>
+
+      <!-- 三列：题材热度 / 涨停池 / 竞价异动 -->
+      <div class="pm-columns">
+        <!-- 左：题材热度榜 -->
+        <div class="pm-col">
+          <div class="pm-col-head">🔥 题材热度榜</div>
+          <div class="pm-col-body">
+            <div v-if="themeHotList.length === 0" class="pm-empty">{{ running ? "加载中..." : "启动助理后自动加载" }}</div>
+            <div v-for="(t, i) in themeHotList" :key="i" class="pm-row">
+              <div class="pm-row-name">{{ t.name }}</div>
+              <div class="pm-row-bar-wrap">
+                <div class="pm-row-bar" :style="{ width: (t.hot * 100) + '%' }" :class="{ hot: t.hot >= 0.8 }"></div>
+              </div>
+              <div class="pm-row-stage" :class="{ climax: t.stage === 'climax' }">{{ stageText(t.stage) }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 中：涨停池分析 -->
+        <div class="pm-col">
+          <div class="pm-col-head">🐉 涨停池（{{ dragonPoolList.length }}只）</div>
+          <div class="pm-col-body">
+            <div v-if="dragonPoolList.length === 0" class="pm-empty">{{ running ? "加载中..." : "启动助理后自动加载" }}</div>
+            <div v-for="(d, i) in dragonPoolList" :key="i" class="pm-row">
+              <div class="pm-row-name">{{ d.name }}<span class="pm-row-code">{{ d.code }}</span></div>
+              <div class="pm-row-boards" :class="{ b2: d.boards >= 2, b3: d.boards >= 3 }">
+                {{ d.boards >= 3 ? "3板+" : d.boards + "板" }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右：竞价异动 -->
+        <div class="pm-col">
+          <div class="pm-col-head">⚡ 竞价异动（{{ auctionList.length }}只）</div>
+          <div class="pm-col-body">
+            <div v-if="auctionList.length === 0" class="pm-empty">{{ running ? "加载中..." : "启动助理后自动加载" }}</div>
+            <div v-for="(a, i) in auctionList" :key="i" class="pm-row">
+              <div class="pm-row-name">{{ a.name }}<span class="pm-row-code">{{ a.code }}</span></div>
+              <div class="pm-row-pct" :class="a.pct >= 0 ? 'up' : 'down'">
+                {{ a.pct >= 0 ? "+" : "" }}{{ a.pct.toFixed(1) }}%
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== Tab 3: 盘中监控 ========== -->
+    <div v-show="activeMainTab === 'intraday'" class="tab-pane intraday-pane">
+      <!-- 左侧：实时信号 + 今日交易 -->
+      <div class="intraday-main">
+        <div class="panel im-panel">
+          <div class="panel-head"><span class="panel-title">🎯 实时信号</span>
+            <span class="ph-right">{{ realtimeSignals.length }}条</span></div>
+          <div class="signal-list">
+            <div v-if="realtimeSignals.length === 0" class="signal-empty">
+              {{ running ? "等待信号..." : "启动助理后自动扫描" }}
+            </div>
+            <div v-for="s in realtimeSignals" :key="s.id" class="signal-item" :class="s.level">
+              <span class="sig-time">{{ s.time }}</span>
+              <span class="sig-icon">{{ s.icon }}</span>
+              <span class="sig-text">{{ s.title }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel im-panel">
+          <div class="panel-head"><span class="panel-title">💰 今日交易</span>
+            <span class="ph-right">{{ todayTrades.length }}笔</span></div>
+          <div class="signal-list">
+            <div v-if="todayTrades.length === 0" class="signal-empty">
+              {{ running ? "等待成交..." : "启动助理后自动交易" }}
+            </div>
+            <div v-for="t in todayTrades" :key="t.id" class="signal-item" :class="t.level">
+              <span class="sig-time">{{ t.time }}</span>
+              <span class="sig-icon">{{ t.icon }}</span>
+              <span class="sig-text">{{ t.title }}</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 右侧指标 -->
@@ -519,6 +703,11 @@ onUnmounted(() => { stopMockScanLoop(); });
             <div class="kpi"><div class="kpi-label">交易</div><div class="kpi-value neutral">{{ perfData.totalTrades }}</div></div>
             <div class="kpi"><div class="kpi-label">胜率</div><div class="kpi-value neutral">{{ perfData.winRate.toFixed(1) }}%</div></div>
             <div class="kpi"><div class="kpi-label">回撤</div><div class="kpi-value down">-{{ perfData.maxDrawdownPct.toFixed(2) }}%</div></div>
+          </div>
+          <!-- P2: 进化状态 -->
+          <div class="evolution-info" v-if="engine.evolutionStatus.value.samples > 0">
+            <div class="evo-title">🧠 已进化（样本{{ engine.evolutionStatus.value.samples }}）</div>
+            <div class="evo-note">{{ engine.evolutionStatus.value.note }}</div>
           </div>
         </div>
         <div class="panel">
@@ -543,6 +732,34 @@ onUnmounted(() => { stopMockScanLoop(); });
         </div>
       </div>
     </div>
+
+    <!-- ========== Tab 4: 盘后复盘 ========== -->
+    <div v-show="activeMainTab === 'review'" class="tab-pane review-pane">
+      <!-- 顶部：今日总结概览 -->
+      <div class="rv-summary">
+        <div class="rv-card">
+          <div class="rv-label">今日收益率</div>
+          <div class="rv-value" :class="perfColor(perfData.totalReturnPct)">
+            {{ perfData.totalReturnPct >= 0 ? "+" : "" }}{{ perfData.totalReturnPct.toFixed(2) }}%
+          </div>
+        </div>
+        <div class="rv-card">
+          <div class="rv-label">交易次数</div>
+          <div class="rv-value neutral">{{ perfData.totalTrades }} 笔</div>
+        </div>
+        <div class="rv-card">
+          <div class="rv-label">胜率</div>
+          <div class="rv-value neutral">{{ perfData.winRate.toFixed(0) }}%</div>
+        </div>
+        <div class="rv-card">
+          <div class="rv-label">当前持仓</div>
+          <div class="rv-value neutral">{{ riskData.positionCount }} 只</div>
+        </div>
+        <div class="rv-card rv-plan">
+          <div class="rv-label">明日计划</div>
+          <div class="rv-plan-text">{{ engine.dailyReview.value?.planTitle || "收盘后自动生成" }}</div>
+        </div>
+      </div>
 
     <!-- ========== Tab 工作区 ========== -->
     <div class="panel sb-work">
@@ -616,9 +833,84 @@ onUnmounted(() => { stopMockScanLoop(); });
         </div>
       </div>
     </div>
+    </div>
 
-    <!-- ========== 数据源 ========== -->
-    <div class="sb-sources">
+    <!-- ========== Tab 5: 设置 ========== -->
+    <div v-show="activeMainTab === 'settings'" class="tab-pane settings-pane">
+      <!-- 顶部：自动交易总开关 + 策略选择 -->
+      <div class="set-top">
+        <div class="set-card">
+          <div class="set-label">🤖 自动交易</div>
+          <div class="set-toggle" :class="{ on: engine.autoTrade.value }" @click="toggleAutoTrade">
+            <div class="toggle-knob"></div>
+          </div>
+          <div class="set-hint">{{ engine.autoTrade.value ? "已开启自动下单" : "仅发信号，人工确认" }}</div>
+        </div>
+        <div class="set-card">
+          <div class="set-label">📊 交易策略</div>
+          <div class="set-strategies">
+            <button v-for="(label, key) in engine.strategyNames" :key="key"
+              class="set-strategy-btn" :class="{ active: engine.currentStrategy.value === key }"
+              @click="selectStrategy(key as any)">{{ label }}</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 下面两列：数据源 + 自动交易白名单 -->
+      <div class="set-columns">
+        <div class="set-col">
+          <div class="set-col-head">📡 扫描数据源</div>
+          <div class="set-col-body">
+            <div v-for="key in sourceKeys" :key="key" class="set-row">
+              <span class="set-row-name">{{ sourceNames[key] }}</span>
+              <div class="set-toggle sm" :class="{ on: engine.crawlSources.value[key] }"
+                @click="engine.setCrawlSource(key as any, !engine.crawlSources.value[key])">
+                <div class="toggle-knob"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="set-col">
+          <div class="set-col-head">💰 自动交易白名单</div>
+          <div class="set-col-body">
+            <div v-for="key in sourceKeys" :key="key" class="set-row">
+              <span class="set-row-name">{{ sourceNames[key] }}</span>
+              <div class="set-toggle sm" :class="{ on: engine.autoTradeSources.value[key] }"
+                @click="engine.setAutoTradeSource(key as any, !engine.autoTradeSources.value[key])">
+                <div class="toggle-knob"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部：风控参数 -->
+      <div class="set-risk">
+        <div class="set-col-head">⛨ 风控参数</div>
+        <div class="risk-row">
+          <div class="risk-item">
+            <span class="risk-label">止盈</span>
+            <span class="risk-value">+{{ engine.riskConfig.value.takeProfitPct || 15 }}%</span>
+          </div>
+          <div class="risk-item">
+            <span class="risk-label">止损</span>
+            <span class="risk-value">-{{ engine.riskConfig.value.stopLossPct || 5 }}%</span>
+          </div>
+          <div class="risk-item">
+            <span class="risk-label">最大持仓</span>
+            <span class="risk-value">{{ engine.riskConfig.value.maxPositions || 5 }} 只</span>
+          </div>
+          <div class="risk-item">
+            <span class="risk-label">单日最大亏损</span>
+            <span class="risk-value">-{{ engine.riskConfig.value.maxDailyLossPct || 10 }}%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 数据源（仅作战计划显示） ========== -->
+    <div v-show="activeMainTab === 'plan'" class="sb-sources">
       <span v-for="src in dataSources" :key="src.key" class="src-tag"
         :class="{ enabled: src.enabled, active: running && currentCard === src.key }">
         <span class="sdot"></span>{{ src.name }}
@@ -820,16 +1112,570 @@ onUnmounted(() => { stopMockScanLoop(); });
 .hs-v.cyan { color: var(--sb-cyan); cursor: pointer; }
 .hs-v.cyan:hover { text-shadow: 0 0 8px var(--sb-cyan); }
 
+/* ============ 主Tab导航 ============ */
+.ai-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--sb-line);
+}
+.ai-tab {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  color: var(--sb-t3);
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all .15s;
+  position: relative;
+}
+.ai-tab:hover { color: var(--sb-t2); }
+.ai-tab.active {
+  color: var(--sb-cyan);
+  border-bottom-color: var(--sb-cyan);
+}
+.at-icon { font-size: 13px; }
+.at-badge {
+  background: var(--down, #ff5096);
+  color: #fff;
+  font-size: 9px;
+  padding: 0 5px;
+  border-radius: 8px;
+  line-height: 14px;
+}
+
+/* ============ Tab面板 ============ */
+.tab-pane {
+  flex: 1; min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.plan-pane { gap: 0; }
+.tab-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--sb-t3);
+}
+.te-icon { font-size: 40px; opacity: .5; }
+.te-title { font-size: 15px; color: var(--sb-t2); }
+.te-desc { font-size: 11px; text-align: center; line-height: 1.6; max-width: 360px; }
+.panel-sub {
+  font-size: 10px;
+  color: var(--sb-t3);
+  font-weight: normal;
+}
+.intraday-pane {
+  flex-direction: row;
+  gap: 8px;
+}
+.intraday-pane .sb-side {
+  flex: 1;
+  min-width: 0;
+}
+.intraday-main {
+  flex: 1.5;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.im-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.signal-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+.signal-empty {
+  padding: 30px;
+  text-align: center;
+  color: var(--sb-t3);
+  font-size: 11px;
+}
+.signal-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.02);
+  font-size: 12px;
+}
+.signal-item:hover { background: rgba(0, 232, 216, 0.06); }
+.signal-item.success { border-left: 3px solid var(--up, #00e0a0); }
+.signal-item.warn { border-left: 3px solid var(--down, #ff5096); }
+.signal-item.info { border-left: 3px solid rgba(0, 232, 216, 0.3); }
+.sig-time {
+  font-size: 10px;
+  color: var(--sb-t3);
+  font-family: Consolas, monospace;
+  flex-shrink: 0;
+}
+.sig-icon { flex-shrink: 0; }
+.sig-text {
+  flex: 1;
+  color: var(--sb-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.review-pane { flex: 1; flex-direction: column; }
+.review-pane .sb-work { flex: 1; min-height: 0; }
+
+/* ============ P3: 盘后复盘总结 ============ */
+.rv-summary {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.rv-card {
+  flex: 1;
+  background: rgba(0, 232, 216, 0.04);
+  border: 1px solid var(--sb-line);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.rv-label {
+  font-size: 10px;
+  color: var(--sb-t3);
+  margin-bottom: 4px;
+}
+.rv-value {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: Consolas, monospace;
+  color: var(--sb-text);
+}
+.rv-value.neutral { color: var(--sb-t2); }
+.rv-value.up { color: var(--up, #00e0a0); }
+.rv-value.down { color: var(--down, #ff5096); }
+.rv-plan { flex: 1.5; }
+.rv-plan-text {
+  font-size: 12px;
+  color: var(--sb-cyan);
+  line-height: 1.5;
+}
+
+/* ============ P4: 设置Tab ============ */
+.settings-pane {
+  gap: 10px;
+}
+.set-top {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.set-card {
+  flex: 1;
+  background: rgba(0, 232, 216, 0.04);
+  border: 1px solid var(--sb-line);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.set-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sb-text);
+  white-space: nowrap;
+}
+.set-hint {
+  font-size: 11px;
+  color: var(--sb-t3);
+}
+.set-strategies {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.set-strategy-btn {
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--sb-line);
+  background: transparent;
+  color: var(--sb-t2);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.set-strategy-btn:hover { border-color: var(--sb-cyan); color: var(--sb-cyan); }
+.set-strategy-btn.active {
+  background: rgba(0, 232, 216, 0.15);
+  border-color: var(--sb-cyan);
+  color: var(--sb-cyan);
+}
+
+/* 开关样式 */
+.set-toggle {
+  width: 44px;
+  height: 24px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 12px;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.set-toggle.on { background: var(--sb-cyan, #00e8d8); }
+.set-toggle.sm { width: 32px; height: 18px; }
+.toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: white;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+.set-toggle.on .toggle-knob { left: 23px; }
+.set-toggle.sm .toggle-knob { width: 12px; height: 12px; }
+.set-toggle.sm.on .toggle-knob { left: 17px; }
+
+.set-columns {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 10px;
+}
+.set-col {
+  flex: 1;
+  min-width: 0;
+  background: rgba(0,0,0,0.15);
+  border: 1px solid var(--sb-line);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.set-col-head {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sb-text);
+  border-bottom: 1px solid var(--sb-line);
+  flex-shrink: 0;
+}
+.set-col-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.02);
+}
+.set-row:hover { background: rgba(0, 232, 216, 0.06); }
+.set-row-name {
+  font-size: 12px;
+  color: var(--sb-text);
+}
+.set-risk {
+  flex-shrink: 0;
+  background: rgba(0,0,0,0.15);
+  border: 1px solid var(--sb-line);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.risk-row {
+  display: flex;
+  gap: 20px;
+  margin-top: 8px;
+}
+.risk-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.risk-label {
+  font-size: 10px;
+  color: var(--sb-t3);
+}
+.risk-value {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: Consolas, monospace;
+  color: var(--sb-text);
+}
+
+/* ============ P1: 盘前准备 ============ */
+.premarket-pane { gap: 10px; }
+.pm-overview {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.pm-ov-card {
+  flex: 1;
+  background: rgba(0, 232, 216, 0.04);
+  border: 1px solid var(--sb-line);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.pm-ov-label {
+  font-size: 10px;
+  color: var(--sb-t3);
+  margin-bottom: 4px;
+}
+.pm-ov-value {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: Consolas, monospace;
+  color: var(--sb-text);
+}
+.pm-ov-value.pink { color: #ff5096; }
+.pm-ov-value.cold { color: #7aa2ff; }
+.pm-ov-value.hot { color: #ffd76a; }
+.pm-sep { color: var(--sb-t3); font-weight: normal; }
+.pm-down { color: var(--down, #ff5096); }
+.pm-ov-summary { flex: 1.5; }
+.pm-ov-text {
+  font-size: 12px;
+  color: var(--sb-cyan);
+  line-height: 1.5;
+}
+.pm-columns {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 10px;
+}
+.pm-col {
+  flex: 1;
+  min-width: 0;
+  background: rgba(0,0,0,0.15);
+  border: 1px solid var(--sb-line);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pm-col-head {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sb-text);
+  border-bottom: 1px solid var(--sb-line);
+  flex-shrink: 0;
+}
+.pm-col-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+.pm-empty {
+  padding: 30px;
+  text-align: center;
+  color: var(--sb-t3);
+  font-size: 11px;
+}
+.pm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.02);
+}
+.pm-row:hover { background: rgba(0, 232, 216, 0.06); }
+.pm-row-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--sb-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pm-row-code {
+  font-size: 9px;
+  color: var(--sb-t3);
+  margin-left: 4px;
+  font-family: Consolas, monospace;
+}
+.pm-row-bar-wrap {
+  flex: 1;
+  height: 6px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.pm-row-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #0a8ab0, #00e8d8);
+  border-radius: 3px;
+}
+.pm-row-bar.hot {
+  background: linear-gradient(90deg, #ff9d00, #ffd76a);
+}
+.pm-row-stage {
+  font-size: 10px;
+  color: var(--sb-t2);
+  width: 36px;
+  text-align: right;
+}
+.pm-row-stage.climax { color: #ffd76a; font-weight: 600; }
+.pm-row-boards {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(255, 80, 150, 0.15);
+  color: var(--down, #ff5096);
+}
+.pm-row-boards.b2 { background: rgba(255, 157, 0, 0.2); color: #ff9d00; }
+.pm-row-boards.b3 { background: rgba(255, 215, 106, 0.25); color: #ffd76a; }
+.pm-row-pct {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: Consolas, monospace;
+}
+.pm-row-pct.up { color: var(--up, #00e0a0); }
+.pm-row-pct.down { color: var(--down, #ff5096); }
+
 /* ============ 舞台区 ============ */
 .sb-stage-area {
   flex: 1.2; min-height: 0;
   display: flex; gap: 8px;
 }
-.sb-stage {
-  flex: 1.85; min-width: 0; position: relative;
-  display: flex; align-items: center; justify-content: center;
+
+/* P0: 今日作战计划 */
+.battle-plan {
+  flex: 1; min-width: 0;
+  display: flex; gap: 10px;
+}
+.plan-left, .plan-right {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+}
+.plan-pane .panel {
+  padding: 0;
+}
+.plan-left .panel, .plan-right .panel {
   overflow: hidden;
 }
+.plan-pane .panel-head {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--sb-line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.plan-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+}
+.sb-side {
+  flex: 1; min-width: 200px;
+  display: flex; flex-direction: column;
+  gap: 8px;
+}
+.empty-tip {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--sb-t3);
+  font-size: 11px;
+}
+.pick-item, .pos-item {
+  padding: 10px;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, rgba(0, 232, 216, 0.06), rgba(0, 232, 216, 0.02));
+  border-radius: 6px;
+  border: 1px solid rgba(0, 232, 216, 0.12);
+  border-left: 3px solid var(--sb-cyan);
+  transition: all .15s;
+}
+.pick-item:hover, .pos-item:hover {
+  border-color: rgba(0, 232, 216, 0.3);
+  background: linear-gradient(135deg, rgba(0, 232, 216, 0.1), rgba(0, 232, 216, 0.04));
+}
+.pick-header, .pos-header {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 6px;
+}
+.pick-name, .pos-name {
+  font-size: 13px; font-weight: 600; color: var(--sb-text);
+}
+.pick-code, .pos-code {
+  font-size: 10px; color: var(--sb-t3);
+  font-family: Consolas, monospace;
+}
+.pick-score {
+  margin-left: auto;
+  font-size: 11px; font-weight: 700;
+  color: var(--sb-cyan);
+  background: rgba(0, 232, 216, 0.12);
+  padding: 2px 8px; border-radius: 4px;
+}
+.pick-score.high {
+  color: #1a1a1a;
+  background: #ffd76a;
+}
+.pick-reason {
+  font-size: 10.5px; color: var(--sb-t2);
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+.pick-price {
+  display: flex; gap: 6px;
+  font-size: 10px;
+  font-family: Consolas, monospace;
+}
+.pick-price span {
+  flex: 1;
+  text-align: center;
+  padding: 3px 4px;
+  border-radius: 3px;
+  background: rgba(0,0,0,0.2);
+}
+.pp-buy { color: var(--sb-cyan); }
+.pp-stop { color: var(--down, #ff5096); }
+.pp-target { color: var(--up, #00e0a0); }
+.pos-pct {
+  margin-left: auto;
+  font-size: 12px; font-weight: 700;
+  font-family: Consolas, monospace;
+}
+.pos-pct.up { color: var(--up, #00e0a0); }
+.pos-pct.down { color: var(--down, #ff5096); }
+.pos-price {
+  display: flex; gap: 10px;
+  font-size: 10px; color: var(--sb-t3);
+  font-family: Consolas, monospace;
+  margin-bottom: 6px;
+}
+.pos-action {
+  font-size: 10.5px; font-weight: 600;
+  padding: 5px 8px;
+  border-radius: 4px;
+  text-align: center;
+}
+.pos-action.hold { background: rgba(0, 232, 216, 0.1); color: var(--sb-cyan); }
+.pos-action.buy { background: rgba(255, 80, 150, 0.15); color: var(--down, #ff5096); }
+.pos-action.sell { background: rgba(0, 224, 160, 0.15); color: var(--up, #00e0a0); }
 .stage-tag {
   position: absolute; top: 8px; left: 10px; z-index: 2;
   display: inline-flex; align-items: center; gap: 5px;
@@ -878,6 +1724,26 @@ onUnmounted(() => { stopMockScanLoop(); });
 .kpi-value.up { color: var(--up); }
 .kpi-value.down { color: var(--down); }
 .kpi-value.neutral { color: var(--sb-text); }
+
+/* P2: 进化状态 */
+.evolution-info {
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: rgba(0, 232, 216, 0.05);
+  border-radius: 4px;
+  border-left: 2px solid var(--sb-cyan);
+}
+.evo-title {
+  font-size: 10px;
+  color: var(--sb-cyan);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.evo-note {
+  font-size: 9px;
+  color: var(--sb-text);
+  opacity: 0.8;
+}
 
 .mini-rows { padding: 7px 10px; display: flex; flex-direction: column; gap: 5px; }
 .mini-row { display: flex; justify-content: space-between; font-size: 10px; color: var(--sb-t2); }

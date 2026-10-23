@@ -4,6 +4,7 @@
 use crate::ai::now_millis;
 use rusqlite::{Connection, Transaction};
 use serde::Serialize;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // ===== 费用（与历史 paper.ts 口径严格一致）=====
 const COMMISSION_RATE: f64 = 0.00025; // 佣金 万2.5（双向，最低 5 元）
@@ -208,11 +209,25 @@ pub fn apply_fill(conn: &mut Connection, req: &FillReq) -> Result<FillResult, St
     })
 }
 
+/// 进程内手动成交序号：保证同一只票、同一方向、同一毫秒内的多笔手动成交流水号不撞 paper_order 主键。
+static MANUAL_ORDER_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// 手动成交流水号（PO 前缀 + 毫秒时间戳 + 代码 + 方向 + 自增序号）。
+/// 自增序号用于消除“同票同向同毫秒连单”第二笔成交因主键冲突被拒（做T闭环/快速连单/自动执行会踩到）。
+pub fn manual_order_id(code: &str, side: Side) -> String {
+    manual_order_id_at(now_millis(), code, side)
+}
+
+fn manual_order_id_at(now: i64, code: &str, side: Side) -> String {
+    let seq = MANUAL_ORDER_SEQ.fetch_add(1, Ordering::Relaxed);
+    format!("PO{now}{code}{}{seq}", side.as_str())
+}
+
 fn order_id_for(req: &FillReq, now: i64) -> String {
-    // broker/条件单路径以 sig_id 作委托 id；纯手动路径生成 PO 前缀 id
-    //（带 side 首字母，避免同一只票同秒手动买卖 id 冲突）。
+    // broker/条件单路径以 sig_id 作委托 id（信号单靠 sig_id 幂等，不能加随机后缀，否则会绕过重复成交保护）；
+    // 纯手动路径生成带自增序号的 PO 前缀 id，保证同毫秒连单不撞主键。
     if req.sig_id.is_empty() {
-        format!("PO{now}{}{}", req.code, req.side.as_str())
+        manual_order_id_at(now, req.code, req.side)
     } else {
         req.sig_id.to_string()
     }
@@ -276,9 +291,9 @@ fn sell_tx(tx: &Transaction, req: &FillReq, amount: f64, fee: f64, now: i64) -> 
         .map_err(|e| format!("删除持仓失败: {e}"))?;
     } else {
         tx.execute(
-            "UPDATE paper_position SET vol=?1, cost_amount=cost_amount-?2, updated_at=?3
+            "UPDATE paper_position SET vol=?1, avail_vol=avail_vol-?5, cost_amount=cost_amount-?2, updated_at=?3
              WHERE code=?4",
-            rusqlite::params![new_vol, cost_reduce, now, req.code],
+            rusqlite::params![new_vol, cost_reduce, now, req.code, req.vol],
         )
         .map_err(|e| format!("更新持仓失败: {e}"))?;
     }
@@ -957,5 +972,87 @@ mod tests {
             .iter()
             .any(|w| w.level == "danger" && w.code == "killSwitch"));
         assert!(s.kill_switch);
+    }
+
+    fn get_vol_avail(c: &Connection, code: &str) -> (i64, i64) {
+        let p = load_positions(c)
+            .unwrap()
+            .into_iter()
+            .find(|p| p.code == code)
+            .unwrap();
+        (p.vol, p.avail_vol)
+    }
+
+    /// 倒T（先卖后买）：昨日底仓 1000，高位卖 500、回落买回 500。
+    /// avail_vol 必须随卖出立即扣减，买回（T+1）当日不恢复可用。
+    #[test]
+    fn reverse_t_sell_then_buy_avail() {
+        let mut c = memdb();
+        ensure_account(&c, 1_000_000.0).unwrap();
+        seed_position(&mut c, "300059", "东方财富", 1000, 18.50).unwrap();
+        assert_eq!(get_vol_avail(&c, "300059"), (1000, 1000));
+        // 倒T 第一步：卖出 500（可用应立即减为 500）
+        apply_fill(&mut c, &req("300059", Side::Sell, 18.90, 500)).unwrap();
+        assert_eq!(get_vol_avail(&c, "300059"), (500, 500));
+        // 倒T 第二步：买回 500（当日买入 T+1 冻结，可用仍为 500）
+        apply_fill(&mut c, &req("300059", Side::Buy, 18.40, 500)).unwrap();
+        assert_eq!(get_vol_avail(&c, "300059"), (1000, 500));
+    }
+
+    /// 正T（先买后卖）：底仓 1000，低位买 500、冲高卖 500（卖的是昨日底仓）。
+    #[test]
+    fn forward_t_buy_then_sell_avail() {
+        let mut c = memdb();
+        ensure_account(&c, 1_000_000.0).unwrap();
+        seed_position(&mut c, "300059", "东方财富", 1000, 18.50).unwrap();
+        // 正T 第一步：买入 500（T+1 冻结，可用不变）
+        apply_fill(&mut c, &req("300059", Side::Buy, 18.40, 500)).unwrap();
+        assert_eq!(get_vol_avail(&c, "300059"), (1500, 1000));
+        // 正T 第二步：卖出 500 昨日底仓（可用减为 500）
+        apply_fill(&mut c, &req("300059", Side::Sell, 18.90, 500)).unwrap();
+        assert_eq!(get_vol_avail(&c, "300059"), (1000, 500));
+    }
+
+    /// 做T闭环后，当日买回/买入的 T+1 冻结股不得再次被卖出（防超卖）。
+    #[test]
+    fn no_oversell_t1_frozen_after_roundtrip() {
+        let mut c = memdb();
+        ensure_account(&c, 1_000_000.0).unwrap();
+        seed_position(&mut c, "300059", "东方财富", 1000, 18.50).unwrap();
+        // 一次倒T闭环：卖 500、买回 500
+        apply_fill(&mut c, &req("300059", Side::Sell, 18.90, 500)).unwrap();
+        apply_fill(&mut c, &req("300059", Side::Buy, 18.40, 500)).unwrap();
+        assert_eq!(get_vol_avail(&c, "300059"), (1000, 500));
+        // 可用仅 500，尝试再卖 1000 必须被拒（修复前 avail 虚高为 1000 会误放行）
+        let e = apply_fill(&mut c, &req("300059", Side::Sell, 18.90, 1000));
+        assert!(e.is_err(), "T+1 冻结股超卖未被拦截");
+        // 卖出剩余可用的 500 股可成交，成交后持仓 500 全部为 T+1 冻结（avail=0）
+        assert!(apply_fill(&mut c, &req("300059", Side::Sell, 18.90, 500)).is_ok());
+        assert_eq!(get_vol_avail(&c, "300059"), (500, 0));
+    }
+
+    /// 同一毫秒内同一只票、同一方向的多笔手动成交流水号必须互不相同。
+    #[test]
+    fn manual_order_id_unique_same_millis() {
+        let a = manual_order_id_at(1_700_000_000_000, "300059", Side::Sell);
+        let b = manual_order_id_at(1_700_000_000_000, "300059", Side::Sell);
+        let c = manual_order_id_at(1_700_000_000_000, "300059", Side::Buy);
+        assert_ne!(a, b, "同票同向同毫秒连单流水号撞键");
+        assert_ne!(a, c);
+        assert_ne!(b, c);
+    }
+
+    /// 同一毫秒内对同一只票连续多笔同方向手动成交（sig_id 为空）必须全部落库，
+    /// 不允许第二笔因 paper_order 主键冲突被拒（做T闭环/快速连单/自动执行场景）。
+    #[test]
+    fn same_millis_repeated_sell_all_filled() {
+        let mut c = memdb();
+        ensure_account(&c, 1_000_000.0).unwrap();
+        seed_position(&mut c, "300059", "东方财富", 3000, 18.50).unwrap();
+        // 连续卖 3 笔各 100，全部成功，avail 3000→2700
+        for _ in 0..3 {
+            apply_fill(&mut c, &req("300059", Side::Sell, 18.90, 100)).unwrap();
+        }
+        assert_eq!(get_vol_avail(&c, "300059"), (2700, 2700));
     }
 }

@@ -1385,7 +1385,7 @@ pub async fn portfolio_buy(
         return Err(reason);
     }
 
-    let oid = format!("PO{}{}", now_millis(), code);
+    let oid = portfolio::manual_order_id(&code, portfolio::Side::Buy);
     let req = portfolio::FillReq {
         code: &code,
         name: &name,
@@ -1444,7 +1444,7 @@ pub async fn portfolio_sell(
         return Err(reason);
     }
 
-    let oid = format!("PO{}{}", now_millis(), code);
+    let oid = portfolio::manual_order_id(&code, portfolio::Side::Sell);
     let req = portfolio::FillReq {
         code: &code,
         name: "",
@@ -1456,6 +1456,111 @@ pub async fn portfolio_sell(
         limit_prices: None,
     };
     portfolio::apply_fill(&mut conn, &req)
+}
+
+// ===== 做T台账（P2-4）：跨日入库，全应用唯一跨日做T统计源 =====
+
+/// 做T闭环记录（前端上报；pnl/fee 已扣实际费用，单位分）
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TmakerRecordIn {
+    pub trade_date: String,
+    pub code: String,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub kind: String, // long / short
+    pub vol: i64,
+    pub open_price: f64,
+    pub close_price: f64,
+    pub pnl_cents: i64,
+    pub fee_cents: i64,
+    pub open_time: i64,
+    pub close_time: i64,
+}
+
+/// 做T台账返回行
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TmakerRecordOut {
+    pub trade_date: String,
+    pub code: String,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub vol: i64,
+    pub open_price: f64,
+    pub close_price: f64,
+    pub pnl_cents: i64,
+    pub fee_cents: i64,
+    pub open_time: i64,
+    pub close_time: i64,
+}
+
+#[tauri::command]
+pub fn tmaker_records_upsert(
+    ai: State<'_, crate::ai::AiState>,
+    rows: Vec<TmakerRecordIn>,
+) -> Result<(), String> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let conn = maindb::open_readwrite(&ai.dir())?;
+    let now = now_millis();
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    for r in rows {
+        tx.execute(
+            "INSERT INTO tmaker_record
+               (trade_date, code, name, type, vol, open_price, close_price,
+                pnl_cents, fee_cents, open_time, close_time, created_at)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+            rusqlite::params![
+                r.trade_date, r.code, r.name, r.kind, r.vol,
+                r.open_price, r.close_price, r.pnl_cents, r.fee_cents,
+                r.open_time, r.close_time, now
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn tmaker_records_list(
+    ai: State<'_, crate::ai::AiState>,
+    limit: Option<i64>,
+) -> Result<Vec<TmakerRecordOut>, String> {
+    let conn = maindb::open_readonly(&ai.dir())?;
+    let n = limit.unwrap_or(1000).clamp(1, 5000);
+    let mut stmt = conn
+        .prepare(
+            "SELECT trade_date, code, name, type, vol, open_price, close_price,
+                    pnl_cents, fee_cents, open_time, close_time
+             FROM tmaker_record ORDER BY close_time DESC LIMIT ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([n], |row| {
+            Ok(TmakerRecordOut {
+                trade_date: row.get(0)?,
+                code: row.get(1)?,
+                name: row.get(2)?,
+                kind: row.get(3)?,
+                vol: row.get(4)?,
+                open_price: row.get(5)?,
+                close_price: row.get(6)?,
+                pnl_cents: row.get(7)?,
+                fee_cents: row.get(8)?,
+                open_time: row.get(9)?,
+                close_time: row.get(10)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(out)
 }
 
 fn init_cash_or_default(dir: &Path) -> Result<f64, String> {

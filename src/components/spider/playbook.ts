@@ -35,78 +35,15 @@ export interface PlaybookCtx {
   doneIds?: Set<string>;
 }
 
-/** 生成一张卡片的操作剧本 */
-export function planPlaybook(ui: UiElement[], ctx: PlaybookCtx = {}): OpStep[] {
-  const steps: OpStep[] = [];
-  let counter = 0;
-  const nextId = (): string => `op:${counter++}`;
-  const done = ctx.doneIds;
-  const notDone = (u: UiElement): boolean => !done || !done.has(u.id);
-
-  // ① 切换标签：点未激活、未点过的 tab，逐个维度浏览（每次切换后重新采集）
-  const maxTabs = ctx.maxTabs ?? 2;
-  const tabs = ui.filter(
-    (u) => u.kind === "tab" && !u.active && !u.disabled && notDone(u),
-  );
-  tabs.slice(0, maxTabs).forEach((u) => {
-    steps.push({
-      type: "tap",
-      ui: u,
-      arriveId: nextId(),
-      label: `切换标签「${u.text || "选项"}」`,
-      waitMs: 780,
-      rescan: "tab",
-    });
-  });
-
-  // ② 向下滚动加载更多（取第一个仍可向下的滚动容器，受次数上限约束）
-  const maxScroll = ctx.maxScrollRounds ?? 2;
-  const scrollRounds = ctx.scrollRounds ?? 0;
-  const scroller = ui.find(
-    (u) => u.kind === "scroll" && u.scroll?.canDown && notDone(u),
-  );
-  if (scroller && scrollRounds < maxScroll) {
-    steps.push({
-      type: "scroll-down",
-      ui: scroller,
-      arriveId: nextId(),
-      label: "向下滚动，加载更多数据",
-      waitMs: 880,
-      rescan: "scroll",
-    });
-  }
-
-  // ③ 点重点个股：focusCode 优先，否则按涨幅 pct 取最高的行
-  const maxRows = ctx.maxRowOpens ?? 2;
-  const rows = ui.filter(
-    (u) => u.kind === "row" && !u.disabled && notDone(u) && (u.code || u.name),
-  );
-  const ranked = [...rows].sort((a, b) => {
-    const af = ctx.focusCode && a.code === ctx.focusCode ? 1 : 0;
-    const bf = ctx.focusCode && b.code === ctx.focusCode ? 1 : 0;
-    if (af !== bf) return bf - af;
-    return (b.pct ?? -Infinity) - (a.pct ?? -Infinity);
-  });
-  ranked.slice(0, maxRows).forEach((u) => {
-    const who = u.name || u.code || "条目";
-    // 按行主体类型生成准确文案：个股 / 板块 / 指数 / 资讯，避免把非个股当个股点
-    const label =
-      u.rowKind === "stock" ? `点选个股「${who}」查看详情`
-      : u.rowKind === "sector" ? `查看板块「${who}」`
-      : u.rowKind === "index" ? `查看指数「${who}」`
-      : u.rowKind === "info" ? `查看资讯「${who}」`
-      : `查看「${who}」`;
-    steps.push({
-      type: "tap",
-      ui: u,
-      arriveId: nextId(),
-      label,
-      waitMs: 700,
-      rescan: "none",
-    });
-  });
-
-  return steps;
+/**
+ * 生成一张卡片的操作剧本
+ *
+ * 【AI交易助理改版】彻底废弃"蜘蛛到处点卡片、切标签、滚动"的仿真动作。
+ * 真正的量化交易助理直接在后台分析数据，不操作 UI，因此始终返回空剧本。
+ * 保留函数签名与导出，避免 ProceduralSpider 等调用方报错。
+ */
+export function planPlaybook(_ui: UiElement[], _ctx: PlaybookCtx = {}): OpStep[] {
+  return [];
 }
 
 /** 便捷：统计剧本里某类 rescan 的数量（状态机做上限保护用） */

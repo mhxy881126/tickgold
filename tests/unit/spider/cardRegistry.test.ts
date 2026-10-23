@@ -11,7 +11,7 @@ import {
 describe("cardRegistry", () => {
   it("注册全部 47 张卡，且每张 title 非空", () => {
     const ids = Object.keys(CARD_REGISTRY);
-    expect(ids.length).toBe(47);
+    expect(ids.length).toBe(48);
     ids.forEach((id) => {
       expect(CARD_REGISTRY[id as keyof typeof CARD_REGISTRY].title).toBeTruthy();
     });

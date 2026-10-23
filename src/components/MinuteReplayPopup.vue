@@ -136,7 +136,7 @@ const dayKey = (ts: number) => {
   return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
 };
 
-async function openPopup(kd: KLineData) {
+async function openPopup(kd: KLineData, extra?: { date: string; bars: KBar[] }[]) {
   popupErr.value = "";
   popup.value.visible = true;
   popup.value.name = props.name;
@@ -154,11 +154,19 @@ async function openPopup(kd: KLineData) {
     const ks = [...kbars].sort((a, b) => a.timestamp - b.timestamp);
     const prevMap = new Map<string, number>();
     ks.forEach((b, i) => prevMap.set(dayKey(b.timestamp), i > 0 ? ks[i - 1].close : b.open));
-    histDays.value = days.map((d) => ({
-      date: d.date,
-      bars: d.bars,
-      prevClose: prevMap.get(d.date) ?? d.bars[0]?.close ?? 0,
-    }));
+    histDays.value = [
+      ...days.map((d) => ({
+        date: d.date,
+        bars: d.bars,
+        prevClose: prevMap.get(d.date) ?? d.bars[0]?.close ?? 0,
+      })),
+      // 超过近5交易日的历史分时：由调用方（做T图表）从本地归档库补充
+      ...(extra ?? []).map((d) => ({
+        date: d.date,
+        bars: d.bars,
+        prevClose: prevMap.get(d.date) ?? d.bars[0]?.close ?? 0,
+      })),
+    ];
     const di = histDays.value.findIndex((d) => d.date === dayKey(kd.timestamp));
     dayIndex.value = di >= 0 ? di : 0;
   } catch (e: any) {

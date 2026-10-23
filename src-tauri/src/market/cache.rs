@@ -79,14 +79,19 @@ pub fn write_kline(code: &str, period: i64, bars: &[KBar]) -> Result<(), String>
     Ok(())
 }
 
-/// 读缓存（空数据视为无）
+/// 读缓存（空数据视为无；超过 24h 视为过期——做T需要当日/近期数据，跨日旧缓存不得冒充）
 pub fn read_kline(code: &str, period: i64) -> Option<Vec<KBar>> {
     let path = kline_path(code, period)?;
     let bytes = fs::read(&path).ok()?;
     let cf: CacheFile = serde_json::from_slice(&bytes).ok()?;
     if cf.bars.is_empty() {
-        None
-    } else {
-        Some(cf.bars)
+        return None;
     }
+    const FRESH_MS: i64 = 24 * 60 * 60 * 1000;
+    if now_ms() - cf.updated_at > FRESH_MS {
+        // 过期：顺手清掉，避免下次再读到
+        let _ = fs::remove_file(&path);
+        return None;
+    }
+    Some(cf.bars)
 }

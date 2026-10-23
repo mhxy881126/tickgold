@@ -13,6 +13,7 @@ pub mod irminteract;
 pub mod ladder_stats;
 pub mod level2;
 pub mod limitup;
+pub mod min_hist;
 pub mod screen_sub;
 pub mod sector_day;
 pub mod sina;
@@ -146,6 +147,8 @@ impl OrderBook {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TradeTick {
+    #[serde(default)]
+    pub code: String, // 归属标的（聚合层按请求 code 统一回填，前端用于切票隔离）
     pub time: String, // HH:MM:SS
     pub price: f64,
     pub vol: f64,     // 手
@@ -249,8 +252,16 @@ pub struct ScreenResult {
     pub signals: Vec<String>,
 }
 
-const QUOTE_TIMEOUT: u64 = 5;
-const KLINE_TIMEOUT: u64 = 8;
+const QUOTE_TIMEOUT: u64 = 3;
+const KLINE_TIMEOUT: u64 = 4;
+
+/// 短 TTL 内存缓存：前端做T/盯盘高频轮询（fast 3s）时，同一标的短时间重复请求直接回缓存，
+/// 把对数据源（东财/腾讯/新浪）的请求合并去重，显著降低延迟与限流概率。
+/// 注意：做T要求行情新鲜，TTL 取 2s（低于前端轮询间隔，不牺牲实时性）。
+const CACHE_TTL_MS: u128 = 2000;
+static QUOTE_CACHE: OnceLock<tokio::sync::Mutex<HashMap<String, (std::time::Instant, Vec<Quote>)>>> = OnceLock::new();
+static BOOK_CACHE: OnceLock<tokio::sync::Mutex<HashMap<String, (std::time::Instant, OrderBook)>>> = OnceLock::new();
+static MINUTE_CACHE: OnceLock<tokio::sync::Mutex<HashMap<String, (std::time::Instant, Vec<KBar>)>>> = OnceLock::new();
 
 /// 共享 HTTP 客户端（不在此设全局 timeout，由 tokio timeout 精细控制）
 pub fn http() -> Client {
@@ -331,7 +342,7 @@ pub fn now_millis() -> i64 {
         .unwrap_or(0)
 }
 
-// ===== 轻量熔断：连续失败≥2 的源熔断 30s =====
+// ===== 轻量熔断：连续失败≥4 的源熔断 8s（免费源偶发限频/TLS 连接关闭，不宜长期踢出最快源）=====
 #[derive(Clone, Copy)]
 struct Health {
     fails: u32,
@@ -345,7 +356,7 @@ fn health_store() -> &'static Mutex<HashMap<String, Health>> {
 fn is_open(src: &str) -> bool {
     let m = health_store().lock().unwrap();
     match m.get(src) {
-        Some(h) if h.fails >= 2 && h.since.elapsed() < Duration::from_secs(30) => {
+        Some(h) if h.fails >= 4 && h.since.elapsed() < Duration::from_secs(8) => {
             log::debug!("数据源 {src} 熔断中，跳过");
             false
         }
@@ -360,8 +371,8 @@ fn record_fail(src: &str) {
     });
     e.fails += 1;
     e.since = Instant::now();
-    if e.fails >= 2 {
-        log::warn!("数据源 {src} 连续失败 {} 次，熔断 30s", e.fails);
+    if e.fails >= 4 {
+        log::warn!("数据源 {src} 连续失败 {} 次，熔断 8s", e.fails);
     }
 }
 fn record_ok(src: &str) {
@@ -403,70 +414,75 @@ async fn enrich_inside_outside(mut quotes: Vec<Quote>) -> Vec<Quote> {
     quotes
 }
 
-/// 批量实时行情：东财 → 新浪 → 腾讯
+/// 批量实时行情：东财 / 新浪 / 腾讯 **并发竞速**——谁先返回有效数据用谁（延迟=最快源，不再串行等超时）。
+/// 短 TTL 缓存合并高频轮询；成功后异步补内外盘（东财/新浪缺内外盘时用腾讯补）。
 pub async fn get_quotes(codes: Vec<String>) -> Result<Vec<Quote>, String> {
     if codes.is_empty() {
         return Ok(vec![]);
     }
-    let mut last_err = String::from("所有行情源均不可用");
+    let key = codes.join(",");
+    // 短 TTL 缓存：2s 内重复请求直接回缓存（前端 3s 轮询天然命中）
+    {
+        let cache = QUOTE_CACHE.get_or_init(|| tokio::sync::Mutex::new(HashMap::new()));
+        if let Some(hit) = cache.lock().await.get(&key) {
+            if hit.0.elapsed().as_millis() < CACHE_TTL_MS {
+                return Ok(hit.1.clone());
+            }
+        }
+    }
 
+    let mut set = tokio::task::JoinSet::new();
     if is_open("eastmoney") {
-        match tokio::time::timeout(
-            Duration::from_secs(QUOTE_TIMEOUT),
-            eastmoney::quotes(&codes),
-        )
-        .await
-        {
-            Ok(Ok(v)) if valid_quotes(&v) => {
-                record_ok("eastmoney");
-                return Ok(enrich_inside_outside(v).await);
-            }
-            Ok(Ok(_)) => record_fail("eastmoney"),
-            Ok(Err(e)) => {
-                record_fail("eastmoney");
-                last_err = format!("东财: {e}");
-            }
-            Err(_) => {
-                record_fail("eastmoney");
-                last_err = "东财: 超时".to_string();
-            }
-        }
+        let value = codes.clone();
+        set.spawn(async move {
+            let r = tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), eastmoney::quotes(&value)).await;
+            if matches!(&r, Ok(Ok(v)) if valid_quotes(v)) { record_ok("eastmoney") } else { record_fail("eastmoney") }
+            r
+        });
     }
-
     if is_open("sina") {
-        match tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), sina::quotes(&codes)).await {
-            Ok(Ok(v)) if valid_quotes(&v) => {
-                record_ok("sina");
-                return Ok(enrich_inside_outside(v).await);
-            }
-            Ok(Ok(_)) => record_fail("sina"),
-            Ok(Err(e)) => {
-                record_fail("sina");
-                last_err = format!("新浪: {e}");
-            }
-            Err(_) => {
-                record_fail("sina");
-                last_err = "新浪: 超时".to_string();
-            }
-        }
+        let value = codes.clone();
+        set.spawn(async move {
+            let r = tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), sina::quotes(&value)).await;
+            if matches!(&r, Ok(Ok(v)) if valid_quotes(v)) { record_ok("sina") } else { record_fail("sina") }
+            r
+        });
+    }
+    {
+        let value = codes.clone();
+        set.spawn(async move {
+            let r = tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), tencent::quotes(&value)).await;
+            if matches!(&r, Ok(Ok(v)) if valid_quotes(v)) { record_ok("tencent") } else { record_fail("tencent") }
+            r
+        });
     }
 
-    let result =
-        match tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), tencent::quotes(&codes))
-            .await
-        {
-            Ok(Ok(v)) if valid_quotes(&v) => {
-                record_ok("tencent");
-                Ok(v)
-            }
-            Ok(Ok(_)) => Err("腾讯: 返回空".to_string()),
-            Ok(Err(e)) => Err(format!("全部失败 → {last_err}; 腾讯: {e}")),
-            Err(_) => Err(format!("全部失败 → {last_err}; 腾讯: 超时")),
-        };
-    if let Err(e) = &result {
-        log::error!("批量行情全部源失败（{} 只）: {e}", codes.len());
+    let mut last_err = String::from("所有行情源均不可用");
+    let mut out: Option<Vec<Quote>> = None;
+    while let Some(joined) = set.join_next().await {
+        match joined {
+            Ok(Ok(Ok(v))) if valid_quotes(&v) => { out = Some(v); break; }
+            Ok(Ok(Ok(_))) => last_err = "源返回空".to_string(),
+            Ok(Ok(Err(e))) => last_err = format!("源失败: {e}"),
+            Ok(Err(_)) => last_err = "源超时".to_string(),
+            Err(_) => last_err = "源任务异常".to_string(),
+        }
     }
-    result
+    // 竞速退出后，仍在跑的源任务随 JoinSet drop 自动终止（不阻塞本次返回）
+    let v = match out {
+        Some(v) => v,
+        None => {
+            log::error!("批量行情全部源失败（{} 只）: {last_err}", codes.len());
+            return Err(format!("批量行情全部失败 → {last_err}"));
+        }
+    };
+    let v = enrich_inside_outside(v).await;
+    QUOTE_CACHE
+        .get_or_init(|| tokio::sync::Mutex::new(HashMap::new()))
+        .lock()
+        .await
+        .insert(key, (std::time::Instant::now(), v.clone()));
+    Ok(v)
 }
 
 /// K线：腾讯（日 kline/kline、分钟 mkline，周月为自然周/月）→ 新浪兜底
@@ -491,94 +507,82 @@ pub async fn get_kline(code: String, period: i64, count: i64) -> Result<Vec<KBar
     }
 }
 
-/// 网络聚合：腾讯 → 新浪
+/// 网络聚合：腾讯 / 新浪 **并发竞速**（原串行双超时 → 最快源返回）
 async fn fetch_kline_network(code: &str, period: i64, count: i64) -> Result<Vec<KBar>, String> {
-    let mut last_err = String::from("K线源均不可用");
-
-    match tokio::time::timeout(
-        Duration::from_secs(KLINE_TIMEOUT),
-        tencent::kline(code, period, count),
-    )
-    .await
+    let mut set = tokio::task::JoinSet::new();
     {
-        Ok(Ok(v)) if !v.is_empty() => {
-            record_ok("tencent_kline");
-            return Ok(v);
-        }
-        Ok(Ok(_)) => record_fail("tencent_kline"),
-        Ok(Err(e)) => {
-            record_fail("tencent_kline");
-            last_err = format!("腾讯: {e}");
-        }
-        Err(_) => {
-            record_fail("tencent_kline");
-            last_err = "腾讯: 超时".to_string();
-        }
+        let value = code.to_string();
+        set.spawn(async move {
+            let r = tokio::time::timeout(Duration::from_secs(KLINE_TIMEOUT), tencent::kline(&value, period, count)).await;
+            if matches!(&r, Ok(Ok(v)) if !v.is_empty()) { record_ok("tencent_kline") } else { record_fail("tencent_kline") }
+            r
+        });
     }
-
     if is_open("sina_kline") {
-        match tokio::time::timeout(
-            Duration::from_secs(KLINE_TIMEOUT),
-            sina::kline(code, period, count),
-        )
-        .await
-        {
-            Ok(Ok(v)) if !v.is_empty() => {
-                record_ok("sina_kline");
-                return Ok(v);
-            }
-            Ok(Ok(_)) => record_fail("sina_kline"),
-            Ok(Err(e)) => {
-                record_fail("sina_kline");
-                last_err = format!("{last_err}; 新浪: {e}");
-            }
-            Err(_) => {
-                record_fail("sina_kline");
-                last_err = format!("{last_err}; 新浪: 超时");
-            }
-        }
+        let value = code.to_string();
+        set.spawn(async move {
+            let r = tokio::time::timeout(Duration::from_secs(KLINE_TIMEOUT), sina::kline(&value, period, count)).await;
+            if matches!(&r, Ok(Ok(v)) if !v.is_empty()) { record_ok("sina_kline") } else { record_fail("sina_kline") }
+            r
+        });
     }
 
+    let mut last_err = String::from("K线源均不可用");
+    while let Some(joined) = set.join_next().await {
+        match joined {
+            Ok(Ok(Ok(v))) if !v.is_empty() => return Ok(v),
+            Ok(Ok(Ok(_))) => last_err = "源返回空".to_string(),
+            Ok(Ok(Err(e))) => last_err = format!("源失败: {e}"),
+            Ok(Err(_)) => last_err = "源超时".to_string(),
+            Err(_) => last_err = "源任务异常".to_string(),
+        }
+    }
     Err(format!("K线全部失败 → {last_err}"))
 }
 
 /// 盘口（免费源尽力版）：东财为主（动态档位），盘后清空或失败回退腾讯。
 /// 返回前统一计算委比/委差；东财路径用腾讯补内外盘（免费盘口仅五档，非 Level-2）。
 pub async fn get_orderbook(code: String) -> Result<OrderBook, String> {
-    let mut book = if is_open("eastmoney_book") {
-        match tokio::time::timeout(
-            Duration::from_secs(QUOTE_TIMEOUT),
-            eastmoney::orderbook(&code),
-        )
-        .await
-        {
+    // 短 TTL 缓存：合并高频轮询
+    {
+        let cache = BOOK_CACHE.get_or_init(|| tokio::sync::Mutex::new(HashMap::new()));
+        if let Some(hit) = cache.lock().await.get(&code) {
+            if hit.0.elapsed().as_millis() < CACHE_TTL_MS {
+                return Ok(hit.1.clone());
+            }
+        }
+    }
+
+    // 腾讯为主（qt.gtimg 单接口即含五档+内外盘+委比，实测稳定 ~380ms；东财 push2 本机频繁 TLS 连接关闭）。
+    // 腾讯失败/超时再降级东财（同花顺口径已由前端 bookNormalize 方向自愈，两源均可）。
+    let tx = tokio::time::timeout(Duration::from_secs(2), tencent::orderbook(&code)).await;
+    let tx_ok = matches!(&tx, Ok(Ok(b)) if !b.asks.is_empty() || !b.bids.is_empty());
+    if tx_ok { record_ok("tencent_book") } else { record_fail("tencent_book") }
+
+    let mut book: OrderBook = if tx_ok {
+        match tx { Ok(Ok(b)) => b, _ => unreachable!() }
+    } else {
+        log::warn!("盘口腾讯源失败，降级东财: {code}");
+        let em = if is_open("eastmoney_book") {
+            tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), eastmoney::orderbook(&code)).await
+        } else {
+            return Err("盘口: 所有源失败/超时（东财熔断中）".to_string());
+        };
+        match em {
             Ok(Ok(b)) if !b.asks.is_empty() || !b.bids.is_empty() => {
                 record_ok("eastmoney_book");
                 b
             }
             _ => {
                 record_fail("eastmoney_book");
-                // 回退腾讯（盘后仍返回收盘五档）
-                tokio::time::timeout(
-                    Duration::from_secs(QUOTE_TIMEOUT),
-                    tencent::orderbook(&code),
-                )
-                .await
-                .map_err(|_| "盘口: 超时".to_string())??
+                return Err("盘口: 所有源失败/超时".to_string());
             }
         }
-    } else {
-        tokio::time::timeout(
-            Duration::from_secs(QUOTE_TIMEOUT),
-            tencent::orderbook(&code),
-        )
-        .await
-        .map_err(|_| "盘口: 超时".to_string())??
     };
-    // 东财路径无内外盘：用腾讯批量行情补一次
+    // 东财路径无内外盘：用腾讯批量行情补一次（腾讯主源已含，跳过）
     if book.inside_vol <= 0.0 && book.outside_vol <= 0.0 {
         if let Ok(Ok(tq)) = tokio::time::timeout(
-            Duration::from_secs(QUOTE_TIMEOUT),
+            Duration::from_secs(2),
             tencent::quotes(std::slice::from_ref(&code)),
         )
         .await
@@ -613,17 +617,31 @@ pub async fn get_orderbook(code: String) -> Result<OrderBook, String> {
         }
     }
     book.fill_depth();
+    BOOK_CACHE
+        .get_or_init(|| tokio::sync::Mutex::new(HashMap::new()))
+        .lock()
+        .await
+        .insert(code.clone(), (std::time::Instant::now(), book.clone()));
     Ok(book)
 }
 
-/// 逐笔成交明细（东财 details/get），返回最近 n 条
+/// 逐笔成交明细：腾讯优先（东财 details 盘后频繁 TLS 断连），腾讯失败再降级东财；返回最近 n 条
 pub async fn get_trades(code: String, n: i64) -> Result<Vec<TradeTick>, String> {
-    tokio::time::timeout(
-        Duration::from_secs(QUOTE_TIMEOUT),
-        eastmoney::trades(&code, n.clamp(1, 200)),
-    )
-    .await
-    .map_err(|_| "逐笔: 超时".to_string())?
+    let want = n.clamp(1, 200);
+    let mut v: Vec<TradeTick> =
+        match tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), tencent::trades(&code, want)).await {
+            Ok(Ok(got)) if !got.is_empty() => got,
+            _ => {
+                tokio::time::timeout(Duration::from_secs(QUOTE_TIMEOUT), eastmoney::trades(&code, want))
+                    .await
+                    .map_err(|_| "逐笔: 超时".to_string())?
+                    .map_err(|e| e)?
+            }
+        };
+    for t in v.iter_mut() {
+        t.code = code.clone();
+    }
+    Ok(v)
 }
 
 /// 板块行情：新浪（kind: industry=行业, concept=概念）
@@ -656,11 +674,25 @@ pub async fn get_news_flash(page: i64, size: i64) -> Result<Vec<NewsItem>, Strin
     .map_err(|_| "快讯: 超时".to_string())?
 }
 
-/// 当日分时：腾讯
+/// 当日分时：腾讯（短 TTL 缓存合并前端轮询；盘后收盘数据不变，命中缓存免网络）
 pub async fn get_minute(code: String) -> Result<Vec<KBar>, String> {
-    tokio::time::timeout(Duration::from_secs(KLINE_TIMEOUT), tencent::minute(&code))
+    {
+        let cache = MINUTE_CACHE.get_or_init(|| tokio::sync::Mutex::new(HashMap::new()));
+        if let Some(hit) = cache.lock().await.get(&code) {
+            if hit.0.elapsed().as_millis() < CACHE_TTL_MS {
+                return Ok(hit.1.clone());
+            }
+        }
+    }
+    let v = tokio::time::timeout(Duration::from_secs(KLINE_TIMEOUT), tencent::minute(&code))
         .await
-        .map_err(|_| "分时: 超时".to_string())?
+        .map_err(|_| "分时: 超时".to_string())??;
+    MINUTE_CACHE
+        .get_or_init(|| tokio::sync::Mutex::new(HashMap::new()))
+        .lock()
+        .await
+        .insert(code, (std::time::Instant::now(), v.clone()));
+    Ok(v)
 }
 
 /// 历史分时（最近 5 个交易日）：date="YYYYMMDD"，缺省取最新交易日

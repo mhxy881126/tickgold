@@ -238,12 +238,13 @@ defineExpose({ start, stop, running: engine.running });
 
 <template>
   <div v-if="visible" class="spider-overlay">
-    <ProceduralSpider :log-el="logPanelRef" />
+    <!-- 彻底关掉蜘蛛动画：AI交易助理不需要这个 -->
+    <!-- <ProceduralSpider :log-el="logPanelRef" /> -->
 
     <!-- 顶部状态栏（极简居中版） -->
     <div class="sb-topbar">
       <div class="sb-left">
-        <span class="sb-title-icon" title="AI 爬虫机器人">🕷</span>
+        <span class="sb-title-icon" title="AI 交易助理">🤖</span>
         <span class="sb-card" :title="'当前: ' + currentCardName">{{ currentCardName }}</span>
         <span class="sb-step" :title="'已扫描 ' + engine.currentStep.value + ' 轮'">
           <b>{{ engine.currentStep.value }}</b> 轮

@@ -31,6 +31,7 @@ import TradeTape from "./TradeTape.vue";
 import AiAssistant from "./AiAssistant.vue";
 import StrategyProfiles from "./StrategyProfiles.vue";
 import SpiderBot from "./SpiderBot.vue";
+import TMaker from "./TMaker.vue";
 import AiReview from "./AiReview.vue";
 import BattlePlan from "./BattlePlan.vue";
 import DecisionLog from "./DecisionLog.vue";
@@ -132,6 +133,7 @@ function retry() {
     <ConditionalOrders v-else-if="id === 'co'" />
     <StrategyProfiles v-else-if="id === 'strategy'" />
     <SpiderBot v-else-if="id === 'spiderbot'" @switch-card="$emit('switchCard', $event)" />
+    <TMaker v-else-if="id === 'tmaker'" />
     <Performance v-else-if="id === 'performance'" />
     <ProGate v-else-if="id === 'intradayai'" title="AI 盘中解读" desc="订阅 Pro 后解锁盘中市场解读与热点梳理">
       <IntradayCommentary />

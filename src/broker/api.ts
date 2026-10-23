@@ -549,6 +549,30 @@ export function mockReset() {
   return invoke<void>("mock_reset");
 }
 
+// ===== 做T台账（P2-4）：跨日入库 / 查询 =====
+
+export interface TmakerRecordRow {
+  tradeDate: string;
+  code: string;
+  name: string;
+  type: "long" | "short";
+  vol: number;
+  openPrice: number;
+  closePrice: number;
+  pnlCents: number;
+  feeCents: number;
+  openTime: number;
+  closeTime: number;
+}
+
+export function tmakerRecordsUpsert(rows: TmakerRecordRow[]) {
+  return invoke<void>("tmaker_records_upsert", { rows });
+}
+
+export function tmakerRecordsList(limit?: number) {
+  return invoke<TmakerRecordRow[]>("tmaker_records_list", { limit: limit ?? null });
+}
+
 // ===== 风险仪表盘（v2.28）=====
 
 export interface PositionRisk {

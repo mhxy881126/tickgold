@@ -1039,5 +1039,44 @@ pub fn migrations() -> Vec<Migration> {
                             sql: "ALTER TABLE plan_instruction ADD COLUMN tag TEXT DEFAULT '';",
                             kind: MigrationKind::Up,
                         },
+                        Migration {
+                            version: 64,
+                            description: "tmaker_record: 做T台账跨日入库（P2-4）",
+                            sql: "CREATE TABLE IF NOT EXISTS tmaker_record (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                trade_date TEXT NOT NULL,
+                                code TEXT NOT NULL,
+                                name TEXT NOT NULL DEFAULT '',
+                                type TEXT NOT NULL,
+                                vol INTEGER NOT NULL,
+                                open_price REAL NOT NULL,
+                                close_price REAL NOT NULL,
+                                pnl_cents INTEGER NOT NULL,
+                                fee_cents INTEGER NOT NULL,
+                                open_time INTEGER NOT NULL,
+                                close_time INTEGER NOT NULL,
+                                created_at INTEGER NOT NULL DEFAULT 0
+                              );
+                              CREATE INDEX IF NOT EXISTS idx_tmaker_record_date ON tmaker_record(trade_date);
+                              CREATE INDEX IF NOT EXISTS idx_tmaker_record_code ON tmaker_record(code);",
+                            kind: MigrationKind::Up,
+                        },
+                        Migration {
+                            version: 65,
+                            description: "hist_minute_kline: 历史分时每日落库累积（P3-3）",
+                            sql: "CREATE TABLE IF NOT EXISTS hist_minute_kline (
+                                code TEXT NOT NULL,
+                                trade_date TEXT NOT NULL,
+                                minute_ts INTEGER NOT NULL,
+                                open REAL NOT NULL,
+                                high REAL NOT NULL,
+                                low REAL NOT NULL,
+                                close REAL NOT NULL,
+                                volume REAL NOT NULL DEFAULT 0,
+                                PRIMARY KEY (code, trade_date, minute_ts)
+                              );
+                              CREATE INDEX IF NOT EXISTS idx_hist_minute_lookup ON hist_minute_kline(code, trade_date);",
+                            kind: MigrationKind::Up,
+                        },
     ]
 }

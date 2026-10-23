@@ -48,7 +48,8 @@ export type CardId =
   | "strategyscan"
   | "reviewreport"
   | "cockpit"
-  | "brokerconsole";
+  | "brokerconsole"
+  | "tmaker";
 
 export type Zone = "main" | "side";
 
@@ -95,7 +96,7 @@ export const CARD_META: Record<CardId, CardMeta> = {
   signalbridge: { title: "信号确认桥", accent: "#ffb13d", kind: "chart" },
   co: { title: "本地条件单", accent: "#ffb13d", kind: "chart" },
   sieve: { title: "连板选股器", accent: "#ffd76a", kind: "chart" },
-  spiderbot: { title: "AI 爬虫机器人", accent: "#00ffd5", kind: "chart" },
+  spiderbot: { title: "AI交易助理", accent: "#00ffd5", kind: "chart" },
   performance: { title: "绩效分析", accent: "#00ff64", kind: "chart" },
   intradayai: { title: "盘中解读", accent: "#e8c66a", kind: "chart" },
   newsdigest: { title: "资讯聚合", accent: "#b07cff", kind: "chart" },
@@ -107,6 +108,7 @@ export const CARD_META: Record<CardId, CardMeta> = {
   reviewreport: { title: "盯盘复盘报告", accent: "#c9a24a", kind: "chart" },
   cockpit: { title: "今日作战流", accent: "#d4af37", kind: "chart" },
   brokerconsole: { title: "同花顺控制台", accent: "#e8c878", kind: "chart" },
+  tmaker: { title: "做T决策台", accent: "#00e8d8", kind: "chart" },
 };
 
 /// P1-3 新手模式默认布局：仅保留「今日作战流」主线 + 「同花顺控制台」，其余卡片随流程按需打开。

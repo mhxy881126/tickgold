@@ -100,6 +100,8 @@ const RAW: Record<CardId, RawCap> = {
   cockpit: { group: "review", rowKind: "none", producesSignal: false, dwellMs: 4000, onTour: false },
   // ─── P7 同花顺客户端控制台（人工交易台，不参与无人值守巡回）───
   brokerconsole: { group: "review", rowKind: "none", producesSignal: false, dwellMs: 3000, onTour: false },
+  // ─── 做T决策台（单票日内回转人工决策台，产出做T信号，不参与无人值守巡回）───
+  tmaker: { group: "trade", rowKind: "none", producesSignal: true, dwellMs: 3000, onTour: false },
 };
 
 function build(id: CardId): CardCapability {

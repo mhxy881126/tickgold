@@ -28,6 +28,13 @@ vi.mock("../../../src/utils/sound", () => ({
   playAlert: (...a: unknown[]) => playAlert(...a),
 }));
 
+// 引擎内部用 new Date() 判断交易时段（不受 Date.now mock 影响），
+// 测试固定 mock 为交易时段，聚焦规则评估与动作分发逻辑。
+vi.mock("../../../src/utils/sessions", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../../../src/utils/sessions")>();
+  return { ...mod, isTrading: () => true, isAuction: () => false };
+});
+
 // node 环境无 localStorage：补一个内存桩（引擎声音开关读取处依赖）
 const memStore = new Map<string, string>();
 (globalThis as unknown as { localStorage: Storage }).localStorage = {

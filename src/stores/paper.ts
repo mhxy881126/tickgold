@@ -3,7 +3,7 @@ import { ref, computed } from "vue";
 import { db, ensureDb } from "../db/database";
 import { fetchQuotes } from "../api/market";
 import type { Quote } from "../api/types";
-import { portfolioBuy, portfolioSell } from "../broker/api";
+import { portfolioBuy, portfolioSell, type FillResult } from "../broker/api";
 
 export interface PaperAccount { initCash: number; cash: number }
 export interface PaperPosition {
@@ -46,22 +46,25 @@ export const usePaperStore = defineStore("paper", () => {
     priceMap.value = m;
   }
 
-  // 买入：{price} 由组件取实时价；落账统一走后端 portfolio（费用/T+1/settle 唯一口径）
-  async function buy(code: string, name: string, price: number, vol: number): Promise<void> {
+  // 买入：{price} 由组件取实时价；落账统一走后端 portfolio（费用/T+1/settle 唯一口径）。
+  // 返回后端实际成交结果（含真实 fee/amount/cash），供做T等模块按实际费用记账。
+  async function buy(code: string, name: string, price: number, vol: number): Promise<FillResult> {
     if (!(price > 0)) throw new Error("行情无效，无法买入");
     if (vol <= 0 || vol % 100 !== 0) throw new Error("买入数量须为 100 股整数倍");
-    await portfolioBuy(code, name, price, vol);
+    const fill = await portfolioBuy(code, name, price, vol);
     await reloadAll();
+    return fill;
   }
 
-  // 卖出
-  async function sell(code: string, price: number, vol: number): Promise<void> {
+  // 卖出（返回后端实际成交结果，含真实 fee）
+  async function sell(code: string, price: number, vol: number): Promise<FillResult> {
     if (!(price > 0)) throw new Error("行情无效，无法卖出");
     const pos = positions.value.find((p) => p.code === code);
     if (!pos) throw new Error("无该股票持仓");
     if (vol <= 0 || vol > pos.availVol) throw new Error("卖出数量超过可卖（T+1）");
-    await portfolioSell(code, price, vol);
+    const fill = await portfolioSell(code, price, vol);
     await reloadAll();
+    return fill;
   }
 
   // 重置账户（恢复原初始资金）

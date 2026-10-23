@@ -2,20 +2,10 @@
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import { useCalendarStore, type CalEvent } from "../stores/calendar";
 import { toast } from "../composables/useToast";
+import { A_SHARE_HOLIDAYS as HOLIDAYS } from "../utils/tradingCalendar";
 
 const props = defineProps<{ code: string | null }>();
 const cal = useCalendarStore();
-
-// ===== 节假日（2026 官方休市区间） =====
-const HOLIDAYS = [
-  { name: "元旦", start: "2026-01-01", end: "2026-01-03" },
-  { name: "春节", start: "2026-02-15", end: "2026-02-23" },
-  { name: "清明节", start: "2026-04-04", end: "2026-04-06" },
-  { name: "劳动节", start: "2026-05-01", end: "2026-05-05" },
-  { name: "端午节", start: "2026-06-19", end: "2026-06-21" },
-  { name: "中秋节", start: "2026-09-25", end: "2026-09-27" },
-  { name: "国庆节", start: "2026-10-01", end: "2026-10-07" },
-];
 
 const TYPES = [
   { v: "macro", lb: "宏观", c: "#4ea1ff" },

@@ -74,7 +74,8 @@ const ALL: Record<CardId, DockItem> = {
   calc: { id: "calc", label: "投资计算器", icon: "M7 2h10a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2 0 01-2 2V4a2 2 0 012-2zm2 4h6v2H9V6zm0 4h2v2H9v-2zm4 0h2v2h-2v-2zm-4 4h2v2H9v-2zm4 0h2v2h-2v-2z", desc: "盈亏/仓位/风报比/黄金分割" },
   export: { id: "export", label: "数据导出", icon: "M12 3a1 1 0 011 1v8.6l3.3-3.3 1.4 1.4L12 17l-5.7-6.3 1.4-1.4L11 12.6V4a1 1 0 011-1zM5 19h14v2H5v-2z", desc: "CSV/JSON 导出自选/行情/交易" },
   strategy: { id: "strategy", label: "策略库", icon: "M12 2l9 5-9 5-9-5zm-9 10l9 5 9-5", desc: "龙头/1进2/抄底策略版本化管理" },
-  spiderbot: { id: "spiderbot", label: "爬虫机器人", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z", desc: "AI 自动盯盘/选股/信号生成（实盘须人工确认）", star: true },
+  spiderbot: { id: "spiderbot", label: "AI交易助理", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zm-1 2.06V11H4.06A8 8 0 0111 4.06zM4 13h7v6.94A8 8 0 014 13zm9 6.94V13h6.94A8 8 0 0113 19.94zM19.94 11H13V4.06A8 8 0 0119.94 11z", desc: "AI 自动盯盘/选股/信号生成（实盘须人工确认）", star: true },
+  tmaker: { id: "tmaker", label: "做T决策台", icon: "M3 17l6-6 4 4 8-8M14 7h7v7", desc: "单票日内正T/倒T信号 + 模拟盘做T闭环（T+1底仓回转）", star: true },
 };
 
 // 5 个场景组：免费功能按「我现在要做什么」分组，Pro 付费功能独立成组
@@ -99,7 +100,7 @@ const GROUP_DEFS: { name: string; icon: string; ids: CardId[] }[] = [
     name: "交易·执行",
     icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8z",
     ids: [
-      "cockpit", "brokerconsole", "co", "battleplan", "trade",
+      "cockpit", "brokerconsole", "co", "battleplan", "trade", "tmaker",
       "risk", "performance", "decisionlog", "spiderbot",
     ],
   },

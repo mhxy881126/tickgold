@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planPlaybook, type OpStep } from "../../../src/components/spider/playbook";
+import { planPlaybook } from "../../../src/components/spider/playbook";
 import type { UiElement } from "../../../src/components/spider/uiGraph";
 
 function mkEl(p: Partial<UiElement> & { id: string }): UiElement {
@@ -33,21 +33,14 @@ function scrollEl(id: string, canDown = true): UiElement {
 }
 
 describe("planPlaybook 操作剧本", () => {
-  it("按 切标签→滚动→点个股 顺序生成，且遵守数量上限", () => {
+  it("AI 交易助理后台分析，不再生成 UI 操作剧本（始终为空）", () => {
     const ui = [
       tab("t0"), tab("t1"), tab("t2"),
       scrollEl("s"),
       row("r0", 1), row("r1", 5), row("r2", 3), row("r3", 2), row("r4", 0),
     ];
     const steps = planPlaybook(ui);
-    // 2 tabs + 1 scroll + 2 rows = 5
-    expect(steps).toHaveLength(5);
-    expect(steps[0]!.rescan).toBe("tab");
-    expect(steps[1]!.rescan).toBe("tab");
-    expect(steps[2]!.type).toBe("scroll-down");
-    expect(steps[2]!.rescan).toBe("scroll");
-    expect(steps[3]!.rescan).toBe("none");
-    expect(steps[4]!.rescan).toBe("none");
+    expect(steps).toHaveLength(0);
   });
 
   it("不选择已激活 / 已操作过的标签", () => {
@@ -69,16 +62,13 @@ describe("planPlaybook 操作剧本", () => {
     expect(steps.some((s) => s.type === "scroll-down")).toBe(false);
   });
 
-  it("点个股时 focusCode 优先，否则按涨幅排序", () => {
+  it("AI 交易助理不点个股（focusCode/涨幅排序不再生成步骤）", () => {
     const ui = [row("low", 1, "LOW"), row("high", 9, "HIGH")];
-    const byPct = planPlaybook(ui);
-    expect((byPct[0] as OpStep).ui.code).toBe("HIGH");
-
-    const byFocus = planPlaybook(ui, { focusCode: "LOW" });
-    expect((byFocus[0] as OpStep).ui.code).toBe("LOW");
+    expect(planPlaybook(ui)).toHaveLength(0);
+    expect(planPlaybook(ui, { focusCode: "LOW" })).toHaveLength(0);
   });
 
-  it("每个步骤的 arriveId 唯一", () => {
+  it("每个步骤的 arriveId 唯一（空剧本恒真）", () => {
     const ui = [tab("t0"), tab("t1"), scrollEl("s"), row("r0", 1), row("r1", 2)];
     const ids = planPlaybook(ui).map((s) => s.arriveId);
     expect(new Set(ids).size).toBe(ids.length);

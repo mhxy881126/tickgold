@@ -76,10 +76,10 @@ const maxBuy = computed(() => {
 });
 function pickVol(ratio: number) {
   if (side.value === "buy") {
-    vol.value = Math.floor((maxBuy.value * ratio) / 100 / 100) * 100;
+    vol.value = Math.floor((maxBuy.value * ratio) / 100) * 100;
   } else if (curPosition.value) {
     if (ratio >= 0.999) vol.value = curPosition.value.availVol;
-    else vol.value = Math.floor((curPosition.value.availVol * ratio) / 100 / 100) * 100;
+    else vol.value = Math.floor((curPosition.value.availVol * ratio) / 100) * 100;
   }
 }
 
@@ -107,7 +107,14 @@ async function submit() {
     vol.value = side.value === "buy" ? 100 : 0;
     await loadOrderQuote();
   } catch (e) {
-    msg.value = e instanceof Error ? e.message : "下单失败";
+    // Tauri invoke reject 通常是后端返回的中文字符串（如“当前非 A 股连续竞价交易时段”），
+    // 也可能是 Error；兜底才是“下单失败”，避免吞掉真实拒单原因。
+    msg.value =
+      typeof e === "string" && e
+        ? e
+        : e instanceof Error && e.message
+          ? e.message
+          : "下单失败";
   }
   busy.value = false;
 }

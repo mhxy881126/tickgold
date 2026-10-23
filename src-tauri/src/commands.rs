@@ -43,6 +43,26 @@ pub(crate) async fn get_hist_minute_days(
     market::get_hist_minute_days(code, days).await
 }
 
+/// P3-3 历史分时归档：补拉腾讯近 N 个交易日缺失的分钟数据落本地库（幂等）。
+#[tauri::command]
+pub(crate) async fn hist_minute_archive(
+    ai: State<'_, crate::ai::AiState>,
+    code: String,
+    days: i64,
+) -> Result<market::min_hist::ArchiveResult, String> {
+    market::min_hist::archive(&ai.dir(), &code, days.max(1).min(5)).await
+}
+
+/// P3-3 历史分时读取：本地累积库中该标的最多 N 个交易日分钟数据（升序）。
+#[tauri::command]
+pub(crate) fn hist_minute_list(
+    ai: State<'_, crate::ai::AiState>,
+    code: String,
+    days: i64,
+) -> Result<Vec<market::HistDayMinute>, String> {
+    market::min_hist::list(&ai.dir(), &code, days.max(1).min(120))
+}
+
 #[tauri::command]
 pub(crate) async fn get_orderbook(code: String) -> Result<market::OrderBook, String> {
     market::get_orderbook(code).await
@@ -419,10 +439,14 @@ pub(crate) fn ai_list_docs(state: tauri::State<ai::AiState>) -> Result<Vec<(Stri
 
 #[tauri::command]
 pub(crate) async fn ai_import_docs(
+    app: tauri::AppHandle,
     state: tauri::State<'_, ai::AiState>,
 ) -> Result<Vec<String>, String> {
-    let files = rfd::AsyncFileDialog::new()
-        .add_filter("文本文档", &["md", "txt"])
+    let mut dlg = rfd::AsyncFileDialog::new().add_filter("文本文档", &["md", "txt"]);
+    if let Some(win) = app.get_webview_window("main") {
+        dlg = dlg.set_parent(&win);
+    }
+    let files = dlg
         .pick_files()
         .await
         .ok_or_else(|| "已取消选择".to_string())?;
@@ -1044,13 +1068,21 @@ pub(crate) fn diag_log(msg: &str) {
 }
 
 // ===== 数据导出：rfd 原生保存对话框选路径，再写入文件（无需 dialog/fs 插件）=====
+// 必须 set_parent：主窗口在 Windows 下是无边框(decorations=false) + WebView2 GPU 合成窗口，
+// 未设父窗口时原生“另存为”对话框的 z-order 会被主窗口压在后面（不可见、不可点），
+// 用户看到的现象就是“点击生成日报没反应”（对话框实际已弹出）。set_parent 后对话框成为
+// 主窗口的模态子窗，会强制前置并居中显示，实测可正常前台弹出与保存。
 #[tauri::command]
 pub(crate) async fn save_export_file(
+    app: tauri::AppHandle,
     default_name: String,
     content: String,
 ) -> Result<bool, String> {
-    let file = rfd::AsyncFileDialog::new()
-        .set_file_name(&default_name)
+    let mut dlg = rfd::AsyncFileDialog::new().set_file_name(&default_name);
+    if let Some(win) = app.get_webview_window("main") {
+        dlg = dlg.set_parent(&win);
+    }
+    let file = dlg
         .save_file()
         .await
         .ok_or_else(|| "已取消保存".to_string())?;
@@ -1063,9 +1095,16 @@ pub(crate) async fn save_export_file(
 
 // ===== 通用打开文本文件（rfd 原生选择对话框；用于导入皮肤 spec，无需 dialog 插件）=====
 #[tauri::command]
-pub(crate) async fn open_text_file(filter_name: String, ext: String) -> Result<String, String> {
-    let file = rfd::AsyncFileDialog::new()
-        .add_filter(&filter_name, &[ext.as_str()])
+pub(crate) async fn open_text_file(
+    app: tauri::AppHandle,
+    filter_name: String,
+    ext: String,
+) -> Result<String, String> {
+    let mut dlg = rfd::AsyncFileDialog::new().add_filter(&filter_name, &[ext.as_str()]);
+    if let Some(win) = app.get_webview_window("main") {
+        dlg = dlg.set_parent(&win);
+    }
+    let file = dlg
         .pick_file()
         .await
         .ok_or_else(|| "已取消选择".to_string())?;

@@ -1447,6 +1447,7 @@ pub async fn trades(code: &str, n: i64) -> Result<Vec<TradeTick>, String> {
             _ => "neutral",
         };
         out.push(TradeTick {
+            code: String::new(),
             time: p[0].to_string(),
             price: p[1].parse().unwrap_or(0.0),
             vol: p[2].parse().unwrap_or(0.0),
@@ -1463,7 +1464,9 @@ pub async fn trades(code: &str, n: i64) -> Result<Vec<TradeTick>, String> {
 /// 免费行情稳定返回 5 档；动态解析实际非空档位（跌停无买盘 / 涨停无卖盘）。
 pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
     let secid = format!("{}.{}", secid_prefix(code), code);
-    // f11..f40 连续：买1-5(f11-f20)、买6-10候选(f21-f30)、卖1-5(f31-f40)；
+    // f11..f40 连续：按文档为 买1-5(f11-f20)、买6-10候选(f21-f30)、卖1-5(f31-f40)；
+    // 但实测（2026-10-23，300059）返回方向与文档相反（f11 起为卖盘升序、f31 起为买盘降序）。
+    // 不做字段语义强假设：下方统一按"卖盘升序/买盘降序"做方向自愈，输出语义恒正确。
     // f43最新价 f44高 f45低 f46开 f47量 f48额 f57代码 f58名称 f60昨收
     let mut fields: Vec<String> = (11..=40).map(|i| format!("f{i}")).collect();
     fields.extend(
@@ -1520,6 +1523,13 @@ pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
         .and_then(|x| x.as_str())
         .unwrap_or(code)
         .to_string();
+    // 方向自愈：正常语义 = 卖盘升序（卖1 最低）∪ 买盘降序（买1 最高）。
+    // 实测东财 f 字段返回方向与文档相反（asks 实际为买盘降序、bids 为卖盘升序）→ 互换恢复。
+    let asks_desc = asks.len() >= 2 && asks[0].price > asks[1].price;
+    let bids_asc = bids.len() >= 2 && bids[0].price < bids[1].price;
+    if asks_desc && bids_asc {
+        std::mem::swap(&mut asks, &mut bids);
+    }
     Ok(OrderBook {
         name: d
             .get("f58")

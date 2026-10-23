@@ -1,5 +1,5 @@
-// 腾讯数据源：实时行情（GBK，qt.gtimg.cn）、K线（UTF-8，web.ifzq.gtimg.cn）、搜索（GBK，smartbox）
-use super::{cnc_symbol, http, now_millis, KBar, OrderBook, OrderLevel, Quote, StockItem};
+// 腾讯数据源：实时行情（GBK，qt.gtimg.cn）、K线（UTF-8，web.ifzq.gtimg.cn）、搜索（GBK smartbox）、逐笔（GBK stock.gtimg.cn）
+use super::{cnc_symbol, http, now_millis, KBar, OrderBook, OrderLevel, Quote, StockItem, TradeTick};
 use serde_json::Value;
 
 // ===== 实时行情 =====
@@ -405,6 +405,93 @@ fn minute_ts(date: &str, hhmm: &str) -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|x| x.as_millis() as i64)
         .unwrap_or(0)
+}
+
+// ===== 逐笔成交明细（stock.gtimg.cn detail，GBK）=====
+// 东财 details/get 盘后频繁 TLS 断连（Remote end closed connection），改用腾讯：
+// 先 action=list 取分页时间段（按 | 分隔，段数 = 页数，p 从 0 起），
+// 再拉最后一页；p=0 含 09:25 集合竞价首笔。返回最新 n 条（最新在前）。
+pub async fn trades(code: &str, n: i64) -> Result<Vec<TradeTick>, String> {
+    let sym = cnc_symbol(code);
+    let gbk = |bytes: &[u8]| encoding_rs::GBK.decode(bytes).0.into_owned();
+    let fetch = |u: String| async move {
+        http()
+            .get(&u)
+            .header("Referer", "https://gu.qq.com/")
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+            .bytes()
+            .await
+            .map_err(|e| e.to_string())
+    };
+
+    // 1) 分页时间列表：v_detail_time_xx=[date,"09:25~09:33|09:33~...|..."]
+    let list_url = format!("https://stock.gtimg.cn/data/index.php?appn=detail&action=list&c={sym}");
+    let list_bytes = fetch(list_url).await?;
+    let list_txt = gbk(&list_bytes);
+    let payload = list_txt.split_once('=').map(|x| x.1).unwrap_or("").trim_end_matches(';');
+    let segs = {
+        let l = payload.find('"');
+        let r = payload.rfind('"');
+        match (l, r) {
+            (Some(a), Some(b)) if b > a => &payload[a + 1..b],
+            _ => "",
+        }
+    };
+    let page_count = segs.split('|').filter(|s| s.contains('~')).count();
+    if page_count == 0 {
+        return Err("逐笔分页为空".to_string());
+    }
+    let last_p = page_count - 1; // p 从 0 起
+
+    // 2) 拉最后一页
+    let data_url = format!(
+        "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c={sym}&p={last_p}"
+    );
+    let data_bytes = fetch(data_url).await?;
+    let data_txt = gbk(&data_bytes);
+    let pay2 = data_txt.split_once('=').map(|x| x.1).unwrap_or("").trim_end_matches(';');
+    let inner = {
+        let l = pay2.find('"');
+        let r = pay2.rfind('"');
+        match (l, r) {
+            (Some(a), Some(b)) if b > a => &pay2[a + 1..b],
+            _ => "",
+        }
+    };
+
+    let mut ticks: Vec<TradeTick> = Vec::new();
+    for rec in inner.split('|') {
+        let f: Vec<&str> = rec.split('/').collect();
+        // 字段：序号 / HH:MM:SS / 价 / 涨跌 / 成交量(手) / 成交额 / 方向(B=主动买,S=主动卖,空=中性)
+        if f.len() < 6 {
+            continue;
+        }
+        let price = f[2].parse().unwrap_or(0.0);
+        let vol = f[4].parse().unwrap_or(0.0);
+        let side = match f.get(6).copied().unwrap_or("") {
+            "B" => "buy",
+            "S" => "sell",
+            _ => "neutral",
+        }
+        .to_string();
+        ticks.push(TradeTick {
+            code: String::new(),
+            time: f[1].to_string(),
+            price,
+            vol,
+            side,
+        });
+    }
+    if ticks.is_empty() {
+        return Err("逐笔数据为空".to_string());
+    }
+    // 腾讯按时间升序，前端逐笔表最新在最上 → 反转；再截断到 n 条
+    ticks.reverse();
+    let limit = n.clamp(1, 200) as usize;
+    ticks.truncate(limit);
+    Ok(ticks)
 }
 
 // ===== 搜索（smartbox，GBK） =====

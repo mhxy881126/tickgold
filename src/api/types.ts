@@ -86,6 +86,7 @@ export interface OrderBook {
 
 /** 逐笔成交（时间 / 价 / 量 / 主动方向） */
 export interface TradeTick {
+  code?: string; // 归属标的（后端回填，用于切票隔离）
   time: string;
   price: number;
   vol: number; // 手

@@ -1,6 +1,6 @@
 // 行情 API：通过 Tauri command 调 Rust 端（Rust 负责请求东财/新浪公开接口，避免浏览器 CORS 与限频）
 import { invoke } from "@tauri-apps/api/core";
-import type { Quote, RankRow, KBar, StockItem, Sector, ScreenFilter, ScreenResult, AlertRule, OrderBook, StockFundFlow, MarketFundPanorama, FundRankRow, DepthEnhance } from "./types";
+import type { Quote, RankRow, KBar, StockItem, Sector, ScreenFilter, ScreenResult, AlertRule, OrderBook, StockFundFlow, MarketFundPanorama, FundRankRow, DepthEnhance, TradeTick } from "./types";
 
 /** 批量拉实时行情 */
 export async function fetchQuotes(codes: string[]): Promise<Quote[]> {
@@ -72,6 +72,23 @@ export async function fetchHistMinuteDays(
   return await invoke<HistDayMinute[]>("get_hist_minute_days", { code, days });
 }
 
+/** P3-3 归档结果：本次新落库 / 已有跳过 / 拉取失败 的交易日（YYYYMMDD） */
+export interface MinuteArchiveResult {
+  archived: string[];
+  skipped: string[];
+  failed: string[];
+}
+
+/** 历史分时归档：补拉腾讯近 N 日缺失分钟数据落本地库（幂等，可反复调用） */
+export async function archiveHistMinute(code: string, days = 5): Promise<MinuteArchiveResult> {
+  return await invoke<MinuteArchiveResult>("hist_minute_archive", { code, days });
+}
+
+/** 本地累积库历史分时：最多 N 个交易日（升序，当日分钟升序） */
+export async function fetchArchivedMinuteDays(code: string, days = 30): Promise<HistDayMinute[]> {
+  return await invoke<HistDayMinute[]>("hist_minute_list", { code, days });
+}
+
 /** 五档盘口（卖 1-5 / 买 1-5 + 当日概要） */
 export async function fetchOrderBook(code: string): Promise<OrderBook> {
   return await invoke<OrderBook>("get_orderbook", { code });
@@ -83,6 +100,15 @@ export async function fetchDepthEnhance(code: string): Promise<DepthEnhance> {
     return await invoke<DepthEnhance>("get_depth_enhance", { code });
   } catch {
     return { priceDist: [], auction: [], sealTrend: [] };
+  }
+}
+
+/** 逐笔成交明细（最近 n 条，时间升序）；失败安全降级为空数组 */
+export async function fetchTrades(code: string, n = 40): Promise<TradeTick[]> {
+  try {
+    return await invoke<TradeTick[]>("get_trades", { code, n });
+  } catch {
+    return [];
   }
 }
 

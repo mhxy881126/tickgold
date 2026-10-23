@@ -22,6 +22,10 @@ export interface StockScore {
     volatility: number;
     valuation: number;
     sentiment: number;
+    theme: number;      // 题材热度分（新增）
+    fundFlow: number;   // 资金流向分（新增）
+    dragon: number;     // 龙虎榜热度分（新增）
+    auction: number;    // 集合竞价分（新增）
     riskPenalty: number;
   };
 }
@@ -39,6 +43,8 @@ export interface ScoringConfig {
   volatilityWeight: number; // 波动率（振幅/量价配合）
   valuationWeight: number;  // 估值（PE/PB/市值）
   sentimentWeight: number;  // 市场情绪加成
+  themeWeight: number;      // 题材热度（新增）
+  fundFlowWeight: number;   // 资金流向（新增）
 
   // === 涨跌幅区间分 ===
   pctGoldenLow: number;   // 黄金区下限（%）
@@ -62,6 +68,10 @@ export interface ScoringConfig {
   stPenalty: number;      // ST/问题股扣分
   limitUpPenalty: number; // 涨停不追扣分
   limitDownPenalty: number; // 跌停不卖扣分
+
+  // === 新增因子权重 ===
+  dragonWeight: number;    // 涨停池/龙头因子（满分）
+  auctionWeight: number;   // 竞价抢筹因子（满分）
 }
 
 export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
@@ -75,6 +85,10 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
   volatilityWeight: 2,
   valuationWeight: 2,
   sentimentWeight: 2,
+  themeWeight: 3,      // 题材热度（新增）
+  fundFlowWeight: 2,   // 资金流向（新增）
+  dragonWeight: 3,      // 涨停池/龙头因子（新增）
+  auctionWeight: 2,    // 竞价抢筹因子（新增）
 
   pctGoldenLow: 2,
   pctGoldenHigh: 6,
@@ -153,6 +167,10 @@ export const STRATEGY_PRESETS: Record<string, Partial<ScoringConfig>> = {
 
 /**
  * 主评分函数：输入单只股票 Quote + 市场情绪等级，输出完整评分结果。
+ * @param themeHot 题材热度 0~1（1=主线高潮，0.5=发酵，0=退潮/无题材）
+ * @param mainNet 主力净流入（元），正数=净流入，负数=净流出
+ * @param dragonLevel 涨停池/龙头等级 0=不在涨停池, 1=首板, 2=二连板, 3=三连板及以上
+ * @param auctionPct 集合竞价涨跌幅（%），正数=高开抢筹，负数=低开出逃
  */
 export function evaluateStock(
   q: Quote,
@@ -160,6 +178,10 @@ export function evaluateStock(
   name: string,
   marketSentiment: "hot" | "neutral" | "cold" = "neutral",
   cfg: Partial<ScoringConfig> = {},
+  themeHot: number = 0,
+  mainNet: number = 0,
+  dragonLevel: number = 0,
+  auctionPct: number | null = null,
 ): StockScore {
   const c: ScoringConfig = { ...DEFAULT_SCORING_CONFIG, ...cfg };
   const signals: string[] = [];
@@ -336,9 +358,77 @@ export function evaluateStock(
     risks.push("跌停");
   }
 
+  // ===== 7. 题材热度分（满分 themeWeight）=====
+  let themeScore = 0;
+  const theme = clamp(themeHot, 0, 1);
+  if (theme >= 0.8) {
+    themeScore += c.themeWeight * 1.0;
+    signals.push("主线高潮题材");
+  } else if (theme >= 0.6) {
+    themeScore += c.themeWeight * 0.7;
+    signals.push("主线发酵题材");
+  } else if (theme >= 0.4) {
+    themeScore += c.themeWeight * 0.3;
+  } else if (theme > 0 && theme < 0.3) {
+    themeScore -= c.themeWeight * 0.3;
+    risks.push("非主线题材");
+  }
+
+  // ===== 8. 资金流向分（满分 fundFlowWeight）=====
+  let fundFlowScore = 0;
+  // amountYi 已在前面第241行声明过，直接使用
+  if (amountYi > 0 && mainNet !== 0) {
+    const mainNetYi = mainNet / 1e8;
+    const netRatio = mainNetYi / amountYi; // 主力净流入占成交额比例
+    if (netRatio > 0.15) {
+      fundFlowScore += c.fundFlowWeight * 1.0;
+      signals.push("主力大幅净流入");
+    } else if (netRatio > 0.05) {
+      fundFlowScore += c.fundFlowWeight * 0.6;
+      signals.push("主力净流入");
+    } else if (netRatio < -0.15) {
+      fundFlowScore -= c.fundFlowWeight * 1.0;
+      risks.push("主力大幅净流出");
+    } else if (netRatio < -0.05) {
+      fundFlowScore -= c.fundFlowWeight * 0.6;
+      risks.push("主力净流出");
+    }
+  }
+
+  // ===== 9. 涨停池/龙头分（满分 dragonWeight）=====
+  let dragonScore = 0;
+  if (dragonLevel >= 3) {
+    dragonScore += c.dragonWeight * 1.0;
+    signals.push("三连板龙头");
+  } else if (dragonLevel === 2) {
+    dragonScore += c.dragonWeight * 0.7;
+    signals.push("二连板强势");
+  } else if (dragonLevel === 1) {
+    dragonScore += c.dragonWeight * 0.4;
+    signals.push("首板涨停");
+  }
+
+  // ===== 10. 竞价抢筹分（满分 auctionWeight）=====
+  let auctionScore = 0;
+  if (auctionPct !== null && auctionPct !== undefined) {
+    if (auctionPct >= 5) {
+      auctionScore += c.auctionWeight * 1.0;
+      signals.push("竞价大幅高开抢筹");
+    } else if (auctionPct >= 2) {
+      auctionScore += c.auctionWeight * 0.6;
+      signals.push("竞价高开抢筹");
+    } else if (auctionPct <= -5) {
+      auctionScore -= c.auctionWeight * 1.0;
+      risks.push("竞价大幅低开出逃");
+    } else if (auctionPct <= -2) {
+      auctionScore -= c.auctionWeight * 0.6;
+      risks.push("竞价低开出逃");
+    }
+  }
+
   // ===== 汇总 =====
-  const totalScore = Math.round((trendScore + volumeScore + volScore + valScore + sentScore + riskPenalty) * 10) / 10;
-  const maxScore = c.trendWeight + c.volumeWeight + c.volatilityWeight + c.valuationWeight + c.sentimentWeight;
+  const totalScore = Math.round((trendScore + volumeScore + volScore + valScore + sentScore + themeScore + fundFlowScore + dragonScore + auctionScore + riskPenalty) * 10) / 10;
+  const maxScore = c.trendWeight + c.volumeWeight + c.volatilityWeight + c.valuationWeight + c.sentimentWeight + c.themeWeight + c.fundFlowWeight + c.dragonWeight + c.auctionWeight;
 
   // 评级
   let recommendation: SignalLevel;
@@ -372,6 +462,10 @@ export function evaluateStock(
       volatility: round1(volScore),
       valuation: round1(valScore),
       sentiment: round1(sentScore),
+      theme: round1(themeScore),
+      fundFlow: round1(fundFlowScore),
+      dragon: round1(dragonScore),
+      auction: round1(auctionScore),
       riskPenalty: round1(riskPenalty),
     },
   };
