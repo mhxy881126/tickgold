@@ -32,6 +32,7 @@
           <span :class="posPnl >= 0 ? 'up' : 'down'">浮盈 <b>{{ posPnl >= 0 ? "+" : "" }}{{ posPnl.toFixed(0) }}</b></span>
         </div>
         <div class="qb-chips">
+          <button class="tm-stats-btn" @click="statsOpen = true" title="今日做T 统计与回测参数配置">今日做T</button>
           <div class="tm-badge" :class="badgeClass">{{ badgeText }}</div>
           <div v-if="best" class="tm-badge scan" @click="onScanPick"
             :title="best.code === code ? '当前持仓中的最佳做T标的（按振幅/成交额/换手/动能评分）' : '全场扫描出的最佳做T标的，点击切换查看其做T信号'">
@@ -224,8 +225,16 @@
         <div v-if="tm.toast.value" class="dc-toast">{{ tm.toast.value }}</div>
       </div>
 
-      <!-- Q3：今日做T 统计 -->
-      <div class="tm-quad tm-q-stats">
+
+    <!-- ===== 今日做T 弹窗（统计 + 回测配置） ===== -->
+    <div v-if="statsOpen" class="tm-modal">
+      <div class="tm-modal-mask" @click="statsOpen = false"></div>
+      <div class="tm-modal-panel">
+        <div class="tm-modal-head">
+          <span class="tm-modal-title">今日做T · 统计与回测配置</span>
+          <button class="tm-modal-close" @click="statsOpen = false" title="关闭">✕</button>
+        </div>
+        <div class="tm-modal-body">
       <!-- 盘前计划（P3-7）：9:25 竞价后自动生成 -->
       <div class="tm-stats" v-if="dayPlan">
         <div class="ts-title">今日计划 <button class="ts-bt-run" @click="tm.buildPlanNow()">重算</button></div>
@@ -351,7 +360,10 @@
           <div class="mt"><span>大盘</span><b :class="tm.marketPct.value >= 0 ? 'up' : 'down'">{{ tm.marketPct.value ? tm.marketPct.value.toFixed(2)+"%" : "-" }}</b></div>
         </div>
       </div>
+        </div>
       </div>
+    </div>
+
     </div>
   </div>
 </template>
@@ -382,6 +394,7 @@ const chartSignals = computed<{ time: number; price: number; dir: "long" | "shor
   }];
 });
 
+const statsOpen = ref(false);
 const isDev = import.meta.env.DEV;
 const seedCode = ref("300059");
 const seedVol = 1000;
@@ -674,6 +687,7 @@ function onKey(e: KeyboardEvent) {
   --t1: #cfe8e2;
   --t2: #8aa39c;
   --t3: #566a63;
+  position: relative;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -774,9 +788,9 @@ function onKey(e: KeyboardEvent) {
 }
 .chip-warn { color: #fbbf24; border-color: rgba(251,191,36,.5); background: rgba(251,191,36,.1); }
 
-.qb-row2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 10px; }
-.qb-row2 > span { display: flex; align-items: baseline; gap: 3px; }
-.qb-row2 i { font-style: normal; color: var(--t3); font-size: 9px; }
+.qb-row2 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+.qb-row2 > span { display: flex; align-items: baseline; gap: 4px; }
+.qb-row2 i { font-style: normal; color: var(--t3); font-size: 11px; }
 .qb-row2 b { font-family: Consolas, monospace; font-weight: 600; color: var(--t1); }
 .qb-sep { width: 1px; height: 12px; background: var(--line); margin: 0 2px; }
 
@@ -786,7 +800,7 @@ function onKey(e: KeyboardEvent) {
   display: grid;
   grid-template-columns: 3fr 1fr;
   grid-template-rows: minmax(0, 1.45fr) minmax(0, 1fr);
-  grid-template-areas: "chart book" "stats decision";
+  grid-template-areas: "chart book" "chart decision";
   gap: 6px;
 }
 .tm-quad {
@@ -800,8 +814,35 @@ function onKey(e: KeyboardEvent) {
 }
 .tm-q-chart { grid-area: chart; padding: 0; }
 .tm-q-book { grid-area: book; }
-.tm-q-stats { grid-area: stats; overflow-y: auto; }
 .tm-q-decision { grid-area: decision; overflow-y: auto; }
+.tm-stats-btn {
+  background: rgba(0,232,216,.12); border: 1px solid rgba(0,232,216,.45); color: var(--cyan);
+  border-radius: 4px; padding: 3px 10px; font-size: 11px; font-weight: 600; cursor: pointer;
+  white-space: nowrap;
+}
+.tm-stats-btn:hover { background: rgba(0,232,216,.22); }
+/* 今日做T 弹窗 */
+.tm-modal { position: absolute; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; }
+.tm-modal-mask { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+.tm-modal-panel {
+  position: relative; width: 640px; max-width: calc(100% - 24px); max-height: 86%;
+  background: #0b1412; border: 1px solid var(--line); border-radius: 8px;
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0,0,0,.5);
+}
+.tm-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.03);
+}
+.tm-modal-title { font-size: 13px; font-weight: 700; color: var(--cyan); }
+.tm-modal-close {
+  background: none; border: none; color: var(--t2); font-size: 15px; cursor: pointer;
+  padding: 2px 8px; border-radius: 4px;
+}
+.tm-modal-close:hover { background: rgba(255,255,255,.08); color: var(--t1); }
+.tm-modal-body { padding: 10px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.tm-modal-body .tm-stats { gap: 6px; }
+.tm-modal-body .ts-metrics { margin-top: 0; }
 .tm-chart {
   flex: 1;
   min-height: 0;
