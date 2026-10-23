@@ -31,12 +31,14 @@
           <span>持仓 <b>{{ pos.vol }}</b>/可卖<b>{{ pos.availVol }}</b></span>
           <span :class="posPnl >= 0 ? 'up' : 'down'">浮盈 <b>{{ posPnl >= 0 ? "+" : "" }}{{ posPnl.toFixed(0) }}</b></span>
         </div>
-        <div class="tm-badge" :class="badgeClass">{{ badgeText }}</div>
-        <div v-if="best" class="tm-badge scan" @click="onScanPick" title="点击切换到该票查看做T详情">
-          🎯 {{ best.name }} 最值得做 · {{ best.score }}分
-        </div>
-        <div v-if="tm.stale.value" class="tm-badge stale" title="行情时间戳已陈旧，信号已暂停">
-          ⏳ 行情陈旧 {{ tm.staleSec.value }}s
+        <div class="qb-chips">
+          <div class="tm-badge" :class="badgeClass">{{ badgeText }}</div>
+          <div v-if="best" class="tm-badge scan" @click="onScanPick" title="点击切换到该票查看做T详情">
+            🎯 {{ best.name }} 最值得做 · {{ best.score }}分
+          </div>
+          <div v-if="tm.stale.value" class="tm-badge stale" title="行情时间戳已陈旧，信号已暂停">
+            ⏳ 行情陈旧 {{ tm.staleSec.value }}s
+          </div>
         </div>
       </div>
       <div class="qb-row2" v-if="q">
@@ -237,11 +239,13 @@
       </div>
       <!-- 做T统计 + 关键指标 -->
       <div class="tm-stats">
-        <div class="ts-title">今日做T</div>
-        <div class="ts-row">
-          <div class="ts-item"><span class="ts-n">{{ stats.count }}</span><span class="ts-l">次数</span></div>
-          <div class="ts-item"><span class="ts-n">{{ stats.winRate.toFixed(0) }}%</span><span class="ts-l">成功率</span></div>
-          <div class="ts-item"><span class="ts-n" :class="stats.pnl >= 0 ? 'up' : 'down'">{{ stats.pnl >= 0 ? "+" : "" }}{{ stats.pnl.toFixed(0) }}</span><span class="ts-l">收益(元)</span></div>
+        <div class="ts-head">
+          <span class="ts-title">今日做T</span>
+          <div class="ts-row">
+            <div class="ts-item"><span class="ts-n">{{ stats.count }}</span><span class="ts-l">次数</span></div>
+            <div class="ts-item"><span class="ts-n">{{ stats.winRate.toFixed(0) }}%</span><span class="ts-l">成功</span></div>
+            <div class="ts-item"><span class="ts-n" :class="stats.pnl >= 0 ? 'up' : 'down'">{{ stats.pnl >= 0 ? "+" : "" }}{{ stats.pnl.toFixed(0) }}</span><span class="ts-l">收益</span></div>
+          </div>
         </div>
         <div class="ts-legs" v-if="tm.currentLegs.value.length">
           <div class="ts-leg" v-for="(l, i) in tm.currentLegs.value" :key="i">
@@ -254,63 +258,45 @@
             一键全平（{{ tm.currentLegs.value.length }}腿）
           </button>
         </div>
-        <div class="ts-records" v-if="tm.currentRecords.value.length">
-          <div v-for="(r, i) in tm.currentRecords.value.slice(0, 3)" :key="i" class="ts-rec">
-            <span class="rec-type" :class="r.type">{{ r.type === "long" ? "正T" : "倒T" }}</span>
-            <span class="rec-vol">{{ r.vol }}股</span>
-            <span class="rec-pnl" :class="r.pnl >= 0 ? 'up' : 'down'">{{ r.pnl >= 0 ? "+" : "" }}{{ r.pnl.toFixed(0) }}元</span>
-          </div>
-        </div>
         <!-- P2-4 跨日做T台账（SQL） -->
         <div class="ts-hist" v-if="hist">
-          <div class="ts-h-title">做T台账（跨日）</div>
-          <div class="ts-h-line">
+          <span class="ts-h-title">跨日台账</span>
+          <span class="ts-h-line">
             <span class="ts-h-num">{{ hist.count }}笔</span>
-            <span class="ts-h-num">{{ hist.winRate.toFixed(0) }}%胜率</span>
+            <span class="ts-h-num">{{ hist.winRate.toFixed(0) }}%胜</span>
             <span class="ts-h-num" :class="hist.totalPnl >= 0 ? 'up' : 'down'">累计{{ hist.totalPnl >= 0 ? "+" : "" }}{{ hist.totalPnl.toFixed(0) }}元</span>
             <span class="ts-h-num">盈亏比{{ hist.profitFactor.toFixed(2) }}</span>
-          </div>
-          <div class="ts-h-line sub">
-            <span>正T {{ hist.longCount }}笔（{{ hist.longWinRate.toFixed(0) }}%胜）</span>
-            <span>倒T {{ hist.shortCount }}笔（{{ hist.shortWinRate.toFixed(0) }}%胜）</span>
-          </div>
+          </span>
         </div>
         <!-- P3 分钟级回测 -->
         <div class="ts-bt">
-          <div class="ts-h-title">分钟级回测</div>
-          <div class="ts-h-line" v-if="sigStats">
-            <span class="ts-h-num">信号质量：{{ sigStats.evaluated }} 次可评估</span>
-            <span class="ts-h-num" :class="sigStats.hitRate >= 50 ? 'up' : 'down'">{{ sigStats.hitRate.toFixed(0) }}% 30min命中</span>
-            <span class="ts-h-num">MFE{{ sigStats.avgMfe15.toFixed(2) }}% / MAE{{ sigStats.avgMae15.toFixed(2) }}%</span>
-            <button class="ts-bt-run" @click="tm.evalSignalLog()">刷新</button>
-          </div>
-          <div class="ts-h-line">
+          <div class="ts-bt-head">
+            <span class="ts-h-title">分钟级回测</span>
             <button class="ts-bt-run" :disabled="tm.btLoading.value" @click="tm.runBacktestNow()">
-              {{ tm.btLoading.value ? "回测中…" : "▶ 跑回测" }}
+              {{ tm.btLoading.value ? "回测中…" : "跑回测" }}
             </button>
-            <button class="ts-bt-run" @click="tm.buildDailyReport()">📄 生成日报</button>
+            <button class="ts-bt-run" @click="tm.buildDailyReport()">生成日报</button>
             <span class="ts-h-num">样本 {{ tm.btArchiveDays.value }} 天</span>
             <span class="ts-h-num" v-if="btArchTxt">{{ btArchTxt }}</span>
+            <span class="ts-h-num" v-if="sigStats" :class="sigStats.hitRate >= 50 ? 'up' : 'down'">30min命中 {{ sigStats.hitRate.toFixed(0) }}%</span>
           </div>
           <template v-if="bt">
             <div class="ts-h-line">
               <span class="ts-h-num">{{ bt.count }}笔</span>
-              <span class="ts-h-num" :class="bt.winRate >= bt.breakEvenWinRate ? 'up' : 'down'">{{ bt.winRate.toFixed(0) }}%胜率</span>
-              <span class="ts-h-num">保本需 {{ bt.breakEvenWinRate.toFixed(0) }}%</span>
+              <span class="ts-h-num" :class="bt.winRate >= bt.breakEvenWinRate ? 'up' : 'down'">{{ bt.winRate.toFixed(0) }}%胜</span>
+              <span class="ts-h-num">保本{{ bt.breakEvenWinRate.toFixed(0) }}%</span>
               <span class="ts-h-num" :class="bt.totalPnl >= 0 ? 'up' : 'down'">净{{ bt.totalPnl >= 0 ? "+" : "" }}{{ bt.totalPnl.toFixed(0) }}元</span>
+              <span class="ts-h-num">单笔 {{ bt.avgPnl >= 0 ? "+" : "" }}{{ bt.avgPnl.toFixed(1) }}元</span>
             </div>
             <div class="ts-h-line sub">
-              <span>单笔 {{ bt.avgPnl >= 0 ? "+" : "" }}{{ bt.avgPnl.toFixed(1) }}元</span>
-              <span>盈亏比 {{ bt.profitFactor.toFixed(2) }}</span>
-              <span>回撤 {{ bt.maxDrawdown.toFixed(0) }}元</span>
-              <span>不做T对照 {{ bt.baselinePnl >= 0 ? "+" : "" }}{{ bt.baselinePnl.toFixed(0) }}元</span>
+              <span>盈亏比{{ bt.profitFactor.toFixed(2) }}</span>
+              <span>回撤{{ bt.maxDrawdown.toFixed(0) }}元</span>
+              <span>对照{{ bt.baselinePnl >= 0 ? "+" : "" }}{{ bt.baselinePnl.toFixed(0) }}元</span>
+              <span>正T {{ bt.long.count }}笔({{ bt.long.winRate.toFixed(0) }}%)</span>
+              <span>倒T {{ bt.short.count }}笔({{ bt.short.winRate.toFixed(0) }}%)</span>
+              <span>强平{{ bt.forcedCloseCount }}</span>
             </div>
-            <div class="ts-h-line sub">
-              <span>正T {{ bt.long.count }}笔（{{ bt.long.winRate.toFixed(0) }}%胜）</span>
-              <span>倒T {{ bt.short.count }}笔（{{ bt.short.winRate.toFixed(0) }}%胜）</span>
-              <span>强平 {{ bt.forcedCloseCount }}</span>
-            </div>
-            <div class="ts-bt-notes">按模拟盘"当日闭环"口径运行；A股 T+1 实盘正T需隔日，结果仅供参数参考</div>
+            <div class="ts-bt-notes">按模拟盘当日闭环口径运行；A股 T+1 实盘正T需隔日，仅供参数参考</div>
           </template>
           <details class="ts-bt-params">
             <summary>参数（改后点重跑）</summary>
@@ -723,13 +709,14 @@ function onKey(e: KeyboardEvent) {
   background: var(--bg2);
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 6px 10px;
+  padding: 5px 10px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
-.qb-row1 { display: flex; align-items: center; gap: 12px; }
-.qb-stock { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.qb-row1 { display: flex; align-items: center; gap: 10px; }
+.qb-chips { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.qb-stock { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .tm-select {
   background: var(--bg3);
   border: 1px solid var(--line);
@@ -743,7 +730,7 @@ function onKey(e: KeyboardEvent) {
 }
 .qb-price { font-size: 20px; font-weight: 800; font-family: Consolas, monospace; }
 .qb-chg { font-size: 12px; font-weight: 600; font-family: Consolas, monospace; }
-.qb-pos { display: flex; gap: 12px; font-size: 11px; color: var(--t2); }
+.qb-pos { display: flex; gap: 8px; font-size: 10px; color: var(--t2); }
 .qb-pos b { font-family: Consolas, monospace; color: var(--t1); font-weight: 600; }
 .tm-badge {
   margin-left: auto;
@@ -767,9 +754,9 @@ function onKey(e: KeyboardEvent) {
 }
 .chip-warn { color: #fbbf24; border-color: rgba(251,191,36,.5); background: rgba(251,191,36,.1); }
 
-.qb-row2 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 11px; }
+.qb-row2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 10px; }
 .qb-row2 > span { display: flex; align-items: baseline; gap: 3px; }
-.qb-row2 i { font-style: normal; color: var(--t3); font-size: 10px; }
+.qb-row2 i { font-style: normal; color: var(--t3); font-size: 9px; }
 .qb-row2 b { font-family: Consolas, monospace; font-weight: 600; color: var(--t1); }
 .qb-sep { width: 1px; height: 12px; background: var(--line); margin: 0 2px; }
 
@@ -777,8 +764,8 @@ function onKey(e: KeyboardEvent) {
 .tm-body {
   flex: 1; min-height: 0;
   display: grid;
-  grid-template-columns: 1.55fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-columns: 3fr 1fr;
+  grid-template-rows: minmax(0, 1.45fr) minmax(0, 1fr);
   grid-template-areas: "chart book" "stats decision";
   gap: 6px;
 }
@@ -989,16 +976,17 @@ function onKey(e: KeyboardEvent) {
 /* 做T统计 */
 .tm-stats {
   min-width: 0;
-  display: flex; flex-direction: column; gap: 5px;
+  display: flex; flex-direction: column; gap: 4px;
 }
 .tm-stats + .tm-stats { margin-top: 2px; }
+.ts-head { display: flex; align-items: center; justify-content: space-between; }
 .ts-title { font-size: 11px; font-weight: 700; color: var(--cyan); }
-.ts-row { display: flex; gap: 10px; }
+.ts-row { display: flex; gap: 8px; }
 .ts-item { display: flex; flex-direction: column; align-items: center; }
-.ts-n { font-size: 15px; font-weight: 800; font-family: Consolas, monospace; }
-.ts-l { font-size: 9px; color: var(--t3); }
+.ts-n { font-size: 13px; font-weight: 800; font-family: Consolas, monospace; }
+.ts-l { font-size: 8px; color: var(--t3); }
 .ts-leg {
-  font-size: 10px; color: var(--t2); padding: 3px 6px;
+  font-size: 9px; color: var(--t2); padding: 2px 6px;
   background: rgba(255,177,61,.07); border-radius: 3px; font-family: Consolas, monospace;
 }
 .ts-legs { display: flex; flex-direction: column; gap: 2px; }
@@ -1014,11 +1002,11 @@ function onKey(e: KeyboardEvent) {
 .leg-dot.short { background: var(--down); }
 /* P2-4 跨日台账 */
 .ts-hist {
-  border-top: 1px dashed var(--line); padding-top: 4px;
-  display: flex; flex-direction: column; gap: 3px;
+  border-top: 1px dashed var(--line); padding-top: 3px;
+  display: flex; align-items: baseline; gap: 8px;
 }
 .ts-h-title { font-size: 10px; font-weight: 700; color: var(--purple); }
-.ts-h-line { display: flex; gap: 10px; font-size: 10px; font-family: Consolas, monospace; }
+.ts-h-line { display: flex; gap: 8px; font-size: 9px; font-family: Consolas, monospace; flex-wrap: wrap; }
 .ts-h-line.sub { color: var(--t3); font-size: 9px; }
 .ts-h-num { color: var(--t2); }
 .ts-h-num.up { color: var(--up); }
@@ -1029,14 +1017,16 @@ function onKey(e: KeyboardEvent) {
 .rec-vol { color: var(--t2); }
 .rec-pnl { font-weight: 600; }
 .ts-metrics {
-  margin-top: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px;
+  margin-top: auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px 8px;
   padding-top: 4px; border-top: 1px solid var(--line); font-size: 10px;
 }
 .ts-metrics .mt { display: flex; justify-content: space-between; }
 .ts-metrics .mt span { color: var(--t3); }
 .ts-metrics .mt b { font-family: Consolas, monospace; font-weight: 600; color: var(--t1); }
 /* P3 分钟级回测 */
-.ts-bt { border-top: 1px dashed var(--line); padding-top: 4px; display: flex; flex-direction: column; gap: 3px; }
+.ts-bt { border-top: 1px dashed var(--line); padding-top: 3px; display: flex; flex-direction: column; gap: 3px; }
+.ts-bt-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ts-bt-head .ts-h-title { margin-right: 2px; }
 .ts-bt-run {
   background: rgba(120,90,255,.14); color: var(--purple); border: 1px solid rgba(120,90,255,.35);
   border-radius: 4px; font-size: 10px; padding: 1px 8px; cursor: pointer;
@@ -1059,9 +1049,9 @@ function onKey(e: KeyboardEvent) {
 }
 .ts-bt-opt-params { color: var(--t2); min-width: 84px; }
 /* P3-7 盘前计划 */
-.ts-plan-line { font-size: 10px; color: var(--t2); padding: 2px 0; }
+.ts-plan-line { font-size: 9px; color: var(--t2); padding: 1px 0; }
 .ts-plan-line b { color: var(--t1); font-family: Consolas, monospace; }
-.ts-plan-lev { display: flex; justify-content: space-between; font-size: 10px; padding: 1px 0 1px 8px; color: var(--t2); }
+.ts-plan-lev { display: flex; justify-content: space-between; font-size: 9px; padding: 1px 0 1px 8px; color: var(--t2); }
 .ts-plan-lev span:last-child { color: var(--t3); }
 .ts-plan-skip { display: flex; flex-wrap: wrap; gap: 3px; padding-top: 3px; }
 .badge-red { background: rgba(255,95,86,.14); color: #ff5f56; border-radius: 9px; padding: 0 7px; font-size: 9px; }
