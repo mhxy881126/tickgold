@@ -59,10 +59,10 @@
       </div>
     </div>
 
-    <!-- ===== 主体：分时/K线图 + 五档盘口 ===== -->
+    <!-- ===== 主体：四象限驾驶舱（方案B） ===== -->
     <div class="tm-body">
-      <!-- 左：分时/K线图（klinecharts 专业渲染 + 做T叠加层） -->
-      <div class="tm-chart-col">
+      <!-- Q1：分时/K线图 -->
+      <div class="tm-quad tm-q-chart">
         <div class="tm-chart">
           <template v-if="hasChartData">
             <TMakerChart
@@ -96,8 +96,8 @@
         </div>
       </div>
 
-      <!-- 右：五档盘口 -->
-      <div class="tm-book">
+      <!-- Q2：五档盘口 -->
+      <div class="tm-quad tm-q-book">
         <div class="book-title">五档盘口</div>
         <template v-if="ob">
           <!-- 卖5→卖1 -->
@@ -131,29 +131,9 @@
           </span>
         </div>
       </div>
-    </div>
 
-    <!-- ===== 底部：逐笔成交 + 决策 + 做T统计 ===== -->
-    <div class="tm-footer">
-      <!-- 逐笔成交 -->
-      <div class="tm-trades">
-        <div class="sec-title">逐笔成交<span class="sec-sub">（最新{{ tradesDisplay.length }}笔）</span></div>
-        <div class="trades-head">
-          <span>时间</span><span>价格</span><span>量(手)</span><span>方向</span>
-        </div>
-        <div class="trades-list">
-          <div v-for="(t, i) in tradesDisplay" :key="i" class="trade-row" :class="{ big: t.vol >= 500 }">
-            <span class="tr-time">{{ t.time }}</span>
-            <span class="tr-price" :class="tradePriceClass(t)">{{ t.price.toFixed(2) }}</span>
-            <span class="tr-vol">{{ t.vol }}</span>
-            <span class="tr-side" :class="t.side">{{ t.side === "buy" ? "B 主买" : t.side === "sell" ? "S 主卖" : "--" }}</span>
-          </div>
-          <div v-if="!tradesDisplay.length" class="trades-empty">逐笔数据加载中...</div>
-        </div>
-      </div>
-
-      <!-- 决策面板 -->
-      <div class="tm-decision">
+      <!-- Q4：做T决策 -->
+      <div class="tm-quad tm-q-decision">
         <div class="dc-title" :class="sig.action">{{ sig.title }}</div>
         <div class="dc-meta">
           <span class="dc-chip" :class="regimeClass">市况 · {{ regimeLabel }}</span>
@@ -240,6 +220,8 @@
         <div v-if="tm.toast.value" class="dc-toast">{{ tm.toast.value }}</div>
       </div>
 
+      <!-- Q3：今日做T 统计 -->
+      <div class="tm-quad tm-q-stats">
       <!-- 盘前计划（P3-7）：9:25 竞价后自动生成 -->
       <div class="tm-stats" v-if="dayPlan">
         <div class="ts-title">今日计划 <button class="ts-bt-run" @click="tm.buildPlanNow()">重算</button></div>
@@ -363,6 +345,7 @@
           <div class="mt"><span>大盘</span><b :class="tm.marketPct.value >= 0 ? 'up' : 'down'">{{ tm.marketPct.value ? tm.marketPct.value.toFixed(2)+"%" : "-" }}</b></div>
         </div>
       </div>
+      </div>
     </div>
   </div>
 </template>
@@ -370,7 +353,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useTmaker } from "../composables/useTmaker";
-import type { TradeTick } from "../api/types";
 import { isTrading, holidayName } from "../utils/sessions";
 import TMakerChart from "./tmaker/TMakerChart.vue";
 
@@ -435,11 +417,7 @@ const posPnl = computed(() => {
   return (q.value.price - tm.costPrice.value) * pos.value.vol;
 });
 
-// 逐笔成交：最新在上
-const tradesDisplay = computed<TradeTick[]>(() =>
-  [...tm.trades.value].reverse().slice(0, 30),
-);
-
+// 集合竞价最新点
 // 集合竞价最新点
 const auctionLatest = computed(() => {
   const auc = tm.depthEnhance.value?.auction;
@@ -570,11 +548,7 @@ function bidPriceClass(i: number): string {
   if (!p || !ob.value) return "";
   return p >= ob.value.prevClose ? "up" : "down";
 }
-function tradePriceClass(t: TradeTick): string {
-  if (!ob.value) return "";
-  return t.price >= ob.value.prevClose ? "up" : "down";
-}
-
+// ===== 格式化 =====
 // ===== 格式化 =====
 function formatVol(v: number): string {
   if (v >= 1e8) return (v / 1e8).toFixed(2) + "亿手";
@@ -800,8 +774,27 @@ function onKey(e: KeyboardEvent) {
 .qb-sep { width: 1px; height: 12px; background: var(--line); margin: 0 2px; }
 
 /* ===== 主体 ===== */
-.tm-body { flex: 1; min-height: 0; display: flex; gap: 6px; }
-.tm-chart-col { flex: 2.2; min-width: 0; display: flex; flex-direction: column; }
+.tm-body {
+  flex: 1; min-height: 0;
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  grid-template-areas: "chart book" "stats decision";
+  gap: 6px;
+}
+.tm-quad {
+  min-width: 0; min-height: 0;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.tm-q-chart { grid-area: chart; padding: 0; }
+.tm-q-book { grid-area: book; }
+.tm-q-stats { grid-area: stats; overflow-y: auto; }
+.tm-q-decision { grid-area: decision; overflow-y: auto; }
 .tm-chart {
   flex: 1;
   min-height: 0;
@@ -882,10 +875,6 @@ function onKey(e: KeyboardEvent) {
 /* ===== 五档盘口 ===== */
 .tm-book {
   flex: 1; min-width: 0;
-  background: var(--bg2);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 6px 8px;
   display: flex; flex-direction: column; gap: 1px;
   overflow: hidden;
 }
@@ -920,46 +909,10 @@ function onKey(e: KeyboardEvent) {
 .book-summary b { font-family: Consolas, monospace; font-weight: 600; }
 .ft-empty { color: var(--t3); text-align: center; padding-top: 40px; font-size: 11px; flex: 1; }
 
-/* ===== 底部 ===== */
-.tm-footer {
-  flex-shrink: 0; height: 168px;
-  display: flex; gap: 6px;
-}
-.sec-title { font-size: 11px; font-weight: 700; color: var(--cyan); padding-bottom: 3px; border-bottom: 1px solid var(--line); margin-bottom: 2px; }
-.sec-sub { font-size: 10px; color: var(--t3); font-weight: 400; margin-left: 4px; }
-
-/* 逐笔成交 */
-.tm-trades {
-  flex: 1.4; min-width: 0;
-  background: var(--bg2); border: 1px solid var(--line); border-radius: 6px;
-  padding: 6px 8px; display: flex; flex-direction: column; overflow: hidden;
-}
-.trades-head {
-  display: grid; grid-template-columns: 1fr 1fr 0.8fr 0.8fr;
-  font-size: 10px; color: var(--t3); padding: 2px 0; border-bottom: 1px solid var(--line);
-}
-.trades-head span { text-align: center; }
-.trades-head span:first-child { text-align: left; }
-.trades-list { flex: 1; overflow-y: auto; min-height: 0; }
-.trade-row {
-  display: grid; grid-template-columns: 1fr 1fr 0.8fr 0.8fr;
-  font-size: 10px; padding: 1.5px 0; border-bottom: 1px solid rgba(255,255,255,.03);
-  font-family: Consolas, monospace;
-}
-.trade-row span { text-align: center; }
-.trade-row .tr-time { text-align: left; color: var(--t2); }
-.trade-row.big { background: rgba(255,215,106,.06); }
-.trade-row.big .tr-vol { color: var(--gold); font-weight: 700; }
-.tr-side.buy { color: var(--up); font-weight: 600; }
-.tr-side.sell { color: var(--down); font-weight: 600; }
-.tr-side.neutral { color: var(--t3); }
-.trades-empty { color: var(--t3); text-align: center; padding-top: 20px; font-size: 11px; }
-
 /* 决策面板 */
 .tm-decision {
   flex: 1; min-width: 0;
-  background: var(--bg2); border: 1px solid var(--line); border-radius: 6px;
-  padding: 8px; display: flex; flex-direction: column; gap: 5px; overflow: hidden;
+  display: flex; flex-direction: column; gap: 5px;
 }
 .dc-title {
   font-size: 15px; font-weight: 800; padding: 5px 8px; border-radius: 4px;
@@ -1035,10 +988,10 @@ function onKey(e: KeyboardEvent) {
 
 /* 做T统计 */
 .tm-stats {
-  flex: 1; min-width: 0;
-  background: var(--bg2); border: 1px solid var(--line); border-radius: 6px;
-  padding: 8px; display: flex; flex-direction: column; gap: 5px; overflow: hidden;
+  min-width: 0;
+  display: flex; flex-direction: column; gap: 5px;
 }
+.tm-stats + .tm-stats { margin-top: 2px; }
 .ts-title { font-size: 11px; font-weight: 700; color: var(--cyan); }
 .ts-row { display: flex; gap: 10px; }
 .ts-item { display: flex; flex-direction: column; align-items: center; }
