@@ -50,7 +50,7 @@ pub(crate) async fn hist_minute_archive(
     code: String,
     days: i64,
 ) -> Result<market::min_hist::ArchiveResult, String> {
-    market::min_hist::archive(&ai.dir(), &code, days.max(1).min(5)).await
+    market::min_hist::archive(&ai.dir(), &code, days.clamp(1, 5)).await
 }
 
 /// P3-3 历史分时读取：本地累积库中该标的最多 N 个交易日分钟数据（升序）。
@@ -60,7 +60,7 @@ pub(crate) fn hist_minute_list(
     code: String,
     days: i64,
 ) -> Result<Vec<market::HistDayMinute>, String> {
-    market::min_hist::list(&ai.dir(), &code, days.max(1).min(120))
+    market::min_hist::list(&ai.dir(), &code, days.clamp(1, 120))
 }
 
 #[tauri::command]

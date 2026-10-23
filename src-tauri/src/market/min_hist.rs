@@ -80,7 +80,7 @@ pub fn archived_dates(dir: &Path, code: &str) -> Result<Vec<String>, String> {
 
 /// 最近 N 个交易日的历史分时（每日期内按分钟时间升序），从本地累积库读取。
 pub fn list(dir: &Path, code: &str, days: i64) -> Result<Vec<HistDayMinute>, String> {
-    let n = days.max(1).min(120) as usize;
+    let n = days.clamp(1, 120) as usize;
     let conn = maindb::open_readonly(dir)?;
     // 先取最近 N 个交易日
     let mut dstmt = conn
@@ -134,7 +134,7 @@ pub fn list(dir: &Path, code: &str, days: i64) -> Result<Vec<HistDayMinute>, Str
 /// 对标的执行归档：检查本地已累积日期，缺失日期从腾讯（近 5 个交易日）拉取落库。
 /// 幂等：已落库的交易日跳过；重复调用安全。
 pub async fn archive(dir: &Path, code: &str, days: i64) -> Result<ArchiveResult, String> {
-    let want = days.max(1).min(5) as usize; // 腾讯免费源仅近 5 日
+    let want = days.clamp(1, 5) as usize; // 腾讯免费源仅近 5 日
     let conn = maindb::open_readwrite(dir)?;
 
     // 已归档日期集合（排除空壳日——bar 数少于 10 视为未归档成功）
