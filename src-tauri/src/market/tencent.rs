@@ -84,14 +84,15 @@ pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
         return Err("盘口字段不足".to_string());
     }
     let p = |i: usize| f[i].parse::<f64>().unwrap_or(0.0);
-    // 腾讯 f[9..19] 卖1-5价量，f[19..29] 买1-5价量
-    let asks: Vec<OrderLevel> = (0..5)
+    // 腾讯 qt.gtimg 实测（2026-10-24）：f[9..19] = 买1-5价量（买1 最高，降序），f[19..29] = 卖1-5价量（卖1 最低，升序）。
+    // 部分文档把这两段标反，取值必须以此为准，否则卖盘显示成买盘、买盘显示成卖盘。
+    let bids: Vec<OrderLevel> = (0..5)
         .map(|i| OrderLevel {
             price: p(9 + i * 2),
             vol: p(10 + i * 2),
         })
         .collect();
-    let bids: Vec<OrderLevel> = (0..5)
+    let asks: Vec<OrderLevel> = (0..5)
         .map(|i| OrderLevel {
             price: p(19 + i * 2),
             vol: p(20 + i * 2),
