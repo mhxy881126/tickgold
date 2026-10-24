@@ -20,7 +20,7 @@ export interface PaletteRow extends DockItem {
 }
 
 // 全量出厂功能定义：每个 CardId 恰好一条（Record<CardId, …> 由编译器保证不漏卡）
-const ALL: Record<CardId, DockItem> = {
+export const ALL: Record<CardId, DockItem> = {
   // ===== 行情·选股 =====
   watch: { id: "watch", label: "自选", icon: "M12 17.27 18.18 21l-1.64-7.03L22 9.24l7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z", desc: "我的股票分组实时行情", star: true },
   rank: { id: "rank", label: "榜单", icon: "M3 5h18v2H3zm0 4h18v2H3zm0 4h12v2H3zm0 4h12v2H3z", desc: "全市场涨幅/跌幅/成交额排名", star: true },
