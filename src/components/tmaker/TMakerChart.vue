@@ -32,7 +32,7 @@
       <span v-if="gridLevels.length"><i class="dot d-grid"></i>网格 ×{{ gridLevels.length }}</span>
       <span v-if="legs.length"><i class="dot d-leg"></i>在途 {{ legs.length }} 腿</span>
       <span v-if="signals.length"><i class="dot d-sig"></i>信号 {{ signals.length }}</span>
-      <span v-if="tab !== 'minute'" class="hint">双击蜡烛回放当日分时</span>
+      <span v-if="tab !== 'minute'" class="hint">点击蜡烛查看当日分时</span>
     </div>
     <div v-if="!bars.length" class="tm-chart-empty">
       <template v-if="!code">请选择一只持仓股票</template>
@@ -210,19 +210,12 @@ async function refresh() {
   render(data, t === "minute");
 }
 
-// ===== 双击蜡烛 → 回放该日历史分时（本地归档库补充 >5 交易日样本）=====
-let lastClick: { ts: number; t: number } | null = null;
+// ===== 点击蜡烛 → 回放该日历史分时（本地归档库补充 >5 交易日样本）=====
 function onBarClick(data: any) {
   const kd: KLineData | undefined = data?.data;
   if (!kd) return;
   if (tab.value === "minute") return;
-  const now = Date.now();
-  if (lastClick && lastClick.ts === kd.timestamp && now - lastClick.t < 350) {
-    lastClick = null;
-    void openReplay(kd);
-  } else {
-    lastClick = { ts: kd.timestamp, t: now };
-  }
+  void openReplay(kd);
 }
 const ymdUTC = (ts: number) => {
   const d = new Date(ts);

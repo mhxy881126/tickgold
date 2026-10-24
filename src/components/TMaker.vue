@@ -148,27 +148,27 @@
         </div>
         <div class="dc-status">{{ code && q ? statusLine : "等待数据" }}</div>
         <div class="dc-grid">
-          <div class="dc-item">
+          <div class="dc-item key">
             <span class="dc-label">参考价</span>
-            <span class="dc-val" :class="sig.side === 'buy' ? 'up' : sig.side === 'sell' ? 'down' : ''">{{ sig.price ? sig.price.toFixed(2) : "-" }}</span>
+            <span class="dc-val big" :class="sig.side === 'buy' ? 'up' : sig.side === 'sell' ? 'down' : ''">{{ sig.price ? sig.price.toFixed(2) : "-" }}</span>
           </div>
-          <div class="dc-item">
+          <div class="dc-item key">
             <span class="dc-label">目标价</span>
-            <span class="dc-val" :class="sig.side === 'buy' ? 'up' : 'down'">{{ sig.target ? sig.target.toFixed(2) : "-" }}</span>
+            <span class="dc-val big" :class="sig.side === 'buy' ? 'up' : 'down'">{{ sig.target ? sig.target.toFixed(2) : "-" }}</span>
           </div>
-          <div class="dc-item">
+          <div class="dc-item key">
             <span class="dc-label">止损价</span>
-            <span class="dc-val down">{{ sig.stop ? sig.stop.toFixed(2) : "-" }}</span>
+            <span class="dc-val big down">{{ sig.stop ? sig.stop.toFixed(2) : "-" }}</span>
           </div>
-          <div class="dc-item">
+          <div class="dc-item mini">
             <span class="dc-label">建议数量</span>
             <span class="dc-val">{{ sig.vol ? sig.vol + "股" : "-" }}</span>
           </div>
-          <div class="dc-item">
+          <div class="dc-item mini">
             <span class="dc-label">预期价差</span>
             <span class="dc-val" :class="sig.spread > 0 ? 'up' : ''">{{ sig.spread ? sig.spread.toFixed(2) + "%" : "-" }}</span>
           </div>
-          <div class="dc-item">
+          <div class="dc-item mini">
             <span class="dc-label">乖离率</span>
             <span class="dc-val" :class="tm.bias.value >= 0 ? 'up' : 'down'">{{ tm.bias.value ? tm.bias.value.toFixed(2) + "%" : "-" }}</span>
           </div>
@@ -373,6 +373,7 @@ import { computed, onMounted, ref } from "vue";
 import { useTmaker } from "../composables/useTmaker";
 import { isTrading, holidayName } from "../utils/sessions";
 import TMakerChart from "./tmaker/TMakerChart.vue";
+import { loadSignalLog } from "../composables/tmaker/signalLog";
 
 const tm = useTmaker();
 const code = tm.selectedCode;
@@ -381,17 +382,26 @@ const code = tm.selectedCode;
 const hasChartData = computed(() => !!code.value);
 const name = computed(() => tm.quote.value?.name ?? code.value ?? "");
 
-/** 图表信号点：当前强信号（做T决策）标记到最新 bar */
+/** 图表做T信号点：当日信号日志（历史T买/T卖）+ 当前强信号，标记到分时/K线 */
 const chartSignals = computed<{ time: number; price: number; dir: "long" | "short"; score: number }[]>(() => {
+  const out: { time: number; price: number; dir: "long" | "short"; score: number }[] = [];
+  const now = new Date();
+  const ymd = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(now.getUTCDate()).padStart(2, "0")}`;
+  for (const e of loadSignalLog()) {
+    if (e.code !== code.value || e.date !== ymd) continue;
+    out.push({ time: e.at, price: e.price, dir: e.dir, score: e.score });
+  }
   const s = tm.confirmedSignal.value;
-  if (!s || s.urgency !== "strong" || s.side === "hold") return [];
-  const bars = tm.currentMinute.value;
-  return [{
-    time: bars.length ? bars[bars.length - 1].timestamp : Date.now(),
-    price: s.price,
-    dir: s.side === "buy" ? "long" : "short",
-    score: s.score ?? 0,
-  }];
+  if (s && s.urgency === "strong" && s.side !== "hold") {
+    const bars = tm.currentMinute.value;
+    out.push({
+      time: bars.length ? bars[bars.length - 1].timestamp : Date.now(),
+      price: s.price,
+      dir: s.side === "buy" ? "long" : "short",
+      score: s.score ?? 0,
+    });
+  }
+  return out;
 });
 
 const statsOpen = ref(false);
@@ -972,13 +982,19 @@ function onKey(e: KeyboardEvent) {
 .dc-title.stop-loss { color: #ff5096; background: rgba(255,80,150,.14); }
 .dc-title.wait { color: var(--t2); }
 .dc-status { font-size: 10px; color: var(--t3); text-align: center; }
-.dc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.dc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
 .dc-item {
   display: flex; flex-direction: column; gap: 1px;
   background: rgba(255,255,255,.02); border-radius: 3px; padding: 3px 6px;
 }
+.dc-item.key {
+  background: rgba(0,232,216,.05); border: 1px solid var(--line); border-radius: 5px;
+  padding: 6px 6px 5px; justify-content: center;
+}
+.dc-item.key .dc-val.big { font-size: 17px; }
+.dc-item.mini { padding: 2px 6px; }
 .dc-label { font-size: 9px; color: var(--t3); }
-.dc-val { font-size: 13px; font-weight: 700; font-family: Consolas, monospace; color: var(--t1); }
+.dc-val { font-size: 12px; font-weight: 700; font-family: Consolas, monospace; color: var(--t1); }
 .dc-reasons { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .dc-reason {
   font-size: 10px; color: var(--t2); padding: 3px 6px;
@@ -1042,10 +1058,14 @@ function onKey(e: KeyboardEvent) {
 .tm-stats + .tm-stats { margin-top: 2px; }
 .ts-head { display: flex; align-items: center; justify-content: space-between; }
 .ts-title { font-size: 11px; font-weight: 700; color: var(--cyan); }
-.ts-row { display: flex; gap: 8px; }
-.ts-item { display: flex; flex-direction: column; align-items: center; }
-.ts-n { font-size: 13px; font-weight: 800; font-family: Consolas, monospace; }
-.ts-l { font-size: 8px; color: var(--t3); }
+.ts-row { display: flex; gap: 6px; margin: 4px 0 2px; }
+.ts-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: rgba(255,255,255,.045); border: 1px solid var(--line); border-radius: 6px;
+  padding: 7px 4px 5px;
+}
+.ts-n { font-size: 19px; font-weight: 800; font-family: Consolas, monospace; line-height: 1; }
+.ts-l { font-size: 9px; color: var(--t3); }
 .ts-leg {
   font-size: 9px; color: var(--t2); padding: 2px 6px;
   background: rgba(255,177,61,.07); border-radius: 3px; font-family: Consolas, monospace;
@@ -1078,12 +1098,15 @@ function onKey(e: KeyboardEvent) {
 .rec-vol { color: var(--t2); }
 .rec-pnl { font-weight: 600; }
 .ts-metrics {
-  margin-top: auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px 8px;
-  padding-top: 4px; border-top: 1px solid var(--line); font-size: 10px;
+  margin-top: auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+  padding-top: 4px; border-top: 1px dashed var(--line);
 }
-.ts-metrics .mt { display: flex; justify-content: space-between; }
-.ts-metrics .mt span { color: var(--t3); }
-.ts-metrics .mt b { font-family: Consolas, monospace; font-weight: 600; color: var(--t1); }
+.ts-metrics .mt {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  background: rgba(255,255,255,.03); border-radius: 4px; padding: 4px 0 3px;
+}
+.ts-metrics .mt span { font-size: 9px; color: var(--t3); }
+.ts-metrics .mt b { font-family: Consolas, monospace; font-weight: 700; color: var(--t1); font-size: 12px; }
 /* P3 分钟级回测 */
 .ts-bt { border-top: 1px dashed var(--line); padding-top: 3px; display: flex; flex-direction: column; gap: 3px; }
 .ts-bt-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -1101,6 +1124,7 @@ function onKey(e: KeyboardEvent) {
 .ts-bt-opt-head { font-size: 9px; color: var(--t3); padding: 1px 0 2px; border-bottom: 1px dashed var(--line); margin-bottom: 2px; line-height: 1.35; }
 .ts-bt-params summary { font-size: 9px; color: var(--t3); cursor: pointer; }
 .ts-bt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; padding: 4px 0 2px; }
+.ts-bt-grid .tp:last-child { grid-column: 1 / -1; }
 .ts-bt-grid .tp { font-size: 9px; color: var(--t3); display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 1px; }
 .tp-lab { display: flex; align-items: center; gap: 4px; font-size: 9px; color: var(--t3); white-space: nowrap; }
 .tp-tip { font-size: 8px; color: var(--t3); opacity: .72; line-height: 1.35; }

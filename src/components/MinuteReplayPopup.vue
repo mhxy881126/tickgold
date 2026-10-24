@@ -173,6 +173,10 @@ async function openPopup(kd: KLineData, extra?: { date: string; bars: KBar[] }[]
     popupErr.value = e?.message || String(e);
   }
   popup.value.date = histDays.value[dayIndex.value]?.date ?? "";
+  if (!histDays.value.length) {
+    popupErr.value = "暂无该日历史分时数据（数据源未覆盖或超出可用范围）";
+    return;
+  }
   renderPopup();
 }
 

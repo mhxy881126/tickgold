@@ -151,27 +151,31 @@ export function registerTmakerLevels() {
         const x = xAxis.convertToPixel(s.index);
         const y = yAxis.convertToPixel(s.price);
         if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-        // 正T：向上红色箭头（做T买点）；倒T：向下青色箭头（做T卖点）
-        const color = s.dir === "long" ? UP : DOWN_K;
+        // 做T信号：正T买点（红上箭头 + T买标签 + 分数 + 价格）、倒T卖点（青下箭头 + T卖标签）
+        const isLong = s.dir === "long";
+        const color = isLong ? UP : DOWN_K;
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
         ctx.lineWidth = 1.6;
         ctx.beginPath();
-        if (s.dir === "long") {
-          ctx.moveTo(x - 6, y - 2);
-          ctx.lineTo(x, y - 10);
-          ctx.lineTo(x + 6, y - 2);
+        if (isLong) {
+          ctx.moveTo(x - 7, y - 2);
+          ctx.lineTo(x, y - 11);
+          ctx.lineTo(x + 7, y - 2);
         } else {
-          ctx.moveTo(x - 6, y + 2);
-          ctx.lineTo(x, y + 10);
-          ctx.lineTo(x + 6, y + 2);
+          ctx.moveTo(x - 7, y + 2);
+          ctx.lineTo(x, y + 11);
+          ctx.lineTo(x + 7, y + 2);
         }
         ctx.stroke();
-        ctx.fillStyle = color;
-        ctx.font = "10px 'Microsoft YaHei', sans-serif";
+        const tag = `${isLong ? "T买" : "T卖"} ${s.score}分`;
+        ctx.font = "bold 10px 'Microsoft YaHei', sans-serif";
         ctx.textAlign = "center";
-        ctx.textBaseline = s.dir === "long" ? "bottom" : "top";
-        ctx.fillText(`${s.score}分`, x, s.dir === "long" ? y - 12 : y + 12);
+        ctx.textBaseline = isLong ? "bottom" : "top";
+        ctx.fillText(tag, x, isLong ? y - 12 : y + 12);
+        ctx.font = "9px 'Microsoft YaHei', sans-serif";
+        ctx.fillStyle = "rgba(255,255,255,.55)";
+        ctx.fillText(s.price.toFixed(2), x, isLong ? y - 23 : y + 23);
       }
     },
   } as any);
