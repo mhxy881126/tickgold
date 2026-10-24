@@ -8,6 +8,7 @@ import { useQuotesStore } from "../stores/quotes";
 import { useWatchlistStore } from "../stores/watchlist";
 import type { KBar, OrderBook, DepthEnhance } from "../api/types";
 import AnimatedNumber from "./common/AnimatedNumber.vue";
+import { normalizeBook } from "../composables/tmaker/bookNormalize";
 
 const props = defineProps<{
   code: string;
@@ -46,7 +47,7 @@ async function tryL2Upgrade() {
   if (!src) return;
   try {
     const book = await pluginL2Book(src.pluginId, props.code, src.providers[0]);
-    ob.value = book;
+    ob.value = normalizeBook(book);
     l2Using.value = src;
   } catch {
     // 保留免费五档，不打扰用户
@@ -79,7 +80,7 @@ async function ensure(kind: string) {
     if (kind === "m") minute.value = await fetchMinuteShared(props.code);
     else if (kind === "k") kline.value = await fetchKLine(props.code, 101, 180);
     else {
-      ob.value = await invoke<OrderBook>("get_orderbook", { code: props.code });
+      ob.value = normalizeBook(await invoke<OrderBook>("get_orderbook", { code: props.code }));
       void tryL2Upgrade(); // 有 Level-2 插件则后台升级为十档，失败保留五档
     }
   } catch {

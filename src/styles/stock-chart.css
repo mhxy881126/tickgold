@@ -42,8 +42,11 @@
 
 /* 副图指标选择器 */
 .sub-picker { position: relative; z-index: 30; display: flex; }
+.sub-mask {
+  position: fixed; inset: 0; z-index: 8599; background: transparent;
+}
 .sub-menu {
-  position: absolute; top: calc(100% + 4px); right: 0; z-index: 31;
+  position: fixed; z-index: 8600;
   width: 236px; max-height: 380px; overflow-y: auto;
   background: rgba(18, 20, 26, .98); border: 1px solid rgba(255, 255, 255, .12);
   border-radius: 10px; padding: 6px;
@@ -61,8 +64,8 @@
 .sm-check { font-style: normal; color: #ff6b6b; font-size: 11px; }
 
 /* 主体 */
-.sc-body { flex: 1; min-height: 0; display: flex; }
-.sc-chart { flex: 1; min-width: 0; position: relative; }
+.sc-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 3fr 1fr; }
+.sc-chart { min-width: 0; min-height: 0; position: relative; }
 .chart-host { position: absolute; inset: 0; }
 .pct-axis { position: absolute; top: 0; right: 0; bottom: 0; width: 58px; z-index: 6; pointer-events: none; }
 .pct-tick { position: absolute; right: 6px; transform: translateY(-50%); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -147,8 +150,8 @@
 
 /* 五档盘口 */
 .sc-book {
-  width: 178px; flex-shrink: 0; border-left: 1px solid rgba(255,255,255,.06);
-  display: flex; flex-direction: column; font-size: 11px;
+  width: auto; min-width: 0; border-left: 1px solid rgba(255,255,255,.06);
+  display: flex; flex-direction: column; font-size: 11px; overflow: hidden;
 }
 .ask, .bid { display: flex; flex-direction: column; }
 .lvl {

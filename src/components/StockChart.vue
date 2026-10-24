@@ -51,22 +51,7 @@
           <button class="sc-tab ghost" :class="{ on: showEne }" @click="toggleMainOverlay('ENE')">ENE</button>
           <span class="sc-sep"></span>
           <div ref="subPickerEl" class="sub-picker">
-            <button class="sc-tab ghost" :class="{ on: subMenu }" @click.stop="subMenu=!subMenu">副图 {{ subInd }} ▾</button>
-            <div v-if="subMenu" class="sub-menu" @click.stop>
-              <div v-for="g in subGroups" :key="g.group" class="sm-group">
-                <div class="sm-gtitle">{{ g.group }}</div>
-                <div
-                  v-for="it in g.items"
-                  :key="it.name"
-                  class="sm-item"
-                  :class="{ on: subInd===it.name }"
-                  @click="switchSub(it.name)"
-                >
-                  <span class="sm-label">{{ it.label }}</span>
-                  <i v-if="subInd===it.name" class="sm-check">✓</i>
-                </div>
-              </div>
-            </div>
+            <button class="sc-tab ghost" :class="{ on: subMenu }" @click="toggleSubMenu">副图 {{ subInd }} ▾</button>
           </div>
           <button class="sc-tab ghost" @click="openIndSettings">指标设置</button>
         </template>
@@ -207,7 +192,7 @@
           <div><label>成交量</label><span>{{ fmtVol(volume) }}</span></div>
           <div><label>成交额</label><span>{{ fmtAmt(amount) }}</span></div>
         </div>
-        <div class="book-note">免费五档，非 Level-2</div>
+
       </div>
     </div>
 
@@ -233,6 +218,26 @@
           <div class="cm-sub">
             <div v-for="g in wl.groups" :key="g.id" class="cm-item" @click.stop="addToGroup(g.id)">{{ g.name }}</div>
             <div class="cm-item cm-new" @click.stop="newGroupThenAdd">＋ 新建分组</div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 副图指标选择（Teleport 到 body，避免被 .sc-tabs overflow:hidden 裁剪） -->
+    <Teleport to="body">
+      <div v-if="subMenu" class="sub-mask" @click="subMenu=false" @contextmenu.prevent="subMenu=false"></div>
+      <div v-if="subMenu" class="sub-menu" :style="{ left: subMenuX + 'px', top: subMenuY + 'px' }" @click.stop>
+        <div v-for="g in subGroups" :key="g.group" class="sm-group">
+          <div class="sm-gtitle">{{ g.group }}</div>
+          <div
+            v-for="it in g.items"
+            :key="it.name"
+            class="sm-item"
+            :class="{ on: subInd===it.name }"
+            @click="switchSub(it.name)"
+          >
+            <span class="sm-label">{{ it.label }}</span>
+            <i v-if="subInd===it.name" class="sm-check">✓</i>
           </div>
         </div>
       </div>
@@ -294,6 +299,7 @@ import {
 } from "../lib/chart";
 import { UP, DOWN_K, FLAT, AVG_Y, line, buildStyles } from "../lib/chart-styles";
 import { SUB_GROUPS as subGroups } from "../lib/indicator-groups";
+import { normalizeBook } from "../composables/tmaker/bookNormalize";
 import IndicatorSettings from "./IndicatorSettings.vue";
 import MinuteReplayPopup from "./MinuteReplayPopup.vue";
 import { confirmDialog } from "../composables/useDialog";
@@ -344,7 +350,15 @@ const subInd = ref("MACD"); // 当前副图指标
 let subPaneId: string | null = null;
 let volPaneId: string | null = null;
 const subMenu = ref(false);
+const subMenuX = ref(0);
+const subMenuY = ref(0);
 const subPickerEl = ref<HTMLElement | null>(null);
+function toggleSubMenu(e: MouseEvent) {
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  subMenuX.value = Math.max(8, Math.min(r.right - 236, window.innerWidth - 244));
+  subMenuY.value = r.bottom + 4;
+  subMenu.value = !subMenu.value;
+}
 // 点击选择器外部时收起菜单
 function onDocMousedown(e: MouseEvent) {
   if (subMenu.value && subPickerEl.value && !subPickerEl.value.contains(e.target as Node)) {
@@ -872,7 +886,7 @@ async function loadHead() {
     fetchOrderBook(props.code).catch(() => null),
   ]);
   if (qs && qs.length) q.value = qs[0];
-  if (book) ob.value = book;
+  if (book) ob.value = normalizeBook(book);
 }
 async function refreshHead() { try { await loadHead(); } catch { /* ignore */ } }
 async function refreshChart() {
