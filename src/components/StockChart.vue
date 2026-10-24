@@ -226,7 +226,7 @@
     <!-- 副图指标选择（Teleport 到 body，避免被 .sc-tabs overflow:hidden 裁剪） -->
     <Teleport to="body">
       <div v-if="subMenu" class="sub-mask" @click="subMenu=false" @contextmenu.prevent="subMenu=false"></div>
-      <div v-if="subMenu" class="sub-menu" :style="{ left: subMenuX + 'px', top: subMenuY + 'px' }" @click.stop>
+      <div v-if="subMenu" ref="subMenuEl" class="sub-menu" :style="{ left: subMenuX + 'px', top: subMenuY + 'px' }" @click.stop>
         <div v-for="g in subGroups" :key="g.group" class="sm-group">
           <div class="sm-gtitle">{{ g.group }}</div>
           <div
@@ -353,6 +353,7 @@ const subMenu = ref(false);
 const subMenuX = ref(0);
 const subMenuY = ref(0);
 const subPickerEl = ref<HTMLElement | null>(null);
+const subMenuEl = ref<HTMLElement | null>(null);
 function toggleSubMenu(e: MouseEvent) {
   const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
   subMenuX.value = Math.max(8, Math.min(r.right - 236, window.innerWidth - 244));
@@ -361,9 +362,11 @@ function toggleSubMenu(e: MouseEvent) {
 }
 // 点击选择器外部时收起菜单
 function onDocMousedown(e: MouseEvent) {
-  if (subMenu.value && subPickerEl.value && !subPickerEl.value.contains(e.target as Node)) {
-    subMenu.value = false;
-  }
+  if (!subMenu.value) return;
+  const t = e.target as Node;
+  if (subPickerEl.value?.contains(t)) return;
+  if (subMenuEl.value?.contains(t)) return;
+  subMenu.value = false;
 }
 
 // ---- 头部合并字段（Quote 为主，OrderBook 兜底）----
