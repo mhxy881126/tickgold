@@ -162,7 +162,7 @@
 .lvl.clickable { cursor: pointer; }
 .lvl.clickable:hover { background: rgba(255,255,255,.07); }
 .lvl.clickable:active { background: rgba(255,255,255,.12); }
-.lvl-px { z-index: 1; font-variant-numeric: tabular-nums; text-align: right; }
+.lvl-px { z-index: 1; font-variant-numeric: tabular-nums; text-align: center; }
 .lvl-vol { color: #9aa1b1; z-index: 1; font-variant-numeric: tabular-nums; }
 .lvl-bar {
   position: absolute; right: 0; top: 2px; bottom: 2px; height: auto;

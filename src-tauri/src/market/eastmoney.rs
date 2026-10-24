@@ -1523,11 +1523,13 @@ pub async fn orderbook(code: &str) -> Result<OrderBook, String> {
         .and_then(|x| x.as_str())
         .unwrap_or(code)
         .to_string();
-    // 方向自愈：正常语义 = 卖盘升序（卖1 最低）∪ 买盘降序（买1 最高）。
-    // 实测东财 f 字段返回方向与文档相反（asks 实际为买盘降序、bids 为卖盘升序）→ 互换恢复。
-    let asks_desc = asks.len() >= 2 && asks[0].price > asks[1].price;
-    let bids_asc = bids.len() >= 2 && bids[0].price < bids[1].price;
-    if asks_desc && bids_asc {
+    // 方向自愈：标准语义 = 卖盘升序（卖1 最低）∪ 买盘降序（买1 最高）。
+    // 实测东财 f 字段返回方向与文档相反（f11 起为卖盘升序、f31 起为买盘降序）→ 常规互换恢复；
+    // 涨停/跌停单边场景（另一侧为空，双向条件失效）同样整体交换：asks 降序必为买盘（买盘标准方向即降序）、
+    // bids 升序必为卖盘（卖盘标准方向即升序），出现即说明两侧被数据源互换过。
+    let asks_is_buy = asks.len() >= 2 && asks[0].price > asks[1].price;
+    let bids_is_sell = bids.len() >= 2 && bids[0].price < bids[1].price;
+    if asks_is_buy || bids_is_sell {
         std::mem::swap(&mut asks, &mut bids);
     }
     Ok(OrderBook {
