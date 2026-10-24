@@ -112,14 +112,14 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(5, 8, 14, 0.55);
+  background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(2px);
 }
 .ad-card {
   width: 400px;
   max-width: calc(100vw - 48px);
-  background: #141a24;
-  border: 1px solid #283346;
+  background: var(--surface-solid);
+  border: 1px solid var(--border-ov);
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
   overflow: hidden;
@@ -130,7 +130,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 .ad-title {
   font-size: 15px;
   font-weight: 700;
-  color: #e6ecf5;
+  color: var(--text);
 }
 .ad-body {
   padding: 12px 20px 4px;
@@ -139,7 +139,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
   margin: 0;
   font-size: 13.5px;
   line-height: 1.65;
-  color: #c3ccd9;
+  color: var(--text-dim);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -150,14 +150,14 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
   padding: 0 10px;
   margin-top: 10px;
   border-radius: 7px;
-  border: 1px solid #2c3850;
-  background: #0d121b;
-  color: #e6ecf5;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
   font-size: 13.5px;
   outline: none;
 }
 .ad-in:focus {
-  border-color: #e8c878;
+  border-color: var(--accent);
 }
 .ad-foot {
   display: flex;
@@ -173,32 +173,32 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid #2c3850;
+  border: 1px solid var(--border);
   transition: all 0.15s;
 }
 .ad-btn.cancel {
   background: transparent;
-  color: #9aa6b6;
+  color: var(--text-dim);
 }
 .ad-btn.cancel:hover {
-  color: #e6ecf5;
-  border-color: #45516a;
+  color: var(--text);
+  border-color: var(--border-light);
 }
 .ad-btn.ok {
-  background: #e8c878;
-  border-color: #e8c878;
-  color: #1a1408;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
 }
 .ad-btn.ok:hover {
   filter: brightness(1.08);
 }
 .ad-btn.ok.danger {
-  background: #f23645;
-  border-color: #f23645;
+  background: var(--up);
+  border-color: var(--up);
   color: #fff;
 }
 .ad-btn.ok.danger:hover {
-  background: #e02b3a;
+  background: var(--up);
 }
 
 .ad-enter-active,

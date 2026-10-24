@@ -360,7 +360,7 @@ onBeforeUnmount(() => unlistenSub?.());
   cursor: pointer;
 }
 .ss-tac.on {
-  color: #ff3232;
+  color: var(--up);
   border-color: #ff323299;
   background: #ff323214;
 }
@@ -379,7 +379,7 @@ onBeforeUnmount(() => unlistenSub?.());
 .ss-run {
   margin-left: auto;
   border: none;
-  background: #ff3232;
+  background: var(--up);
   color: #fff;
   border-radius: 7px;
   padding: 5px 16px;
@@ -425,7 +425,7 @@ onBeforeUnmount(() => unlistenSub?.());
   cursor: pointer;
 }
 .ss-head:hover {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.04));
+  background: var(--bg-hover, var(--ov-04));
 }
 .ss-code {
   color: var(--text-dim, #9aa4b8);
@@ -437,7 +437,7 @@ onBeforeUnmount(() => unlistenSub?.());
   cursor: pointer;
 }
 .ss-name:hover {
-  color: #ff3232;
+  color: var(--up);
   text-decoration: underline;
 }
 .ss-badges {
@@ -461,10 +461,10 @@ onBeforeUnmount(() => unlistenSub?.());
   font-size: 10.5px;
 }
 .up {
-  color: #ff3232;
+  color: var(--up);
 }
 .k {
-  color: #1dbe7d;
+  color: var(--down);
 }
 .ss-chev {
   margin-left: auto;
@@ -549,7 +549,7 @@ onBeforeUnmount(() => unlistenSub?.());
   border-color: var(--accent, #d4af37);
 }
 .ss-mini.primary {
-  color: #ff3232;
+  color: var(--up);
   border-color: #ff323299;
 }
 .ss-mini.danger:hover {

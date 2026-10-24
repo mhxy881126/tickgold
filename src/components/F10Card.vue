@@ -6,8 +6,17 @@ import {
   type CompanyProfile, type FinanceReport, type ChipDistribution,
 } from "../api/market";
 import type { StockFundFlow } from "../api/types";
+import { useTheme } from "../composables/useTheme";
 
 const props = defineProps<{ code: string | null }>();
+const { theme } = useTheme();
+const isLight = computed(() => theme.value === "light" || theme.value === "ths-white");
+// echarts 浮层（tooltip）随主题切换
+const tip = computed(() =>
+  isLight.value
+    ? { bg: "rgba(255,255,255,0.98)", border: "rgba(0,0,0,0.12)", text: "#1f2430" }
+    : { bg: "#161c28", border: "#2a3346", text: "#dfe5f0" }
+);
 
 type Tab = "profile" | "finance" | "chips" | "fund";
 const tab = ref<Tab>("profile");
@@ -100,7 +109,7 @@ function renderChip() {
     },
     tooltip: {
       trigger: "axis", axisPointer: { type: "shadow" },
-      backgroundColor: "#161c28", borderColor: "#2a3346", textStyle: { color: "#dfe5f0", fontSize: 11 },
+      backgroundColor: tip.value.bg, borderColor: tip.value.border, textStyle: { color: tip.value.text, fontSize: 11 },
       formatter: (ps: any) => {
         const i = ps[0].dataIndex;
         const tot = d.chips.reduce((a, b) => a + b, 0);
@@ -141,16 +150,17 @@ function renderFund() {
     animationDuration: 400,
     tooltip: {
       trigger: "axis", axisPointer: { type: "shadow" },
-      backgroundColor: "#161c28", borderColor: "#2a3346", textStyle: { color: "#dfe5f0", fontSize: 11 },
+      backgroundColor: tip.value.bg, borderColor: tip.value.border, textStyle: { color: tip.value.text, fontSize: 11 },
       valueFormatter: (v: any) => (Number(v) / 1e8).toFixed(2) + "亿",
     },
     legend: { data: ["超大单", "大单", "中单", "小单"], top: 2,
       textStyle: { color: "#8a93a6", fontSize: 10 } },
     grid: { left: 50, right: 16, top: 30, bottom: 22 },
     xAxis: { type: "category", data: recent.map((x) => x.date.slice(5)),
-      axisLabel: { color: "#8a93a6", fontSize: 10 }, axisLine: { lineStyle: { color: "#2a3344" } } },
+      axisLabel: { color: isLight.value ? "#6b7280" : "#8a93a6", fontSize: 10 },
+      axisLine: { lineStyle: { color: isLight.value ? "rgba(0,0,0,.15)" : "#2a3344" } } },
     yAxis: { type: "value", axisLabel: { color: "#8a93a6", fontSize: 10, formatter: (v: number) => (v / 1e8).toFixed(0) + "亿" },
-      splitLine: { lineStyle: { color: "rgba(255,255,255,.05)" } } },
+      splitLine: { lineStyle: { color: "var(--ov-05)" } } },
     series: [
       { name: "超大单", type: "bar", data: recent.map((x) => x.superNet),
         itemStyle: { color: "#f23645" } },
@@ -185,15 +195,17 @@ async function load() {
     else if (tab.value === "finance") finance.value = await fetchF10Finance(props.code);
     else if (tab.value === "chips") {
       chipsData.value = await fetchF10Chips(props.code);
-      await nextTick(); renderChip();
     } else {
       fundData.value = await fetchFundFlow(props.code, 60);
-      await nextTick(); renderFund();
     }
   } catch (e) {
     err.value = typeof e === "string" ? e : "数据加载失败，请稍后重试";
   }
+  // 先结束 loading，让对应 tab 的 DOM（含图表容器）挂载后再渲染 echarts
   loading.value = false;
+  await nextTick();
+  if (tab.value === "chips") renderChip();
+  if (tab.value === "fund") renderFund();
 }
 
 watch(tab, () => {
@@ -205,6 +217,12 @@ watch(() => props.code, () => {
   profile.value = null; finance.value = null; chipsData.value = null; fundData.value = null;
   load();
 }, { immediate: true });
+
+// 主题切换时重绘图表，让 tooltip 跟随
+watch(theme, () => {
+  if (tab.value === "chips") nextTick(renderChip);
+  if (tab.value === "fund") nextTick(renderFund);
+});
 
 onBeforeUnmount(() => {
   ro?.disconnect();
@@ -342,10 +360,10 @@ onBeforeUnmount(() => {
   transition: all .15s;
 }
 .tab:hover { color: var(--text); }
-.tab.on { color: var(--accent); background: #1a2438; border-color: var(--border); }
+.tab.on { color: var(--accent); background: var(--bg-card2); border-color: var(--border); }
 .body { flex: 1; min-height: 0; overflow: hidden; padding-top: 8px; display: flex; flex-direction: column; }
 .hint { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: 12px; }
-.err-hint { color: #f23645; }
+.err-hint { color: var(--up); }
 
 /* 概况 */
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 14px; overflow-y: auto; }
@@ -374,13 +392,13 @@ onBeforeUnmount(() => {
 .stat-k { font-size: 10px; color: var(--text-dim); }
 .stat-v { font-size: 15px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .stat-v.sm { font-size: 13px; font-weight: 600; }
-.stat-v.up { color: #f23645; }
-.stat-v.down { color: #0ecb81; }
+.stat-v.up { color: var(--up); }
+.stat-v.down { color: var(--down); }
 .chip-chart { flex: 1; min-height: 120px; margin-top: 6px; }
 .legend { display: flex; gap: 16px; justify-content: center; padding-top: 4px; flex-shrink: 0; }
 .lg { font-size: 10.5px; color: var(--text-dim); display: flex; align-items: center; gap: 5px; }
 .dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
-.dot.gold { background: #e2b440; }
+.dot.gold { background: var(--accent); }
 .dot.blue { background: #4a7bd0; }
 
 /* 资金流向 */
@@ -388,8 +406,8 @@ onBeforeUnmount(() => {
 .ft-cell { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px; min-width: 0; }
 .ft-k { font-size: 10px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ft-v { font-size: 13px; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
-.ft-v.up { color: #f23645; }
-.ft-v.down { color: #0ecb81; }
+.ft-v.up { color: var(--up); }
+.ft-v.down { color: var(--down); }
 .fund-chart-box { flex: 1; min-height: 180px; margin-top: 8px; }
 .fund-note { flex-shrink: 0; text-align: center; font-size: 10px; color: var(--text-dim); padding-top: 6px; }
 </style>

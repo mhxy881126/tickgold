@@ -413,7 +413,7 @@ defineExpose({ open: openPopup });
 /* 双击弹窗 */
 .mp-box {
   position: fixed; z-index: 8500;
-  background: #0d0f14; border: 1px solid rgba(255,255,255,.12);
+  background: #0d0f14; border: 1px solid var(--ov-12);
   border-radius: 10px; overflow: hidden;
   box-shadow: 0 18px 60px rgba(0,0,0,.7);
   display: flex; flex-direction: column;
@@ -422,17 +422,17 @@ defineExpose({ open: openPopup });
 .mp-title {
   display: flex; align-items: center; justify-content: space-between;
   height: 38px; padding: 0 8px 0 14px; cursor: move;
-  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.01));
-  border-bottom: 1px solid rgba(255,255,255,.08);
+  background: linear-gradient(180deg, var(--ov-05), var(--ov-01));
+  border-bottom: 1px solid var(--ov-08);
 }
-.mp-tname { font-size: 12px; color: #d6dae3; font-weight: 600; }
+.mp-tname { font-size: 12px; color: var(--text-dim); font-weight: 600; }
 .mp-tbtns { display: flex; gap: 4px; }
 .mp-btn {
-  border: none; background: transparent; color: #9aa1b1;
+  border: none; background: transparent; color: var(--text-dim);
   width: 30px; height: 26px; border-radius: 6px; cursor: pointer; font-size: 13px;
 }
-.mp-btn:hover { background: rgba(255,255,255,.1); color: #fff; }
-.mp-btn.x:hover { background: rgba(255,60,60,.3); color: #ff8080; }
+.mp-btn:hover { background: var(--ov-10); color: #fff; }
+.mp-btn.x:hover { background: rgba(255,60,60,.3); color: var(--up); }
 .mp-hostwrap { flex: 1; min-height: 0; position: relative; }
 .mp-host { position: absolute; inset: 0; }
 /* 右侧涨跌百分比轴 */
@@ -449,59 +449,59 @@ defineExpose({ open: openPopup });
 .mp-rt.zero { color: #e1e7f4; font-weight: 600; }
 .mp-err {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  color: #ff8080; font-size: 12px; padding: 20px; text-align: center; background: #0d0f14;
+  color: var(--up); font-size: 12px; padding: 20px; text-align: center; background: #0d0f14;
 }
 
 /* 工具行 */
 .mp-toolbar {
   display: flex; align-items: center; gap: 3px;
-  padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,.08);
-  background: rgba(255,255,255,.02);
+  padding: 5px 10px; border-bottom: 1px solid var(--ov-08);
+  background: var(--ov-02);
 }
 .tb-btn {
-  border: none; background: transparent; color: #aab1c0;
+  border: none; background: transparent; color: var(--text-dim);
   height: 24px; min-width: 26px; padding: 0 8px; border-radius: 5px;
   cursor: pointer; font-size: 11px;
 }
-.tb-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
-.tb-btn.chip.on { background: rgba(255,50,50,.18); color: #ff8a8a; }
+.tb-btn:hover { background: var(--ov-08); color: #fff; }
+.tb-btn.chip.on { background: rgba(255,50,50,.18); color: var(--up); }
 .tb-date {
-  font-size: 11px; color: #d6dae3; min-width: 76px; text-align: center;
+  font-size: 11px; color: var(--text-dim); min-width: 76px; text-align: center;
   font-variant-numeric: tabular-nums;
 }
-.tb-sep { width: 1px; height: 14px; background: rgba(255,255,255,.12); margin: 0 6px; }
-.tb-glabel { font-size: 10px; color: #7b8294; margin-right: 2px; }
+.tb-sep { width: 1px; height: 14px; background: var(--ov-12); margin: 0 6px; }
+.tb-glabel { font-size: 10px; color: var(--text-dim); margin-right: 2px; }
 
 /* 叠加图例 */
 .mp-legend {
   position: absolute; right: 8px; top: 8px; z-index: 5;
   display: flex; flex-direction: column; gap: 3px;
-  background: rgba(12,14,20,.72); border: 1px solid rgba(255,255,255,.1);
+  background: rgba(12,14,20,.72); border: 1px solid var(--ov-10);
   border-radius: 7px; padding: 6px 8px; font-size: 10px;
 }
-.lg-item { display: flex; align-items: center; gap: 6px; color: #c7ccd8; font-variant-numeric: tabular-nums; }
+.lg-item { display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .lg-dot { width: 9px; height: 2px; display: inline-block; }
 
 /* 回放控制条 */
 .mp-replay {
   display: flex; align-items: center; gap: 8px;
-  padding: 7px 12px; border-top: 1px solid rgba(255,255,255,.08);
-  background: rgba(255,255,255,.02);
+  padding: 7px 12px; border-top: 1px solid var(--ov-08);
+  background: var(--ov-02);
 }
 .rp-btn {
-  border: none; background: transparent; color: #aab1c0;
+  border: none; background: transparent; color: var(--text-dim);
   height: 26px; min-width: 30px; padding: 0 8px; border-radius: 5px;
   cursor: pointer; font-size: 12px;
 }
-.rp-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
-.rp-btn.chip.on { background: rgba(255,50,50,.18); color: #ff8a8a; }
+.rp-btn:hover { background: var(--ov-08); color: #fff; }
+.rp-btn.chip.on { background: rgba(255,50,50,.18); color: var(--up); }
 .rp-play { font-size: 14px; }
 .rp-range { flex: 1; accent-color: #ff5050; cursor: pointer; }
 .rp-stats {
   display: flex; gap: 10px; min-width: 200px; justify-content: flex-end;
   font-variant-numeric: tabular-nums; font-size: 11px;
 }
-.rp-time { color: #d6dae3; min-width: 44px; text-align: right; }
+.rp-time { color: var(--text-dim); min-width: 44px; text-align: right; }
 .rp-px { min-width: 56px; text-align: right; }
 .rp-pct { min-width: 64px; text-align: right; }
 .rp-speeds { display: flex; gap: 2px; }

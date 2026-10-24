@@ -412,11 +412,11 @@ onUnmounted(() => unlisteners.forEach((fn) => fn()));
 }
 .tab.on {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #14110a; border-color: transparent; font-weight: 700;
+  color: var(--accent-contrast); border-color: transparent; font-weight: 700;
 }
 .btn-new {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #14110a; border: none; font-weight: 700; font-size: 12px;
+  color: var(--accent-contrast); border: none; font-weight: 700; font-size: 12px;
   padding: 6px 13px; border-radius: 8px; cursor: pointer;
 }
 .btn-new.ghost {
@@ -434,10 +434,10 @@ onUnmounted(() => unlisteners.forEach((fn) => fn()));
 }
 .form-title { font-weight: 700; font-size: 12px; margin-bottom: 8px; color: var(--text); }
 .plan-bar { display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px; }
-.tpl-lab { font-size:10.5px;color:var(--text-dim); }
-.tpl-btn { background:transparent;color:var(--text-dim);border:1px solid var(--border);
+.tpl-lab { font-size:10.5px;color: var(--text-dim); }
+.tpl-btn { background:transparent;color: var(--text-dim);border:1px solid var(--border);
   border-radius:13px;font-size:10.5px;padding:2px 10px;cursor:pointer; }
-.tpl-btn:hover { color:var(--accent-2);border-color:var(--accent); }
+.tpl-btn:hover { color: var(--accent-2);border-color:var(--accent); }
 .form-row {
   display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; align-items: center;
 }
@@ -468,8 +468,8 @@ onUnmounted(() => unlisteners.forEach((fn) => fn()));
   background: transparent; border: 1px solid var(--border); color: var(--text-dim);
   border-radius: 6px; width: 24px; height: 26px; cursor: pointer; font-size: 13px;
 }
-.leaf-del:hover { color: #ff7a86; border-color: #ff7a86; }
-.form-error { color: #ff7a86; font-size: 11px; margin-bottom: 6px; }
+.leaf-del:hover { color: var(--up); border-color: var(--up); }
+.form-error { color: var(--up); font-size: 11px; margin-bottom: 6px; }
 .form-actions { display: flex; gap: 8px; }
 .compliance-note { margin-top: 8px; font-size: 10px; color: var(--text-dim); line-height: 1.5; }
 
@@ -507,6 +507,6 @@ td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: m
   font-size: 11px; line-height: 1; padding: 0;
 }
 .op-btn:hover { color: var(--accent-2); border-color: var(--accent); }
-.op-btn.del:hover { color: #ff7a86; border-color: #ff7a86; }
+.op-btn.del:hover { color: var(--up); border-color: var(--up); }
 .empty { text-align: center; color: var(--text-dim); padding: 24px 0; }
 </style>

@@ -433,7 +433,7 @@ function fmtPnl(n: number) {
   background: linear-gradient(180deg, var(--bg-card), var(--bg-card2));
 }
 .pilot-panel.running { border-color: color-mix(in srgb, var(--down) 55%, transparent); }
-.pilot-panel.paused { border-color: color-mix(in srgb, #e8c878 45%, transparent); }
+.pilot-panel.paused { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 
 .mono { font-family: "JetBrains Mono", Consolas, monospace; }
 .dim { color: var(--text-dim); }
@@ -452,7 +452,7 @@ function fmtPnl(n: number) {
 }
 .pp-badge {
   font-size: 10px; padding: 1px 7px; border-radius: 999px;
-  color: #e8c878; border: 1px solid color-mix(in srgb, #e8c878 45%, transparent);
+  color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
 }
 .pp-right { display: flex; align-items: center; gap: 8px; }
 .pp-status {
@@ -463,8 +463,8 @@ function fmtPnl(n: number) {
 .pp-status .pp-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); }
 .pp-status.on { color: var(--down); border-color: var(--down); }
 .pp-status.on .pp-dot { background: var(--down); box-shadow: 0 0 8px var(--down); animation: ppblink 1.6s ease-in-out infinite; }
-.pp-status.paused { color: #e8c878; border-color: #e8c878; }
-.pp-status.paused .pp-dot { background: #e8c878; }
+.pp-status.paused { color: var(--accent); border-color: var(--accent); }
+.pp-status.paused .pp-dot { background: var(--accent); }
 .pp-status.idle .pp-dot { background: var(--text-dim); }
 @keyframes ppblink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
@@ -477,7 +477,7 @@ function fmtPnl(n: number) {
   flex: none;
   display: inline-flex; align-items: center; gap: 7px;
   padding: 12px 18px; border-radius: 10px; cursor: pointer;
-  font-size: 13.5px; font-weight: 800; color: #0a0e14;
+  font-size: 13.5px; font-weight: 800; color: var(--accent-contrast);
   background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, #fff));
   border: none;
   transition: filter 0.15s, transform 0.05s;
@@ -500,9 +500,9 @@ function fmtPnl(n: number) {
 .pr-track { height: 4px; border-radius: 999px; background: var(--bg-hover); overflow: hidden; margin-top: 4px; }
 .pr-fill { height: 100%; border-radius: 999px; background: var(--down); }
 .pp-resume {
-  font-size: 11.5px; line-height: 1.6; color: #e8c878;
-  border: 1px dashed color-mix(in srgb, #e8c878 45%, transparent);
-  border-radius: 8px; padding: 7px 11px; background: color-mix(in srgb, #e8c878 6%, transparent);
+  font-size: 11.5px; line-height: 1.6; color: var(--accent);
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 8px; padding: 7px 11px; background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
 .pp-btn {
@@ -513,7 +513,7 @@ function fmtPnl(n: number) {
 .pp-btn.ghost { color: var(--text); background: transparent; border: 1px solid var(--border-light); }
 .pp-btn.ghost:hover { background: var(--bg-hover); }
 .pp-btn.solid {
-  color: #0a0e14; border: none;
+  color: var(--accent-contrast); border: none;
   background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, #fff));
 }
 .pp-btn:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -532,7 +532,7 @@ function fmtPnl(n: number) {
   background: linear-gradient(135deg, rgba(232, 200, 120, .10), rgba(232, 200, 120, .03));
   padding: 10px 12px;
 }
-.pp-live-block-t { font-size: 12px; font-weight: 800; color: #e8c878; }
+.pp-live-block-t { font-size: 12px; font-weight: 800; color: var(--accent); }
 .pp-live-block-s { font-size: 11.5px; line-height: 1.6; color: var(--text-dim); }
 .pp-live-block-s b { color: var(--text); }
 .pp-live-block .pp-btn { align-self: flex-start; }
@@ -603,7 +603,7 @@ function fmtPnl(n: number) {
   transition: all 0.15s;
 }
 .pp-seg-btn.active {
-  color: #0a0e14; border-color: var(--accent);
+  color: var(--accent-contrast); border-color: var(--accent);
   background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, #fff));
 }
 .pp-seg-btn:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -630,7 +630,7 @@ function fmtPnl(n: number) {
 .pls-k { font-size: 10px; color: var(--text-dim); }
 .pls-v { font-size: 12.5px; font-weight: 700; color: var(--text); }
 .pls-v.on { color: var(--down); }
-.pls-v.off { color: #e8c878; }
+.pls-v.off { color: var(--accent); }
 .pls-v.idle { color: var(--text-dim); }
 .pp-live-err { margin: 0; font-size: 10.5px; line-height: 1.5; }
 .pp-live-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

@@ -277,55 +277,55 @@ function importFile(e: Event) {
 .is-box {
   width: 452px; max-height: 84vh;
   display: flex; flex-direction: column;
-  background: #14161d; border: 1px solid rgba(255, 255, 255, .12);
+  background: #14161d; border: 1px solid var(--ov-12);
   border-radius: 14px; overflow: hidden;
   box-shadow: 0 24px 70px rgba(0, 0, 0, .65);
-  color: #d6dae3; font-size: 12px;
+  color: var(--text-dim); font-size: 12px;
 }
 .is-title {
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 16px; font-size: 14px; font-weight: 700; color: #eef1f6;
-  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  border-bottom: 1px solid var(--ov-07);
 }
 .is-x {
-  border: none; background: transparent; color: #9aa1b1;
+  border: none; background: transparent; color: var(--text-dim);
   width: 28px; height: 28px; border-radius: 6px; cursor: pointer; font-size: 16px;
 }
-.is-x:hover { background: rgba(255, 255, 255, .1); color: #fff; }
+.is-x:hover { background: var(--ov-10); color: #fff; }
 .is-tabs { display: flex; gap: 6px; padding: 10px 16px 0; }
 .is-tab {
-  border: none; background: transparent; color: #9aa1b1;
+  border: none; background: transparent; color: var(--text-dim);
   padding: 7px 14px; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 12px;
 }
 .is-tab:hover { color: #e6e9f0; }
-.is-tab.on { color: #ff8a8a; background: rgba(255, 50, 50, .1); font-weight: 600; }
+.is-tab.on { color: var(--up); background: rgba(255, 50, 50, .1); font-weight: 600; }
 .is-pane {
   padding: 14px 16px 16px; overflow-y: auto;
-  border-top: 1px solid rgba(255, 255, 255, .07);
+  border-top: 1px solid var(--ov-07);
 }
-.is-empty { color: #7b8294; text-align: center; padding: 28px 0; }
-.is-hint { color: #7b8294; font-size: 11px; padding: 6px 0; }
+.is-empty { color: var(--text-dim); text-align: center; padding: 28px 0; }
+.is-hint { color: var(--text-dim); font-size: 11px; padding: 6px 0; }
 
 .is-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .is-chip {
-  border: 1px solid rgba(255, 255, 255, .12); background: rgba(255, 255, 255, .03);
+  border: 1px solid var(--ov-12); background: var(--ov-03);
   color: #c0c6d4; padding: 5px 11px; border-radius: 14px; cursor: pointer; font-size: 11px;
 }
-.is-chip:hover { background: rgba(255, 255, 255, .08); }
-.is-chip.on { border-color: rgba(255, 80, 80, .55); background: rgba(255, 50, 50, .16); color: #ff8a8a; }
+.is-chip:hover { background: var(--ov-08); }
+.is-chip.on { border-color: rgba(255, 80, 80, .55); background: rgba(255, 50, 50, .16); color: var(--up); }
 
 .is-sec {
   font-size: 11px; color: #8b93a7; font-weight: 600;
-  margin: 10px 0 7px; padding-bottom: 5px; border-bottom: 1px dashed rgba(255, 255, 255, .08);
+  margin: 10px 0 7px; padding-bottom: 5px; border-bottom: 1px dashed var(--ov-08);
 }
 .is-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
-.is-row label { color: #9aa1b1; }
+.is-row label { color: var(--text-dim); }
 .is-input {
-  height: 30px; width: 130px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 6px;
+  height: 30px; width: 130px; border: 1px solid var(--ov-12); border-radius: 6px;
   background: #0d0f14; color: #e6e9f0; padding: 0 10px; font-size: 12px; box-sizing: border-box;
 }
 .is-color {
-  height: 30px; width: 64px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 6px;
+  height: 30px; width: 64px; border: 1px solid var(--ov-12); border-radius: 6px;
   background: #0d0f14; padding: 2px; cursor: pointer; box-sizing: border-box;
 }
 .is-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
@@ -333,10 +333,10 @@ function importFile(e: Event) {
   height: 32px; padding: 0 16px; border-radius: 7px; cursor: pointer; font-size: 12px;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.is-btn.reset { border: 1px solid rgba(255, 255, 255, .15); background: transparent; color: #c7ccd8; }
-.is-btn.apply { border: none; background: #ff3232; color: #fff; font-weight: 600; }
+.is-btn.reset { border: 1px solid var(--ov-14); background: transparent; color: var(--text-dim); }
+.is-btn.apply { border: none; background: var(--up); color: #fff; font-weight: 600; }
 .is-btn.apply:hover { background: #ff4d4d; }
-.is-btn.ghost { border: 1px solid rgba(255, 255, 255, .18); background: transparent; color: #c7ccd8; }
+.is-btn.ghost { border: 1px solid var(--ov-18); background: transparent; color: var(--text-dim); }
 .is-btn.file { cursor: pointer; }
 
 /* 模板 */
@@ -345,19 +345,19 @@ function importFile(e: Event) {
 .tpl-item {
   display: flex; align-items: center; justify-content: space-between;
   padding: 9px 10px; margin-bottom: 7px;
-  background: rgba(255, 255, 255, .03); border: 1px solid rgba(255, 255, 255, .07);
+  background: var(--ov-03); border: 1px solid var(--ov-07);
   border-radius: 9px;
 }
 .tpl-meta { display: flex; flex-direction: column; gap: 2px; }
 .tpl-name { color: #e6e9f0; font-weight: 600; }
-.tpl-date { color: #7b8294; font-size: 10px; }
+.tpl-date { color: var(--text-dim); font-size: 10px; }
 .tpl-btns { display: flex; gap: 5px; }
 .tpl-btn {
-  border: 1px solid rgba(255, 255, 255, .14); background: transparent; color: #c0c6d4;
+  border: 1px solid var(--ov-14); background: transparent; color: #c0c6d4;
   padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 11px;
 }
-.tpl-btn:hover { background: rgba(255, 255, 255, .08); color: #fff; }
-.tpl-btn.danger { border-color: rgba(255, 90, 90, .4); color: #ff8a8a; }
+.tpl-btn:hover { background: var(--ov-08); color: #fff; }
+.tpl-btn.danger { border-color: rgba(255, 90, 90, .4); color: var(--up); }
 .tpl-btn.danger:hover { background: rgba(255, 60, 60, .18); }
 .tpl-foot { margin-top: 12px; display: flex; justify-content: center; }
 </style>

@@ -146,15 +146,15 @@ onBeforeUnmount(() => {
   border-radius: 8px; padding: 9px 18px; cursor: pointer;
 }
 .ocb.primary { background: rgba(90,160,255,.22); }
-.ocb.ghost { background: transparent; border-color: rgba(255,255,255,.2); }
+.ocb.ghost { background: transparent; border-color: var(--ov-20); }
 .ocb:disabled { opacity: .5; cursor: not-allowed; }
-.ocb.dangerlive { background: #ff3b46; border-color: #ff3b46; color: #fff; font-weight: 700; }
+.ocb.dangerlive { background: var(--up); border-color: var(--up); color: #fff; font-weight: 700; }
 
-.shot-mask { position: fixed; inset: 0; background: rgba(5,8,15,.72); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 1300; padding: 24px; }
-.shot-modal { width: min(560px, 94vw); max-height: 88vh; overflow: auto; background: #12161f; border: 1px solid rgba(90,160,255,.35); border-radius: 12px; padding: 16px; box-shadow: 0 18px 60px rgba(0,0,0,.6); }
+.shot-mask { position: fixed; inset: 0; background: rgba(0,0,0,.5); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 1300; padding: 24px; }
+.shot-modal { width: min(560px, 94vw); max-height: 88vh; overflow: auto; background: var(--surface-solid); border: 1px solid var(--border-ov); border-radius: 12px; padding: 16px; box-shadow: 0 18px 60px rgba(0,0,0,.6); }
 .shot-modal-title { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
-.shot-modal.live { border-color: rgba(242,54,69,.7); background: #1a1216; box-shadow: 0 18px 60px rgba(242,54,69,.22); }
-.shot-modal-title.live { color: #ff5a6a; }
+.shot-modal.live { border-color: rgba(242,54,69,.7); background: var(--bg-input); box-shadow: 0 18px 60px rgba(242,54,69,.22); }
+.shot-modal-title.live { color: var(--up); }
 .shot-live-banner {
   margin-bottom: 10px; padding: 10px 14px; border-radius: 8px;
   background: linear-gradient(135deg, rgba(242,54,69,.22), rgba(242,54,69,.08));
@@ -175,13 +175,13 @@ onBeforeUnmount(() => {
 .shot-amount-value { display: flex; align-items: baseline; justify-content: center; gap: 4px; }
 .shot-amount-currency { font-size: 18px; font-weight: 700; color: #e8ecf4; opacity: .8; }
 .shot-amount-num { font-size: 30px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
-.shot-amount-card.live .shot-amount-num { color: #ff6b78; }
-.shot-amount-card.sell .shot-amount-num { color: #37d67a; }
+.shot-amount-card.live .shot-amount-num { color: var(--up); }
+.shot-amount-card.sell .shot-amount-num { color: var(--down); }
 .shot-amount-fee { margin-top: 6px; font-size: 11px; color: #8892a8; font-variant-numeric: tabular-nums; }
 .shot-validation { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .shot-val-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 6px; font-size: 11px; font-weight: 600; border: 1px solid transparent; }
-.shot-val-chip.ok { background: rgba(31,191,117,.12); color: #3dd68a; border-color: rgba(31,191,117,.3); }
-.shot-val-chip.fail { background: rgba(242,54,69,.14); color: #ff6b78; border-color: rgba(242,54,69,.4); }
+.shot-val-chip.ok { background: rgba(31,191,117,.12); color: var(--down); border-color: rgba(31,191,117,.3); }
+.shot-val-chip.fail { background: rgba(242,54,69,.14); color: var(--up); border-color: rgba(242,54,69,.4); }
 .shot-val-chip.unknown { background: rgba(255,177,61,.1); color: #ffb13d; border-color: rgba(255,177,61,.3); }
 .shot-val-icon { font-weight: 800; }
 .shot-block {
@@ -189,16 +189,16 @@ onBeforeUnmount(() => {
   background: rgba(242,54,69,.12); border: 1px solid rgba(242,54,69,.4);
   color: #ff8a96; font-size: 12px; font-weight: 600; line-height: 1.5;
 }
-.shot-fld.reallive { color: #ff5a6a; font-weight: 700; }
-.shot-fld.amount-live { font-size: 16px; font-weight: 800; color: #ff5a6a; font-variant-numeric: tabular-nums; }
+.shot-fld.reallive { color: var(--up); font-weight: 700; }
+.shot-fld.amount-live { font-size: 16px; font-weight: 800; color: var(--up); font-variant-numeric: tabular-nums; }
 .shot-expect { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 10px; }
 .shot-tag { padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 12px; }
 .shot-tag.buy { background: rgba(255,90,90,.18); color: #ff7a7a; }
-.shot-tag.sell { background: rgba(45,212,140,.18); color: #37d67a; }
+.shot-tag.sell { background: rgba(45,212,140,.18); color: var(--down); }
 .shot-code { font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
 .shot-fld { font-size: 12px; opacity: .85; }
 .shot-fld.sim { color: #ffb13d; }
-.shot-img-wrap { border: 1px solid rgba(255,255,255,.1); border-radius: 8px; overflow: hidden; background: #0b0e14; }
+.shot-img-wrap { border: 1px solid var(--ov-10); border-radius: 8px; overflow: hidden; background: #0b0e14; }
 .shot-img { display: block; width: 100%; height: auto; }
 .shot-noimg { padding: 28px; text-align: center; opacity: .5; font-size: 12px; }
 .shot-msg { margin-top: 8px; font-size: 12px; opacity: .8; }
@@ -206,5 +206,5 @@ onBeforeUnmount(() => {
 .shot-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
 .shot-fade-enter-active, .shot-fade-leave-active { transition: opacity .18s; }
 .shot-fade-enter-from, .shot-fade-leave-to { opacity: 0; }
-.ocb-toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 1310; background: #1f2530; border: 1px solid rgba(90,160,255,.4); color: #e8ecf4; font-size: 13px; padding: 9px 18px; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+.ocb-toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 1310; background: var(--bg-card2); border: 1px solid rgba(90,160,255,.4); color: #e8ecf4; font-size: 13px; padding: 9px 18px; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
 </style>

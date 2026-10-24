@@ -139,8 +139,8 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 .rb-btn {
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--ov-25);
+  background: var(--ov-06);
   color: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -155,7 +155,7 @@ onBeforeUnmount(() => {
   color: #fff3d0;
 }
 .rb-btn:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--ov-16);
 }
 .rb-fade-enter-active,
 .rb-fade-leave-active {

@@ -155,5 +155,5 @@ async function onConfirm() {
 .cp-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
 .cp-btn:disabled { opacity: .5; cursor: not-allowed; }
 .cp-btn.primary { color: var(--accent); border-color: var(--accent); font-weight: 700; }
-.cp-err { flex: 1 1 auto; font-size: 10.5px; color: #ff7a86; }
+.cp-err { flex: 1 1 auto; font-size: 10.5px; color: var(--up); }
 </style>

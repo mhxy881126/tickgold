@@ -341,7 +341,7 @@ defineExpose({ setCode, focusSide, applyPrefill });
 .od-msg { font-size: 11px; color: var(--text-dim); }
 .od-hint { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: 11px; color: var(--up); }
 .od-hint-open { flex: none; color: var(--up); border-color: var(--up); }
-.od-mask { position: fixed; inset: 0; background: rgba(5,7,11,.55); display: flex; align-items: center; justify-content: center; z-index: 400; }
+.od-mask { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 400; }
 .od-confirm { width: 340px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
 .od-confirm h4 { margin: 0 0 10px; font-size: 13px; }
 .od-confirm dl { display: grid; grid-template-columns: 56px 1fr; gap: 4px 8px; margin: 0; font-size: 12px; }

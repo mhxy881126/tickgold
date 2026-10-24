@@ -876,7 +876,7 @@ onBeforeUnmount(() => {
   padding: 4px 6px;
   border-radius: 6px;
   border: 1px solid var(--border, #2a3344);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--ov-04);
   color: var(--text, #e6ecf5);
   font-size: 11px;
   resize: vertical;
@@ -895,7 +895,7 @@ onBeforeUnmount(() => {
 }
 .bt-run.sm { margin: 0; padding: 6px 14px; }
 .bt-run:disabled { opacity: 0.5; cursor: default; }
-.bt-err { color: #ff6b78; font-size: 11px; word-break: break-all; }
+.bt-err { color: var(--up); font-size: 11px; word-break: break-all; }
 .bt-note { font-size: 10px; color: var(--text-dim, #5a647c); line-height: 1.5; }
 
 /* 右侧 */
@@ -915,7 +915,7 @@ onBeforeUnmount(() => {
   font-size: 12px;
   border-bottom: 2px solid transparent;
 }
-.bt-tabs button.on { color: #2fe6a4; border-bottom-color: #1dbe7d; }
+.bt-tabs button.on { color: #2fe6a4; border-bottom-color: var(--down); }
 .bt-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 10px; gap: 8px; }
 .bt-empty {
   flex: 1;
@@ -940,12 +940,12 @@ onBeforeUnmount(() => {
   gap: 2px;
   padding: 6px 8px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--ov-03);
 }
 .bt-stat b { font-size: 14px; font-variant-numeric: tabular-nums; }
 .bt-stat span { font-size: 10px; color: var(--text-dim, #8892a8); }
-.bt-stat.up b { color: #ff6b78; }
-.bt-stat.down b { color: #26d07c; }
+.bt-stat.up b { color: var(--up); }
+.bt-stat.down b { color: var(--down); }
 
 /* 图表 */
 .bt-chart { flex: 1; min-height: 160px; position: relative; }
@@ -979,13 +979,13 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 .bt-table td { padding: 4px 8px; font-size: 11px; white-space: nowrap; }
-.bt-table tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+.bt-table tbody tr:hover { background: var(--ov-03); }
 .r { text-align: right; }
 .ellipsis { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
-.buy { color: #ff6b78; }
-.sell { color: #26d07c; }
-.up { color: #ff6b78; }
-.down { color: #26d07c; }
+.buy { color: var(--up); }
+.sell { color: var(--down); }
+.up { color: var(--up); }
+.down { color: var(--down); }
 
 /* 存档对比 */
 .bt-savedbar { display: flex; gap: 10px; align-items: center; flex: none; }
@@ -993,7 +993,7 @@ onBeforeUnmount(() => {
   padding: 4px 12px;
   border-radius: 6px;
   border: 1px solid var(--border, #2a3344);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--ov-05);
   color: var(--text, #cbd3e2);
   cursor: pointer;
   font-size: 11px;
@@ -1007,7 +1007,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 6px 8px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--ov-03);
   cursor: pointer;
 }
 .bt-savedrow.on { outline: 1px solid rgba(29, 190, 125, 0.5); }
@@ -1021,7 +1021,7 @@ onBeforeUnmount(() => {
   color: var(--text-dim, #8892a8);
   cursor: pointer; font-size: 14px; line-height: 1;
 }
-.bt-del:hover { color: #ff6b78; }
+.bt-del:hover { color: var(--up); }
 .bt-compare { flex: 1; min-width: 0; position: relative; }
 
 /* 寻优 */
@@ -1044,7 +1044,7 @@ onBeforeUnmount(() => {
   padding: 5px 8px;
   border-radius: 6px;
   border: 1px solid var(--border, #2a3344);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--ov-04);
   color: var(--text, #e6ecf5);
   font-size: 11px;
 }
@@ -1063,5 +1063,5 @@ onBeforeUnmount(() => {
 .bt-status.rejected,
 .bt-status.reverted { background: rgba(107, 115, 134, 0.2); color: #9aa3b6; }
 .bt-mini.ok { color: #2fe6a4; border-color: rgba(29, 190, 125, 0.4); }
-.bt-mini.no { color: #ff6b78; border-color: rgba(255, 107, 120, 0.4); }
+.bt-mini.no { color: var(--up); border-color: rgba(255, 107, 120, 0.4); }
 </style>

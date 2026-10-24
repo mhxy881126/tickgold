@@ -581,15 +581,15 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
   color: var(--text, #e6ecf5);
 }
-.da-v.pnl-up { color: #f23645; }
-.da-v.pnl-down { color: #0ecb81; }
+.da-v.pnl-up { color: var(--up); }
+.da-v.pnl-down { color: var(--down); }
 .da-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #4a5565;
+  background: var(--text-dim);
 }
-.da-dot.on { background: #26d07c; box-shadow: 0 0 6px rgba(38, 208, 124, 0.6); }
+.da-dot.on { background: var(--down); box-shadow: 0 0 6px rgba(38, 208, 124, 0.6); }
 .da-acct { font-size: 11px; opacity: 0.75; }
 .da-spacer { flex: 1; }
 .da-msg {
@@ -607,7 +607,7 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   border: 1px solid #3a7d5a;
   background: rgba(38, 208, 124, 0.1);
-  color: #26d07c;
+  color: var(--down);
   font-size: 12px;
   cursor: pointer;
 }
@@ -627,8 +627,8 @@ onBeforeUnmount(() => {
 }
 .dk-kill:hover { background: rgba(242, 54, 69, 0.22); }
 .dk-kill.armed {
-  background: #f23645;
-  border-color: #f23645;
+  background: var(--up);
+  border-color: var(--up);
   color: #fff;
   animation: kill-pulse 0.8s ease-in-out infinite alternate;
 }
@@ -643,7 +643,7 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   border: 1px solid rgba(242, 54, 69, 0.6);
   background: rgba(242, 54, 69, 0.16);
-  color: #ff8a93;
+  color: var(--up);
   font-size: 12px;
   font-weight: 600;
 }
@@ -687,7 +687,7 @@ onBeforeUnmount(() => {
 .dk-act:hover,
 .dk-act.on {
   color: var(--text, #e6ecf5);
-  border-color: #e8c878;
+  border-color: var(--accent);
 }
 /* 方案 G · P2：布局 / 添加卡抽屉 */
 .dk-pop-wrap {
@@ -724,7 +724,7 @@ onBeforeUnmount(() => {
 .dk-pop-new {
   border: 0;
   background: none;
-  color: #e8c878;
+  color: var(--accent);
   font-size: 12px;
   cursor: pointer;
   padding: 2px 4px;
@@ -761,7 +761,7 @@ onBeforeUnmount(() => {
 }
 .dk-pop-name:hover {
   background: rgba(232, 200, 120, 0.12);
-  color: #e8c878;
+  color: var(--accent);
 }
 .dk-pop-del {
   flex-shrink: 0;
@@ -787,13 +787,13 @@ onBeforeUnmount(() => {
   margin: 2px 0;
   border-radius: 6px;
   border: 1px solid var(--border, #2a3344);
-  background: var(--bg-deep, #0d1016);
+  background: var(--bg-input);
   color: var(--text, #e6ecf5);
   font-size: 13px;
   outline: none;
 }
 .dk-pop-rename:focus {
-  border-color: #e8c878;
+  border-color: var(--accent);
 }
 .dk-pop-save {
   min-width: 240px;
@@ -805,19 +805,19 @@ onBeforeUnmount(() => {
   margin-top: 8px;
 }
 .dk-pop-ok {
-  border-color: #e8c878;
-  color: #e8c878;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 /* 方案 C：工作台管理抽屉 + 资产「更多」浮层 */
 .dk-mgmt {
-  color: #e8c878;
+  color: var(--accent);
   border-color: rgba(232, 200, 120, 0.5);
 }
 .dk-mgmt:hover,
 .dk-mgmt.on {
   background: rgba(232, 200, 120, 0.12);
-  border-color: #e8c878;
-  color: #e8c878;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .dk-pop-mgmt {
   min-width: 320px;

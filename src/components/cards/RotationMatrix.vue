@@ -290,11 +290,11 @@ onMounted(load);
   padding: 3px 10px; background: transparent; color: var(--text-dim, #8892a8);
   border: none; cursor: pointer; font-size: 11px;
 }
-.rot-seg button.on { background: rgba(232, 156, 61, 0.18); color: #e89c3d; }
+.rot-seg button.on { background: rgba(232, 156, 61, 0.18); color: var(--accent); }
 .rot-btn {
   padding: 4px 12px; border-radius: 7px; cursor: pointer;
-  background: rgba(255, 255, 255, 0.06); color: var(--text, #e6ecf5);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--ov-06); color: var(--text, #e6ecf5);
+  border: 1px solid var(--ov-12);
 }
 .rot-btn:disabled { opacity: 0.5; cursor: default; }
 
@@ -310,7 +310,7 @@ onMounted(load);
   gap: 6px;
   padding: 7px 10px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--ov-03);
 }
 .rot-stage-dot { width: 8px; height: 8px; border-radius: 50%; }
 .rot-stage-name { color: var(--text-dim, #8892a8); }
@@ -348,7 +348,7 @@ onMounted(load);
   cursor: pointer;
   white-space: nowrap;
 }
-.rot-rowhead:hover .rot-name { color: #e89c3d; }
+.rot-rowhead:hover .rot-name { color: var(--accent); }
 .rot-stage-badge { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .rot-name { overflow: hidden; text-overflow: ellipsis; }
 .rot-cell {
@@ -376,7 +376,7 @@ onMounted(load);
   align-items: center;
   gap: 6px;
   padding: 6px 2px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--ov-06);
 }
 .rot-switch-label { color: var(--text-dim, #8892a8); }
 .rot-switch-chip {
@@ -385,7 +385,7 @@ onMounted(load);
   font-size: 11px;
   cursor: pointer;
 }
-.rot-switch-chip.hot { background: rgba(255, 77, 94, 0.15); color: #ff6b78; border: 1px solid rgba(255,77,94,0.3); }
+.rot-switch-chip.hot { background: rgba(255, 77, 94, 0.15); color: var(--up); border: 1px solid rgba(255,77,94,0.3); }
 .rot-switch-chip.cool { background: rgba(107, 115, 134, 0.18); color: #9aa3b6; border: 1px solid rgba(107,115,134,0.3); }
 
 .rot-foot { font-size: 10px; color: var(--text-dim, #556078); text-align: center; }

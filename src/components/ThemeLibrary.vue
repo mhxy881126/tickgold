@@ -253,15 +253,15 @@ onMounted(() => { void reload().catch(() => {}); });
 .tl-stat { flex: 1; text-align: center; display: flex; flex-direction: column; gap: 1px; }
 .tl-stat + .tl-stat { border-left: 1px solid var(--border, #2a3344); }
 .tl-stat-num { font-size: 15px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
-.tl-stat-num.up { color: #ff5a6a; }
-.tl-stat-num.down { color: #2fd6a0; }
+.tl-stat-num.up { color: var(--up); }
+.tl-stat-num.down { color: var(--down); }
 .tl-stat-label { font-size: 9.5px; color: var(--text-dim); }
 
 .tl-stage-bar { display: flex; gap: 3px; padding: 1px 0; }
 .tl-stage-seg { flex: 1; height: 3px; border-radius: 2px; opacity: .25; }
 
-.tl-advice { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border-radius: 6px; background: rgba(138, 180, 255, .06); border-left: 2px solid #8ab4ff; }
-.tl-advice-tag { flex: none; font-size: 10px; font-weight: 700; color: #8ab4ff; padding: 1px 6px; border-radius: 4px; background: rgba(138, 180, 255, .12); }
+.tl-advice { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border-radius: 6px; background: rgba(138, 180, 255, .06); border-left: 2px solid var(--blue); }
+.tl-advice-tag { flex: none; font-size: 10px; font-weight: 700; color: var(--blue); padding: 1px 6px; border-radius: 4px; background: rgba(138, 180, 255, .12); }
 .tl-advice-text { font-size: 10.5px; color: var(--text-dim); line-height: 1.4; }
 
 .tl-meta { display: flex; gap: 12px; font-size: 10px; color: var(--text-dim); }
@@ -283,13 +283,13 @@ onMounted(() => { void reload().catch(() => {}); });
 .tl-stock-name i { font-style: normal; font-size: 9px; color: var(--text-dim); }
 .tl-col-boards { text-align: center; font-size: 11px; }
 .tl-col-boards em { font-style: normal; font-weight: 600; }
-.tl-col-boards em.boards-high { color: #ff5a6a; }
+.tl-col-boards em.boards-high { color: var(--up); }
 .tl-col-boards.dim, .tl-col-seal.dim { color: var(--text-dim); opacity: .5; }
 .tl-col-seal { text-align: right; font-size: 10.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .tl-col-role { text-align: center; font-size: 9.5px; padding: 1px 4px; border-radius: 4px; }
-.tl-col-role[data-role="龙一"] { color: #ff5a6a; background: rgba(255, 90, 106, .12); }
-.tl-col-role[data-role="龙二"] { color: #d4af37; background: rgba(212, 175, 55, .12); }
-.tl-col-role[data-role="助攻"] { color: #8ab4ff; background: rgba(138, 180, 255, .1); }
+.tl-col-role[data-role="龙一"] { color: var(--up); background: rgba(255, 90, 106, .12); }
+.tl-col-role[data-role="龙二"] { color: var(--accent); background: rgba(212, 175, 55, .12); }
+.tl-col-role[data-role="助攻"] { color: var(--blue); background: rgba(138, 180, 255, .1); }
 .tl-col-role[data-role="跟风"] { color: var(--text-dim); }
 
 .tl-cats { display: flex; flex-direction: column; gap: 5px; }
@@ -297,13 +297,13 @@ onMounted(() => { void reload().catch(() => {}); });
 .tl-cat:hover { border-color: rgba(212, 175, 55, .3); }
 .tl-cat-main { display: flex; align-items: center; gap: 6px; }
 .tl-cat-dir { font-size: 10px; font-weight: 700; }
-.tl-cat-kind { font-size: 9.5px; padding: 1px 5px; border-radius: 4px; background: rgba(138, 180, 255, .12); color: #8ab4ff; }
+.tl-cat-kind { font-size: 9.5px; padding: 1px 5px; border-radius: 4px; background: rgba(138, 180, 255, .12); color: var(--blue); }
 .tl-cat-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
 .tl-cat-sub { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; }
 .tl-cat-meta { color: var(--text-dim); font-size: 10px; }
 .tl-fresh { display: flex; align-items: center; gap: 4px; }
 .tl-fresh-track { width: 40px; height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
-.tl-fresh-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, #2fd6a0, #d4af37, #ff5a6a); }
+.tl-fresh-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--down), var(--accent), var(--up)); }
 .tl-fresh-num { font-size: 9px; color: var(--text-dim); }
 
 .tl-empty { color: var(--text-dim); padding: 8px 0; text-align: center; }

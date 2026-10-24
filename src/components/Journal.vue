@@ -254,7 +254,7 @@ onMounted(async () => {
 .view-seg { display: flex; gap: 4px; margin-bottom: 8px; }
 .view-seg button { flex: 1; padding: 4px 0; font-size: 11.5px; background: transparent;
   color: var(--text-dim); border: 1px solid var(--border); border-radius: 5px; cursor: pointer; }
-.view-seg button.on { color: var(--accent); background: #1a2438; }
+.view-seg button.on { color: var(--accent); background: var(--bg-card2); }
 .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .cal-nav button { width: 24px; background: transparent; border: 1px solid var(--border);
   border-radius: 4px; color: var(--text-dim); cursor: pointer; font-size: 13px; }
@@ -264,19 +264,19 @@ onMounted(async () => {
 .cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 2px; }
 .cal-day { position: relative; aspect-ratio: 1; background: transparent; border: none;
   border-radius: 5px; cursor: pointer; color: var(--text); font-size: 11px; }
-.cal-day.out { color: #45506a; }
-.cal-day.today { background: #1a2438; }
-.cal-day.sel { background: #2a3c5e; color: #fff; }
+.cal-day.out { color: var(--text-dim); }
+.cal-day.today { background: var(--bg-card2); }
+.cal-day.sel { background: var(--bg-hover); color: #fff; }
 .cd { position: absolute; top: 2px; left: 0; right: 0; }
 .cdot { position: absolute; bottom: 1px; left: 0; right: 0; font-size: 8.5px;
   color: var(--accent); font-weight: 700; }
-.search { width: 100%; background: #0d1219; border: 1px solid var(--border); border-radius: 5px;
+.search { width: 100%; background: var(--bg-input); border: 1px solid var(--border); border-radius: 5px;
   color: var(--text); font-size: 11.5px; padding: 5px 7px; margin-bottom: 8px; }
 .list-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .jlist { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
 .jitem { padding: 6px 7px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
 .jitem:hover { background: var(--bg-hover); }
-.jitem.on { background: #16233a; border-color: var(--border); }
+.jitem.on { background: var(--bg-card2); border-color: var(--border); }
 .ji-date { font-size: 10px; color: var(--text-dim); display: flex; justify-content: space-between; }
 .ji-title { font-size: 11.5px; font-weight: 600; margin: 1px 0; }
 .ji-pre { font-size: 10px; color: var(--text-dim); }
@@ -302,17 +302,17 @@ onMounted(async () => {
 .row-lb { font-size: 11px; color: var(--text-dim); width: 26px; flex-shrink: 0; }
 .mood-btn { font-size: 10.5px; padding: 2px 10px; background: transparent; color: var(--text-dim);
   border: 1px solid var(--border); border-radius: 11px; cursor: pointer; }
-.tag-chip { font-size: 10.5px; padding: 2px 6px 2px 9px; background: #1a2438; color: var(--text);
+.tag-chip { font-size: 10.5px; padding: 2px 6px 2px 9px; background: var(--bg-card2); color: var(--text);
   border-radius: 11px; display: inline-flex; align-items: center; gap: 5px; }
 .tag-chip.gold { color: var(--accent); }
 .tag-chip i { font-style: normal; cursor: pointer; opacity: .7; }
-.tag-in { background: #0d1219; border: 1px solid var(--border); border-radius: 11px;
+.tag-in { background: var(--bg-input); border: 1px solid var(--border); border-radius: 11px;
   color: var(--text); font-size: 10.5px; padding: 2px 8px; }
 .link-btn { font-size: 10.5px; padding: 2px 9px; background: transparent; color: var(--accent);
   border: 1px solid var(--accent); border-radius: 11px; cursor: pointer; }
 .row-hint { font-size: 11px; color: var(--text-dim); }
 
-.ed-content { flex: 1; min-height: 80px; resize: none; background: #0d1219;
+.ed-content { flex: 1; min-height: 80px; resize: none; background: var(--bg-input);
   border: 1px solid var(--border); border-radius: 7px; color: var(--text);
   font-size: 12px; line-height: 1.7; padding: 8px 10px; margin-top: 2px; font-family: inherit; }
 .ed-foot { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-shrink: 0; }
@@ -320,8 +320,8 @@ onMounted(async () => {
   border: 1px solid var(--border); border-radius: 5px; cursor: pointer; }
 .tpl-btn:hover { color: var(--text); }
 .save-st { flex: 1; font-size: 11px; }
-.saving { color: #4ea1ff; } .saved { color: #0ecb81; }
-.del-btn { font-size: 11px; padding: 4px 12px; background: transparent; color: #f23645;
+.saving { color: var(--blue); } .saved { color: var(--down); }
+.del-btn { font-size: 11px; padding: 4px 12px; background: transparent; color: var(--up);
   border: 1px solid var(--border); border-radius: 5px; cursor: pointer; }
 
 .no-entry { flex: 1; display: flex; flex-direction: column; align-items: center;

@@ -281,10 +281,10 @@ body,
 .pip-btn { width: 22px; height: 22px; border: 0; background: transparent;
   color: var(--text-dim, #8b98a5); font-size: 11px; border-radius: 5px;
   cursor: pointer; line-height: 1; padding: 0; }
-.pip-btn:hover { background: var(--bg-hover, rgba(255,255,255,.07)); color: var(--text, #e6edf3); }
+.pip-btn:hover { background: var(--bg-hover, var(--ov-07)); color: var(--text, #e6edf3); }
 .pip-btn.on { color: var(--accent, #e8c878); }
 .pip-btn.x { font-size: 15px; }
-.pip-btn.x:hover { color: #ff6b78; }
+.pip-btn.x:hover { color: var(--up); }
 .pip-body { flex: 1; position: relative; min-height: 0; }
 .pip-empty { position: absolute; inset: 0; display: flex; align-items: center;
   justify-content: center; color: var(--text-dim, #8b98a5); font-size: 11px; }

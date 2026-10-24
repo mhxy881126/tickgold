@@ -376,7 +376,7 @@ function money(n: number) {
   padding: 1px 7px; border: 1px solid var(--border); border-radius: 999px;
 }
 .bts-plan-btn {
-  flex: none; font-size: 11.5px; font-weight: 700; color: #1a1408;
+  flex: none; font-size: 11.5px; font-weight: 700; color: var(--accent-contrast);
   background: var(--accent, #e8c878); border: 1px solid transparent;
   border-radius: 7px; padding: 3px 10px; cursor: pointer; white-space: nowrap;
 }
@@ -396,9 +396,9 @@ function money(n: number) {
   padding: 8px 12px;
 }
 .bts-arm-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.bts-arm-title { font-size: 12px; font-weight: 700; color: #e8c878; }
+.bts-arm-title { font-size: 12px; font-weight: 700; color: var(--accent); }
 .bts-arm-go {
-  flex: none; font-size: 11px; font-weight: 700; color: #1a1408;
+  flex: none; font-size: 11px; font-weight: 700; color: var(--accent-contrast);
   background: var(--accent, #e8c878); border: 1px solid transparent;
   border-radius: 6px; padding: 3px 10px; cursor: pointer; white-space: nowrap;
 }

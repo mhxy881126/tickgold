@@ -119,8 +119,8 @@ function goSubscribe() {
   padding: 9px 26px;
   border: none;
   border-radius: 9px;
-  background: linear-gradient(135deg, #e8c66a, #d9a441);
-  color: #1a1508;
+  background: linear-gradient(135deg, var(--accent), #d9a441);
+  color: var(--accent-contrast);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;

@@ -1,11 +1,21 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as echarts from "echarts";
 import { fetchSectors, fetchSectorStocks, fetchMarketFundPanorama, fetchFundRank } from "../api/market";
 import { useMarketFeeds } from "../composables/useMarketFeeds";
+import { useTheme } from "../composables/useTheme";
 import type { Sector, MarketFundPanorama, FundRankRow } from "../api/types";
 
 const emit = defineEmits<{ (e: "select", code: string): void }>();
+
+const { theme } = useTheme();
+const isLight = computed(() => theme.value === "light" || theme.value === "ths-white");
+// echarts 浮层（tooltip）随主题：深色主题=深色浮层，浅色主题=白色浮层
+const tip = computed(() =>
+  isLight.value
+    ? { bg: "rgba(255,255,255,0.98)", border: "rgba(0,0,0,0.12)", text: "var(--border-ov)" }
+    : { bg: "rgba(15,20,29,0.95)", border: "var(--border-ov)", text: "#d8dee9" }
+);
 
 const { radar } = useMarketFeeds({ spider: false, sectors: false });
 
@@ -114,18 +124,18 @@ function renderTree() {
         if (!s) return p.name;
         return `<b>${s.name}</b><br/>涨跌幅: ${s.changePct >= 0 ? "+" : ""}${s.changePct.toFixed(2)}%<br/>净流入: ${(s.netAmount / 1e8).toFixed(2)}亿<br/>领涨: ${s.leadName} ${s.leadPct >= 0 ? "+" : ""}${s.leadPct.toFixed(1)}%<br/><span style="color:#8ab4ff">点击查看成分股 →</span>`;
       },
-      backgroundColor: "rgba(15,20,29,0.95)",
-      borderColor: "#2a3344",
-      textStyle: { color: "#d8dee9", fontSize: 11 },
+      backgroundColor: tip.value.bg,
+      borderColor: tip.value.border,
+      textStyle: { color: tip.value.text, fontSize: 11 },
     },
     series: [{
       type: "treemap", roam: true, nodeClick: false, breadcrumb: { show: false },
       leafDepth: 2,
       animationDuration: 300,
       levels: [
-        { itemStyle: { borderWidth: 3, gapWidth: 3, borderColor: "#080a0e" },
+        { itemStyle: { borderWidth: 3, gapWidth: 3, borderColor: isLight.value ? "rgba(255,255,255,.95)" : "#080a0e" },
           label: { show: true, position: "insideTopLeft", fontSize: 13, fontWeight: 800, color: "#fff", padding: [6, 0, 0, 8] } },
-        { itemStyle: { borderWidth: 1, gapWidth: 1, borderColor: "#0d1016", borderRadius: 3 },
+        { itemStyle: { borderWidth: 1, gapWidth: 1, borderColor: isLight.value ? "rgba(255,255,255,.8)" : "#0d1016", borderRadius: 3 },
           label: { show: true, fontSize: 10, color: "#fff" } },
       ],
       data: [group("行业板块", ind.value), group("概念板块", con.value)],
@@ -149,8 +159,8 @@ function renderFundChart() {
   fundChart.setOption({
     animation: false,
     tooltip: { trigger: "axis", axisPointer: { type: "cross" },
-      backgroundColor: "rgba(15,20,29,0.95)", borderColor: "#2a3344",
-      textStyle: { color: "#d8dee9", fontSize: 11 },
+      backgroundColor: tip.value.bg, borderColor: tip.value.border,
+      textStyle: { color: tip.value.text, fontSize: 11 },
       valueFormatter: (v: any) => (Number(v) / 1e8).toFixed(2) + "亿" },
     legend: { data: ["分时主力净流入", "近10日主力趋势"],
       textStyle: { color: "#8a93a5", fontSize: 10 }, top: 4 },
@@ -160,11 +170,12 @@ function renderFundChart() {
       { type: "category", data: p.minuteTimes,
         axisLabel: { color: "#8a93a5", fontSize: 10, interval: Math.floor(p.minuteTimes.length / 6) } },
       { type: "category", gridIndex: 1, data: [...p.trend].reverse().map((d) => d.date.slice(5)),
-        axisLabel: { color: "#8a93a5", fontSize: 10 }, axisLine: { lineStyle: { color: "#2a3344" } } },
+        axisLabel: { color: isLight.value ? "#6b7280" : "#8a93a5", fontSize: 10 },
+        axisLine: { lineStyle: { color: isLight.value ? "rgba(0,0,0,.15)" : "#2a3344" } } },
     ],
     yAxis: [
       { scale: true, axisLabel: { color: "#8a93a5", fontSize: 10, formatter: (v: number) => (v / 1e8).toFixed(0) + "亿" },
-        splitLine: { lineStyle: { color: "rgba(255,255,255,.05)" } } },
+        splitLine: { lineStyle: { color: "var(--ov-05)" } } },
       { gridIndex: 1, scale: true, axisLabel: { color: "#8a93a5", fontSize: 10, formatter: (v: number) => (v / 1e8).toFixed(0) + "亿" },
         splitLine: { show: false } },
     ],
@@ -223,6 +234,15 @@ onMounted(async () => {
   }
   load();
   timer = window.setInterval(load, 8000);
+});
+
+// 主题切换时重绘，让 tooltip 浮层配色跟随
+watch(theme, () => {
+  if (view.value === "fund") {
+    if (fundChart) renderFundChart();
+  } else if (chart) {
+    renderTree();
+  }
 });
 
 onBeforeUnmount(() => {
@@ -381,7 +401,7 @@ onBeforeUnmount(() => {
 .tree-loading { position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:12px;background:var(--bg-card,#0f141d); }
 .mh-side { display:flex;flex-direction:column;gap:9px;min-height:0;min-width:0; }
 .scroll { overflow-y:auto;scrollbar-width:thin; }
-.scroll::-webkit-scrollbar{width:5px;} .scroll::-webkit-scrollbar-thumb{background:#2a3344;border-radius:3px;}
+.scroll::-webkit-scrollbar{width:5px;} .scroll::-webkit-scrollbar-thumb{background:var(--bg-hover);border-radius:3px;}
 .funds { padding:5px 9px; }
 .fr { display:grid;grid-template-columns:1fr 70px 52px;align-items:center;height:26px;font-size:10.5px;cursor:pointer;border-radius:4px;padding:0 4px; }
 .fr:hover { background:rgba(212,175,55,.08); }
@@ -407,7 +427,7 @@ onBeforeUnmount(() => {
 .sec-kind { color:var(--text-dim); }
 .sec-count { color:var(--text-dim); }
 .stock-list { flex:1;overflow-y:auto;scrollbar-width:thin;padding:4px; }
-.stock-list::-webkit-scrollbar{width:5px;} .stock-list::-webkit-scrollbar-thumb{background:#2a3344;border-radius:3px;}
+.stock-list::-webkit-scrollbar{width:5px;} .stock-list::-webkit-scrollbar-thumb{background:var(--bg-hover);border-radius:3px;}
 .list-loading,.list-empty { padding:20px;text-align:center;color:var(--text-dim);font-size:11px; }
 .stock-row {
   display:grid;grid-template-columns:1fr 60px 60px;align-items:center;
@@ -418,7 +438,7 @@ onBeforeUnmount(() => {
 .stock-code { color:var(--text-dim);font-size:9.5px;text-align:center;font-variant-numeric:tabular-nums; }
 .stock-pct { text-align:right;font-weight:600;font-variant-numeric:tabular-nums; }
 
-.up { color:#f25266; } .down { color:#22b573; } .flat { color:#f0a23a; }
+.up { color:var(--up); } .down { color:var(--down); } .flat { color:#f0a23a; }
 
 /* 视图切换 */
 .mh-tabs { flex-shrink:0;display:flex;gap:6px; }
@@ -460,7 +480,7 @@ onBeforeUnmount(() => {
 }
 .fr-head { height:26px;color:var(--text-dim);flex-shrink:0;border-bottom:1px solid var(--border); }
 .fr-scroll { flex:1;overflow-y:auto;scrollbar-width:thin; }
-.fr-scroll::-webkit-scrollbar{width:5px;} .fr-scroll::-webkit-scrollbar-thumb{background:#2a3344;border-radius:3px;}
+.fr-scroll::-webkit-scrollbar{width:5px;} .fr-scroll::-webkit-scrollbar-thumb{background:var(--bg-hover);border-radius:3px;}
 .fr-row { height:27px; }
 .fr-row .idx { color:var(--text-dim); }
 .fr-row .nm { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }

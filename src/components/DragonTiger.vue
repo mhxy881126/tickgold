@@ -598,11 +598,11 @@ onMounted(() => loadDate(""));
   flex: none;
 }
 .buy-rank {
-  color: #ff6b6b;
+  color: var(--up);
   background: rgba(255, 50, 50, 0.12);
 }
 .sell-rank {
-  color: #2fd6a0;
+  color: var(--down);
   background: rgba(29, 190, 125, 0.12);
 }
 .sn-name {
@@ -626,8 +626,8 @@ onMounted(() => loadDate(""));
   padding: 1px 5px;
   flex: none;
 }
-.t-hot { color: #e8c878; background: rgba(232,200,120,.14); }
-.t-org { color: #6aa6e8; background: rgba(106,166,232,.14); }
+.t-hot { color: var(--accent); background: rgba(232,200,120,.14); }
+.t-org { color: var(--blue); background: rgba(106,166,232,.14); }
 .t-north { color: #b48de8; background: rgba(180,141,232,.15); }
 .t-quant { color: #54d2d2; background: rgba(84,210,210,.13); }
 .t-lasa { color: #e8a45a; background: rgba(232,164,90,.14); }

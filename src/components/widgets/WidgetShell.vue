@@ -136,10 +136,10 @@ function onCompEdit(text: string) {
 <style scoped>
 .widget-cell { position: absolute; min-width: 0; min-height: 0; }
 .widget-cell.editing { border: 1px dashed rgba(232, 200, 120, .55); border-radius: 8px;
-  background: rgba(255, 255, 255, .02); }
+  background: var(--ov-02); }
 .wsh-head { position: absolute; inset: 0 0 auto 0; height: 22px; display: flex;
   align-items: center; gap: 6px; padding: 0 6px; cursor: grab; z-index: 3;
-  border-bottom: 1px solid rgba(255, 255, 255, .08); }
+  border-bottom: 1px solid var(--ov-08); }
 .wsh-head:active { cursor: grabbing; }
 .wsh-title { font-size: 10px; font-weight: 700; color: var(--text); flex-shrink: 0; }
 .wsh-bind { border: 1px solid var(--border); background: rgba(0, 0, 0, .25);
@@ -149,7 +149,7 @@ function onCompEdit(text: string) {
 .wsh-spacer { flex: 1; }
 .wsh-x { width: 18px; height: 18px; border: 0; background: transparent; color: var(--text-dim);
   font-size: 13px; cursor: pointer; border-radius: 4px; line-height: 1; }
-.wsh-x:hover { color: #ff6b78; background: rgba(255, 107, 120, .12); }
+.wsh-x:hover { color: var(--up); background: rgba(255, 107, 120, .12); }
 .wsh-body { position: absolute; inset: 0; }
 .editing .wsh-body { inset: 22px 0 0; }
 .wsh-resize { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px;

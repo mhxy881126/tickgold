@@ -69,6 +69,6 @@ function useClassic() {
   color: var(--text); font-size: 10.5px; border-radius: 6px; cursor: pointer; }
 .we-reset:hover { border-color: var(--accent, #e8c878); color: var(--accent, #e8c878); }
 .we-done { height: 26px; padding: 0 16px; border: 0; background: var(--accent, #e8c878);
-  color: #1a1606; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; }
+  color: var(--accent-contrast); font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; }
 .we-stage { flex: 1; position: relative; min-height: 0; padding: 10px; }
 </style>

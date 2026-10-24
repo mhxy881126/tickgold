@@ -80,8 +80,8 @@ onBeforeUnmount(() => un?.());
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+    linear-gradient(var(--ov-03) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ov-03) 1px, transparent 1px);
   background-size: 28px 28px;
 }
 .wb-root > * { position: relative; z-index: 2; }
@@ -101,7 +101,7 @@ onBeforeUnmount(() => un?.());
 }
 .wb-group-count {
   font-size: 9px; color: var(--text-dim);
-  background: rgba(255,255,255,.05);
+  background: var(--ov-05);
   padding: 1px 6px; border-radius: 8px;
 }
 .wb-cards {
@@ -128,7 +128,7 @@ onBeforeUnmount(() => un?.());
 }
 .wb-card-icon {
   width: 28px; height: 28px; border-radius: 8px;
-  background: rgba(255,255,255,.05);
+  background: var(--ov-05);
   display: flex; align-items: center; justify-content: center;
   transition: all .15s;
 }

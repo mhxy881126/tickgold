@@ -232,15 +232,15 @@ onMounted(() => {
   border: 1px solid var(--border, #2a3344); background: transparent;
   color: var(--text-dim, #939cb0);
 }
-.rv-tab.on { background: var(--bg-hover, rgba(255, 255, 255, 0.06)); color: var(--text, #e6ecf5); }
+.rv-tab.on { background: var(--bg-hover, var(--ov-06)); color: var(--text, #e6ecf5); }
 .rv-body { flex: 1; min-height: 0; display: flex; gap: 8px; }
 .rv-list { width: 40%; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .rv-row {
   display: flex; align-items: center; gap: 6px; padding: 6px 8px;
   border: 1px solid transparent; border-radius: 8px; cursor: pointer;
 }
-.rv-row:hover { background: var(--bg-hover, rgba(255, 255, 255, 0.04)); }
-.rv-row.on { background: var(--bg-hover, rgba(255, 255, 255, 0.06)); border-color: var(--border, #2a3344); }
+.rv-row:hover { background: var(--bg-hover, var(--ov-04)); }
+.rv-row.on { background: var(--bg-hover, var(--ov-06)); border-color: var(--border, #2a3344); }
 .rv-dot { font-size: 8px; }
 .rv-r-title { flex: 1; color: var(--text, #dfe5f0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rv-r-scope { font-size: 10px; }
@@ -258,17 +258,17 @@ onMounted(() => {
 .rv-md :deep(li) { margin: 2px 0; }
 .rv-md :deep(code) {
   font-family: ui-monospace, Consolas, monospace; font-size: 11px;
-  background: rgba(255, 255, 255, 0.06); padding: 1px 4px; border-radius: 4px;
+  background: var(--ov-06); padding: 1px 4px; border-radius: 4px;
 }
 .rv-refs { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .rv-refs-title { font-size: 10px; color: var(--text-dim, #8a93a6); width: 100%; }
 .rv-chip {
   font-size: 10px; padding: 2px 8px; border-radius: 10px; text-decoration: none;
-  background: rgba(255, 255, 255, 0.05); color: var(--text-dim, #b6bdcc);
+  background: var(--ov-05); color: var(--text-dim, #b6bdcc);
 }
 .rv-chip:hover { color: var(--accent, #d4af37); }
 .rv-no-date { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
 .rv-empty { color: var(--text-dim, #8a93a6); font-size: 11px; text-align: center; }
-.rv-err { color: #ff6b78; font-size: 11px; }
+.rv-err { color: var(--up); font-size: 11px; }
 .rv-foot { color: var(--text-dim, #7a8496); font-size: 10px; }
 </style>

@@ -226,7 +226,7 @@ defineExpose({ finishEdit, finishSubmit, settleSubmit });
 .il-title { font-size: 12px; font-weight: 700; }
 .il-count { font-size: 11px; color: var(--text-dim); }
 .il-msg { margin-left: auto; font-size: 10.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.il-msg.bad { color: #ff7a86; }
+.il-msg.bad { color: var(--up); }
 .il-warn { margin: 0 0 5px; font-size: 10.5px; color: var(--up); }
 .il-empty { margin: 0; font-size: 11.5px; color: var(--text-dim); }
 .il-rows { display: flex; flex-direction: column; gap: 3px; }
@@ -242,7 +242,7 @@ defineExpose({ finishEdit, finishSubmit, settleSubmit });
 .il-tag { flex: none; max-width: 58px; padding: 0 2px; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text-dim); font-size: 10.5px; cursor: pointer; }
 .il-tag:hover, .il-tag:focus { color: var(--accent); border-color: var(--accent); outline: none; }
 .il-state { flex: none; padding: 0 6px; border-radius: 4px; font-size: 10.5px; border: 1px solid var(--border); }
-.il-state.tone-info { color: #6aa6e8; border-color: #6aa6e8; }
+.il-state.tone-info { color: var(--blue); border-color: var(--blue); }
 .il-state.tone-gold { color: var(--accent); border-color: var(--accent); }
 .il-state.tone-up { color: var(--up); border-color: var(--up); }
 .il-state.tone-muted { color: var(--text-dim); }

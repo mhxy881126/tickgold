@@ -37,7 +37,7 @@ function onClick(t: { code: string; key: string }) {
 }
 .toast {
   background: var(--bg-card, #1b1e24);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  border: 1px solid var(--border, var(--ov-14));
   border-left: 3px solid var(--accent, #d4af37);
   border-radius: 10px; padding: 10px 12px; cursor: pointer;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);

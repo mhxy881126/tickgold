@@ -105,14 +105,14 @@ useSmartPolling(() => load(1), { interval: 45000, cardId: "news" });
   gap: 5px;
   flex: none;
   padding-bottom: 5px;
-  border-bottom: 1px solid #20272f;
+  border-bottom: 1px solid var(--border-ov);
   margin-bottom: 3px;
 }
 .dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #5d6878;
+  background: var(--text-dim);
 }
 .dot.on {
   background: #08c98a;
@@ -165,7 +165,7 @@ useSmartPolling(() => load(1), { interval: 45000, cardId: "news" });
 .nf-load {
   text-align: center;
   font-size: 10px;
-  color: #5d6878;
+  color: var(--text-dim);
   padding: 8px 0;
 }
 </style>

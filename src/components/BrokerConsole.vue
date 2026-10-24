@@ -1107,16 +1107,16 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
 }
 .bc-dot {
   width: 8px; height: 8px; border-radius: 50%;
-  background: #4a5565; flex-shrink: 0;
+  background: var(--text-dim); flex-shrink: 0;
 }
-.bc-dot.on { background: #26d07c; box-shadow: 0 0 6px rgba(38, 208, 124, 0.6); }
+.bc-dot.on { background: var(--down); box-shadow: 0 0 6px rgba(38, 208, 124, 0.6); }
 .bc-conn { font-weight: 600; color: var(--text, #e6ecf5); }
 .bc-acct { color: var(--text-dim, #7c8798); font-size: 11px; }
-.bc-live { color: #fff; background: #f23645; border-radius: 4px; padding: 0 6px; font-size: 10px; font-weight: 700; }
+.bc-live { color: #fff; background: var(--up); border-radius: 4px; padding: 0 6px; font-size: 10px; font-weight: 700; }
 /* P12-6 API 控制台快速上手 */
 .api-howto {
-  border: 1px solid var(--line, #243049); border-radius: 10px;
-  background: rgba(31,41,68,.35); padding: 6px 12px; margin-bottom: 10px;
+  border: 1px solid var(--border-ov); border-radius: 10px;
+  background: var(--ov-05); padding: 6px 12px; margin-bottom: 10px;
   font-size: 12px;
 }
 .api-howto summary { cursor: pointer; font-weight: 600; color: var(--text, #e6ecf5); padding: 4px 0; }
@@ -1124,8 +1124,8 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
 .ah-step { color: var(--text-dim, #9aa5b8); line-height: 1.55; }
 .ah-step b { color: var(--text, #e6ecf5); }
 .ah-code {
-  background: rgba(10,15,28,.6); border: 1px solid var(--line, #243049);
-  border-radius: 8px; padding: 8px 10px; font-size: 11px; color: #a8c7ff;
+  background: var(--surface-2); border: 1px solid var(--border-ov);
+  border-radius: 8px; padding: 8px 10px; font-size: 11px; color: var(--blue);
 }
 .ah-code pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-all; color: #d7e3ff; font-family: Consolas, monospace; }
 .ah-warn { color: #ffb46b; background: rgba(242,54,69,.1); border: 1px solid rgba(242,54,69,.35); border-radius: 8px; padding: 6px 10px; }
@@ -1153,27 +1153,27 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
 }
 .bp-pos-btn {
   border: 1px solid rgba(90,160,255,.4); background: rgba(90,160,255,.1);
-  color: #8ab8ff; border-radius: 5px; font-size: 11px; padding: 1px 8px; cursor: pointer;
+  color: var(--blue); border-radius: 5px; font-size: 11px; padding: 1px 8px; cursor: pointer;
 }
 .bp-pos-btn:hover { background: rgba(90,160,255,.22); }
 .bc-sim { color: #ffb13d; border: 1px solid rgba(255, 177, 61, 0.5); border-radius: 4px; padding: 0 6px; font-size: 10px; }
 .bc-live.sim { background: #7a5c12; } /* 实际窗口为模拟盘：黄褐色底 */
 .ct-tag { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 0 6px; vertical-align: 1px; }
-.ct-tag.live { color: #fff; background: #f23645; }
+.ct-tag.live { color: #fff; background: var(--up); }
 .ct-tag.sim { color: #ffb13d; border: 1px solid rgba(255, 177, 61, 0.5); }
-.bp-hint { margin: 2px 0 8px; font-size: 11px; color: #8b949e; }
-.bp-hint.live { color: #ff7a85; }
-.bp-hint.sim { color: #d8b26a; }
-.bp-submit.live { background: rgba(242, 54, 69, 0.9); border-color: #f23645; color: #fff; }
-.ct-mini { font-size: 10px; color: #8b949e; margin-right: 8px; }
-.ct-mini.live { color: #ff7a85; }
+.bp-hint { margin: 2px 0 8px; font-size: 11px; color: var(--text-dim); }
+.bp-hint.live { color: var(--up); }
+.bp-hint.sim { color: var(--accent); }
+.bp-submit.live { background: rgba(242, 54, 69, 0.9); border-color: var(--up); color: #fff; }
+.ct-mini { font-size: 10px; color: var(--text-dim); margin-right: 8px; }
+.ct-mini.live { color: var(--up); }
 .ct-mini.sim { color: #ffb13d; }
 .bc-warn { color: #ffb13d; border: 1px dashed rgba(255, 177, 61, 0.6); border-radius: 4px; padding: 0 6px; font-size: 10px; }
-.bc-unclear { color: #8b949e; font-size: 10px; }
+.bc-unclear { color: var(--text-dim); font-size: 10px; }
 .bc-btn.mini { padding: 1px 8px; font-size: 10px; }
 .bc-btn.bc-toggle-on {
-  border-color: #4a9eff;
-  color: #4a9eff;
+  border-color: var(--blue);
+  color: var(--blue);
   background: rgba(74, 158, 255, 0.12);
 }
 .bc-spacer { flex: 1; }
@@ -1188,21 +1188,21 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
   flex-shrink: 0;
 }
 .bc-btn:hover:not(:disabled) { color: var(--accent, #e8c878); border-color: var(--accent, #e8c878); }
-.bc-btn.danger { color: #ff7a85; border-color: rgba(242, 54, 69, 0.5); }
+.bc-btn.danger { color: var(--up); border-color: rgba(242, 54, 69, 0.5); }
 .bc-btn.danger:hover:not(:disabled) { background: rgba(242, 54, 69, 0.12); }
 .bc-btn:disabled { opacity: 0.5; cursor: default; }
 
 .bc-selfcheck {
   display: flex; flex-wrap: wrap; gap: 6px 14px;
   padding: 6px 9px; border-radius: 7px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--ov-03);
   border: 1px solid var(--border, #2a3344);
   font-size: 11px; color: var(--text-dim, #97a0b2);
   flex-shrink: 0;
 }
 .sc-item b { font-weight: 700; }
-.sc-item b.ok { color: #26d07c; }
-.sc-item b.bad { color: #ff7a85; }
+.sc-item b.ok { color: var(--down); }
+.sc-item b.bad { color: var(--up); }
 .sc-title { color: var(--text, #e6ecf5); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .bc-main {
@@ -1234,11 +1234,11 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
 }
 .ba-k { font-size: 10px; color: var(--text-dim, #7c8798); }
 .ba-v { margin-top: 2px; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text, #e6ecf5); }
-.ba-v.up { color: #f23645; }
-.ba-v.down { color: #0ecb81; }
+.ba-v.up { color: var(--up); }
+.ba-v.down { color: var(--down); }
 .bc-sidecar-err {
   margin-bottom: 8px; padding: 6px 10px; border-radius: 7px; font-size: 11px; line-height: 1.6;
-  color: #ff7a85; background: rgba(242, 54, 69, 0.1); border: 1px solid rgba(242, 54, 69, 0.45);
+  color: var(--up); background: rgba(242, 54, 69, 0.1); border: 1px solid rgba(242, 54, 69, 0.45);
   word-break: break-all;
 }
 .bc-note { font-size: 10px; color: var(--text-dim, #7c8798); flex-shrink: 0; }
@@ -1268,7 +1268,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
 .be-desc { font-size: 10.5px; line-height: 1.6; max-width: 300px; }
 .bc-drill-row { display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
 .bc-drill-btn {
-  background: linear-gradient(135deg, #b8860b, #e8c878); color: #1a1306;
+  background: linear-gradient(135deg, var(--accent), var(--accent)); color: var(--accent-contrast);
   border: none; border-radius: 8px; padding: 9px 18px; font-size: 12px; font-weight: 600;
   cursor: pointer;
 }
@@ -1283,22 +1283,22 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
 .api-head { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .api-addr { display: flex; align-items: center; gap: 7px; font-weight: 600; color: var(--text, #e6ecf5); }
 .api-base { font-variant-numeric: tabular-nums; }
-.api-dot { width: 8px; height: 8px; border-radius: 50%; background: #4a5565; flex-shrink: 0; }
-.api-dot.ok { background: #26d07c; box-shadow: 0 0 6px rgba(38, 208, 124, 0.6); }
-.api-dot.fail { background: #f23645; box-shadow: 0 0 6px rgba(242, 54, 69, 0.6); }
+.api-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+.api-dot.ok { background: var(--down); box-shadow: 0 0 6px rgba(38, 208, 124, 0.6); }
+.api-dot.fail { background: var(--up); box-shadow: 0 0 6px rgba(242, 54, 69, 0.6); }
 .api-tag { color: #ffb13d; border: 1px solid rgba(255, 177, 61, 0.5); border-radius: 4px; padding: 0 5px; font-size: 10px; }
 .api-tag.ghost { color: var(--text-dim, #97a0b2); border-color: var(--border, #2a3344); }
 .api-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
 .api-tip { padding: 10px 12px; border-radius: 7px; background: rgba(255, 177, 61, 0.08); border: 1px solid rgba(255, 177, 61, 0.35); color: var(--text-dim, #97a0b2); font-size: 11px; line-height: 1.6; }
 .api-group-title { margin: 4px 0 2px; font-size: 11px; color: var(--text-dim, #7c8798); font-weight: 600; letter-spacing: 0.5px; }
-.api-card { border: 1px solid var(--border, #2a3344); border-radius: 7px; padding: 6px 9px; background: rgba(255, 255, 255, 0.02); }
+.api-card { border: 1px solid var(--border, #2a3344); border-radius: 7px; padding: 6px 9px; background: var(--ov-02); }
 .api-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .api-path { color: var(--accent, #e8c878); font-size: 12px; font-weight: 600; }
 .api-desc { color: var(--text-dim, #97a0b2); font-size: 11px; }
 .api-spacer { flex: 1; }
 .api-params { display: flex; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
 .api-in {
-  background: #141b28; border: 1px solid var(--border, #2a3344); border-radius: 5px;
+  background: var(--bg-card2); border: 1px solid var(--border, #2a3344); border-radius: 5px;
   color: var(--text, #e6ecf5); font-size: 11px; padding: 3px 7px; min-width: 90px; max-width: 180px;
 }
 .api-in:focus { outline: none; border-color: var(--accent, #e8c878); }
@@ -1308,10 +1308,10 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
 }
 .api-result { border: 1px solid var(--border, #2a3344); border-radius: 7px; overflow: hidden; }
 .api-result.bad { border-color: rgba(242, 54, 69, 0.5); }
-.api-result-head { display: flex; align-items: center; gap: 8px; padding: 5px 9px; font-size: 11px; color: var(--text-dim, #97a0b2); background: rgba(255, 255, 255, 0.03); }
-.api-result-state { margin-left: auto; color: #26d07c; font-weight: 600; }
-.api-result.bad .api-result-state { color: #ff7a85; }
-.api-json { margin: 0; padding: 8px 10px; font-size: 10px; line-height: 1.5; color: #9fd0a4; background: #0c111b; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+.api-result-head { display: flex; align-items: center; gap: 8px; padding: 5px 9px; font-size: 11px; color: var(--text-dim, #97a0b2); background: var(--ov-03); }
+.api-result-state { margin-left: auto; color: var(--down); font-weight: 600; }
+.api-result.bad .api-result-state { color: var(--up); }
+.api-json { margin: 0; padding: 8px 10px; font-size: 10px; line-height: 1.5; color: var(--down); background: var(--bg-input); max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
 .bc-table-wrap { flex: 1; min-height: 0; overflow: auto; }
 .bc-table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: auto; }
 .bc-table th {
@@ -1323,10 +1323,10 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
   white-space: nowrap;
 }
 .bc-table th.r, .bc-table td.r { text-align: right; }
-.bc-table td { padding: 5px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); color: var(--text, #e6ecf5); white-space: nowrap; }
+.bc-table td { padding: 5px 8px; border-bottom: 1px solid var(--ov-05); color: var(--text, #e6ecf5); white-space: nowrap; }
 .mono { font-variant-numeric: tabular-nums; }
-.up { color: #f23645; }
-.down { color: #0ecb81; }
+.up { color: var(--up); }
+.down { color: var(--down); }
 .bc-row-empty { text-align: center; color: var(--text-dim, #7c8798); padding: 22px 0 !important; }
 
 .bc-posbox {
@@ -1348,13 +1348,13 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
 }
 .bp-seg { display: flex; flex: 1; border: 1px solid var(--border, #2a3344); border-radius: 6px; overflow: hidden; }
 .bp-seg-btn { flex: 1; border: none; background: none; color: var(--text-dim, #97a0b2); padding: 5px 0; font-size: 11px; cursor: pointer; }
-.bp-seg-btn.on { background: var(--accent, #e8c878); color: #14161c; font-weight: 700; }
+.bp-seg-btn.on { background: var(--accent, #e8c878); color: var(--accent-contrast); font-weight: 700; }
 .bp-submit {
   flex-shrink: 0; border: 1px solid var(--accent, #e8c878);
-  background: var(--accent, #e8c878); color: #14161c;
+  background: var(--accent, #e8c878); color: var(--accent-contrast);
   border-radius: 6px; padding: 5px 14px; font-size: 11px; font-weight: 700; cursor: pointer;
 }
-.bp-submit.danger { background: #f23645; border-color: #f23645; color: #fff; }
+.bp-submit.danger { background: var(--up); border-color: var(--up); color: #fff; }
 .bp-submit:disabled { opacity: 0.5; cursor: default; }
 
 .bc-adv {
@@ -1374,11 +1374,11 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
   padding: 5px 8px; font-size: 11px;
 }
 
-.bc-mask { position: fixed; inset: 0; background: rgba(5, 8, 15, 0.72); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 1200; padding: 24px; }
-.bc-modal { width: min(420px, 92vw); max-height: 86vh; overflow: auto; background: #12161f; border: 1px solid rgba(90, 160, 255, 0.35); border-radius: 12px; padding: 16px; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6); }
+.bc-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 1200; padding: 24px; }
+.bc-modal { width: min(420px, 92vw); max-height: 86vh; overflow: auto; background: var(--surface-solid); border: 1px solid var(--border-ov); border-radius: 12px; padding: 16px; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6); }
 .bm-title { font-size: 15px; font-weight: 700; margin-bottom: 8px; color: var(--text, #e6ecf5); }
 .bm-desc { font-size: 12px; color: var(--text-dim, #97a0b2); line-height: 1.6; margin-bottom: 10px; }
-.bm-shot { border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; overflow: hidden; background: #0b0e14; margin-bottom: 12px; }
+.bm-shot { border: 1px solid var(--ov-10); border-radius: 8px; overflow: hidden; background: #0b0e14; margin-bottom: 12px; }
 .bm-shot img { display: block; width: 100%; height: auto; }
 .bm-noshot { padding: 26px; text-align: center; opacity: 0.5; font-size: 12px; }
 .bm-actions { display: flex; gap: 10px; justify-content: flex-end; }
@@ -1387,7 +1387,7 @@ print(r.json())  # {"status":"success","message":"已成交 100 股 600519…"}<
 
 .bc-toast {
   position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
-  background: rgba(20, 22, 28, 0.95);
+  background: var(--surface-solid);
   border: 1px solid var(--accent, #e8c878);
   color: var(--text, #e6ecf5);
   border-radius: 8px; padding: 7px 16px; font-size: 11px;

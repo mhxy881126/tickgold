@@ -384,25 +384,25 @@ async function doMove(toGroup: string) {
 }
 .dock-btn .d-ic {
   width: 22px; height: 22px; border-radius: 6px;
-  background: rgba(255,255,255,.05);
+  background: var(--ov-05);
   display: flex; align-items: center; justify-content: center;
   transition: all .18s;
 }
 .d-ic svg { width: 13px; height: 13px; opacity: .85; }
 .d-label { font-size: 9px; line-height: 1; letter-spacing: 1px; }
-.dock-btn:hover { color: var(--text); background: rgba(232,184,96,.08); }
-.dock-btn.on { color: var(--text); background: rgba(232,184,96,.08); }
+.dock-btn:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.dock-btn.on { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .dock-btn.on .d-ic {
-  background: linear-gradient(135deg, #e8c878, #b8923a);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
 }
-.dock-btn.on .d-ic svg { opacity: 1; color: #000; }
+.dock-btn.on .d-ic svg { opacity: 1; color: var(--accent-contrast); }
 .dock-add .d-ic { font-size: 16px; line-height: 20px; color: var(--text-dim); }
-.dock-add:hover .d-ic { color: #e8c878; }
+.dock-add:hover .d-ic { color: var(--accent); }
 .dock-sep { width: 30px; height: 1px; background: var(--border); margin: auto 0 6px; }
 .d-badge {
   position: absolute; top: 2px; right: 4px;
   min-width: 14px; height: 14px; border-radius: 7px;
-  background: #ef5f6b; color: #fff;
+  background: var(--up); color: #fff;
   font-size: 8.5px; font-weight: 700; line-height: 14px;
   text-align: center; padding: 0 3px;
   z-index: 2;
@@ -410,24 +410,24 @@ async function doMove(toGroup: string) {
 .d-manage {
   position: absolute; top: 0; left: 2px;
   width: 12px; height: 12px; border-radius: 3px;
-  background: rgba(255,255,255,.08);
+  background: var(--ov-08);
   color: var(--text-dim);
   font-size: 9px; line-height: 12px; text-align: center;
   cursor: pointer;
   display: none;
 }
 .dock-btn:hover .d-manage { display: block; }
-.d-manage:hover { background: rgba(232,184,96,.3); color: #e8c878; }
+.d-manage:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--accent); }
 
 /* dock 右侧浮出面板：视口相对定位，窄窗口自适应宽度（不超出视口） */
 .dock-panel {
   position: fixed;
   left: 68px; top: 38px;
   width: min(250px, calc(100vw - 78px));
-  background: rgba(14,17,22,.97);
+  background: var(--surface-solid);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255,255,255,.1);
+  border: 1px solid var(--border-ov);
   border-radius: 10px;
   box-shadow: 20px 20px 50px rgba(0,0,0,.6);
   padding: 10px;
@@ -439,7 +439,7 @@ async function doMove(toGroup: string) {
   display: flex; align-items: baseline; justify-content: space-between;
   margin-bottom: 8px; padding: 4px 6px;
 }
-.dp-head h3 { margin: 0; font-size: 10px; color: #e8c878; letter-spacing: 2px; font-weight: 600; }
+.dp-head h3 { margin: 0; font-size: 10px; color: var(--accent); letter-spacing: 2px; font-weight: 600; }
 .dp-head span { font-size: 9px; color: var(--text-dim); letter-spacing: 0; }
 .dp-x { background: transparent; border: 0; color: var(--text-dim); font-size: 12px; cursor: pointer; padding: 0 2px; }
 .dp-x:hover { color: var(--text); }
@@ -449,14 +449,14 @@ async function doMove(toGroup: string) {
   font-size: 10px; font-weight: 700; color: var(--text-dim);
   padding: 2px 2px 4px; letter-spacing: 0.5px;
 }
-.dp-sec-head.main { color: #e8c878; }
+.dp-sec-head.main { color: var(--accent); }
 .dp-sec-grid { gap: 4px; }
 .dp-sec-empty { padding: 6px 8px; }
 .dp-item.main {
-  border-color: rgba(232, 184, 96, 0.35);
-  background: rgba(232, 184, 96, 0.06);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
-.dp-item.main .dpi-t { font-weight: 600; color: #e8c878; }
+.dp-item.main .dpi-t { font-weight: 600; color: var(--accent); }
 .dp-item {
   display: grid;
   grid-template-columns: 24px 1fr;
@@ -480,33 +480,33 @@ async function doMove(toGroup: string) {
 .dpi-ic svg { width: 13px; height: 13px; }
 .dpi-t { font-size: 11px; font-weight: 400; line-height: 1.2; display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 面板只保留「图标 + 名称」，一句话用途改为悬停 title，避免面板塞满文字 */
-.dp-item:hover { background: rgba(255,255,255,.05); }
-.dp-item.on { background: rgba(232,184,96,.08); border-color: rgba(232,184,96,.25); }
+.dp-item:hover { background: var(--ov-05); }
+.dp-item.on { background: color-mix(in srgb, var(--accent) 8%, transparent); border-color: color-mix(in srgb, var(--accent) 25%, transparent); }
 .dp-item.on .dpi-t::after {
   content: ""; width: 6px; height: 6px; border-radius: 50%;
-  background: #e8c878; box-shadow: 0 0 6px #e8c878;
+  background: var(--accent); box-shadow: 0 0 6px var(--accent);
 }
 .dpi-move {
   position: absolute; right: 6px; top: 50%;
   transform: translateY(-50%);
   width: 20px; height: 20px;
   border: 0; border-radius: 4px;
-  background: rgba(255,255,255,.07);
+  background: var(--ov-07);
   color: var(--text-dim); cursor: pointer;
   font-size: 12px; line-height: 20px; text-align: center;
   display: none;
 }
 .dp-item:hover .dpi-move { display: block; }
-.dpi-move:hover { background: rgba(232,184,96,.3); color: #e8c878; }
+.dpi-move:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--accent); }
 .dp-empty {
   padding: 14px 10px; text-align: center;
   color: var(--text-dim); font-size: 10.5px; line-height: 1.6;
 }
-.dp-empty b { color: #e8c878; }
+.dp-empty b { color: var(--accent); }
 
 /* Pro 会员组：金色边框 + 锁标记 */
 .pro-grid .dp-item {
-  border-left: 2px solid rgba(232, 184, 96, 0.4);
+  border-left: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
   padding-left: 6px;
 }
 .pro-grid .dp-item .dpi-t::before {
@@ -520,7 +520,7 @@ async function doMove(toGroup: string) {
 .dock-form { width: 190px; }
 .dg-input {
   width: 100%; box-sizing: border-box;
-  background: rgba(255,255,255,.05);
+  background: var(--ov-05);
   border: 1px solid var(--border);
   border-radius: 5px;
   color: var(--text);
@@ -529,27 +529,27 @@ async function doMove(toGroup: string) {
   outline: none;
   margin-bottom: 6px;
 }
-.dg-input:focus { border-color: rgba(232,184,96,.5); }
+.dg-input:focus { border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
 .dg-go {
   width: 100%;
-  background: linear-gradient(135deg, #e8c878, #b8923a);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
   border: 0; border-radius: 5px;
   color: #000; font-size: 11px; font-weight: 700;
   padding: 6px 0; cursor: pointer;
 }
 .dg-act {
   width: 100%; text-align: left;
-  background: rgba(255,255,255,.04);
+  background: var(--ov-04);
   border: 1px solid var(--border);
   border-radius: 5px;
   color: var(--text); font-size: 11.5px;
   padding: 7px 9px; margin-bottom: 5px; cursor: pointer;
   display: flex; justify-content: space-between; align-items: center;
 }
-.dg-act:hover:not(:disabled) { background: rgba(232,184,96,.12); border-color: rgba(232,184,96,.3); }
+.dg-act:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 12%, transparent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
 .dg-act:disabled { opacity: .45; cursor: default; }
-.dg-act.danger { color: #ef5f6b; }
-.dg-act.danger.armed { background: rgba(239,95,107,.18); border-color: #ef5f6b; }
+.dg-act.danger { color: var(--up); }
+.dg-act.danger.armed { background: rgba(239,95,107,.18); border-color: var(--up); }
 .dg-cur { font-size: 9px; color: var(--text-dim); }
 .dg-note { font-size: 9px; color: var(--text-dim); padding: 2px 2px 0; }
 

@@ -116,7 +116,7 @@
 /* 场景胶囊：顶栏内联 */
 .scene-pill-group-top {
   display: flex; gap: 2px; padding: 2px;
-  background: rgba(255,255,255,.04);
+  background: var(--ov-04);
   border: 1px solid var(--border);
   border-radius: 16px;
   margin-right: 10px;
@@ -560,8 +560,8 @@ html[data-motion="balanced"] .card-leave { animation-name: cardOutLite; }
 /* 顶栏布局模式切换 */
 .layout-mode-toggle {
   display: flex; align-items: center; gap: 2px;
-  background: var(--bg-panel, rgba(255,255,255,.04));
-  border: 1px solid var(--border, rgba(255,255,255,.08));
+  background: var(--bg-panel, var(--ov-04));
+  border: 1px solid var(--border, var(--ov-08));
   border-radius: 8px; padding: 2px;
   margin-right: 12px;
 }
@@ -572,7 +572,7 @@ html[data-motion="balanced"] .card-leave { animation-name: cardOutLite; }
 }
 .lmt-btn:hover { color: var(--text); }
 .lmt-btn.on {
-  background: var(--accent, #e8c878); color: #0b0a06; font-weight: 600;
+  background: var(--accent, #e8c878); color: var(--accent-contrast); font-weight: 600;
 }
 
 /* 主卡占满：顶部仅留 2px 呼吸，消除大块留白；右/底 12px 保安全边距 */
@@ -586,7 +586,7 @@ html[data-motion="balanced"] .card-leave { animation-name: cardOutLite; }
 /* 右侧固定卡片导航栏 */
 .glass-edge {
   width: 190px; flex: none; z-index: 20; position: relative;
-  background: rgba(20,24,32,.8);
+  background: var(--surface);
   backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -617,7 +617,7 @@ html[data-motion="balanced"] .card-leave { animation-name: cardOutLite; }
   font-size: 11px; color: var(--text-dim); opacity: 0; flex: none;
   transition: opacity .15s, background .15s;
 }
-.ot-item:hover { background: rgba(255,255,255,.04); color: var(--text); }
+.ot-item:hover { background: var(--ov-04); color: var(--text); }
 .ot-item:hover .x { opacity: 1; }
 .ot-item .x:hover { background: rgba(242,54,69,.2); color: #ff6b78; }
 .ot-item.on { background: rgba(232,184,96,.12); color: var(--accent); }
@@ -640,14 +640,14 @@ html[data-motion="balanced"] .card-leave { animation-name: cardOutLite; }
 .add-menu {
   position: fixed; right: 12px; bottom: 14px; width: 212px;
   max-height: min(540px, calc(100vh - 120px)); overflow-y: auto;
-  background: rgba(14,17,22,.97);
+  background: var(--surface-solid);
   backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255,255,255,.1); border-radius: 12px;
+  border: 1px solid var(--border-ov); border-radius: 12px;
   box-shadow: 0 24px 60px rgba(0,0,0,.66);
   padding: 6px; z-index: 80;
 }
 .add-menu::-webkit-scrollbar { width: 6px; }
-.add-menu::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 6px; }
+.add-menu::-webkit-scrollbar-thumb { background: var(--ov-14); border-radius: 6px; }
 .am-group { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 4px; align-items: start; margin-bottom: 2px; }
 .am-head {
   grid-column: 1 / -1;
@@ -669,7 +669,7 @@ html[data-motion="balanced"] .card-leave { animation-name: cardOutLite; }
 .am-item .mi { width: 13px; height: 13px; color: var(--text-dim); flex: none; }
 .am-item .mi svg { width: 15px; height: 15px; }
 .am-item .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-.am-item:hover:not(.disabled) { background: rgba(255,255,255,.055); color: var(--text); }
+.am-item:hover:not(.disabled) { background: var(--ov-05); color: var(--text); }
 .am-item:hover:not(.disabled) .mi { color: var(--text); }
 .am-item.disabled { opacity: .45; cursor: default; pointer-events: none; }
 .am-item.disabled .gn { margin-left: auto; font-size: 10px; color: var(--text-dim); }

@@ -317,11 +317,11 @@ function onSizeChange(axis: "w" | "h", ev: Event) {
   width: 17px;
   height: 17px;
   border-radius: 5px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--ov-12);
   cursor: pointer;
 }
 .sw.on {
-  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline: 2px solid var(--ov-55);
   outline-offset: 1px;
 }
 .pick {

@@ -339,7 +339,7 @@ async function loadAuction() {
   font-size: 11px; padding: 4px 10px; border-radius: 6px; cursor: pointer;
 }
 .lvl:hover { color: var(--text); }
-.lvl.on { background: var(--accent); border-color: var(--accent); color: #1a1a1a; font-weight: 700; }
+.lvl.on { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); font-weight: 700; }
 .lvl-more { margin-left: auto; font-size: 10px; color: var(--text-dim); }
 .env { margin: 8px 0; font-size: 11px; color: var(--text-dim); }
 .env b { color: var(--text); }
@@ -354,13 +354,13 @@ async function loadAuction() {
 .row.ex { opacity: .6; }
 .row-main { display: flex; align-items: baseline; gap: 7px; }
 .rank { font-size: 12px; font-weight: 800; color: var(--text-dim); width: 16px; }
-.rank.gold { color: #ffd76a; }
+.rank.gold { color: var(--accent); }
 .rank.dim { color: var(--accent); }
 .nm { font-weight: 700; font-size: 12px; }
 .pc { font-size: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .score { margin-left: auto; font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .auc { font-size: 10px; padding: 1px 7px; border-radius: 9px; font-weight: 700; }
-.auc.strong { background: rgba(255,215,106,.18); color: #ffd76a; }
+.auc.strong { background: rgba(255,215,106,.18); color: var(--accent); }
 .auc.watch { background: var(--bg-hover); color: var(--text-dim); }
 .auc.drop { background: rgba(224,69,90,.18); color: var(--down); }
 .row-sub { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; align-items: center; }
@@ -387,7 +387,7 @@ async function loadAuction() {
 .bt-line b { font-size: 14px; font-variant-numeric: tabular-nums; }
 .bt-line i { font-style: normal; font-size: 10px; color: var(--text-dim); }
 .bt-concl { font-size: 10.5px; margin-top: 4px; color: var(--accent); }
-.bt-concl.good { color: #ffd76a; }
+.bt-concl.good { color: var(--accent); }
 .bt-concl small { color: var(--text-dim); margin-left: 6px; }
 .disclaimer { font-size: 9px; color: var(--text-dim); text-align: center; padding-top: 6px; }
 </style>

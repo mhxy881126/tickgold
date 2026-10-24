@@ -182,7 +182,7 @@ function hhmmss(t: number) {
   border-left: 2px solid transparent;
 }
 .row:hover { background: var(--bg-hover); }
-.row:nth-child(odd) { background: rgba(255,255,255,.015); }
+.row:nth-child(odd) { background: var(--ov-01); }
 .row:nth-child(odd):hover { background: var(--bg-hover); }
 .t { color: var(--text-dim); font-size: 10px; font-variant-numeric: tabular-nums; }
 .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -207,7 +207,7 @@ function hhmmss(t: number) {
 /* 阈值浮层 */
 .cfg-mask {
   position: absolute; inset: 0; z-index: 30;
-  background: rgba(5,8,15,.62); backdrop-filter: blur(2px);
+  background: rgba(0,0,0,.5); backdrop-filter: blur(2px);
   display: flex; align-items: center; justify-content: center;
 }
 .cfg-panel {

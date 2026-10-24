@@ -115,7 +115,7 @@ onBeforeUnmount(() => {
   cursor: default;
 }
 .ctx-item.danger {
-  color: #ef5f6b;
+  color: var(--up);
 }
 .ctx-item.sep {
   margin-top: 4px;

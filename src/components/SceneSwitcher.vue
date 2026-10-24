@@ -95,7 +95,7 @@ onBeforeUnmount(() => {
   padding: 0 9px 0 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--ov-04);
   color: var(--text);
   font-size: 12px;
   font-weight: 600;
@@ -142,10 +142,10 @@ onBeforeUnmount(() => {
   left: 0;
   min-width: 176px;
   padding: 6px;
-  background: rgba(14, 17, 22, 0.97);
+  background: var(--surface-solid);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-ov);
   border-radius: 11px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
   z-index: 200;
@@ -196,7 +196,7 @@ onBeforeUnmount(() => {
   color: var(--accent);
 }
 .ss-item:hover {
-  background: rgba(255, 255, 255, 0.055);
+  background: var(--ov-05);
   color: var(--text);
 }
 .ss-item:hover .ss-ic-sm {

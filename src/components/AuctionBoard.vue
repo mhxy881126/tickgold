@@ -250,8 +250,8 @@ onUnmounted(() => { if (timer) clearInterval(timer); });
 .mood-label{font-size:14px;font-weight:700}
 .mood-track{height:6px;background:var(--border);border-radius:3px;overflow:hidden;display:flex}
 .mood-fill{height:100%;transition:width .3s}
-.mood-fill.up{background:linear-gradient(90deg,#f25266,#ff6b81)}
-.mood-fill.down{background:linear-gradient(90deg,#22b573,#3ddc97)}
+.mood-fill.up{background:linear-gradient(90deg,var(--up),var(--up))}
+.mood-fill.down{background:linear-gradient(90deg,var(--down),var(--down))}
 .mood-foot{display:flex;justify-content:space-between;margin-top:5px;font-size:10px}
 
 /* 4格指标 */
@@ -260,9 +260,9 @@ onUnmounted(() => { if (timer) clearInterval(timer); });
 .stat-label{font-size:9px;color:var(--text-dim);margin-bottom:2px}
 .stat-val{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
 .stat-val .unit{font-size:9px;font-weight:400;color:var(--text-dim);margin-left:2px}
-.stat-val.up{color:#f25266}
-.stat-val.down{color:#22b573}
-.stat-val.gold{color:#d2af37}
+.stat-val.up{color:var(--up)}
+.stat-val.down{color:var(--down)}
+.stat-val.gold{color:var(--accent)}
 
 .tabs{display:flex;gap:4px}
 .tabs button{background:none;border:1px solid var(--border);color:var(--text-dim);font-size:11px;cursor:pointer;padding:3px 10px;border-radius:6px}
@@ -280,11 +280,11 @@ onUnmounted(() => { if (timer) clearInterval(timer); });
 .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px}
 .nm i{font-style:normal;font-size:10px;color:var(--text-dim)}
 .tag{font-style:normal;font-size:9px;padding:0 4px;border-radius:3px;flex:none}
-.tag.lu{background:rgba(242,82,102,.15);color:#f25266}
+.tag.lu{background:rgba(242,82,102,.15);color:var(--up)}
 .tag.big{background:rgba(212,175,55,.15);color:var(--accent)}
 .num{text-align:right;font-variant-numeric:tabular-nums}
 .num.dim{color:var(--text-dim)}
-.up{color:#f25266}.down{color:#22b573}
+.up{color:var(--up)}.down{color:var(--down)}
 .foot{font-size:9px;color:var(--text-dim);text-align:right}
 .loadmore{text-align:center;font-size:10px;color:var(--text-dim);padding:8px}
 .loadmore.end{opacity:.5}

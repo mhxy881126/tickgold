@@ -374,7 +374,7 @@ onUnmounted(() => {
   width: 52px;
   height: 5px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--ov-08);
   overflow: hidden;
   display: inline-block;
 }
@@ -420,13 +420,13 @@ onUnmounted(() => {
   color: var(--text-dim, #9aa4b8);
 }
 .dl-action[data-a="executed"] {
-  color: #1DBE7D;
-  border-color: #1DBE7D;
+  color: var(--down);
+  border-color: var(--down);
   background: #1DBE7D1a;
 }
 .dl-action[data-a="watch"] {
-  color: #f5d020;
-  border-color: #f5d020;
+  color: var(--accent);
+  border-color: var(--accent);
   background: #f5d02014;
 }
 
@@ -476,7 +476,7 @@ onUnmounted(() => {
   height: 18px;
   border-radius: 50%;
   background: rgba(212, 175, 55, 0.15);
-  color: #d4af37;
+  color: var(--accent);
   font-size: 10px;
   font-weight: 700;
   display: flex;
@@ -503,7 +503,7 @@ onUnmounted(() => {
   font-size: 11px;
 }
 .dl-row-head:hover {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.04));
+  background: var(--bg-hover, var(--ov-04));
 }
 .dl-time {
   color: var(--text-dim, #8a93a6);
@@ -571,7 +571,7 @@ onUnmounted(() => {
   position: relative;
   flex: 1;
   height: 7px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--ov-05);
   border-radius: 3px;
 }
 .dl-fzero {
@@ -580,7 +580,7 @@ onUnmounted(() => {
   top: -1px;
   bottom: -1px;
   width: 1px;
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--ov-25);
 }
 .dl-fbar {
   position: absolute;
@@ -595,10 +595,10 @@ onUnmounted(() => {
   color: var(--text-dim, #aab2c4);
 }
 .dl-fval.up {
-  color: #ff3232;
+  color: var(--up);
 }
 .dl-fval.k {
-  color: #1dbe7d;
+  color: var(--down);
 }
 
 /* 详情 */
@@ -626,7 +626,7 @@ onUnmounted(() => {
   flex: 1;
   height: 5px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--ov-07);
   overflow: hidden;
 }
 .dl-prob-track i {
@@ -664,7 +664,7 @@ onUnmounted(() => {
   font-variant-numeric: tabular-nums;
 }
 .dl-feat b.up {
-  color: #FF3232;
+  color: var(--up);
 }
 .dl-feat b.k {
   color: #54FCFC;
@@ -676,7 +676,7 @@ onUnmounted(() => {
 }
 .dl-hard {
   color: #fff;
-  background: #FF3232;
+  background: var(--up);
   border-radius: 5px;
   padding: 0 6px;
   margin-left: 6px;

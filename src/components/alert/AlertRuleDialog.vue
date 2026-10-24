@@ -216,18 +216,18 @@ function submit() {
 .dialog {
   width: min(680px, 92vw); max-height: 88vh; display: flex; flex-direction: column;
   background: var(--bg-card, #16181d);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border: 1px solid var(--border, var(--ov-12));
   border-radius: 12px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
 }
 .d-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 18px; border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  padding: 14px 18px; border-bottom: 1px solid var(--border, var(--ov-10));
 }
 .d-title { font-size: 15px; font-weight: 600; }
 .x { background: none; border: none; color: var(--text-dim, #9aa0a6); font-size: 20px; cursor: pointer; }
 .d-body { padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-.d-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--border, rgba(255, 255, 255, 0.1)); }
+.d-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--border, var(--ov-10)); }
 
 .row { display: flex; align-items: center; gap: 10px; }
 .row.sub { padding-left: 84px; position: relative; }
@@ -235,19 +235,19 @@ function submit() {
 .lbl { font-size: 12px; color: var(--text-dim, #9aa0a6); width: 72px; flex: none; }
 .grow { flex: 1; }
 .inp {
-  background: var(--bg-elevated, rgba(255, 255, 255, 0.06));
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--bg-elevated, var(--ov-06));
+  border: 1px solid var(--border, var(--ov-12));
   color: var(--text, #e8eaed);
   border-radius: 6px; padding: 6px 8px; font-size: 13px;
 }
 .inp.grow { width: 100%; }
 
-.seg { display: inline-flex; border: 1px solid var(--border, rgba(255, 255, 255, 0.14)); border-radius: 7px; overflow: hidden; flex-wrap: wrap; }
+.seg { display: inline-flex; border: 1px solid var(--border, var(--ov-14)); border-radius: 7px; overflow: hidden; flex-wrap: wrap; }
 .seg button {
   background: transparent; border: none; color: var(--text-dim, #9aa0a6);
   font-size: 12px; padding: 5px 12px; cursor: pointer;
 }
-.seg button.on { background: var(--accent, #d4af37); color: #1a1a1a; }
+.seg button.on { background: var(--accent, #d4af37); color: var(--accent-contrast); }
 
 .section-title { font-size: 12px; font-weight: 600; color: var(--text, #e8eaed); margin-top: 8px; }
 
@@ -256,22 +256,22 @@ function submit() {
 
 .search-pop {
   position: absolute; top: 100%; left: 84px; right: 0; z-index: 5;
-  background: var(--bg-card, #1d2026); border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  background: var(--bg-card, #1d2026); border: 1px solid var(--border, var(--ov-14));
   border-radius: 8px; max-height: 200px; overflow-y: auto;
 }
 .search-item { padding: 7px 10px; font-size: 12px; cursor: pointer; }
-.search-item:hover { background: var(--bg-elevated, rgba(255, 255, 255, 0.08)); }
+.search-item:hover { background: var(--bg-elevated, var(--ov-08)); }
 .code-chip { font-size: 12px; color: var(--accent, #d4af37); }
 
 .x-btn { background: none; border: none; color: var(--text-dim, #9aa0a6); cursor: pointer; font-size: 15px; }
 .add-quiet {
   align-self: flex-start; background: transparent;
-  border: 1px dashed var(--border, rgba(255, 255, 255, 0.2));
+  border: 1px dashed var(--border, var(--ov-20));
   color: var(--text-dim, #9aa0a6); border-radius: 7px; font-size: 12px; padding: 5px 12px; cursor: pointer;
 }
 .btn { border-radius: 8px; font-size: 13px; padding: 7px 18px; cursor: pointer; border: 1px solid transparent; }
-.btn.ghost { background: transparent; color: var(--text-dim, #9aa0a6); border-color: var(--border, rgba(255, 255, 255, 0.14)); }
-.btn.primary { background: var(--accent, #d4af37); color: #1a1a1a; font-weight: 600; }
+.btn.ghost { background: transparent; color: var(--text-dim, #9aa0a6); border-color: var(--border, var(--ov-14)); }
+.btn.primary { background: var(--accent, #d4af37); color: var(--accent-contrast); font-weight: 600; }
 
 .dlg-enter-active, .dlg-leave-active { transition: opacity 0.18s ease; }
 .dlg-enter-from, .dlg-leave-to { opacity: 0; }

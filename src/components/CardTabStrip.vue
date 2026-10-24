@@ -115,7 +115,7 @@ function onMiddleClose(id: CardId, e: MouseEvent) {
   transition: opacity 0.12s, background 0.12s;
 }
 .ctab:hover .ct-x { opacity: 0.7; }
-.ct-x:hover { opacity: 1 !important; background: rgba(242, 54, 69, 0.2); color: #ff6b78; }
+.ct-x:hover { opacity: 1 !important; background: rgba(242, 54, 69, 0.2); color: var(--up); }
 
 .ct-add {
   flex: none;

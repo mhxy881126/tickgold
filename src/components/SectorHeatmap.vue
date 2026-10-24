@@ -1,12 +1,21 @@
 <script setup lang="ts">
 import * as echarts from "echarts";
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { fetchSectors, fetchSectorStocks } from "../api/market";
 import type { Sector } from "../api/types";
 import { useWorkbench } from "../composables/useWorkbench";
+import { useTheme } from "../composables/useTheme";
 
 const emit = defineEmits<{ select: [code: string]; sector: [name: string, kind: string] }>();
 const bench = useWorkbench();
+const { theme } = useTheme();
+const isLight = computed(() => theme.value === "light" || theme.value === "ths-white");
+// echarts 浮层（tooltip）随主题切换
+const tip = computed(() =>
+  isLight.value
+    ? { bg: "rgba(255,255,255,0.98)", border: "rgba(0,0,0,0.12)", text: "var(--border-ov)" }
+    : { bg: "#161b22", border: "var(--border-ov)", text: "#e6e9ee" }
+);
 const selectedSector = ref<Sector | null>(null);
 const stocks = ref<{ code: string; name: string; price: number; pct: number }[]>([]);
 const loadingStocks = ref(false);
@@ -77,9 +86,9 @@ function render() {
   chart.setOption(
     {
       tooltip: {
-        backgroundColor: "#161b22",
-        borderColor: "#2a313b",
-        textStyle: { color: "#e6e9ee", fontSize: 11 },
+        backgroundColor: tip.value.bg,
+        borderColor: tip.value.border,
+        textStyle: { color: tip.value.text, fontSize: 11 },
         formatter: (p: any) => {
           const d = p.data as Cell;
           const net = d._net / 1e8;
@@ -107,8 +116,8 @@ function render() {
           breadcrumb: {
             show: true,
             bottom: 6,
-            itemStyle: { color: "rgba(20,25,35,.9)", borderColor: "#d4af37", borderWidth: 1 },
-            emphasisItemStyle: { color: "rgba(40,50,65,.95)" },
+            itemStyle: { color: tip.value.bg, borderColor: "#d4af37", borderWidth: 1 },
+            emphasisItemStyle: { color: isLight.value ? "rgba(0,0,0,.06)" : "rgba(40,50,65,.95)" },
             textStyle: { color: "#d4af37", fontSize: 11, fontWeight: "600" },
           },
           animationDuration: 600,
@@ -124,11 +133,11 @@ function render() {
             },
             rich: {
               n: { color: "#fff", fontSize: 13, lineHeight: 18, fontWeight: "700", textShadowColor: "rgba(0,0,0,.6)", textShadowBlur: 4 },
-              v: { color: "rgba(255,255,255,.95)", fontSize: 11, lineHeight: 15, fontWeight: "600" },
+              v: { color: "var(--ov-90)", fontSize: 11, lineHeight: 15, fontWeight: "600" },
             },
           },
           itemStyle: {
-            borderColor: "rgba(13,17,23,.8)",
+            borderColor: isLight.value ? "rgba(255,255,255,.9)" : "rgba(13,17,23,.8)",
             borderWidth: 3,
             gapWidth: 3,
             borderRadius: 8,
@@ -204,6 +213,11 @@ onMounted(() => {
   window.addEventListener("resize", resize);
 });
 
+// 主题切换时重绘，让 tooltip / 面包屑 / 边框跟随
+watch(theme, () => {
+  if (chart) render();
+});
+
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer);
   window.removeEventListener("resize", resize);
@@ -269,10 +283,10 @@ onBeforeUnmount(() => {
 .group { display: flex; gap: 4px; align-items: center; }
 .gl { font-size: 10px; color: var(--text-dim); margin-right: 2px; }
 .group button {
-  background: transparent; border: 1px solid #2a323d; color: var(--text-dim);
+  background: transparent; border: 1px solid var(--border-ov); color: var(--text-dim);
   font-size: 10px; padding: 3px 9px; border-radius: 5px; cursor: pointer;
 }
-.group button.on { background: rgba(212,175,55,.16); border-color: #d4af37; color: #e8c66a; }
+.group button.on { background: rgba(212,175,55,.16); border-color: var(--accent); color: var(--accent); }
 .upd { font-size: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 
 .main { flex: 1; display: flex; gap: 8px; min-height: 0; }
@@ -280,8 +294,8 @@ onBeforeUnmount(() => {
 .canvas { position: absolute; inset: 0; }
 .hint {
   position: absolute; left: 8px; top: 6px; z-index: 5; pointer-events: none;
-  font-size: 10px; color: rgba(255,255,255,.4);
-  background: rgba(13,17,23,.45); border-radius: 4px; padding: 2px 7px;
+  font-size: 10px; color: var(--ov-40);
+  background: var(--surface); border-radius: 4px; padding: 2px 7px;
 }
 .err-mask {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -291,32 +305,32 @@ onBeforeUnmount(() => {
 /* 右侧成分股面板 */
 .side {
   flex: 1; min-width: 0; display: flex; flex-direction: column;
-  background: rgba(14,18,27,.6); border: 1px solid #1b2230; border-radius: 8px;
+  background: var(--surface-2); border: 1px solid var(--border-ov); border-radius: 8px;
   overflow: hidden;
 }
 .sec-head {
-  padding: 10px 12px; border-bottom: 1px solid #1b2230;
+  padding: 10px 12px; border-bottom: 1px solid var(--border-ov);
   display: flex; align-items: center; justify-content: space-between;
 }
-.sec-name { font-size: 14px; font-weight: 700; color: #f0f4fa; }
+.sec-name { font-size: 14px; font-weight: 700; color: var(--text); }
 .sec-pct { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .sec-pct.up { color: #f04a5a; }
 .sec-pct.down { color: #26c281; }
 .sec-info {
   padding: 8px 12px; display: flex; gap: 16px;
-  font-size: 11px; color: var(--text-dim); border-bottom: 1px solid #1b2230;
+  font-size: 11px; color: var(--text-dim); border-bottom: 1px solid var(--border-ov);
 }
-.sec-info b { color: #e0e6ed; font-weight: 600; }
+.sec-info b { color: var(--text); font-weight: 600; }
 .up { color: #f04a5a; }
 .down { color: #26c281; }
 .stocks { flex: 1; overflow-y: auto; }
 .stock-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px; cursor: pointer; border-bottom: 1px solid rgba(27,34,48,.5);
+  padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border-ov);
   font-size: 12px; transition: background .15s;
 }
-.stock-row:hover { background: rgba(255,255,255,.04); }
-.s-name { flex: 1; color: #e0e6ed; }
+.stock-row:hover { background: var(--ov-04); }
+.s-name { flex: 1; color: var(--text); }
 .s-code { color: var(--text-dim); font-size: 10px; }
 .s-pct { font-weight: 600; font-variant-numeric: tabular-nums; }
 .side-empty {

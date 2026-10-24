@@ -114,8 +114,8 @@ watch(paramVals, syncParams, { deep: true });
 }
 .sel,
 .num {
-  background: var(--bg-elevated, rgba(255, 255, 255, 0.06));
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--bg-elevated, var(--ov-06));
+  border: 1px solid var(--border, var(--ov-12));
   color: var(--text, #e8eaed);
   border-radius: 6px;
   padding: 4px 6px;
@@ -136,7 +136,7 @@ watch(paramVals, syncParams, { deep: true });
 .evt-tag {
   font-size: 11px;
   color: var(--accent, #d4af37);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border: 1px solid var(--border, var(--ov-12));
   border-radius: 6px;
   padding: 3px 8px;
 }

@@ -177,7 +177,7 @@ function retry() {
 .crash-badge {
   width: 40px; height: 40px; border-radius: 50%; display: flex;
   align-items: center; justify-content: center; font-size: 22px; font-weight: 800;
-  color: #ff6b78; background: rgba(255, 93, 107, 0.12);
+  color: var(--up); background: rgba(255, 93, 107, 0.12);
   border: 1px solid rgba(255, 93, 107, 0.35);
 }
 .crash-title { font-size: 13px; font-weight: 700; color: var(--text, #e6ecf5); }
@@ -187,7 +187,7 @@ function retry() {
 }
 .crash-stack {
   max-width: 90%; max-height: 180px; overflow: auto; font-size: 9px;
-  color: #8a93a6; text-align: left; white-space: pre-wrap; word-break: break-all;
+  color: var(--text-dim); text-align: left; white-space: pre-wrap; word-break: break-all;
   font-family: Consolas, monospace;
 }
 .crash-btn {

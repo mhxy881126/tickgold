@@ -533,7 +533,7 @@ function toggleBoard(k: BoardKey) {
   font-size: 10px; padding: 3px 10px; border-radius: 11px; cursor: pointer;
 }
 .bf-chip:hover { color: var(--text); border-color: var(--text-dim); }
-.bf-chip.on { background: var(--accent); border-color: var(--accent); color: #1a1a1a; font-weight: 700; }
+.bf-chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); font-weight: 700; }
 .empty.small { padding: 16px 6px; font-size: 10px; }
 .empty.err { color: var(--accent); }
 
@@ -581,7 +581,7 @@ function toggleBoard(k: BoardKey) {
 .lad-group.lv1 .lad-badge { background: var(--bg-hover); }
 .bn { font-size: 19px; font-weight: 800; }
 .bt { font-size: 10px; }
-.lad-group.lv5 .bn, .lad-group.lv5 .bt { color: #ffd76a; }
+.lad-group.lv5 .bn, .lad-group.lv5 .bt { color: var(--accent); }
 .lad-group.lv3 .bn { color: #ff7a5c; }
 .lad-group.lv3 .bt { color: #d96a52; }
 .lad-group.lv2 .bn { color: var(--accent); }
@@ -591,8 +591,8 @@ function toggleBoard(k: BoardKey) {
 .lad-meta { display: flex; align-items: center; gap: 8px; }
 .lc { font-size: 11px; color: var(--text-dim); }
 .crown {
-  font-size: 10px; font-weight: 700; color: #1a1a1a;
-  background: linear-gradient(160deg,#ffd76a,#d4af37); border-radius: 4px; padding: 2px 7px;
+  font-size: 10px; font-weight: 700; color: var(--accent-contrast);
+  background: linear-gradient(160deg,var(--accent),var(--accent)); border-radius: 4px; padding: 2px 7px;
 }
 .first-tag { font-size: 10px; color: var(--blue); background: var(--bg-hover); border-radius: 4px; padding: 2px 7px; }
 .lad-items { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -613,9 +613,9 @@ function toggleBoard(k: BoardKey) {
 .z-ind { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .z-broken { color: var(--accent); font-weight: 700; }
 .z-yizi { color: var(--blue); }
-.z-fund.strong { color: #ffd76a; }
+.z-fund.strong { color: var(--accent); }
 /* 封板质量染色 */
-.stock-chip.early .sn { color: #ffd76a; }            /* 早盘强板 */
+.stock-chip.early .sn { color: var(--accent); }            /* 早盘强板 */
 .stock-chip.late .sn { color: var(--text-dim); }      /* 尾盘偷袭板 */
 .stock-chip.broken { border-color: var(--accent); }    /* 炸过板 */
 .stock-chip.strong { border-color: #8a6d1f; }         /* 封单巨大 */
@@ -645,7 +645,7 @@ function toggleBoard(k: BoardKey) {
 /* 天梯深化历史统计表 */
 .hist-panel {
   margin-top: 8px; border: 1px solid var(--border); border-radius: 9px;
-  background: var(--bg-card, rgba(255,255,255,0.02)); padding: 8px 10px;
+  background: var(--bg-card, var(--ov-02)); padding: 8px 10px;
 }
 .hist-head { font-size: 11px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
 .hist-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }

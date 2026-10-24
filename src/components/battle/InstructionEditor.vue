@@ -225,11 +225,11 @@ function cancel() {
 .ie-check { display: flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--text-dim); cursor: pointer; padding-bottom: 3px; }
 .ie-hint { margin: 5px 0 0; font-size: 10.5px; color: var(--accent); }
 .ie-carry { margin: 4px 0 0; font-size: 10px; color: var(--text-dim); }
-.ie-error { margin: 5px 0 0; font-size: 10.5px; color: #ff7a86; }
+.ie-error { margin: 5px 0 0; font-size: 10.5px; color: var(--up); }
 .ie-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
 .ie-btn { padding: 2px 12px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text); font-size: 11.5px; cursor: pointer; }
 .ie-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.ie-btn.primary { background: var(--accent); border-color: var(--accent); color: #14110a; font-weight: 700; }
+.ie-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); font-weight: 700; }
 .ie-btn.ghost { color: var(--text-dim); }
 .mono { font-variant-numeric: tabular-nums; }
 </style>

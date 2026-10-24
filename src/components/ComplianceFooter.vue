@@ -26,7 +26,7 @@ withDefaults(defineProps<{ compact?: boolean }>(), { compact: false });
   border: 1px dashed rgba(150, 160, 184, 0.35);
   border-radius: 8px;
   background: rgba(150, 160, 184, 0.06);
-  color: #8a93a8;
+  color: var(--text-dim);
   font-size: 12px;
   line-height: 1.6;
 }

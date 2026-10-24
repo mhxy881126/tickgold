@@ -725,12 +725,12 @@ defineExpose({ start, stop, running: engine.running });
 .sb-log-row {
   display: flex; gap: 6px; padding: 3px 0;
   font-family: Consolas, monospace; font-size: 11px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--ov-03);
 }
 .sb-log-time { color: var(--ov-text-muted, #6a5f42); width: 60px; flex-shrink: 0; }
 .sb-log-text { color: var(--ov-text-dim, #b8a878); flex: 1; line-height: 1.5; }
-.sb-log-row.buy .sb-log-text { color: #00e8a0; }
-.sb-log-row.sell .sb-log-text { color: #ff6478; }
+.sb-log-row.buy .sb-log-text { color: var(--down); }
+.sb-log-row.sell .sb-log-text { color: var(--up); }
 .sb-log-row.warn .sb-log-text { color: var(--accent, #ffb13d); }
 
 /* 滚动条 */
@@ -871,7 +871,7 @@ defineExpose({ start, stop, running: engine.running });
 }
 .sb-perf-item {
   padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--ov-02);
   border-radius: 6px;
   border: 1px solid color-mix(in srgb, var(--ov-gold, #ffd76a) 10%, transparent);
 }
@@ -885,7 +885,7 @@ defineExpose({ start, stop, running: engine.running });
   font-weight: 700;
   font-family: Consolas, monospace;
 }
-.sb-perf-value.up { color: #ff6478; }
-.sb-perf-value.down { color: #00e8a0; }
+.sb-perf-value.up { color: var(--up); }
+.sb-perf-value.down { color: var(--down); }
 .sb-perf-value.neutral { color: var(--accent, #ffd76a); }
 </style>

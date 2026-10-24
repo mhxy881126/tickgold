@@ -154,7 +154,7 @@ function confidenceColor(c: number): string {
 .error-icon {
   width: 40px; height: 40px; border-radius: 50%; display: flex;
   align-items: center; justify-content: center; font-size: 22px; font-weight: 800;
-  color: #ff6b78; background: rgba(255, 93, 107, 0.12);
+  color: var(--up); background: rgba(255, 93, 107, 0.12);
   border: 1px solid rgba(255, 93, 107, 0.35);
 }
 .error-text { text-align: center; max-width: 80%; word-break: break-word; }

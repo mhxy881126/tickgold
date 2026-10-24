@@ -810,7 +810,7 @@ onUnmounted(() => {
 }
 .sb-badge {
   margin-left: 4px;
-  background: #ff3b46;
+  background: var(--up);
   color: #fff;
   border-radius: 8px;
   font-size: 10px;
@@ -907,7 +907,7 @@ onUnmounted(() => {
   height: 18px;
   border-radius: 50%;
   background: rgba(212, 175, 55, 0.15);
-  color: #d4af37;
+  color: var(--accent);
   font-size: 10px;
   font-weight: 700;
   display: flex;
@@ -925,7 +925,7 @@ onUnmounted(() => {
   padding: 8px 10px;
 }
 .sig.is-buy {
-  border-left-color: #ff3b46;
+  border-left-color: var(--up);
 }
 .sig.is-sell {
   border-left-color: #1fbf75;
@@ -935,7 +935,7 @@ onUnmounted(() => {
   opacity: 0.6;
 }
 .st-done {
-  border-left-color: #6aa6e8;
+  border-left-color: var(--blue);
 }
 .sig-head {
   display: flex;
@@ -951,7 +951,7 @@ onUnmounted(() => {
 }
 .is-buy .sig-side {
   color: #fff;
-  background: #ff3b46;
+  background: var(--up);
 }
 .is-sell .sig-side {
   color: #fff;
@@ -1003,7 +1003,7 @@ onUnmounted(() => {
   width: 46px;
   height: 5px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--ov-08);
   overflow: hidden;
   display: inline-block;
 }
@@ -1018,7 +1018,7 @@ onUnmounted(() => {
 }
 .sb-pri.high { color: #ff5a5a; background: rgba(255, 90, 90, 0.12); }
 .sb-pri.mid { color: #ffb13d; background: rgba(255, 177, 61, 0.12); }
-.sb-pri.low { color: #8a93a6; background: rgba(138, 147, 166, 0.12); }
+.sb-pri.low { color: var(--text-dim); background: rgba(138, 147, 166, 0.12); }
 .conf-bar em {
   display: block;
   height: 100%;
@@ -1074,7 +1074,7 @@ onUnmounted(() => {
 }
 .seg-b.on {
   background: var(--accent, #e8c66a);
-  color: #14161c;
+  color: var(--accent-contrast);
   font-weight: 700;
 }
 .sig-actions {
@@ -1094,12 +1094,12 @@ onUnmounted(() => {
 .act.primary {
   background: var(--accent, #e8c66a);
   border-color: var(--accent, #e8c66a);
-  color: #14161c;
+  color: var(--accent-contrast);
   font-weight: 700;
 }
 .act.ghost:hover {
-  border-color: #ff5a6a;
-  color: #ff5a6a;
+  border-color: var(--up);
+  color: var(--up);
 }
 .act:disabled {
   opacity: 0.5;
@@ -1138,7 +1138,7 @@ onUnmounted(() => {
   left: 50%;
   bottom: 16px;
   transform: translateX(-50%);
-  background: rgba(20, 22, 28, 0.95);
+  background: var(--surface-solid);
   border: 1px solid var(--accent, #e8c66a);
   color: var(--text, #e6ecf5);
   border-radius: 8px;
@@ -1162,7 +1162,7 @@ onUnmounted(() => {
   padding: 6px 9px;
   border-radius: 7px;
   border: 1px solid var(--border, #2a3344);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--ov-03);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1174,15 +1174,15 @@ onUnmounted(() => {
   flex-wrap: wrap;
   font-size: 11px;
 }
-.bk-state { font-weight: 800; color: #6aa6e8; }
+.bk-state { font-weight: 800; color: var(--blue); }
 .bk-fill { color: var(--text-dim, #97a0b2); font-variant-numeric: tabular-nums; }
-.bk-err { color: #ff5a6a; font-size: 10px; }
+.bk-err { color: var(--up); font-size: 10px; }
 .bk-st-part_filled .bk-state { color: #ffb13d; }
 .bk-st-filled .bk-state { color: #1fbf75; }
-.bk-st-cancelled .bk-state { color: #8a93a6; }
+.bk-st-cancelled .bk-state { color: var(--text-dim); }
 .bk-st-error .bk-state,
-.bk-st-rejected .bk-state { color: #ff5a6a; }
-.act.dangerlive { background: #ff3b46; border-color: #ff3b46; color: #fff; font-weight: 700; }
+.bk-st-rejected .bk-state { color: var(--up); }
+.act.dangerlive { background: var(--up); border-color: var(--up); color: #fff; font-weight: 700; }
 .act.ghost { background: transparent; }
 
 </style>

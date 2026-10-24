@@ -229,11 +229,11 @@ onMounted(async () => {
 }
 .tab.on {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #14110a; border-color: transparent; font-weight: 700;
+  color: var(--accent-contrast); border-color: transparent; font-weight: 700;
 }
 .btn-new {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #14110a; border: none; font-weight: 700; font-size: 12px;
+  color: var(--accent-contrast); border: none; font-weight: 700; font-size: 12px;
   padding: 6px 14px; border-radius: 8px; cursor: pointer;
 }
 .btn-new.ghost {
@@ -289,7 +289,7 @@ tr.tone-down .kind { color: var(--down-g, #1dbe7d); }
 }
 .sw.on {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #14110a; border-color: transparent; font-weight: 700;
+  color: var(--accent-contrast); border-color: transparent; font-weight: 700;
 }
 .ops { display: flex; gap: 4px; }
 .op-btn {
@@ -298,10 +298,10 @@ tr.tone-down .kind { color: var(--down-g, #1dbe7d); }
   font-size: 11px; line-height: 1; padding: 0;
 }
 .op-btn:hover { color: var(--accent-2); border-color: var(--accent); }
-.op-btn.del:hover { color: #ff7a86; border-color: #ff7a86; }
+.op-btn.del:hover { color: var(--up); border-color: var(--up); }
 .h-ops { display: flex; gap: 5px; }
 .mini-btn {
-  background: var(--accent); color: #14110a; border: none;
+  background: var(--accent); color: var(--accent-contrast); border: none;
   border-radius: 6px; font-size: 10.5px; padding: 3px 8px; cursor: pointer;
 }
 .mini-btn.ghost {

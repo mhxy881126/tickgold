@@ -59,5 +59,5 @@ const d = useWidgetData(toRef(props, "bind"));
 .cell { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .cell label { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
 .cell b { font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.up { color: #f23645; } .down { color: #08db94; }
+.up { color: var(--up); } .down { color: var(--down); }
 </style>

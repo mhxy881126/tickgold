@@ -582,7 +582,7 @@ useSmartPolling(() => {
 }
 .dot {
   width: 6px; height: 6px; border-radius: 50%;
-  background: #5d6878;
+  background: var(--text-dim);
 }
 .dot.on {
   background: #08c98a;
@@ -627,7 +627,7 @@ useSmartPolling(() => {
   border: 1px solid rgba(255, 107, 120, 0.25);
   border-radius: 6px;
   font-size: 10.5px;
-  color: #ff8a93;
+  color: var(--up);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -747,7 +747,7 @@ useSmartPolling(() => {
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 18px; font-weight: 800;
-  color: #ff6b78;
+  color: var(--up);
   background: rgba(255, 93, 107, 0.12);
   border: 1px solid rgba(255, 93, 107, 0.35);
 }
@@ -830,7 +830,7 @@ useSmartPolling(() => {
 .t-item:hover .t-title { color: #fff; }
 .t-time {
   font-size: 9.5px;
-  color: #5d6878;
+  color: var(--text-dim);
   font-variant-numeric: tabular-nums;
   padding-top: 2px;
   flex: none;
@@ -854,7 +854,7 @@ useSmartPolling(() => {
 .t-src {
   margin-left: auto;
   font-size: 9px;
-  color: #5d6878;
+  color: var(--text-dim);
   white-space: nowrap;
 }
 
@@ -874,10 +874,10 @@ useSmartPolling(() => {
   border-radius: 4px;
 }
 .chip.sm { font-size: 8.5px; padding: 0 5px; }
-.chip.bull { background: rgba(255, 93, 107, 0.14); color: #ff8a93; }
+.chip.bull { background: rgba(255, 93, 107, 0.14); color: var(--up); }
 .chip.bear { background: rgba(8, 201, 138, 0.14); color: #3ddcaa; }
 .chip.neutral { background: rgba(138, 147, 166, 0.14); color: var(--text-dim, #8a93a6); }
-.chip.up { background: rgba(255, 93, 107, 0.14); color: #ff8a93; font-family: Consolas, monospace; }
+.chip.up { background: rgba(255, 93, 107, 0.14); color: var(--up); font-family: Consolas, monospace; }
 .chip.down { background: rgba(8, 201, 138, 0.14); color: #3ddcaa; font-family: Consolas, monospace; }
 .chip.scope { background: rgba(138, 147, 166, 0.1); color: var(--text-dim, #8a93a6); }
 .chip.stock {
@@ -973,7 +973,7 @@ useSmartPolling(() => {
 .f-load {
   text-align: center;
   font-size: 10px;
-  color: #5d6878;
+  color: var(--text-dim);
   padding: 8px 0;
 }
 </style>

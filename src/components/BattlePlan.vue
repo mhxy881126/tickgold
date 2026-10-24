@@ -309,7 +309,7 @@ onMounted(() => {
   color: var(--text-dim, #93a0b8);
 }
 .bp-link:hover { color: var(--accent, #d4af37); }
-.bp-drop:hover { color: #ff6b78; }
+.bp-drop:hover { color: var(--up); }
 .bp-area {
   width: 100%; box-sizing: border-box; padding: 5px 7px; font-size: 11px; line-height: 1.5;
   border: 1px solid var(--border, #2a3344); border-radius: 6px; resize: vertical;
@@ -321,7 +321,7 @@ onMounted(() => {
 .bp-col-head { font-size: 11px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
 .bp-col-head i {
   font-style: normal; font-size: 10px; padding: 0 6px; border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06); color: var(--text-dim, #aab2c4);
+  background: var(--ov-06); color: var(--text-dim, #aab2c4);
 }
 .bp-cards { display: flex; flex-direction: column; gap: 6px; }
 .bp-card {
@@ -333,7 +333,7 @@ onMounted(() => {
 .bp-card-head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .bp-code { color: var(--text-dim, #9aa3b6); font-size: 10px; font-family: ui-monospace, Consolas, monospace; }
 .bp-name { color: var(--text, #e6ecf5); font-weight: 600; }
-.bp-theme { font-size: 10px; color: #5aa0ff; }
+.bp-theme { font-size: 10px; color: var(--blue); }
 .bp-line { display: flex; gap: 6px; align-items: baseline; }
 .bp-line b { color: var(--text-dim, #8a93a6); font-weight: 500; font-size: 10px; min-width: 28px; }
 .bp-line span { color: var(--text, #cfd6e4); line-height: 1.45; font-size: 11px; }
@@ -376,7 +376,7 @@ onMounted(() => {
   height: 20px;
   border-radius: 50%;
   background: rgba(212, 175, 55, 0.15);
-  color: #d4af37;
+  color: var(--accent);
   font-size: 11px;
   font-weight: 700;
   display: flex;
@@ -397,11 +397,11 @@ onMounted(() => {
   border-color: var(--accent, #d4af37);
 }
 .bp-btn:disabled { opacity: .6; cursor: default; }
-.bp-err { color: #ff6b78; font-size: 11px; }
+.bp-err { color: var(--up); font-size: 11px; }
 .bp-toast {
   position: sticky; bottom: 8px; align-self: center; font-size: 11px;
   padding: 5px 14px; border-radius: 14px; background: rgba(30, 40, 30, 0.92);
-  color: #7fe0a0; border: 1px solid rgba(63, 207, 142, 0.4);
+  color: var(--down); border: 1px solid rgba(63, 207, 142, 0.4);
 }
 .bp-foot { color: var(--text-dim, #7a8496); font-size: 10px; }
 </style>

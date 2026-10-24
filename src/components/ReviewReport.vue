@@ -159,7 +159,7 @@ async function exportAs(kind: "html" | "md") {
   background: rgba(232, 200, 120, 0.05);
   padding: 7px 14px;
   cursor: pointer;
-  color: #e8c878;
+  color: var(--accent);
   font-size: 12px;
   font-weight: 500;
   transition: all 0.15s;
@@ -188,7 +188,7 @@ async function exportAs(kind: "html" | "md") {
   font-size: 11px;
 }
 .rr-msg.good {
-  color: #1dbe7d;
+  color: var(--down);
 }
 .rr-msg.bad {
   color: #ff5b5b;
@@ -201,7 +201,7 @@ async function exportAs(kind: "html" | "md") {
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
-  background: #0d0f14;
+  background: var(--bg-input);
   position: relative;
 }
 .rr-frame {
@@ -228,7 +228,7 @@ async function exportAs(kind: "html" | "md") {
   width: 32px;
   height: 32px;
   border: 3px solid rgba(232, 200, 120, 0.2);
-  border-top-color: #e8c878;
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: rr-spin 0.8s linear infinite;
 }

@@ -45,7 +45,7 @@ const rows = computed(() => quotes.sortedByPct());
 .head .pr, .head .pc { text-align: right; }
 .body { flex: 1; overflow-y: auto; min-height: 0; }
 .row { height: 24px; font-size: 10.5px; cursor: pointer; }
-.row:hover { background: rgba(255, 255, 255, .04); }
+.row:hover { background: var(--ov-04); }
 .row.on { background: rgba(232, 198, 106, .1); }
 .nm { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .nm b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -53,5 +53,5 @@ const rows = computed(() => quotes.sortedByPct());
 .pr, .pc { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 .empty { height: 100%; display: flex; align-items: center; justify-content: center;
   color: var(--text-dim); font-size: 10px; }
-.up { color: #f23645; } .down { color: #08db94; }
+.up { color: var(--up); } .down { color: var(--down); }
 </style>

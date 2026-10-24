@@ -26,7 +26,7 @@ const title = computed(() =>
   gap: 4px;
   font-size: 10px;
   font-style: normal;
-  color: #1dbe7d;
+  color: var(--down);
   border: 1px solid #1dbe7d66;
   background: #1dbe7d14;
   border-radius: 6px;
@@ -44,14 +44,14 @@ const title = computed(() =>
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #1dbe7d;
+  background: var(--down);
 }
 .qc.dim {
-  color: #8a93a6;
-  border-color: #3a4356;
-  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-dim);
+  border-color: var(--border-ov);
+  background: var(--ov-03);
 }
 .qc.dim .qc-dot {
-  background: #8a93a6;
+  background: var(--text-dim);
 }
 </style>

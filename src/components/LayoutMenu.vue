@@ -148,8 +148,8 @@ function fmt(ts: number) {
   right: 0;
   width: 248px;
   z-index: 50;
-  background: #141a23;
-  border: 1px solid #2a333f;
+  background: var(--bg-card2);
+  border: 1px solid var(--border-ov);
   border-radius: 10px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
   padding: 12px;
@@ -170,9 +170,9 @@ function fmt(ts: number) {
   min-width: 0;
   height: 28px;
   border-radius: 6px;
-  border: 1px solid #2a333f;
-  background: #0f141b;
-  color: #e6edf3;
+  border: 1px solid var(--border-ov);
+  background: var(--bg-input);
+  color: var(--text-dim);
   padding: 0 9px;
   font-size: 12px;
 }
@@ -200,7 +200,7 @@ function fmt(ts: number) {
 }
 .lm-empty {
   font-size: 12px;
-  color: #6b7684;
+  color: var(--text-dim);
   padding: 8px 0;
   text-align: center;
 }
@@ -212,7 +212,7 @@ function fmt(ts: number) {
   border-radius: 6px;
 }
 .lm-item:hover {
-  background: #1b232e;
+  background: var(--bg-card2);
 }
 .lm-info {
   flex: 1;
@@ -228,26 +228,26 @@ function fmt(ts: number) {
 }
 .lm-date {
   font-size: 10px;
-  color: #6b7684;
+  color: var(--text-dim);
   margin-top: 1px;
 }
 .lm-del {
   border: none;
   background: transparent;
-  color: #6b7684;
+  color: var(--text-dim);
   cursor: pointer;
   display: flex;
   border-radius: 5px;
   padding: 3px;
 }
 .lm-del:hover {
-  color: #f23645;
+  color: var(--up);
   background: rgba(242, 54, 69, 0.12);
 }
 .lm-io {
   border: none;
   background: transparent;
-  color: #6b7684;
+  color: var(--text-dim);
   cursor: pointer;
   display: flex;
   border-radius: 5px;
@@ -257,29 +257,29 @@ function fmt(ts: number) {
   color: #4cc2ff;
   background: rgba(76, 194, 255, 0.12);
 }
-.lm-mode.io { color: #7cc8ff; border-color: #274a66; }
+.lm-mode.io { color: #7cc8ff; border-color: var(--border-ov); }
 .lm-mode.io:hover { background: rgba(76, 194, 255, 0.1); }
 .lm-io-err { font-size: 10.5px; color: #ff8b94; margin-bottom: 6px; line-height: 1.4; }
 .lm-mode {
   width: 100%; height: 28px; border-radius: 6px; margin-bottom: 6px;
-  border: 1px solid #2a333f; background: transparent; color: #aab4c0;
+  border: 1px solid var(--border-ov); background: transparent; color: #aab4c0;
   font-size: 12px; cursor: pointer;
 }
-.lm-mode.free { color: #e8c96a; border-color: #5a4d22; }
+.lm-mode.free { color: #e8c96a; border-color: var(--border-ov); }
 .lm-mode.free:hover { background: rgba(212, 175, 55, 0.1); }
-.lm-mode.auto:hover { border-color: #4a5565; color: #e6edf3; }
+.lm-mode.auto:hover { border-color: var(--border-ov); color: var(--text-dim); }
 .lm-reset {
   width: 100%;
   height: 28px;
   border-radius: 6px;
-  border: 1px solid #2a333f;
+  border: 1px solid var(--border-ov);
   background: transparent;
   color: #aab4c0;
   font-size: 12px;
   cursor: pointer;
 }
 .lm-reset:hover {
-  border-color: #4a5565;
-  color: #e6edf3;
+  border-color: var(--border-ov);
+  color: var(--text-dim);
 }
 </style>

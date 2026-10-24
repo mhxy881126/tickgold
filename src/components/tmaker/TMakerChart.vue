@@ -321,8 +321,8 @@ onBeforeUnmount(() => {
   flex: none;
 }
 .ctab {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--ov-04);
+  border: 1px solid var(--ov-08);
   color: #8b93a7;
   font-size: 11px;
   padding: 2px 8px;
@@ -365,8 +365,8 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.pct-tick.up { color: #FF3232; }
-.pct-tick.dn { color: #1DBE7D; }
+.pct-tick.up { color: var(--up); }
+.pct-tick.dn { color: var(--down); }
 .pct-tick.zero { color: #dfe5f2; }
 .tm-chart-empty {
   position: absolute;
@@ -391,7 +391,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 4px 2px 0;
   font-size: 11px;
-  color: #9aa4b8;
+  color: var(--text-dim);
   flex: none;
 }
 .tm-legend .dot {
@@ -405,7 +405,7 @@ onBeforeUnmount(() => {
 .tm-legend .hint { color: #6b7488; margin-left: auto; }
 .d-sup { background: #3ecf8e; }
 .d-res { background: #ff5a5a; }
-.d-cost { background: #f5d020; }
+.d-cost { background: var(--accent); }
 .d-grid { background: #3aa0ff; }
 .d-leg { background: #b47cff; }
 .d-sig { background: #ff8f3d; height: 6px; width: 6px; border-radius: 3px; }

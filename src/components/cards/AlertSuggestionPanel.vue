@@ -160,7 +160,7 @@ function applyRule(s: AlertSuggestion) {
 .error-icon {
   width: 32px; height: 32px; border-radius: 50%; display: flex;
   align-items: center; justify-content: center; font-size: 18px; font-weight: 800;
-  color: #ff6b78; background: rgba(255, 93, 107, 0.12);
+  color: var(--up); background: rgba(255, 93, 107, 0.12);
   border: 1px solid rgba(255, 93, 107, 0.35);
 }
 .error-text { max-width: 80%; word-break: break-word; }
@@ -189,7 +189,7 @@ function applyRule(s: AlertSuggestion) {
 }
 .rule-field {
   font-size: 11px; padding: 2px 8px; border-radius: 4px;
-  background: rgba(78, 161, 255, 0.12); color: #4ea1ff; font-weight: 600;
+  background: rgba(78, 161, 255, 0.12); color: var(--blue); font-weight: 600;
 }
 .rule-op { font-size: 12px; color: var(--text-dim, #8a93a6); font-weight: 700; }
 .rule-value { font-size: 13px; color: var(--accent, #e8c66a); font-weight: 700; }
@@ -201,8 +201,8 @@ function applyRule(s: AlertSuggestion) {
 }
 .apply-btn:hover:not(:disabled) { background: rgba(232, 198, 106, 0.2); }
 .apply-btn.applied {
-  border-color: #26d07c; background: rgba(38, 208, 124, 0.1);
-  color: #26d07c; cursor: default;
+  border-color: var(--down); background: rgba(38, 208, 124, 0.1);
+  color: var(--down); cursor: default;
 }
 .disclaimer {
   flex-shrink: 0; font-size: 10px; color: var(--text-dim, #8a93a6);

@@ -295,7 +295,7 @@ void (null as unknown as ThemeId);
 }
 .ob-skip:hover, .ob-back:hover { color: var(--text); border-color: var(--border-light); }
 .ob-next {
-  background: var(--accent); color: #1a1407; border: none;
+  background: var(--accent); color: var(--accent-contrast); border: none;
   padding: 8px 22px; border-radius: 8px; font-weight: 700;
   cursor: pointer; font-size: 13px; font-family: inherit;
 }

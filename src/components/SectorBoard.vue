@@ -144,7 +144,7 @@ useSmartPolling(() => load(false), { interval: 10000, cardId: "sector" });
 }
 .toolbar button {
   background: transparent;
-  border: 1px solid #2a323d;
+  border: 1px solid var(--border-ov);
   color: var(--text-dim);
   font-size: 11px;
   padding: 3px 9px;
@@ -168,7 +168,7 @@ useSmartPolling(() => load(false), { interval: 10000, cardId: "sector" });
   font-size: 10px;
   color: var(--text-dim);
   padding: 4px 6px;
-  border-bottom: 1px solid #232b34;
+  border-bottom: 1px solid var(--border-ov);
 }
 .tbody {
   flex: 1;
@@ -177,10 +177,10 @@ useSmartPolling(() => load(false), { interval: 10000, cardId: "sector" });
 .trow {
   font-size: 11.5px;
   padding: 4px 6px;
-  border-bottom: 1px solid #1b222a;
+  border-bottom: 1px solid var(--border-ov);
 }
 .trow:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--ov-03);
 }
 .c-pct,
 .c-net {

@@ -747,7 +747,7 @@ async function askExample(q: string) {
   cursor: pointer;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #1a1408;
+  color: var(--accent-contrast);
 }
 .primary-btn:hover {
   filter: brightness(1.08);
@@ -1230,7 +1230,7 @@ async function askExample(q: string) {
 .send svg {
   width: 16px;
   height: 16px;
-  stroke: #1a1408;
+  stroke: var(--accent-contrast);
   stroke-width: 2;
   fill: none;
   stroke-linecap: round;

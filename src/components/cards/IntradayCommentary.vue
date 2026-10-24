@@ -412,7 +412,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(255, 107, 120, 0.25);
   border-radius: 6px;
   font-size: 10.5px;
-  color: #ff8a93;
+  color: var(--up);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -546,7 +546,7 @@ onBeforeUnmount(() => {
   width: 40px; height: 40px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 22px; font-weight: 800;
-  color: #ff6b78;
+  color: var(--up);
   background: rgba(255, 93, 107, 0.12);
   border: 1px solid rgba(255, 93, 107, 0.35);
 }
@@ -649,7 +649,7 @@ onBeforeUnmount(() => {
 .risk-title {
   display: flex; align-items: center; gap: 6px;
   font-size: 11px; font-weight: 700;
-  color: #ff8a8a;
+  color: var(--up);
   margin-bottom: 8px;
 }
 .risk-title svg { width: 13px; height: 13px; }
@@ -663,7 +663,7 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   width: 14px; height: 14px; border-radius: 50%;
   background: rgba(255, 107, 120, 0.2);
-  color: #ff8a8a;
+  color: var(--up);
   font-size: 10px; font-weight: 800;
   display: flex; align-items: center; justify-content: center;
   margin-top: 1px;

@@ -325,7 +325,7 @@ onMounted(() => {
 /* 详情卡片 */
 .sp-sec-card {
   padding: 12px;
-  background: rgba(255,255,255,0.03);
+  background: var(--ov-03);
   border-radius: 8px;
   margin-bottom: 8px;
 }
@@ -348,8 +348,8 @@ onMounted(() => {
   display: flex; flex-direction: column; gap: 2px; padding: 6px 8px;
   border: 1px solid transparent; border-radius: 8px; cursor: pointer;
 }
-.sp-row:hover { background: var(--bg-hover, rgba(255, 255, 255, 0.04)); }
-.sp-row.on { background: var(--bg-hover, rgba(255, 255, 255, 0.06)); border-color: var(--border, #2a3344); }
+.sp-row:hover { background: var(--bg-hover, var(--ov-04)); }
+.sp-row.on { background: var(--bg-hover, var(--ov-06)); border-color: var(--border, #2a3344); }
 .sp-name { color: var(--text, #e6ecf5); font-weight: 600; }
 .sp-meta { color: var(--text-dim, #8a93a6); font-size: 10px; }
 .sp-detail { flex: 1; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
@@ -376,12 +376,12 @@ onMounted(() => {
 .sp-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .sp-tags span {
   padding: 1px 8px; border-radius: 10px; font-size: 10px;
-  background: rgba(255, 255, 255, 0.05); color: var(--text-dim, #b6bdcc);
+  background: var(--ov-05); color: var(--text-dim, #b6bdcc);
 }
 .sp-ver { display: flex; flex-direction: column; gap: 3px; }
 .sp-ver-row {
   display: flex; align-items: center; gap: 8px; padding: 4px 6px;
-  border-radius: 6px; background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px; background: var(--ov-03);
 }
 .sp-ver-name { color: var(--text, #dfe5f0); font-size: 11px; min-width: 64px; }
 .sp-ver-name i { color: var(--accent, #d4af37); font-style: normal; }
@@ -397,7 +397,7 @@ onMounted(() => {
   background: var(--bg-card, #11141b); color: var(--text, #dfe5f0);
   font-family: ui-monospace, Consolas, monospace; resize: vertical;
 }
-.sp-err { color: #ff6b78; font-size: 11px; margin-top: 4px; }
+.sp-err { color: var(--up); font-size: 11px; margin-top: 4px; }
 .sp-mask {
   position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5);
   display: flex; align-items: center; justify-content: center; z-index: 20; border-radius: inherit;

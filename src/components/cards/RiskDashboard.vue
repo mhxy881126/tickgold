@@ -337,7 +337,7 @@ onBeforeUnmount(() => {
 }
 .risk-halt-dot {
   width: 8px; height: 8px; border-radius: 50%;
-  background: #ff3b30; flex: none;
+  background: var(--up); flex: none;
   animation: risk-pulse 1.2s infinite;
 }
 @keyframes risk-pulse {
@@ -361,8 +361,8 @@ onBeforeUnmount(() => {
 .risk-hero-actions { display: flex; gap: 8px; }
 .risk-refresh {
   padding: 6px 14px; border-radius: 8px; cursor: pointer;
-  background: rgba(255, 255, 255, 0.06); color: var(--text, #e6ecf5);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--ov-06); color: var(--text, #e6ecf5);
+  border: 1px solid var(--ov-12);
 }
 .risk-refresh:disabled { opacity: 0.5; cursor: default; }
 .risk-halt-btn {
@@ -403,28 +403,28 @@ onBeforeUnmount(() => {
 .risk-grid-5 { grid-template-columns: repeat(5, 1fr); }
 .risk-tile {
   padding: 12px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--ov-03);
   border-radius: 10px;
   text-align: center;
 }
 .risk-tile-num { font-size: 17px; font-weight: 700; }
 .risk-tile-num.sm { font-size: 15px; }
-.risk-tile-num.up { color: #ff5f57; }
+.risk-tile-num.up { color: var(--up); }
 .risk-tile-num.down { color: #2fcf7d; }
 .risk-tile-num.warn-text { color: #ffb13d; }
 .risk-tile-label { margin: 4px 0; color: var(--text-dim, #8892a8); }
 .risk-tile-sub { color: var(--text-dim, #667088); font-size: 11px; }
 .risk-tile-bar {
   height: 5px; margin-top: 6px; border-radius: 3px; overflow: hidden;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--ov-08);
 }
 .risk-tile-bar span {
   display: block; height: 100%;
-  background: linear-gradient(90deg, #ff9f43, #ff5f57);
+  background: linear-gradient(90deg, #ff9f43, var(--up));
 }
 
 /* 集中度 / 情绪 */
-.risk-conc, .risk-emotion { padding: 12px; background: rgba(255,255,255,0.02); border-radius: 10px; }
+.risk-conc, .risk-emotion { padding: 12px; background: var(--ov-02); border-radius: 10px; }
 .risk-conc-head {
   display: flex; justify-content: space-between;
   margin-bottom: 8px; color: var(--text-dim, #8892a8);
@@ -432,23 +432,23 @@ onBeforeUnmount(() => {
 .risk-conc-code { color: var(--text, #e6ecf5); font-weight: 600; }
 .risk-conc-bar {
   height: 8px; border-radius: 4px; overflow: hidden;
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--ov-07);
 }
 .risk-conc-bar span {
   display: block; height: 100%; background: #ffb13d;
 }
-.risk-conc-bar span.warn { background: #ff5f57; }
+.risk-conc-bar span.warn { background: var(--up); }
 .risk-emotion-bar {
   height: 8px; border-radius: 4px; overflow: hidden;
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--ov-07);
 }
 .risk-emotion-fill {
   display: block; height: 100%;
-  background: linear-gradient(90deg, #2fcf7d, #ffb13d 55%, #ff5f57);
+  background: linear-gradient(90deg, #2fcf7d, #ffb13d 55%, var(--up));
 }
 
 /* 板块暴露 */
-.risk-sectors { padding: 12px; background: rgba(255,255,255,0.02); border-radius: 10px; }
+.risk-sectors { padding: 12px; background: var(--ov-02); border-radius: 10px; }
 .risk-sectors-note {
   margin-left: 8px; font-weight: 400; font-size: 11px; color: var(--text-dim, #667088);
 }
@@ -464,7 +464,7 @@ onBeforeUnmount(() => {
 }
 .risk-sector-bar {
   height: 6px; border-radius: 3px; overflow: hidden;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--ov-06);
 }
 .risk-sector-bar span {
   display: block; height: 100%; background: #6ea8fe;
@@ -474,20 +474,20 @@ onBeforeUnmount(() => {
 }
 
 /* 持仓表 */
-.risk-positions { padding: 12px; background: rgba(255,255,255,0.02); border-radius: 10px; }
+.risk-positions { padding: 12px; background: var(--ov-02); border-radius: 10px; }
 .risk-positions-title {
   font-weight: 600; margin-bottom: 8px; color: var(--text, #e6ecf5);
 }
 .risk-table { width: 100%; border-collapse: collapse; }
 .risk-table th, .risk-table td {
-  padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.05);
+  padding: 6px 8px; border-bottom: 1px solid var(--ov-05);
 }
 .risk-table th { color: var(--text-dim, #8892a8); font-weight: 500; font-size: 11px; }
 .risk-table .r { text-align: right; font-variant-numeric: tabular-nums; }
 .risk-table .ellipsis {
   max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.risk-table .up { color: #ff5f57; }
+.risk-table .up { color: var(--up); }
 .risk-table .down { color: #2fcf7d; }
 .risk-empty { padding: 16px; text-align: center; color: var(--text-dim, #667088); }
 

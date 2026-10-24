@@ -115,7 +115,7 @@ watch(source, (s) => {
 .seg,.tabs { display:flex;padding:3px;border-radius:10px;background:rgba(0,0,0,.25);border:1px solid var(--border); }
 .seg button,.tabs button { font-size:11px;font-weight:600;color:var(--text-dim);padding:5px 11px;border-radius:8px;border:0;background:transparent;cursor:pointer;transition:.16s; }
 .seg button:hover,.tabs button:hover { color:var(--text); }
-.seg button.on,.tabs button.on { color:#fff;background:linear-gradient(180deg,#36b8e8,#1d8fc0); }
+.seg button.on,.tabs button.on { color:#fff;background:linear-gradient(180deg,var(--blue),#1d8fc0); }
 .link-lab { margin-left:auto;display:flex;align-items:center;gap:4px;font-size:10.5px;color:var(--text-dim);cursor:pointer; }
 .manual-bar { flex-shrink:0; }
 .manual-inp { width:100%;box-sizing:border-box;background:var(--bg-input,transparent);border:1px solid var(--border);color:var(--text);

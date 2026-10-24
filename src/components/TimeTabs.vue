@@ -79,7 +79,7 @@ const weekday = computed(() => {
   align-items: center;
   gap: 5px;
   font-size: 10px;
-  color: #8b949e;
+  color: var(--text-dim);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -89,7 +89,7 @@ const weekday = computed(() => {
 }
 .tt-btn:hover {
   color: #d6dde8;
-  background: #1a2230;
+  background: var(--bg-card2);
 }
 .tt-btn.on {
   color: #f0d488;

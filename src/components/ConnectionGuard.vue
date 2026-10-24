@@ -136,31 +136,31 @@ onBeforeUnmount(() => {
 }
 .cg-bar.resolved {
   background: linear-gradient(135deg, rgba(31,191,117,.14), rgba(31,191,117,.05));
-  border-bottom-color: rgba(31,191,117,.5); color: #c8f0d8;
+  border-bottom-color: rgba(31,191,117,.5); color: var(--down);
 }
 .cg-main { flex: 1; min-width: 0; }
 .cg-title { font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 8px; }
-.cg-dot { width: 9px; height: 9px; border-radius: 50%; background: #ff5a6a; flex-shrink: 0; animation: cg-blink 1s infinite; }
+.cg-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--up); flex-shrink: 0; animation: cg-blink 1s infinite; }
 .reconciling .cg-dot, .need-review .cg-dot { background: #ffb13d; }
-.resolved .cg-dot { background: #3dd68a; animation: none; }
+.resolved .cg-dot { background: var(--down); animation: none; }
 @keyframes cg-blink { 50% { opacity: .25; } }
 .cg-sub { margin-top: 3px; opacity: .85; }
 .cg-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .cg-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 8px; border-radius: 6px; background: rgba(0,0,0,.18); }
 .cg-side { font-weight: 700; padding: 1px 7px; border-radius: 4px; }
-.cg-side.buy { background: rgba(255,90,90,.2); color: #ff8a8a; }
-.cg-side.sell { background: rgba(45,212,140,.2); color: #48d98c; }
+.cg-side.buy { background: rgba(255,90,90,.2); color: var(--up); }
+.cg-side.sell { background: rgba(45,212,140,.2); color: var(--down); }
 .cg-code { font-weight: 700; font-variant-numeric: tabular-nums; }
 .cg-fld { opacity: .85; font-variant-numeric: tabular-nums; }
 .cg-status { margin-left: auto; font-weight: 700; }
 .cg-status.open { color: #ffb13d; }
 .cg-actions { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
 .cg-btn {
-  border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.06);
+  border: 1px solid var(--ov-25); background: var(--ov-06);
   color: inherit; font-size: 12px; font-weight: 600; border-radius: 7px;
   padding: 7px 12px; cursor: pointer; white-space: nowrap;
 }
-.cg-btn.primary { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.4); }
+.cg-btn.primary { background: var(--ov-16); border-color: var(--ov-40); }
 .cg-btn:disabled { opacity: .5; cursor: not-allowed; }
 .cg-fade-enter-active, .cg-fade-leave-active { transition: opacity .2s; }
 .cg-fade-enter-from, .cg-fade-leave-to { opacity: 0; }

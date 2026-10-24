@@ -280,7 +280,7 @@ async function doExport() {
   border: none;
   border-radius: 8px;
   background: var(--accent);
-  color: #1a1508;
+  color: var(--accent-contrast);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;

@@ -326,7 +326,7 @@ onMounted(() => {
 .tabs { display: flex; gap: 4px; margin-bottom: 8px; flex-shrink: 0; }
 .tabs button { font-size: 11.5px; padding: 4px 14px; background: transparent;
   color: var(--text-dim); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
-.tabs button.on { color: #fff; background: #2a3c5e; border-color: #3d5680; }
+.tabs button.on { color: #fff; background: var(--bg-hover); border-color: #3d5680; }
 .tab-code { font-size: 10px; opacity: .7; margin-left: 4px; }
 .spacer { flex: 1; }
 .reload { font-size: 10.5px !important; }
@@ -335,45 +335,45 @@ onMounted(() => {
 .stat-bar { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; flex-shrink: 0; }
 .stat { font-size: 11px; color: var(--text-dim); }
 .stat b { font-size: 13px; color: var(--text); margin-left: 4px; }
-.c-apply { color: #f23645 !important; }
+.c-apply { color: var(--up) !important; }
 .c-wait { color: #ff8a3d !important; }
 .filters { display: flex; gap: 4px; }
 .filters button { font-size: 10.5px; padding: 2px 11px; background: transparent;
   color: var(--text-dim); border: 1px solid var(--border); border-radius: 11px; cursor: pointer; }
-.filters button.on { color: #4ea1ff; border-color: #4ea1ff; }
+.filters button.on { color: var(--blue); border-color: var(--blue); }
 .ck { font-size: 11px; color: var(--text-dim); cursor: pointer; }
 
 .table-wrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 7px; }
 .t { width: 100%; border-collapse: collapse; font-size: 11.5px; white-space: nowrap; }
-.t thead th { position: sticky; top: 0; background: #111722; color: var(--text-dim);
+.t thead th { position: sticky; top: 0; background: var(--bg-card2); color: var(--text-dim);
   font-weight: 500; text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--border); z-index: 1; }
-.t tbody td { padding: 5px 9px; border-bottom: 1px solid #1a2230; }
+.t tbody td { padding: 5px 9px; border-bottom: 1px solid var(--border-ov); }
 .t tbody tr { cursor: pointer; }
-.t tbody tr:hover { background: #15202f; }
+.t tbody tr:hover { background: var(--bg-card2); }
 .c-date { color: #d7dee7; }
 .c-code { color: var(--text-dim); }
 .c-name { font-weight: 600; }
 .r { text-align: right; }
 
 .stag { font-size: 10px; padding: 1px 8px; border-radius: 9px; }
-.stag.apply { color: #f23645; background: #f2364518; }
+.stag.apply { color: var(--up); background: #f2364518; }
 .stag.wait { color: #ff8a3d; background: #ff8a3d18; }
-.stag.done { color: var(--text-dim); background: #2a3242; }
+.stag.done { color: var(--text-dim); background: var(--bg-hover); }
 
 /* 限售类型标签 */
 .ttag { font-size: 10px; padding: 1px 7px; border-radius: 4px; white-space: nowrap; }
 .ttag.t-first { color: #f2643d; background: rgba(242, 100, 61, 0.12); }
-.ttag.t-equity { color: #4ea1ff; background: rgba(78, 161, 255, 0.12); }
+.ttag.t-equity { color: var(--blue); background: rgba(78, 161, 255, 0.12); }
 .ttag.t-add { color: #b07ce8; background: rgba(176, 124, 232, 0.12); }
 .ttag.t-other { color: #9aa4b0; background: rgba(154, 164, 176, 0.12); }
 
 .dcount { color: #ff8a3d; font-size: 10.5px; }
-.dcount.today { color: #f23645; font-weight: 600; }
+.dcount.today { color: var(--up); font-weight: 600; }
 .past { color: var(--text-dim); font-size: 10.5px; }
 tr.future { background: #ff8a3d0a; }
 
 .load-foot { text-align: center; font-size: 10.5px; color: var(--text-dim); padding: 8px 0; }
 .hint { flex: 1; display: flex; align-items: center; justify-content: center;
   color: var(--text-dim); font-size: 12px; }
-.hint.err { color: #f23645; }
+.hint.err { color: var(--up); }
 </style>

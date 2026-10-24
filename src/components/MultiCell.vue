@@ -9,6 +9,7 @@ import { useWatchlistStore } from "../stores/watchlist";
 import type { KBar, OrderBook, DepthEnhance } from "../api/types";
 import AnimatedNumber from "./common/AnimatedNumber.vue";
 import { normalizeBook } from "../composables/tmaker/bookNormalize";
+import { useTheme } from "../composables/useTheme";
 
 const props = defineProps<{
   code: string;
@@ -16,6 +17,16 @@ const props = defineProps<{
   link?: boolean;
 }>();
 const emit = defineEmits<{ select: [code: string] }>();
+const { theme } = useTheme();
+const isLight = computed(() => theme.value === "light" || theme.value === "ths-white");
+// 大图表（全屏放大）轴线 / 标签随主题
+const axisColor = computed(() => (isLight.value ? "#6b7280" : "#8a93a5"));
+const axisLineColor = computed(() => (isLight.value ? "rgba(0,0,0,.15)" : "#2a3344"));
+const tip = computed(() =>
+  isLight.value
+    ? { bg: "rgba(255,255,255,0.98)", border: "rgba(0,0,0,0.12)", text: "#1f2430" }
+    : { bg: "rgba(15,20,29,0.95)", border: "#2a3344", text: "#d8dee9" }
+);
 
 const quotes = useQuotesStore();
 const wl = useWatchlistStore();
@@ -136,7 +147,7 @@ function distOption() {
     legend: { data: ["主动买", "主动卖"], top: 4, right: 8,
       textStyle: { color: "#8a93a5", fontSize: 10 } },
     xAxis: { type: "value", axisLabel: { color: "#8a93a5", fontSize: 10 },
-      splitLine: { lineStyle: { color: "rgba(255,255,255,.05)" } } },
+      splitLine: { lineStyle: { color: "var(--ov-05)" } } },
     yAxis: { type: "category", data: rows.map((r) => r.price.toFixed(2)),
       axisLabel: { color: "#8a93a5", fontSize: 9, interval: Math.max(0, Math.floor(rows.length / 18)) },
       axisTick: { show: false } },
@@ -162,7 +173,7 @@ function auctionOption() {
       axisLabel: { color: "#8a93a5", fontSize: 10 } },
     yAxis: [
       { type: "value", scale: true, name: "价", nameTextStyle: { color: "#8a93a5", fontSize: 9 },
-        axisLabel: { color: "#8a93a5", fontSize: 10 }, splitLine: { lineStyle: { color: "rgba(255,255,255,.05)" } } },
+        axisLabel: { color: "#8a93a5", fontSize: 10 }, splitLine: { lineStyle: { color: "var(--ov-05)" } } },
       { type: "value", name: "量", nameTextStyle: { color: "#8a93a5", fontSize: 9 },
         axisLabel: { color: "#8a93a5", fontSize: 10 }, splitLine: { show: false } },
     ],
@@ -189,7 +200,7 @@ function sealOption() {
       axisLabel: { color: "#8a93a5", fontSize: 10 } },
     yAxis: { type: "value", axisLabel: { color: "#8a93a5", fontSize: 10,
         formatter: (v: number) => (v >= 1e8 ? (v / 1e8).toFixed(1) + "亿" : (v / 1e4).toFixed(0) + "万") },
-      splitLine: { lineStyle: { color: "rgba(255,255,255,.05)" } } },
+      splitLine: { lineStyle: { color: "var(--ov-05)" } } },
     series: [{ type: "line", data: rows.map((r) => r.fund), showSymbol: true, symbolSize: 4,
       lineStyle: { width: 1.6, color: "#f23645" }, itemStyle: { color: "#f23645" },
       areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
@@ -236,7 +247,7 @@ function linkAxis() {
     ? {
         tooltip: {
           trigger: "axis", showContent: false,
-          axisPointer: { type: "line", lineStyle: { color: "rgba(255,255,255,.4)", width: 1 } },
+          axisPointer: { type: "line", lineStyle: { color: "var(--ov-40)", width: 1 } },
         },
         xAxisPointer: { label: { show: false } },
       }
@@ -273,11 +284,12 @@ function bigMinute() {
   return {
     animation: false,
     grid: { left: 48, right: 16, top: 30, bottom: 30 },
-    tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
+    tooltip: { trigger: "axis", axisPointer: { type: "cross" },
+      backgroundColor: tip.value.bg, borderColor: tip.value.border, textStyle: { color: tip.value.text, fontSize: 11 } },
     xAxis: { type: "category", boundaryGap: false, data: d.map((b) => fmtTs(b.timestamp)),
-      axisLabel: { color: "#8a93a5", fontSize: 10, interval: Math.floor(d.length / 6) } },
+      axisLabel: { color: axisColor.value, fontSize: 10, interval: Math.floor(d.length / 6) } },
     yAxis: { type: "value", scale: true,
-      axisLabel: { color: "#8a93a5", fontSize: 10 }, splitLine: { lineStyle: { color: "rgba(255,255,255,.05)" } } },
+      axisLabel: { color: axisColor.value, fontSize: 10 }, splitLine: { lineStyle: { color: "var(--ov-05)" } } },
     series: [{ type: "line", data: d.map((b) => b.close), showSymbol: false,
       lineStyle: { width: 1.5, color: c },
       areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
@@ -290,16 +302,17 @@ function bigK() {
   const d = kline.value;
   return {
     animation: false,
-    legend: { data: ["MA5", "MA10", "MA20"], textStyle: { color: "#8a93a5", fontSize: 10 }, top: 4 },
+    legend: { data: ["MA5", "MA10", "MA20"], textStyle: { color: axisColor.value, fontSize: 10 }, top: 4 },
     grid: [{ left: 48, right: 16, top: 30, height: "58%" }, { left: 48, right: 16, top: "76%", height: "16%" }],
-    tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
+    tooltip: { trigger: "axis", axisPointer: { type: "cross" },
+      backgroundColor: tip.value.bg, borderColor: tip.value.border, textStyle: { color: tip.value.text, fontSize: 11 } },
     xAxis: [
-      { type: "category", data: d.map((b) => fmtDay(b.timestamp)), axisLabel: { color: "#8a93a5", fontSize: 10 },
-        axisLine: { lineStyle: { color: "#2a3344" } } },
+      { type: "category", data: d.map((b) => fmtDay(b.timestamp)), axisLabel: { color: axisColor.value, fontSize: 10 },
+        axisLine: { lineStyle: { color: axisLineColor.value } } },
       { type: "category", gridIndex: 1, data: d.map((b) => ""), axisLabel: { show: false } },
     ],
     yAxis: [
-      { scale: true, axisLabel: { color: "#8a93a5", fontSize: 10 }, splitLine: { lineStyle: { color: "rgba(255,255,255,.05)" } } },
+      { scale: true, axisLabel: { color: axisColor.value, fontSize: 10 }, splitLine: { lineStyle: { color: "var(--ov-05)" } } },
       { gridIndex: 1, axisLabel: { show: false }, splitLine: { show: false } },
     ],
     series: [
@@ -351,6 +364,9 @@ watch(focus, async (f) => {
     apply();
   }
 });
+
+// 主题切换时重绘，让 tooltip / 轴线跟随
+watch(theme, () => nextTick(apply));
 
 // ===== 迷你分时实时增量刷新：15s 节流，仅分时/普通态/页面可见/格子在屏 =====
 const onScreen = ref(true);
@@ -408,7 +424,7 @@ onBeforeUnmount(() => {
         <AnimatedNumber tag="span" class="q" :class="(quote?.pct ?? 0) >= 0 ? 'up' : 'down'" :value="quote?.price ?? 0" kind="price" />
         <AnimatedNumber tag="span" class="q" :class="(quote?.pct ?? 0) >= 0 ? 'up' : 'down'" :value="quote?.pct ?? 0" kind="pct" />
       </div>
-      <div class="mc-body" title="点击放大">
+      <div class="mc-body" title="点击放大" @click="openFocus">
         <!-- 指标角标：量比（真实）；涨速 / 封单待 v2.25 数据接入后在此扩展 -->
         <div v-if="quote?.volumeRatio" class="mc-ind">量比 {{ quote.volumeRatio.toFixed(2) }}</div>
         <div v-show="view !== 'o'" ref="miniEl" class="mini"></div>
@@ -540,7 +556,7 @@ onBeforeUnmount(() => {
 .mcell { display:flex; flex-direction:column; background:var(--bg-card,#0f141d);
   border:1px solid var(--border,#1e2738); border-radius:11px; overflow:hidden; min-width:0; min-height:0; }
 .mc-h { height:30px;flex-shrink:0;display:flex;align-items:center;gap:7px;padding:0 9px;
-  border-bottom:1px solid #17202e; }
+  border-bottom:1px solid var(--border-ov); }
 .nm { font-size:11.5px;font-weight:700;cursor:pointer; } .cd { font-variant-numeric:tabular-nums;font-size:9.5px;color:var(--text-dim); }
 .q { margin-left:auto;font-variant-numeric:tabular-nums;font-size:10.5px;font-weight:700; }
 .mc-body { flex:1;min-height:0;position:relative;cursor:zoom-in; }
@@ -552,13 +568,13 @@ onBeforeUnmount(() => {
 .ob2 .lb { color:var(--text-dim);width:26px;font-size:8.5px; }
 .ob2 .pr { font-variant-numeric:tabular-nums;font-weight:600; }
 .ob2 .vl { margin-left:auto;font-variant-numeric:tabular-nums;font-size:8.5px; }
-.ob2.s .pr { color:#ff6b78; } .ob2.b .pr { color:#2fe6ac; }
+.ob2.s .pr { color:var(--up); } .ob2.b .pr { color:#2fe6ac; }
 .ob2-foot { margin-top:2px;font-size:8px;color:var(--text-dim);text-align:center;white-space:nowrap; }
-.ob2-foot b { font-weight:700; } .ob2-foot .up { color:#ff6b78; } .ob2-foot .down { color:#2fe6ac; }
+.ob2-foot b { font-weight:700; } .ob2-foot .up { color:var(--up); } .ob2-foot .down { color:#2fe6ac; }
 .loading { color:var(--text-dim);font-size:10px;text-align:center; }
 
 /* 全屏 */
-.focus-mask { position:fixed;inset:0;z-index:80;background:rgba(5,7,10,.72);backdrop-filter:blur(2px); }
+.focus-mask { position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.5);backdrop-filter:blur(2px); }
 .focus-card { position:fixed;z-index:81;inset:34px;display:flex;flex-direction:column;
   background:var(--bg-card,#0f141d);border:1px solid var(--border);border-radius:14px;overflow:hidden; }
 .fc-h { height:40px;flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--border); }
@@ -569,26 +585,26 @@ onBeforeUnmount(() => {
 .big-ob { flex:1;min-height:0;display:flex;flex-direction:column;padding:14px;gap:10px; }
 .ob-tabs { display:flex;gap:6px;flex-shrink:0; }
 .ob-tabs button { flex:1;height:26px;border:1px solid var(--border);border-radius:7px;
-  background:rgba(255,255,255,.03);color:var(--text-dim);font-size:11px;cursor:pointer; }
-.ob-tabs button.on { color:#fff;background:#2a3344;border-color:#3a475f; }
+  background:var(--ov-03);color:var(--text-dim);font-size:11px;cursor:pointer; }
+.ob-tabs button.on { color:#fff;background:var(--bg-hover);border-color:var(--border-ov); }
 .ob-pane { flex:1;min-height:0;display:flex;flex-direction:column;gap:10px; }
 .enh-pane { position:relative; }
 .enh-chart { flex:1;min-height:0;width:100%; }
 .bo-grid { flex:1;display:flex;flex-direction:column;justify-content:center; }
 .bo-row { display:grid;grid-template-columns:60px 1fr 90px;align-items:center;height:26px;font-size:12px; }
 .bo-row b { font-variant-numeric:tabular-nums; } .bo-row em { font-style:normal;text-align:right;font-variant-numeric:tabular-nums;color:var(--text-dim); }
-.bo-row.s b { color:#ff6b78; } .bo-row.b b { color:#2fe6ac; }
+.bo-row.s b { color:var(--up); } .bo-row.b b { color:#2fe6ac; }
 .bo-mid { text-align:center;height:28px;line-height:28px;font-size:12px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin:3px 0; }
 .l2-note{margin:6px 0 0;font-size:10px;color:var(--text-dim,#8a93a8);line-height:1.5}
 .bo-info { font-size:11px;color:var(--text-dim);text-align:center; }
 .bo-depth {
   display:grid; grid-template-columns:repeat(3,1fr); gap:6px 14px;
-  padding:10px 18px; border-radius:9px; background:rgba(255,255,255,.03);
+  padding:10px 18px; border-radius:9px; background:var(--ov-03);
 }
 .bd-item { display:flex; align-items:center; justify-content:space-between; font-size:11px; }
 .bd-l { color:var(--text-dim); }
 .bd-item b { font-variant-numeric:tabular-nums; }
-.bd-item .up { color:#ff6b78; } .bd-item .down { color:#2fe6ac; }
+.bd-item .up { color:var(--up); } .bd-item .down { color:#2fe6ac; }
 .bo-note { font-size:10px;color:var(--text-dim);text-align:center;opacity:.75; }
 .bo-note.l2 { color:var(--accent);opacity:.95; }
 </style>

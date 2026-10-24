@@ -170,7 +170,7 @@ onMounted(refresh);
     <div class="pipeline">
       <template v-for="(s, i) in STAGES" :key="s.key">
         <div class="pl-stage" :class="stageClass(s.key, i)">
-          <span class="pl-dot" :style="{ background: stageClass(s.key, i) === 'todo' ? '#2a3542' : s.color, borderColor: s.color }" />
+          <span class="pl-dot" :style="{ background: stageClass(s.key, i) === 'todo' ? 'var(--bg-card2)' : s.color, borderColor: s.color }" />
           <div class="pl-text">
             <div class="pl-name">{{ s.name }}</div>
             <div class="pl-desc">{{ s.desc }}</div>
@@ -289,8 +289,8 @@ onMounted(refresh);
 <style scoped>
 .rollout {
   margin-top: 14px;
-  background: linear-gradient(180deg, rgba(20, 27, 36, 0.96), rgba(13, 18, 25, 0.98));
-  border: 1px solid #1f2a37;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 16px 18px;
 }
@@ -319,7 +319,7 @@ onMounted(refresh);
 .ro-name {
   font-size: 15px;
   font-weight: 700;
-  color: #e6edf3;
+  color: var(--text-dim);
 }
 .ro-badge {
   font-size: 11px;
@@ -334,8 +334,8 @@ onMounted(refresh);
   animation: blink 1.2s infinite;
 }
 .ro-badge.fail {
-  color: #f23645;
-  border-color: #f23645;
+  color: var(--up);
+  border-color: var(--up);
 }
 @keyframes blink {
   50% {
@@ -358,27 +358,27 @@ onMounted(refresh);
   transition: 0.15s;
 }
 .btn-primary {
-  background: #36b8e8;
-  color: #061018;
+  background: var(--blue);
+  color: var(--accent-contrast);
 }
 .btn-primary:hover {
   filter: brightness(1.08);
 }
 .btn-danger {
-  background: #f23645;
+  background: var(--up);
   color: #fff;
 }
 .btn-danger:hover {
-  background: #ff5a6a;
+  background: var(--up);
 }
 .btn-ghost {
   background: transparent;
   color: #b7c2cf;
-  border-color: #2c3a4a;
+  border-color: var(--border-ov);
 }
 .btn-ghost:hover {
-  border-color: #4a5c70;
-  color: #e6edf3;
+  border-color: var(--border-ov);
+  color: var(--text-dim);
 }
 button:disabled {
   opacity: 0.45;
@@ -418,7 +418,7 @@ button:disabled {
 .pl-name {
   font-size: 13px;
   font-weight: 700;
-  color: #e6edf3;
+  color: var(--text-dim);
 }
 .pl-stage.todo .pl-name {
   color: #6b7886;
@@ -429,12 +429,12 @@ button:disabled {
   margin-top: 1px;
 }
 .pl-arrow {
-  color: #33414f;
+  color: var(--accent-contrast);
   font-size: 16px;
   flex: none;
 }
 .pl-arrow.on {
-  color: #36b8e8;
+  color: var(--blue);
 }
 
 .stats-grid {
@@ -444,8 +444,8 @@ button:disabled {
   margin-bottom: 14px;
 }
 .stat {
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid #1c2734;
+  background: var(--ov-03);
+  border: 1px solid var(--border-ov);
   border-radius: 10px;
   padding: 10px 12px;
 }
@@ -457,7 +457,7 @@ button:disabled {
 .stat-v {
   font-size: 17px;
   font-weight: 700;
-  color: #e6edf3;
+  color: var(--text-dim);
 }
 .stat-v.small {
   font-size: 13px;
@@ -469,7 +469,7 @@ button:disabled {
   font-weight: 400;
 }
 .stat-v.ok {
-  color: #37d67a;
+  color: var(--down);
 }
 .stat-v.warn {
   color: #ffb13d;
@@ -480,7 +480,7 @@ button:disabled {
 }
 .op-card {
   background: rgba(54, 184, 232, 0.05);
-  border: 1px solid #20303f;
+  border: 1px solid var(--border-ov);
   border-radius: 10px;
   padding: 12px 14px;
 }
@@ -499,7 +499,7 @@ button:disabled {
   margin-bottom: 10px;
 }
 .danger-text {
-  color: #ff5a6a;
+  color: var(--up);
   font-weight: 600;
 }
 .param-row {
@@ -517,10 +517,10 @@ button:disabled {
 }
 .param-row input {
   width: 96px;
-  background: #0d141c;
-  border: 1px solid #2c3a4a;
+  background: var(--bg-input);
+  border: 1px solid var(--border-ov);
   border-radius: 7px;
-  color: #e6edf3;
+  color: var(--text-dim);
   padding: 6px 8px;
   font-size: 13px;
 }
@@ -530,7 +530,7 @@ button:disabled {
 }
 
 .drill-area {
-  border-top: 1px dashed #223040;
+  border-top: 1px dashed var(--border-ov);
   padding-top: 12px;
 }
 .drill-head {
@@ -542,7 +542,7 @@ button:disabled {
 .drill-title {
   font-size: 13px;
   font-weight: 700;
-  color: #e6edf3;
+  color: var(--text-dim);
 }
 .drill-hint {
   font-size: 11.5px;
@@ -554,17 +554,17 @@ button:disabled {
   margin-bottom: 8px;
 }
 .drill-result.ok .drill-summary {
-  color: #37d67a;
+  color: var(--down);
 }
 .drill-result:not(.ok) .drill-summary {
-  color: #f23645;
+  color: var(--up);
 }
 .drill-row {
   display: flex;
   gap: 9px;
   align-items: flex-start;
   padding: 6px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--ov-04);
 }
 .drill-mark {
   font-size: 14px;
@@ -573,10 +573,10 @@ button:disabled {
   width: 18px;
 }
 .drill-row.pass .drill-mark {
-  color: #37d67a;
+  color: var(--down);
 }
 .drill-row.fail .drill-mark {
-  color: #f23645;
+  color: var(--up);
 }
 .drill-name {
   font-size: 12.5px;
@@ -591,7 +591,7 @@ button:disabled {
 .ro-error {
   margin-top: 10px;
   font-size: 12px;
-  color: #ff5a6a;
+  color: var(--up);
   background: rgba(242, 54, 69, 0.1);
   border: 1px solid rgba(242, 54, 69, 0.3);
   border-radius: 8px;

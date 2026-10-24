@@ -383,7 +383,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(255, 107, 120, 0.25);
   border-radius: 6px;
   font-size: 10.5px;
-  color: #ff8a93;
+  color: var(--up);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -454,7 +454,7 @@ onBeforeUnmount(() => {
 .error-icon {
   width: 40px; height: 40px; border-radius: 12px; display: flex;
   align-items: center; justify-content: center; font-size: 20px; font-weight: 800;
-  color: #ff6b78; background: rgba(255, 107, 120, 0.1);
+  color: var(--up); background: rgba(255, 107, 120, 0.1);
   border: 1px solid rgba(255, 107, 120, 0.25);
 }
 .error-title { font-size: 13px; font-weight: 600; color: var(--text, #e6ecf5); }
@@ -480,7 +480,7 @@ onBeforeUnmount(() => {
   overflow-y: auto; overflow-x: hidden;
 }
 .bento-content::-webkit-scrollbar { width: 3px; }
-.bento-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 2px; }
+.bento-content::-webkit-scrollbar-thumb { background: var(--ov-08); border-radius: 2px; }
 
 /* 复盘条 */
 .review-bar {
@@ -552,7 +552,7 @@ onBeforeUnmount(() => {
 }
 .str-bar {
   height: 5px; border-radius: 3px;
-  background: rgba(255,255,255,.06);
+  background: var(--ov-06);
   overflow: hidden;
 }
 .str-fill {
@@ -593,7 +593,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .bento-sub:hover {
-  background: rgba(255,255,255,.04);
+  background: var(--ov-04);
   border-color: var(--border, #3a4458);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0,0,0,.3);
@@ -616,18 +616,18 @@ onBeforeUnmount(() => {
 .sub-strength { display: flex; gap: 3px; }
 .sub-strength .dot {
   width: 6px; height: 6px; border-radius: 50%;
-  background: rgba(255,255,255,.08);
+  background: var(--ov-08);
 }
 .bento-sub.str-strong .sub-strength .dot.active {
   background: var(--accent, #e8b860);
   box-shadow: 0 0 4px var(--accent, #e8b860);
 }
 .bento-sub.str-medium .sub-strength .dot.active {
-  background: #4ea1ff;
-  box-shadow: 0 0 4px #4ea1ff;
+  background: var(--blue);
+  box-shadow: 0 0 4px var(--blue);
 }
 .bento-sub.str-weak .sub-strength .dot.active {
-  background: #6b7280;
+  background: var(--text-dim);
 }
 
 .sub-name {
@@ -652,7 +652,7 @@ onBeforeUnmount(() => {
   background: rgba(255, 107, 120, 0.06);
   border: 1px solid rgba(255, 107, 120, 0.18);
 }
-.risk-icon { color: #ff6b78; font-size: 13px; flex-shrink: 0; margin-top: 1px; }
+.risk-icon { color: var(--up); font-size: 13px; flex-shrink: 0; margin-top: 1px; }
 .risk-text { font-size: 11.5px; color: #ffb0bc; line-height: 1.65; }
 
 /* ===== 底部免责 ===== */

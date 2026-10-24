@@ -74,10 +74,10 @@ function removeChild(id: string) {
 
 <style scoped>
 .tree-node {
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border: 1px solid var(--border, var(--ov-12));
   border-radius: 8px;
   padding: 8px;
-  background: var(--bg-elevated-soft, rgba(255, 255, 255, 0.03));
+  background: var(--bg-elevated-soft, var(--ov-03));
 }
 .node-head {
   display: flex;
@@ -87,7 +87,7 @@ function removeChild(id: string) {
 }
 .combo {
   display: inline-flex;
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border: 1px solid var(--border, var(--ov-12));
   border-radius: 6px;
   overflow: hidden;
 }
@@ -101,11 +101,11 @@ function removeChild(id: string) {
 }
 .combo-btn.active {
   background: var(--accent, #d4af37);
-  color: #1a1a1a;
+  color: var(--accent-contrast);
 }
 .add-btn {
   background: transparent;
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  border: 1px solid var(--border, var(--ov-14));
   color: var(--text, #e8eaed);
   border-radius: 6px;
   font-size: 11px;
@@ -127,7 +127,7 @@ function removeChild(id: string) {
   flex-direction: column;
   gap: 8px;
   padding-left: 10px;
-  border-left: 2px solid var(--border, rgba(255, 255, 255, 0.1));
+  border-left: 2px solid var(--border, var(--ov-10));
 }
 .empty-hint {
   font-size: 11px;

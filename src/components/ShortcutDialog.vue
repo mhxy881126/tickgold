@@ -293,10 +293,10 @@ kbd.unbound { color: var(--text-dim); border-style: dashed; }
   background: var(--bg-card); color: var(--text);
   border: 1px solid var(--border-light); cursor: pointer;
 }
-.mini.danger { color: #e5484d; border-color: #e5484d55; }
+.mini.danger { color: var(--up); border-color: #e5484d55; }
 .rec-hint { font-size: 12px; color: var(--accent); }
 .rec-hint em { color: var(--text-dim); font-style: normal; }
-.rec-conflict { font-size: 12px; color: #e5484d; }
+.rec-conflict { font-size: 12px; color: var(--up); }
 .sc-foot {
   padding: 12px 18px; border-top: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
@@ -307,7 +307,7 @@ kbd.unbound { color: var(--text-dim); border-style: dashed; }
 }
 .sc-reset:hover { color: var(--text); }
 .sc-ok {
-  background: var(--accent); color: #1a1407; border: none;
+  background: var(--accent); color: var(--accent-contrast); border: none;
   padding: 7px 20px; border-radius: 8px; font-weight: 700;
   cursor: pointer; font-size: 13px;
 }

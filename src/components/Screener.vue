@@ -284,7 +284,7 @@ function pctText(n: number): string {
 }
 .presets button {
   background: transparent;
-  border: 1px solid #2a323d;
+  border: 1px solid var(--border-ov);
   color: var(--text-dim);
   font-size: 11px;
   padding: 3px 10px;
@@ -292,7 +292,7 @@ function pctText(n: number): string {
   cursor: pointer;
 }
 .presets button:hover {
-  border-color: #d4af37;
+  border-color: var(--accent);
   color: #e6c860;
 }
 .presets .reset {
@@ -311,7 +311,7 @@ function pctText(n: number): string {
   width: 188px;
   flex-shrink: 0;
   overflow-y: auto;
-  border-right: 1px solid #232b34;
+  border-right: 1px solid var(--border-ov);
   padding-right: 8px;
 }
 .group-title {
@@ -337,14 +337,14 @@ function pctText(n: number): string {
 .box {
   width: 13px;
   height: 13px;
-  border: 1px solid #3a4450;
+  border: 1px solid var(--border-ov);
   border-radius: 3px;
   position: relative;
   flex-shrink: 0;
 }
 .check input:checked + .box {
-  background: #d4af37;
-  border-color: #d4af37;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 .check input:checked + .box::after {
   content: "";
@@ -353,7 +353,7 @@ function pctText(n: number): string {
   top: 1px;
   width: 4px;
   height: 7px;
-  border: solid #1a1408;
+  border: solid var(--border-ov);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
@@ -371,8 +371,8 @@ function pctText(n: number): string {
 }
 .range input {
   width: 46px;
-  background: #141a21;
-  border: 1px solid #2a323d;
+  background: var(--bg-card2);
+  border: 1px solid var(--border-ov);
   border-radius: 4px;
   color: var(--text);
   font-size: 10.5px;
@@ -397,8 +397,8 @@ function pctText(n: number): string {
   margin-bottom: 7px;
 }
 .run-btn {
-  background: linear-gradient(135deg, #d4af37, #b8941f);
-  color: #1a1408;
+  background: linear-gradient(135deg, var(--accent), #b8941f);
+  color: var(--accent-contrast);
   border: none;
   font-size: 12px;
   font-weight: 700;
@@ -425,7 +425,7 @@ function pctText(n: number): string {
   font-size: 10px;
   color: var(--text-dim);
   padding: 4px 6px;
-  border-bottom: 1px solid #232b34;
+  border-bottom: 1px solid var(--border-ov);
 }
 .tbody {
   flex: 1;
@@ -434,7 +434,7 @@ function pctText(n: number): string {
 .trow {
   font-size: 11px;
   padding: 4px 6px;
-  border-bottom: 1px solid #1b222a;
+  border-bottom: 1px solid var(--border-ov);
   cursor: pointer;
 }
 .trow:hover {
@@ -493,7 +493,7 @@ function pctText(n: number): string {
   width: 14px;
   height: 14px;
   border: 2px solid #333;
-  border-top-color: #d4af37;
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: rot 0.8s linear infinite;
 }

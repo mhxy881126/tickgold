@@ -32,7 +32,7 @@ const emit = defineEmits<{ add: [defId: string] }>();
 .wt-label { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
 .wt-items { display: flex; gap: 5px; flex-wrap: wrap; }
 .wt-btn { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px;
-  border: 1px solid var(--border); background: rgba(255, 255, 255, .03);
+  border: 1px solid var(--border); background: var(--ov-03);
   color: var(--text); font-size: 10px; border-radius: 6px; cursor: pointer; }
 .wt-btn:hover:not(:disabled) { border-color: var(--accent, #e8c878); color: var(--accent, #e8c878); }
 .wt-btn:disabled { opacity: .35; cursor: not-allowed; }

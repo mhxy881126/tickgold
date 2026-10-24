@@ -147,7 +147,7 @@ onMounted(load);
 .pool { display: flex; flex-direction: column; height: 100%; font-size: 12px; }
 
 .bar { display: flex; align-items: center; gap: 10px; }
-.replay-btn { color: #e89c3d; }
+.replay-btn { color: var(--accent); }
 .date {
   background: var(--bg-hover); border: 1px solid var(--border); color: var(--text);
   font-size: 11px; padding: 3px 8px; border-radius: 6px; color-scheme: dark;
@@ -168,7 +168,7 @@ onMounted(load);
 .l { font-size: 10px; color: var(--text-dim); margin-top: 1px; }
 .cell.up .v { color: var(--up); }
 .cell.warn .v { color: var(--accent); }
-.cell.gold .v { color: #ffd76a; }
+.cell.gold .v { color: var(--accent); }
 
 .tabs { display: flex; gap: 4px; padding: 4px 0 8px; }
 .tabs button {
@@ -199,7 +199,7 @@ onMounted(load);
 .tag { font-size: 10px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .board { text-align: center; font-size: 10px; border-radius: 4px; padding: 2px 0; }
-.board.b5 { background: linear-gradient(160deg,#6b531c,#3d2e12); color: #ffd76a; font-weight: 700; }
+.board.b5 { background: linear-gradient(160deg,#6b531c,#3d2e12); color: var(--accent); font-weight: 700; }
 .board.b3 { background: linear-gradient(160deg,#5e2a2a,#381a1c); color: #ff7a5c; font-weight: 700; }
 .board.b2 { background: var(--bg-hover); color: var(--accent); }
 .board.b1 { background: var(--bg-hover); color: var(--text-dim); }

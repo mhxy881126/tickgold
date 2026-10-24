@@ -237,31 +237,31 @@ function metricCls(q: RankRow) {
 /* ===== 主题①：专业深色终端 · 密集表格 ===== */
 .rank {
   display: flex; flex-direction: column; height: 100%;
-  background: #0b0e14; border: 1px solid #1b2230; border-radius: 6px; overflow: hidden;
+  background: var(--bg-input); border: 1px solid var(--border-ov); border-radius: 6px; overflow: hidden;
 }
 
 .scopes {
   flex-shrink: 0; display: flex; align-items: center; gap: 4px;
-  padding: 6px 8px; background: #0d121b; border-bottom: 1px solid #1b2230;
+  padding: 6px 8px; background: var(--bg-input); border-bottom: 1px solid var(--border-ov);
 }
 .scope {
-  padding: 3px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,.08);
-  background: rgba(255,255,255,.04); color: #98a3b3; font-size: 11px; cursor: pointer;
+  padding: 3px 8px; border-radius: 4px; border: 1px solid var(--ov-08);
+  background: var(--ov-04); color: #98a3b3; font-size: 11px; cursor: pointer;
 }
-.scope.active { color: #fff; border-color: #d4af37; background: rgba(212,175,55,.14); }
+.scope.active { color: #fff; border-color: var(--accent); background: rgba(212,175,55,.14); }
 .scope-note { margin-left: auto; color: #66717f; font-size: 10px; }
 
 /* 顶部密集 Tab：扁平分段式，8 项自动换行 */
 .tabs {
   display: flex; flex-wrap: wrap; flex-shrink: 0;
   padding: 8px 8px 4px; gap: 4px;
-  border-bottom: 1px solid #1b2230; 
-  background: linear-gradient(180deg, #0e121b 0%, #162030 100%);
+  border-bottom: 1px solid var(--border-ov); 
+  background: linear-gradient(180deg, var(--bg-card2) 0%, var(--bg-hover) 100%);
   min-height: 40px; /* 确保标签页有最小高度 */
 }
 .tab {
-  background: rgba(255, 255, 255, 0.05); 
-  border: 1px solid rgba(255, 255, 255, 0.1); 
+  background: var(--ov-05); 
+  border: 1px solid var(--ov-10); 
   border-radius: 8px 8px 0 0; 
   padding: 6px 12px;
   font-size: 12px; color: #a0aab8; cursor: pointer; white-space: nowrap;
@@ -269,8 +269,8 @@ function metricCls(q: RankRow) {
 }
 .tab:hover { 
   color: #fff; 
-  background: rgba(255, 255, 255, 0.1); 
-  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--ov-10); 
+  border-color: var(--ov-20);
 }
 .tab.active {
   color: #fff; 
@@ -284,7 +284,7 @@ function metricCls(q: RankRow) {
 .thead-bar {
   flex-shrink: 0; display: flex; align-items: center; gap: 8px;
   padding: 0 10px; height: 28px;
-  background: #0e121b; border-bottom: 1px solid #1b2230;
+  background: var(--bg-input); border-bottom: 1px solid var(--border-ov);
   color: #6b7686; font-size: 11px;
 }
 
@@ -304,14 +304,14 @@ function metricCls(q: RankRow) {
 .vrow {
   display: flex; align-items: center; gap: 8px;
   height: 30px; padding: 0 10px; cursor: pointer;
-  border-bottom: 1px solid #141a25;
+  border-bottom: 1px solid var(--border-ov);
   font-variant-numeric: tabular-nums;
 }
-.vrow:hover { background: rgba(255, 255, 255, .035); }
+.vrow:hover { background: var(--ov-04); }
 
 .rk {
   width: 34px; flex-shrink: 0; text-align: left;
-  font-size: 11px; color: #5d6878; font-weight: 600;
+  font-size: 11px; color: var(--text-dim); font-weight: 600;
 }
 .rk-gold   { color: #ffd700; }
 .rk-silver { color: #c0c0c0; }
@@ -320,24 +320,24 @@ function metricCls(q: RankRow) {
 /* 名称 + 代码（min-width:0 + ellipsis） */
 .name-cell { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; }
 .nm {
-  font-size: 12px; color: #d7dee8;
+  font-size: 12px; color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.code { flex-shrink: 0; font-size: 10px; color: #5d6878; }
-.conv-tag { flex-shrink: 0; font-size: 10px; font-weight: 600; padding: 0 4px; border-radius: 3px; background: rgba(255,255,255,.05); }
+.code { flex-shrink: 0; font-size: 10px; color: var(--text-dim); }
+.conv-tag { flex-shrink: 0; font-size: 10px; font-weight: 600; padding: 0 4px; border-radius: 3px; background: var(--ov-05); }
 
 .price { width: 62px; flex-shrink: 0; text-align: right; font-size: 12px; }
 .pct-cell { width: 90px; flex-shrink: 0; text-align: right; position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .pct   { font-size: 12px; font-weight: 600; }
 .pct-bar { position: absolute; left: 0; top: 50%; transform: translateY(-50%); height: 14px; border-radius: 2px; opacity: 0.25; z-index: 0; }
-.pct-bar.up   { background: #f23645; }
+.pct-bar.up   { background: var(--up); }
 .pct-bar.down { background: #08db98; }
 .metric { width: 78px; flex-shrink: 0; text-align: right; font-size: 12px; }
 
 /* 涨跌色：涨红 / 跌绿 / 平灰 */
-.up      { color: #f23645; }
+.up      { color: var(--up); }
 .down    { color: #08db98; }
-.flat    { color: #8b97a8; }
+.flat    { color: var(--text-dim); }
 .neutral { color: #c3ccd8; }
 
 /* 弱化的加自选 */
@@ -351,21 +351,21 @@ function metricCls(q: RankRow) {
   color: #6b7686; font-size: 14px; line-height: 1; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.watch-btn:hover { color: #e6edf3; background: rgba(255, 255, 255, .06); }
+.watch-btn:hover { color: var(--text-dim); background: var(--ov-06); }
 .watched { color: #3ba776; font-size: 11px; font-weight: 700; }
 
 .empty-state {
   display: flex; align-items: center; justify-content: center;
   min-height: 160px; color: #6b7686; font-size: 12px; text-align: center; padding: 0 20px;
 }
-.empty-state .err { color: #f23645; font-size: 11px; }
+.empty-state .err { color: var(--up); font-size: 11px; }
 .foot-row {
   display: flex; align-items: center; justify-content: center;
   min-height: 30px; font-size: 11px; color: #6b7686;
 }
 .foot-row .spin {
   display: inline-block; width: 11px; height: 11px; margin-right: 6px;
-  border: 2px solid #2a313d; border-top-color: #d4af37; border-radius: 50%;
+  border: 2px solid var(--border-ov); border-top-color: var(--accent); border-radius: 50%;
   vertical-align: -1px; animation: r .8s linear infinite;
 }
 @keyframes r { to { transform: rotate(360deg); } }

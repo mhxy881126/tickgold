@@ -45,7 +45,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer); });
 .w-news { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; }
 .body { flex: 1; overflow-y: auto; min-height: 0; padding: 4px 0; }
 .row { display: flex; gap: 7px; padding: 3px 10px; font-size: 10px; line-height: 1.45; }
-.row:hover { background: rgba(255, 255, 255, .04); }
+.row:hover { background: var(--ov-04); }
 .tm { color: var(--text-dim); font-variant-numeric: tabular-nums; flex-shrink: 0;
   font-size: 9px; padding-top: 1px; }
 .tx { min-width: 0; word-break: break-word; }

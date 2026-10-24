@@ -771,10 +771,10 @@ function onKey(e: KeyboardEvent) {
 
 <style scoped>
 .tmaker {
-  --up: #ff6478;
-  --down: #00e8a0;
+  --up: var(--up);
+  --down: var(--down);
   --cyan: #00e8d8;
-  --gold: #ffd76a;
+  --gold: var(--accent);
   --purple: #b07cff;
   --bg: #0a0f0d;
   --bg2: #0d1412;
@@ -872,7 +872,7 @@ function onKey(e: KeyboardEvent) {
 }
 .tm-badge.ok { background: rgba(0,232,216,.12); color: var(--cyan); border: 1px solid var(--cyan); }
 .tm-badge.warn { background: rgba(255,177,61,.1); color: #ffb13d; border: 1px solid rgba(255,177,61,.4); }
-.tm-badge.none { background: rgba(255,255,255,.05); color: var(--t3); border: 1px solid var(--line); }
+.tm-badge.none { background: var(--ov-05); color: var(--t3); border: 1px solid var(--line); }
 .tm-badge.active { background: rgba(255,100,120,.12); color: var(--up); border: 1px solid var(--up); }
 .tm-badge.scan {
   cursor: pointer;
@@ -943,14 +943,14 @@ function onKey(e: KeyboardEvent) {
 }
 .tm-modal-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 12px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.03);
+  padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--ov-03);
 }
 .tm-modal-title { font-size: 13px; font-weight: 700; color: var(--cyan); }
 .tm-modal-close {
   background: none; border: none; color: var(--t2); font-size: 15px; cursor: pointer;
   padding: 2px 8px; border-radius: 4px;
 }
-.tm-modal-close:hover { background: rgba(255,255,255,.08); color: var(--t1); }
+.tm-modal-close:hover { background: var(--ov-08); color: var(--t1); }
 .tm-modal-body { padding: 10px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
 .tm-modal-body .tm-stats { gap: 6px; }
 .tm-modal-body .ts-metrics { margin-top: 0; }
@@ -968,23 +968,23 @@ function onKey(e: KeyboardEvent) {
 .tm-sig-panel {
   flex: none; display: flex; flex-direction: column; gap: 5px;
   margin: 5px 7px 7px; padding: 7px 9px;
-  background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09); border-radius: 6px;
+  background: var(--ov-04); border: 1px solid var(--ov-08); border-radius: 6px;
 }
 .sp-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .sp-title { font-size: 12px; color: #cfe8e2; font-weight: 700; flex: none; }
 .sp-stat { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #8aa39c; flex: none; white-space: nowrap; }
 .sp-stat b { font-family: Consolas, monospace; color: #cfe8e2; }
 .sig-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 2px; vertical-align: middle; }
-.sig-dot.long { background: #ff6478; }
-.sig-dot.short { background: #00e8a0; }
+.sig-dot.long { background: var(--up); }
+.sig-dot.short { background: var(--down); }
 .sig-dot.idle { background: #566a63; }
 .sp-main { display: flex; align-items: center; gap: 8px; }
 .sp-lamp { display: flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 700; flex: none; white-space: nowrap; }
 .sp-lamp::before { content: ""; width: 11px; height: 11px; border-radius: 50%; }
-.sp-lamp.long { color: #ff6478; }
-.sp-lamp.long::before { background: #ff6478; box-shadow: 0 0 8px rgba(255,100,120,.85); }
-.sp-lamp.short { color: #00e8a0; }
-.sp-lamp.short::before { background: #00e8a0; box-shadow: 0 0 8px rgba(0,232,160,.85); }
+.sp-lamp.long { color: var(--up); }
+.sp-lamp.long::before { background: var(--up); box-shadow: 0 0 8px rgba(255,100,120,.85); }
+.sp-lamp.short { color: var(--down); }
+.sp-lamp.short::before { background: var(--down); box-shadow: 0 0 8px rgba(0,232,160,.85); }
 .sp-lamp.idle { color: #566a63; }
 .sp-lamp.idle::before { background: #566a63; }
 .sp-latest { font-size: 11px; color: #8aa39c; font-family: Consolas, monospace; }
@@ -995,11 +995,11 @@ function onKey(e: KeyboardEvent) {
   font-size: 10px; font-family: Consolas, monospace;
   padding: 2px 8px; border-radius: 4px; white-space: nowrap;
 }
-.sp-item.long { color: #ff6478; background: rgba(255,100,120,.1); border: 1px solid rgba(255,100,120,.18); }
-.sp-item.short { color: #00e8a0; background: rgba(0,232,160,.1); border: 1px solid rgba(0,232,160,.18); }
+.sp-item.long { color: var(--up); background: rgba(255,100,120,.1); border: 1px solid rgba(255,100,120,.18); }
+.sp-item.short { color: var(--down); background: rgba(0,232,160,.1); border: 1px solid rgba(0,232,160,.18); }
 .sp-item .sp-dir { font-weight: 700; font-size: 11px; }
 .sp-item .sp-time { color: #8aa39c; }
-.sp-item .sp-score { color: #f5d020; font-weight: 600; }
+.sp-item .sp-score { color: var(--accent); font-weight: 600; }
 .sp-item .sp-price { color: #cfe8e2; font-weight: 600; }
 .sp-empty { font-size: 10px; color: #566a63; padding: 1px 0; }
 .tm-empty {
@@ -1113,7 +1113,7 @@ function onKey(e: KeyboardEvent) {
 }
 .dc-title {
   font-size: 15px; font-weight: 800; padding: 5px 8px; border-radius: 4px;
-  text-align: center; background: rgba(255,255,255,.04);
+  text-align: center; background: var(--ov-04);
 }
 .dc-title.long-open, .dc-title.long-close { color: var(--up); background: rgba(255,100,120,.1); }
 .dc-title.short-open, .dc-title.short-close { color: var(--down); background: rgba(0,232,160,.08); }
@@ -1124,7 +1124,7 @@ function onKey(e: KeyboardEvent) {
 .dc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
 .dc-item {
   display: flex; flex-direction: column; gap: 1px;
-  background: rgba(255,255,255,.02); border-radius: 3px; padding: 3px 6px;
+  background: var(--ov-02); border-radius: 3px; padding: 3px 6px;
 }
 .dc-item.key {
   background: rgba(0,232,216,.05); border: 1px solid var(--line); border-radius: 5px;
@@ -1142,11 +1142,11 @@ function onKey(e: KeyboardEvent) {
 .dc-btn {
   width: 100%; padding: 8px; border: none; border-radius: 4px;
   font-size: 13px; font-weight: 700; cursor: pointer; transition: all .2s;
-  background: rgba(255,255,255,.08); color: var(--t3);
+  background: var(--ov-08); color: var(--t3);
 }
 .dc-btn:disabled { cursor: not-allowed; }
-.dc-btn.buy { background: linear-gradient(135deg, #ff6478, #e0455a); color: #fff; }
-.dc-btn.sell { background: linear-gradient(135deg, #00c896, #00e8a0); color: #06281f; }
+.dc-btn.buy { background: linear-gradient(135deg, var(--up), #e0455a); color: #fff; }
+.dc-btn.sell { background: linear-gradient(135deg, #00c896, var(--down)); color: var(--accent-contrast); }
 .dc-btn:hover:not(:disabled) { filter: brightness(1.1); }
 .dc-btn.grid {
   margin-top: 4px;
@@ -1158,7 +1158,7 @@ function onKey(e: KeyboardEvent) {
 /* P2-8 数量快捷档 */
 .dc-vols { display: flex; align-items: center; gap: 4px; }
 .dc-vols button {
-  background: rgba(255,255,255,.05); border: 1px solid var(--line); color: var(--t2);
+  background: var(--ov-05); border: 1px solid var(--line); color: var(--t2);
   border-radius: 4px; padding: 3px 8px; font-size: 10px; cursor: pointer;
 }
 .dc-vols button.on { background: rgba(0,232,216,.15); color: var(--cyan); border-color: var(--cyan); }
@@ -1178,15 +1178,15 @@ function onKey(e: KeyboardEvent) {
 .cf-btns { display: flex; gap: 6px; margin-top: 4px; }
 .cf-yes {
   flex: 1; padding: 6px; border: none; border-radius: 4px;
-  background: linear-gradient(135deg, #00c896, #00e8a0); color: #06281f;
+  background: linear-gradient(135deg, #00c896, var(--down)); color: var(--accent-contrast);
   font-size: 12px; font-weight: 700; cursor: pointer;
 }
 .cf-no {
   flex: 1; padding: 6px; border: 1px solid var(--line); border-radius: 4px;
-  background: rgba(255,255,255,.04); color: var(--t2); font-size: 12px; cursor: pointer;
+  background: var(--ov-04); color: var(--t2); font-size: 12px; cursor: pointer;
 }
 .cf-yes:hover { filter: brightness(1.1); }
-.cf-no:hover { background: rgba(255,255,255,.08); }
+.cf-no:hover { background: var(--ov-08); }
 .dc-toast { font-size: 10px; color: var(--gold); text-align: center; }
 
 /* 做T统计 */
@@ -1200,7 +1200,7 @@ function onKey(e: KeyboardEvent) {
 .ts-row { display: flex; gap: 8px; margin: 5px 0 3px; }
 .ts-item {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
-  background: rgba(255,255,255,.045); border: 1px solid var(--line); border-radius: 6px;
+  background: var(--ov-04); border: 1px solid var(--line); border-radius: 6px;
   padding: 10px 4px 8px;
 }
 .ts-n { font-size: 23px; font-weight: 800; font-family: Consolas, monospace; line-height: 1; }
@@ -1242,7 +1242,7 @@ function onKey(e: KeyboardEvent) {
 }
 .ts-metrics .mt {
   display: flex; flex-direction: column; align-items: center; gap: 1px;
-  background: rgba(255,255,255,.03); border-radius: 4px; padding: 4px 0 3px;
+  background: var(--ov-03); border-radius: 4px; padding: 4px 0 3px;
 }
 .ts-metrics .mt span { font-size: 10px; color: var(--t3); }
 .ts-metrics .mt b { font-family: Consolas, monospace; font-weight: 700; color: var(--t1); font-size: 14px; }
@@ -1267,19 +1267,19 @@ function onKey(e: KeyboardEvent) {
 .ts-bt-grid .tp {
   font-size: 11px; color: var(--t1);
   display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 2px;
-  background: rgba(255,255,255,.03); border-radius: 5px; padding: 6px 8px 5px;
+  background: var(--ov-03); border-radius: 5px; padding: 6px 8px 5px;
 }
 .tp-lab { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--t1); font-weight: 600; white-space: nowrap; }
 .tp-tip { font-size: 10px; color: var(--t3); opacity: .8; line-height: 1.4; }
 .ts-bt-grid input {
-  width: 60px; background: rgba(255,255,255,.06); border: 1px solid var(--line);
+  width: 60px; background: var(--ov-06); border: 1px solid var(--line);
   color: var(--t1); border-radius: 4px; font-size: 13px; font-weight: 700; text-align: center; padding: 1px 4px;
 }
 .ts-bt-params .ts-bt-run { margin-top: 3px; }
 .ts-bt-opt { display: flex; flex-direction: column; gap: 2px; }
 .ts-bt-opt-row {
   display: flex; align-items: center; gap: 6px; font-size: 9px;
-  background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px;
+  background: var(--ov-04); border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px;
 }
 .ts-bt-opt-params { color: var(--t2); min-width: 84px; }
 /* P3-7 盘前计划 */

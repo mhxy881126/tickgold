@@ -257,7 +257,7 @@ useSmartPolling(tick, { interval: 15000, cardId: "sectorevents", paused });
 .head .r { text-align: right; }
 
 .market-flag {
-  font-size: 11px; color: #e8c66a; background: rgba(212,175,55,.1);
+  font-size: 11px; color: var(--accent); background: rgba(212,175,55,.1);
   border: 1px solid rgba(212,175,55,.3); border-radius: 5px;
   padding: 5px 8px; margin-bottom: 6px;
 }

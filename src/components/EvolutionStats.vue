@@ -394,7 +394,7 @@ onMounted(async () => {
 /* 区块 */
 .ev-section {
   padding: 12px;
-  background: rgba(255,255,255,0.02);
+  background: var(--ov-02);
   border: 1px solid var(--border, #2a3344);
   border-radius: 10px;
 }
@@ -538,7 +538,7 @@ onMounted(async () => {
   height: 20px;
   border-radius: 50%;
   background: rgba(212, 175, 55, 0.15);
-  color: #d4af37;
+  color: var(--accent);
   font-size: 11px;
   font-weight: 700;
   display: flex;
@@ -558,7 +558,7 @@ onMounted(async () => {
 }
 .ev-card {
   padding: 16px;
-  background: rgba(255,255,255,0.03);
+  background: var(--ov-03);
   border: 1px solid var(--border, #2a3344);
   border-radius: 10px;
   text-align: center;
@@ -624,7 +624,7 @@ onMounted(async () => {
 .ev-btn {
   border: 1px solid var(--accent, #d4af37);
   background: var(--accent, #d4af37);
-  color: #14110a;
+  color: var(--accent-contrast);
   border-radius: 6px;
   padding: 3px 11px;
   font-size: 10px;
@@ -641,8 +641,8 @@ onMounted(async () => {
   border-color: var(--accent, #d4af37);
 }
 .ev-btn.danger:hover {
-  color: #ff6b6b;
-  border-color: #ff6b6b;
+  color: var(--up);
+  border-color: var(--up);
 }
 .ev-btn:disabled {
   opacity: 0.55;
@@ -756,10 +756,10 @@ onMounted(async () => {
   padding: 5px 8px;
   white-space: nowrap;
   color: var(--text, #dce3f0);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--ov-04);
 }
 .ev-table tbody tr:hover {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.04));
+  background: var(--bg-hover, var(--ov-04));
 }
 .ev-mv {
   color: var(--text-dim, #aab2c4);
@@ -775,7 +775,7 @@ onMounted(async () => {
   font-style: normal;
 }
 .up {
-  color: #ff3232;
+  color: var(--up);
 }
 .k {
   color: #54fcfc;
@@ -791,7 +791,7 @@ onMounted(async () => {
   width: 44px;
   height: 5px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--ov-08);
   overflow: hidden;
   display: inline-block;
 }
@@ -809,8 +809,8 @@ onMounted(async () => {
 }
 .ev-sig[data-l="BUY"],
 .ev-sig[data-l="watch_up"] {
-  color: #ff3232;
-  border-color: #ff3232;
+  color: var(--up);
+  border-color: var(--up);
 }
 .ev-sig[data-l="SELL"],
 .ev-sig[data-l="watch_down"] {
@@ -824,16 +824,16 @@ onMounted(async () => {
   font-weight: 700;
 }
 .ev-verdict[data-v="good"] {
-  color: #1dbe7d;
+  color: var(--down);
   background: #1dbe7d1a;
 }
 .ev-verdict[data-v="bad"] {
-  color: #ff6b6b;
+  color: var(--up);
   background: #ff6b6b1a;
 }
 .ev-verdict[data-v="neutral"] {
   color: var(--text-dim, #9aa4b8);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--ov-05);
 }
 .ev-flags {
   white-space: nowrap;
@@ -845,8 +845,8 @@ onMounted(async () => {
   margin-right: 3px;
 }
 .ev-flag.t {
-  color: #ff3232;
-  border: 1px solid #ff3232;
+  color: var(--up);
+  border: 1px solid var(--up);
 }
 .ev-flag.s {
   color: #54fcfc;
