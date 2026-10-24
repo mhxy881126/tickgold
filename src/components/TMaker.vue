@@ -99,6 +99,31 @@
             </div>
           </div>
         </div>
+        <!-- 当日做T信号面板：分时图下方独立区域（实时观测盘中做T信号） -->
+        <div class="tm-sig-panel">
+          <div class="sp-head">
+            <span class="sp-title">当日做T信号</span>
+            <span class="sp-stat" v-if="sigList.length">
+              <i class="sig-dot long"></i>T买 <b>{{ longCount }}</b>
+              <i class="sig-dot short"></i>T卖 <b>{{ shortCount }}</b>
+              <i class="sig-dot idle"></i>共 <b>{{ sigList.length }}</b>
+            </span>
+          </div>
+          <div class="sp-main">
+            <span class="sp-lamp" :class="lamp.cls">{{ lamp.txt }}</span>
+            <span class="sp-latest" v-if="lamp.s">{{ fmtHHMM(lamp.s.time) }} @ {{ lamp.s.price.toFixed(2) }}</span>
+            <span class="sp-latest" v-else>盘中信号将实时出现在此</span>
+          </div>
+          <div class="sp-list">
+            <div v-for="(s, i) in sigList" :key="i" class="sp-item" :class="s.dir">
+              <b class="sp-dir">{{ s.dir === "long" ? "T买" : "T卖" }}</b>
+              <span class="sp-time">{{ fmtHHMM(s.time) }}</span>
+              <span class="sp-score">{{ s.score }}分</span>
+              <span class="sp-price">{{ s.price.toFixed(2) }}</span>
+            </div>
+            <div v-if="!sigList.length" class="sp-empty">今日暂无信号，等待盘中触发</div>
+          </div>
+        </div>
       </div>
 
       <!-- Q2+Q4 右侧小窗：五档盘口 / 观望等待（可折叠、可拖拽高度） -->
@@ -415,6 +440,21 @@ const chartSignals = computed<{ time: number; price: number; dir: "long" | "shor
   }
   return out;
 });
+
+// ===== 当日做T信号面板（分时图下方）：统计 + 指示灯 + 最新详情 + 信号列表 =====
+const sigList = computed(() => [...chartSignals.value].sort((a, b) => b.time - a.time));
+const longCount = computed(() => sigList.value.filter((s) => s.dir === "long").length);
+const shortCount = computed(() => sigList.value.filter((s) => s.dir === "short").length);
+const lamp = computed<{ cls: string; txt: string; s: { time: number; price: number } | null }>(() => {
+  const s = sigList.value[0];
+  if (!s) return { cls: "idle", txt: "观望等待", s: null };
+  return { cls: s.dir, txt: `${s.dir === "long" ? "T买" : "T卖"} ${s.score}分`, s };
+});
+const fmtHHMM = (ts: number) => {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+};
 
 // ===== 右侧小窗：五档盘口 / 观望等待 折叠 + 拖拽高度 =====
 const bookOpen = ref(true);
@@ -868,7 +908,7 @@ function onKey(e: KeyboardEvent) {
   display: flex; flex-direction: column;
   overflow: hidden;
 }
-.tm-q-chart { grid-area: chart; padding: 0; min-height: 0; }
+.tm-q-chart { grid-area: chart; padding: 0; min-height: 0; display: flex; flex-direction: column; }
 /* 右侧小窗：五档盘口（可拖拽高度）+ 观望等待（可折叠） */
 .tm-q-right { grid-area: right; display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 0; }
 .tm-q-book { flex: none; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
@@ -924,6 +964,44 @@ function onKey(e: KeyboardEvent) {
   overflow: hidden;
 }
 .tm-svg { width: 100%; height: 100%; display: block; }
+/* 当日做T信号面板（分时图下方独立区域） */
+.tm-sig-panel {
+  flex: none; display: flex; flex-direction: column; gap: 5px;
+  margin: 5px 7px 7px; padding: 7px 9px;
+  background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09); border-radius: 6px;
+}
+.sp-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.sp-title { font-size: 12px; color: #cfe8e2; font-weight: 700; flex: none; }
+.sp-stat { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #8aa39c; flex: none; white-space: nowrap; }
+.sp-stat b { font-family: Consolas, monospace; color: #cfe8e2; }
+.sig-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 2px; vertical-align: middle; }
+.sig-dot.long { background: #ff6478; }
+.sig-dot.short { background: #00e8a0; }
+.sig-dot.idle { background: #566a63; }
+.sp-main { display: flex; align-items: center; gap: 8px; }
+.sp-lamp { display: flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 700; flex: none; white-space: nowrap; }
+.sp-lamp::before { content: ""; width: 11px; height: 11px; border-radius: 50%; }
+.sp-lamp.long { color: #ff6478; }
+.sp-lamp.long::before { background: #ff6478; box-shadow: 0 0 8px rgba(255,100,120,.85); }
+.sp-lamp.short { color: #00e8a0; }
+.sp-lamp.short::before { background: #00e8a0; box-shadow: 0 0 8px rgba(0,232,160,.85); }
+.sp-lamp.idle { color: #566a63; }
+.sp-lamp.idle::before { background: #566a63; }
+.sp-latest { font-size: 11px; color: #8aa39c; font-family: Consolas, monospace; }
+.sp-list { display: flex; gap: 5px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; padding: 1px 0; }
+.sp-list::-webkit-scrollbar { display: none; }
+.sp-item {
+  flex: none; display: flex; align-items: center; gap: 6px;
+  font-size: 10px; font-family: Consolas, monospace;
+  padding: 2px 8px; border-radius: 4px; white-space: nowrap;
+}
+.sp-item.long { color: #ff6478; background: rgba(255,100,120,.1); border: 1px solid rgba(255,100,120,.18); }
+.sp-item.short { color: #00e8a0; background: rgba(0,232,160,.1); border: 1px solid rgba(0,232,160,.18); }
+.sp-item .sp-dir { font-weight: 700; font-size: 11px; }
+.sp-item .sp-time { color: #8aa39c; }
+.sp-item .sp-score { color: #f5d020; font-weight: 600; }
+.sp-item .sp-price { color: #cfe8e2; font-weight: 600; }
+.sp-empty { font-size: 10px; color: #566a63; padding: 1px 0; }
 .tm-empty {
   height: 100%;
   display: flex; flex-direction: column;
