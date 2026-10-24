@@ -34,6 +34,17 @@
       <span v-if="signals.length"><i class="dot d-sig"></i>信号 {{ signals.length }}</span>
       <span v-if="tab !== 'minute'" class="hint">点击蜡烛查看当日分时</span>
     </div>
+    <!-- 当日做T信号记录：指示灯 + 信号列表（实时观测盘中信号，最新在前） -->
+    <div class="tm-signals">
+      <span class="tm-sig-title">当日做T信号</span>
+      <span class="tm-sig-lamp" :class="lamp.cls">{{ lamp.txt }}</span>
+      <div class="tm-sig-list">
+        <span v-for="(s, i) in signalList" :key="i" class="tm-sig-item" :class="s.dir">
+          {{ fmtHHMM(s.time) }} {{ s.dir === "long" ? "T买" : "T卖" }} {{ s.score }}分 {{ s.price.toFixed(2) }}
+        </span>
+        <span v-if="!signalList.length" class="tm-sig-empty">今日暂无信号，等待盘中触发</span>
+      </div>
+    </div>
     <div v-if="!bars.length" class="tm-chart-empty">
       <template v-if="!code">请选择一只持仓股票</template>
       <template v-else-if="loadFailed">
@@ -105,6 +116,19 @@ function scheduleRightAxis(items: { coord: number; pct: number }[]) {
   });
 }
 const axTone = (p: number) => (p > 0.05 ? "up" : p < -0.05 ? "dn" : "zero");
+
+// ===== 当日做T信号记录条：实时观测盘中信号，指示灯取最新信号方向 =====
+const signalList = computed(() => [...props.signals].sort((a, b) => b.time - a.time));
+const lamp = computed(() => {
+  const s = signalList.value[0];
+  if (!s) return { cls: "idle", txt: "观望等待" };
+  return { cls: s.dir, txt: `${s.dir === "long" ? "T买" : "T卖"} ${s.score}分` };
+});
+const fmtHHMM = (ts: number) => {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+};
 
 registerCustomIndicators({
   code: computed(() => props.code),
@@ -212,8 +236,9 @@ async function refresh() {
 
 // ===== 点击蜡烛 → 回放该日历史分时（本地归档库补充 >5 交易日样本）=====
 function onBarClick(data: any) {
-  const kd: KLineData | undefined = data?.data;
-  if (!kd) return;
+  // klinecharts 版本差异：OnCandleBarClick 回调参数兼容 {data: KLineData} 与直接 KLineData
+  const kd: KLineData | undefined = data?.data ?? data;
+  if (!kd || typeof kd.timestamp !== "number") return;
   if (tab.value === "minute") return;
   void openReplay(kd);
 }
@@ -391,6 +416,30 @@ onBeforeUnmount(() => {
   vertical-align: middle;
 }
 .tm-legend .hint { color: #6b7488; margin-left: auto; }
+/* 当日做T信号记录条 */
+.tm-signals {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  margin-top: 4px; padding: 3px 6px; min-height: 26px;
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07); border-radius: 5px;
+}
+.tm-sig-title { font-size: 11px; color: #9aa4b8; flex: none; }
+.tm-sig-lamp { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; flex: none; white-space: nowrap; }
+.tm-sig-lamp::before { content: ""; width: 8px; height: 8px; border-radius: 50%; }
+.tm-sig-lamp.long { color: #ff6478; }
+.tm-sig-lamp.long::before { background: #ff6478; box-shadow: 0 0 6px rgba(255,100,120,.8); }
+.tm-sig-lamp.short { color: #00e8a0; }
+.tm-sig-lamp.short::before { background: #00e8a0; box-shadow: 0 0 6px rgba(0,232,160,.8); }
+.tm-sig-lamp.idle { color: #6b7488; }
+.tm-sig-lamp.idle::before { background: #6b7488; }
+.tm-sig-list { display: flex; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
+.tm-sig-list::-webkit-scrollbar { display: none; }
+.tm-sig-item {
+  flex: none; font-size: 10px; font-family: Consolas, monospace;
+  padding: 1px 6px; border-radius: 3px; white-space: nowrap;
+}
+.tm-sig-item.long { color: #ff6478; background: rgba(255,100,120,.1); }
+.tm-sig-item.short { color: #00e8a0; background: rgba(0,232,160,.1); }
+.tm-sig-empty { font-size: 10px; color: #6b7488; }
 .d-sup { background: #3ecf8e; }
 .d-res { background: #ff5a5a; }
 .d-cost { background: #f5d020; }

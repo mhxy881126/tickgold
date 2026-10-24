@@ -98,7 +98,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onUnmounted } from "vue";
 import { init, dispose, DomPosition, type Chart, type KLineData } from "klinecharts";
-import { fetchHistMinuteDays, fetchKLine } from "../api/market";
+import { fetchHistMinuteDays, fetchKLine, type HistDayMinute } from "../api/market";
 import type { KBar } from "../api/types";
 import { pad, hhmmUTC, toKData } from "../lib/chart";
 import { onRightAxis, type RightAxisItem } from "../lib/rightAxisBus";
@@ -145,33 +145,33 @@ async function openPopup(kd: KLineData, extra?: { date: string; bars: KBar[] }[]
   offRightAxis?.();
   offRightAxis = onRightAxis("replay", (items) => { mpAxisItems.value = items; });
   await nextTick();
-  try {
-    const [days, kbars] = await Promise.all([
-      fetchHistMinuteDays(props.code, 5),
-      fetchKLine(props.code, 101, 10),
-    ]);
-    // 日 K 升序；每日昨收 = 前一交易日收盘
-    const ks = [...kbars].sort((a, b) => a.timestamp - b.timestamp);
-    const prevMap = new Map<string, number>();
-    ks.forEach((b, i) => prevMap.set(dayKey(b.timestamp), i > 0 ? ks[i - 1].close : b.open));
-    histDays.value = [
-      ...days.map((d) => ({
-        date: d.date,
-        bars: d.bars,
-        prevClose: prevMap.get(d.date) ?? d.bars[0]?.close ?? 0,
-      })),
-      // 超过近5交易日的历史分时：由调用方（做T图表）从本地归档库补充
-      ...(extra ?? []).map((d) => ({
-        date: d.date,
-        bars: d.bars,
-        prevClose: prevMap.get(d.date) ?? d.bars[0]?.close ?? 0,
-      })),
-    ];
-    const di = histDays.value.findIndex((d) => d.date === dayKey(kd.timestamp));
-    dayIndex.value = di >= 0 ? di : 0;
-  } catch (e: any) {
+  // 日K仅用于取「昨收」参考，失败不阻塞历史分时；历史分时数据源独立容错
+  let kbars: KLineData[] = [];
+  try { kbars = await fetchKLine(props.code, 101, 10); } catch { kbars = []; }
+  let days: HistDayMinute[] = [];
+  try { days = await fetchHistMinuteDays(props.code, 5); } catch (e: any) {
     popupErr.value = e?.message || String(e);
+    return;
   }
+  // 日 K 升序；每日昨收 = 前一交易日收盘
+  const ks = [...kbars].sort((a, b) => a.timestamp - b.timestamp);
+  const prevMap = new Map<string, number>();
+  ks.forEach((b, i) => prevMap.set(dayKey(b.timestamp), i > 0 ? ks[i - 1].close : b.open));
+  histDays.value = [
+    ...days.map((d) => ({
+      date: d.date,
+      bars: d.bars,
+      prevClose: prevMap.get(d.date) ?? d.bars[0]?.close ?? 0,
+    })),
+    // 超过近5交易日的历史分时：由调用方（做T图表）从本地归档库补充
+    ...(extra ?? []).map((d) => ({
+      date: d.date,
+      bars: d.bars,
+      prevClose: prevMap.get(d.date) ?? d.bars[0]?.close ?? 0,
+    })),
+  ];
+  const di = histDays.value.findIndex((d) => d.date === dayKey(kd.timestamp));
+  dayIndex.value = di >= 0 ? di : 0;
   popup.value.date = histDays.value[dayIndex.value]?.date ?? "";
   if (!histDays.value.length) {
     popupErr.value = "暂无该日历史分时数据（数据源未覆盖或超出可用范围）";
