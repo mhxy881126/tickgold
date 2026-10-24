@@ -30,12 +30,34 @@ describe("normalizeBook 五档方向自愈", () => {
     expect(n.bids).toBe(ob.bids);
   });
 
-  it("不足两档/单边数据 → 不互换（无法判定方向）", () => {
+  it("单边反序 → 独立反转恢复标准方向；不足两档无法判定 → 原样", () => {
     const ob = book([lv(18.55)], [lv(18.56)]);
     const n = normalizeBook(ob);
     expect(n.asks).toBe(ob.asks);
     expect(n.bids).toBe(ob.bids);
-    const oneSide = book([lv(18.55), lv(18.54)], []);
-    expect(normalizeBook(oneSide).asks).toBe(oneSide.asks);
+    const oneSide = book([lv(18.55), lv(18.54), lv(18.53)], []); // asks 降序（卖1 应为最低）
+    const n2 = normalizeBook(oneSide);
+    expect(n2.asks.map((x) => x.price)).toEqual([18.53, 18.54, 18.55]);
+    expect(n2.bids).toBe(oneSide.bids);
+  });
+
+  it("asks 降序 + bids 全空（如一字涨停无买盘）→ 仅反转 asks，bids 原样", () => {
+    const ob = book(
+      [lv(33.64), lv(33.63), lv(33.62), lv(33.60), lv(33.58)], // 卖1 被错放为最高价
+      [],
+    );
+    const n = normalizeBook(ob);
+    expect(n.asks.map((x) => x.price)).toEqual([33.58, 33.60, 33.62, 33.63, 33.64]); // 卖1..卖5 升序
+    expect(n.bids).toEqual([]);
+  });
+
+  it("bids 升序 + asks 全空（如一字跌停无卖盘）→ 仅反转 bids，asks 原样", () => {
+    const ob = book(
+      [],
+      [lv(10.47), lv(10.48), lv(10.49), lv(10.51), lv(10.52)], // 买1 被错放为最低价
+    );
+    const n = normalizeBook(ob);
+    expect(n.bids.map((x) => x.price)).toEqual([10.52, 10.51, 10.49, 10.48, 10.47]); // 买1..买5 降序
+    expect(n.asks).toEqual([]);
   });
 });
