@@ -7,7 +7,8 @@ const emit = defineEmits<{ (e: "select", code: string): void }>();
 
 // ===== 条件状态 =====
 type RangeKey = "price" | "pct" | "turnover" | "vr" | "amp" | "pe" | "pb" | "mcap";
-const ranges = reactive<Record<RangeKey, [string, string]>>({
+// 区间值：type=number 的 v-model 会把输入转成 number，空输入回退 ""
+const ranges = reactive<Record<RangeKey, [string | number, string | number]>>({
   price: ["", ""],
   pct: ["", ""],
   turnover: ["", ""],
@@ -133,9 +134,10 @@ const PRESETS: { name: string; apply: () => void }[] = [
 ];
 
 // ===== 构建过滤器并执行 =====
-function num(s: string): number | null {
-  if (s.trim() === "") return null;
-  const v = parseFloat(s);
+// 兼容 number（type=number v-model）与 string 两种输入；空 / 非数 → null
+function num(s: string | number | null | undefined): number | null {
+  if (s === null || s === undefined || s === "") return null;
+  const v = parseFloat(String(s).trim());
   return isNaN(v) ? null : v;
 }
 function pair(k: RangeKey): [number | null, number | null] {

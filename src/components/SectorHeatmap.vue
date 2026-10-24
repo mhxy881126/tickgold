@@ -159,6 +159,21 @@ function render() {
   );
 }
 
+// 选中板块并拉取成分股（点击区块 / 默认选中涨幅第一 共用）
+function selectSector(sec: Sector) {
+  selectedSector.value = sec;
+  loadingStocks.value = true;
+  stocks.value = [];
+  fetchSectorStocks(sec.code, kind.value).then((arr) => {
+    stocks.value = (arr || []).slice(0, 30).map((x: any) => ({
+      code: (x.symbol || x.code || "").replace(/^(sh|sz)/, ""),
+      name: x.name || x.stockname || "",
+      price: parseFloat(x.trade || x.price || 0),
+      pct: parseFloat(x.changeratio || x.changepercent || 0),
+    })).filter((s: any) => s.code);
+  }).catch(() => {}).finally(() => (loadingStocks.value = false));
+}
+
 async function load() {
   errMsg.value = "";
   try {
@@ -167,6 +182,11 @@ async function load() {
     updated.value = hhmmss(new Date());
     // 数据加载后确保 resize 铺满容器
     requestAnimationFrame(() => chart?.resize());
+    // 默认展示涨幅第一的板块成分股；用户手动点击后不再被轮询覆盖
+    if (!selectedSector.value && sectors.length) {
+      const top = [...sectors].sort((a, b) => b.changePct - a.changePct)[0];
+      if (top) selectSector(top);
+    }
   } catch (e) {
     errMsg.value = "板块加载失败";
     console.error("sectorHeat", e);
@@ -176,6 +196,9 @@ async function load() {
 function switchKind(k: Kind) {
   if (kind.value !== k) {
     kind.value = k;
+    // 切换行业/概念后清空选择，重新默认展示新区块涨幅第一的板块
+    selectedSector.value = null;
+    stocks.value = [];
     load();
   }
 }
@@ -193,19 +216,7 @@ onMounted(() => {
     console.log("[sectorheat] click", p.name);
     if (p?.name) {
       const sec = sectors.find((s) => s.name === p.name);
-      if (sec) {
-        selectedSector.value = sec;
-        loadingStocks.value = true;
-        stocks.value = [];
-        fetchSectorStocks(sec.code, kind.value).then((arr) => {
-          stocks.value = (arr || []).slice(0, 30).map((x: any) => ({
-            code: (x.symbol || x.code || "").replace(/^(sh|sz)/, ""),
-            name: x.name || x.stockname || "",
-            price: parseFloat(x.trade || x.price || 0),
-            pct: parseFloat(x.changeratio || x.changepercent || 0),
-          })).filter((s: any) => s.code);
-        }).catch(() => {}).finally(() => (loadingStocks.value = false));
-      }
+      if (sec) selectSector(sec);
     }
   });
   load();

@@ -157,6 +157,8 @@
 .lvl {
   position: relative; display: flex; align-items: center;
   padding: 2.5px 8px; overflow: hidden;
+  /* 显式统一行高：价格/标签/数量三个 span 继承同一行高，保证价格垂直居中不偏移 */
+  line-height: 16px;
 }
 .lvl-tag { color: #7b8294; z-index: 1; flex: 0 0 34px; }
 .lvl.clickable { cursor: pointer; }
@@ -165,6 +167,7 @@
 .lvl-px {
   z-index: 1; font-variant-numeric: tabular-nums; text-align: center;
   flex: 1 1 auto; min-width: 0;
+  display: flex; align-items: center; justify-content: center;
 }
 .lvl-vol { color: #9aa1b1; z-index: 1; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
 .lvl-bar {

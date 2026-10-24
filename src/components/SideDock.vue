@@ -68,12 +68,24 @@ function unlockDock() {
   activeGroup.value = null;
   locked.value = false;
 }
+// 鼠标移出应用窗口 / 窗口失焦时：无条件收起展开的浮窗（不再依赖锁定状态）
+function closeDock() {
+  if (hoverTimer.value) { window.clearTimeout(hoverTimer.value); hoverTimer.value = null; }
+  unlockDock();
+}
 onMounted(() => {
   document.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
     if (t.closest?.(".side-dock") || t.closest?.(".dock-panel")) return;
     if (locked.value) unlockDock();
   });
+  // 鼠标离开整个窗口 / 窗口失焦（切到其他应用）时收起浮窗
+  document.documentElement.addEventListener("mouseleave", closeDock);
+  window.addEventListener("blur", closeDock);
+});
+onBeforeUnmount(() => {
+  document.documentElement.removeEventListener("mouseleave", closeDock);
+  window.removeEventListener("blur", closeDock);
 });
 function pick(it: DockItem) {
   emit("toggle", it.id);

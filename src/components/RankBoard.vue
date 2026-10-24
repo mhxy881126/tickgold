@@ -33,11 +33,9 @@ const tabs: TabDef[] = [
   { k: "main",     label: "主力净流入", metric: "mainNet",    metricLabel: "主力净流入", kind: "money" },
 ];
 
+// 榜单仅保留沪深A股范围（北交所 / ETF基金 / 可转债已移除）
 const scopes: { k: RankScope; label: string; note: string }[] = [
   { k: "a", label: "沪深 A", note: "" },
-  { k: "bse", label: "北交所", note: "公开源不含逐笔委托" },
-  { k: "etf", label: "ETF/基金", note: "涨速等字段以源站返回为准" },
-  { k: "conv", label: "可转债", note: "公开源不含逐笔委托" },
 ];
 
 const tab = ref<TabKey>("gainers");
@@ -131,7 +129,7 @@ function metricCls(q: RankRow) {
 
 <template>
   <div class="rank">
-    <div class="scopes">
+    <div v-if="scopes.length > 1" class="scopes">
       <button
         v-for="s in scopes"
         :key="s.k"
