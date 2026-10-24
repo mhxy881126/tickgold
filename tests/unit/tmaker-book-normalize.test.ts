@@ -51,6 +51,30 @@ describe("normalizeBook 五档方向自愈", () => {
     expect(n.bids).toEqual([]);
   });
 
+  it("涨停单边（后端旧版未swap）：asks 中位低于现价 + bids 空 → 整体互换，买1=涨停价封单", () => {
+    const ob = book([lv(29.18), lv(29.17), lv(29.16), lv(29.15), lv(29.14)], []);
+    (ob as any).price = 29.18;
+    const n = normalizeBook(ob);
+    expect(n.asks).toEqual([]);
+    expect(n.bids.map((x) => x.price)).toEqual([29.18, 29.17, 29.16, 29.15, 29.14]); // 买1 最高=涨停价
+  });
+
+  it("跌停单边（后端旧版未swap）：bids 中位高于现价 + asks 空 → 整体互换，卖1=跌停价", () => {
+    const ob = book([], [lv(10.00), lv(10.01), lv(10.02), lv(10.03), lv(10.04)]);
+    (ob as any).price = 10.00;
+    const n = normalizeBook(ob);
+    expect(n.bids).toEqual([]);
+    expect(n.asks.map((x) => x.price)).toEqual([10.00, 10.01, 10.02, 10.03, 10.04]); // 卖1 最低=跌停价
+  });
+
+  it("正常盘口卖1=现价 → 不误判整体互换", () => {
+    const ob = book([lv(29.18), lv(29.19), lv(29.20), lv(29.21), lv(29.22)], [lv(29.17), lv(29.16), lv(29.15), lv(29.14), lv(29.13)]);
+    (ob as any).price = 29.18;
+    const n = normalizeBook(ob);
+    expect(n.asks).toBe(ob.asks);
+    expect(n.bids).toBe(ob.bids);
+  });
+
   it("bids 升序 + asks 全空（如一字跌停无卖盘）→ 仅反转 bids，asks 原样", () => {
     const ob = book(
       [],

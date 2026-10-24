@@ -13,9 +13,17 @@ import type { OrderBook } from "../../api/types";
 export function normalizeBook(ob: OrderBook): OrderBook {
   const a = ob?.asks ?? [];
   const b = ob?.bids ?? [];
+  const px = ob?.price ?? 0;
   const aDesc = a.length >= 2 && (a[0]?.price ?? 0) > (a[1]?.price ?? 0);
   const bAsc = b.length >= 2 && (b[0]?.price ?? 0) < (b[1]?.price ?? 0);
-  if (aDesc && bAsc) return { ...ob, asks: b, bids: a };
+  // 涨停/跌停单边兜底：一侧为空时方向无法判断，改用现价识别身份——
+  // 卖盘整体应 ≥ 现价、买盘整体应 ≤ 现价；asks 中位低于现价 = 实为买盘，bids 中位高于现价 = 实为卖盘。
+  // 用中位而非首档，避免"卖1=现价"的正常盘口被误判。
+  const aIsBuy = px > 0 && a.length >= 3 && (a[Math.floor(a.length / 2)]?.price ?? 0) < px;
+  const bIsSell = px > 0 && b.length >= 3 && (b[Math.floor(b.length / 2)]?.price ?? 0) > px;
+  if ((aDesc && bAsc) || (aIsBuy && b.length === 0) || (bIsSell && a.length === 0)) {
+    return { ...ob, asks: b, bids: a };
+  }
   if (aDesc) return { ...ob, asks: [...a].reverse() };
   if (bAsc) return { ...ob, bids: [...b].reverse() };
   return ob;
