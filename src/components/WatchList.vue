@@ -30,6 +30,8 @@ const newGroupName = ref("");
 const editingId = ref<number | null>(null);
 const editName = ref("");
 const groupInput = ref<HTMLInputElement | null>(null);
+// v-for 内（分组 chip）的输入框：Vue3 会收集为数组，取首元素 focus
+const groupInputChip = ref<any>(null);
 
 // v2.31 智能分组 → v3 动态选股：选股问句 + 指标条件编辑器，榜单位每日动态筛选
 const smartAdding = ref(false);
@@ -215,7 +217,9 @@ async function startEdit(g: { id: number; name: string }) {
   editingId.value = g.id;
   editName.value = g.name;
   await nextTick();
-  groupInput.value?.focus();
+  const el = groupInputChip.value;
+  const target = Array.isArray(el) ? el[0] : el;
+  target?.focus();
 }
 async function commitEdit(g: { id: number }) {
   if (editingId.value !== g.id) return;
@@ -285,7 +289,7 @@ async function moveAddGroup() {
       >
         <input
           v-if="editingId === g.id"
-          ref="groupInput"
+          ref="groupInputChip"
           v-model="editName"
           class="chip-input"
           @click.stop
@@ -472,7 +476,7 @@ async function moveAddGroup() {
               <span v-if="wl.smartV2Error[wl.currentGroupId]" class="empty-err">
                 {{ wl.smartV2Error[wl.currentGroupId] }}
               </span>
-              <span v-else>该智能分组暂无命中股票（条件未匹配到候选池）</span>
+              <span v-else>智能分组尚未生成成员，点击刷新或等待自动刷新</span>
               <button class="empty-retry" @click="wl.refreshSmartGroup(wl.currentGroupId)">重新刷新</button>
             </template>
             <template v-else>该分组暂无股票，上方搜索添加</template>

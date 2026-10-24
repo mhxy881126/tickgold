@@ -13,7 +13,7 @@ function watchChanged() {
 }
 import type { Group, SmartGroupRule, WatchStock } from "../api/types";
 import { fetchRankPage, fetchQuotes } from "../api/market";
-import { evalRule, type SmartQueryRule } from "../lib/smartQuery";
+import { evalRule, fieldValue, type SmartQueryRule } from "../lib/smartQuery";
 
 /** 近 N 日涨停记录（智能分组归类 / 信号命中高亮的数据源，v2.31） */
 export interface SmartHit {
@@ -178,6 +178,11 @@ export const useWatchlistStore = defineStore("watchlist", () => {
     delete smartV2Error.value[id];
     try {
       const rows = await fetchRankCandidates();
+      if (rows.length === 0) {
+        smartV2.value[id] = { members: [], updatedAt: Date.now() };
+        smartV2Error.value[id] = "候选池为空：行情数据源暂不可达，请稍后重试";
+        return;
+      }
       const hitMap = new Map(smartHits.value.map((h) => [h.code, h]));
       const members: WatchStock[] = [];
       for (const q of rows) {
@@ -187,6 +192,37 @@ export const useWatchlistStore = defineStore("watchlist", () => {
         }
       }
       smartV2.value[id] = { members, updatedAt: Date.now() };
+      if (members.length === 0) {
+        // 区分「条件未命中」与「候选数据缺字段」：引用了候选里全缺的字段时给出诊断
+        const conds = (rule as SmartQueryRule).conditions;
+        const hasVal = (f: string) =>
+          rows.some((q) => {
+            const v = fieldValue(f, q as unknown as Record<string, unknown>, 0);
+            return v !== null && v > 0;
+          });
+        const fieldNames: Record<string, string> = {
+          pe: "市盈率",
+          pb: "市净率",
+          total_mv: "总市值",
+          circ_mv: "流通市值",
+          pct: "涨跌幅",
+          price: "现价",
+          amount: "成交额",
+          volume: "成交量",
+          turnover: "换手率",
+          volume_ratio: "量比",
+          boards: "连板数",
+        };
+        const missing = conds
+          .map((c) => c.field)
+          .filter((f) => f !== "boards" && !hasVal(f))
+          .map((f) => fieldNames[f] || f);
+        const hint =
+          missing.length > 0
+            ? `（候选池 ${rows.length} 只；当前数据源缺少 ${missing.join("/")}，相关条件无法命中）`
+            : `（候选池 ${rows.length} 只，条件均未匹配）`;
+        smartV2Error.value[id] = "暂无命中股票" + hint;
+      }
     } catch (e) {
       smartV2Error.value[id] = e instanceof Error ? e.message : String(e);
     } finally {

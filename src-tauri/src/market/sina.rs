@@ -384,8 +384,13 @@ pub async fn rank_board(
     num: i64,
     scope: &str,
 ) -> Result<Vec<RankRow>, String> {
-    if scope != "a" {
-        return Err("新浪回退源暂不支持该品种榜单".into());
+    // 新浪 getHQNodeData 只有 hs_a（沪深A，含北交所 bj 代码）。
+    // bse 复用 hs_a 并按北交所代码前缀过滤；etf/conv 新浪无对应 node，给出明确提示。
+    match scope {
+        "a" | "bse" => {}
+        "etf" => return Err("东财行情源在当前网络不可达，新浪回退源暂不支持 ETF 榜单，请切换网络后重试".into()),
+        "conv" => return Err("东财行情源在当前网络不可达，新浪回退源暂不支持可转债榜单，请切换网络后重试".into()),
+        other => return Err(format!("未知榜单品种: {other}")),
     }
     let (sort_key, asc) = match sort {
         "losers" => ("changepercent", 1),
@@ -411,8 +416,18 @@ pub async fn rank_board(
         Value::Number(n) => n.as_f64().unwrap_or(0.0),
         _ => 0.0,
     };
+    // 北交所代码特征：新浪 symbol 前缀 bj；code 92/8/43 开头（沪深 A 为 60/00/30/68）
+    let is_bj = |v: &Value| -> bool {
+        let sym = v["symbol"].as_str().unwrap_or("");
+        let code = v["code"].as_str().unwrap_or("");
+        sym.starts_with("bj")
+            || code.starts_with("92")
+            || code.starts_with("8")
+            || code.starts_with("43")
+    };
     let out = arr
         .iter()
+        .filter(|v| scope != "bse" || is_bj(v))
         .map(|v| RankRow {
             code: v["code"].as_str().unwrap_or("").to_string(),
             name: v["name"].as_str().unwrap_or("").to_string(),

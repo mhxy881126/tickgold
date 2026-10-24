@@ -148,7 +148,7 @@
           >
             <span class="lvl-tag">卖{{ i + 1 }}</span>
             <span class="lvl-px up">{{ fmtPx(asks[i]?.price) }}</span>
-            <span class="lvl-vol">{{ fmtVol(asks[i]?.vol ?? 0) }}</span>
+            <span class="lvl-vol">{{ bookVol(asks[i]?.vol ?? 0) }}</span>
             <span class="lvl-bar" :style="{ width: barW(asks[i]?.vol ?? 0) + '%' }"></span>
           </div>
         </div>
@@ -168,7 +168,7 @@
           >
             <span class="lvl-tag">买{{ i + 1 }}</span>
             <span class="lvl-px down-g">{{ fmtPx(ob?.bids[i]?.price) }}</span>
-            <span class="lvl-vol">{{ fmtVol(ob?.bids[i]?.vol ?? 0) }}</span>
+            <span class="lvl-vol">{{ bookVol(ob?.bids[i]?.vol ?? 0) }}</span>
             <span class="lvl-bar" :style="{ width: barW(ob?.bids[i]?.vol ?? 0) + '%' }"></span>
           </div>
         </div>
@@ -392,7 +392,10 @@ const maxVol = computed(() => {
 const barW = (v: number) => Math.round((v / maxVol.value) * 100);
 
 // 价格格式化（空 / NaN → --，两位小数）
-const fmtPx = (v?: number | null) => (v == null || isNaN(v) ? "--" : v.toFixed(2));
+const fmtPx = (v?: number | null) =>
+  v == null || isNaN(v) || v <= 0 ? "--" : v.toFixed(2);
+/** 盘口挂单量：涨停封死/无挂单时显示 "--"（区别于成交量 0 手） */
+const bookVol = (v?: number | null) => (v == null || v <= 0 ? "--" : fmtVol(v));
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
