@@ -206,10 +206,106 @@ html[data-theme="light"] {
   --blue: #3b82f6;
 }
 
-/* ===== 浅色主题自适应 token（晨光白 + 同花顺经典白共用） =====
+/* 翡翠罗盘（深墨绿底 + 翡翠绿） */
+html[data-theme="jade"] {
+  --bg: #08110d;
+  --bg-panel: #0e1a14;
+  --bg-card: #12221a;
+  --bg-card2: #0c1410;
+  --bg-hover: #1a2e22;
+  --border: #1e3528;
+  --border-light: #2c4a38;
+  --text: #e8f2ec;
+  --text-dim: #8fa89a;
+  --up: #f0606d;
+  --down: #2dd4a0;
+  --flat: #8fa89a;
+  --accent: #3ecf8e;
+  --accent-2: #5ed8a8;
+  --blue: #5ab8d8;
+}
+
+/* 紫晶量化（深紫罗兰底 + 薰衣草紫） */
+html[data-theme="amethyst"] {
+  --bg: #0d0a14;
+  --bg-panel: #151020;
+  --bg-card: #1a1428;
+  --bg-card2: #100c18;
+  --bg-hover: #241a38;
+  --border: #2a2040;
+  --border-light: #3a2d55;
+  --text: #f0ecf8;
+  --text-dim: #9a8fb0;
+  --up: #f25b7a;
+  --down: #20c9a8;
+  --flat: #9a8fb0;
+  --accent: #a78bfa;
+  --accent-2: #c0a8fc;
+  --blue: #7aa8f0;
+}
+
+/* 玫瑰金夜（暖深棕底 + 玫瑰金） */
+html[data-theme="rose"] {
+  --bg: #120c0a;
+  --bg-panel: #1a1210;
+  --bg-card: #201614;
+  --bg-card2: #140e0c;
+  --bg-hover: #2c1e1a;
+  --border: #382820;
+  --border-light: #4a362c;
+  --text: #f5ece8;
+  --text-dim: #b09a90;
+  --up: #f65a6a;
+  --down: #20c794;
+  --flat: #b09a90;
+  --accent: #e8a090;
+  --accent-2: #f0b8a8;
+  --blue: #7aa8d8;
+}
+
+/* 青瓷白韵（浅青白底 + 青瓷绿，浅色主题） */
+html[data-theme="celadon"] {
+  --bg: #eef2f0;
+  --bg-panel: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card2: #e8edea;
+  --bg-hover: #e0eae5;
+  --border: #c8d4ce;
+  --border-light: #b0c0b8;
+  --text: #1a2a22;
+  --text-dim: #5a7065;
+  --up: #d93040;
+  --down: #00a870;
+  --flat: #6b8a7a;
+  --accent: #2a9d7a;
+  --accent-2: #3ab58a;
+  --blue: #3a8ad8;
+}
+
+/* 赛博青蓝（近黑底 + 霓虹青） */
+html[data-theme="cyber"] {
+  --bg: #060a0e;
+  --bg-panel: #0a1218;
+  --bg-card: #0e1a22;
+  --bg-card2: #081016;
+  --bg-hover: #162632;
+  --border: #1a3040;
+  --border-light: #264458;
+  --text: #e6f4f8;
+  --text-dim: #7fa8b8;
+  --up: #ff4d6a;
+  --down: #00e8b0;
+  --flat: #7fa8b8;
+  --accent: #00d4ff;
+  --accent-2: #4ae0ff;
+  --blue: #00d4ff;
+}
+
+/* ===== 浅色主题自适应 token（晨光白 / 同花顺经典白 / 青瓷白韵共用） =====
    叠加层反转为黑色（压暗），浮层表面为白色，保证在浅色背景上反馈清晰。 */
 html[data-theme="light"],
-html[data-theme="ths-white"] {
+html[data-theme="ths-white"],
+html[data-theme="celadon"] {
   --ov-01: rgba(0, 0, 0, 0.01);
   --ov-02: rgba(0, 0, 0, 0.02);
   --ov-03: rgba(0, 0, 0, 0.03);
@@ -284,11 +380,13 @@ html[data-theme="ths-white"] {
 
 /* 亮色主题滚动条 */
 html[data-theme="light"] ::-webkit-scrollbar-thumb,
-html[data-theme="ths-white"] ::-webkit-scrollbar-thumb {
+html[data-theme="ths-white"] ::-webkit-scrollbar-thumb,
+html[data-theme="celadon"] ::-webkit-scrollbar-thumb {
   background: #c1c7d0;
 }
 html[data-theme="light"] ::-webkit-scrollbar-thumb:hover,
-html[data-theme="ths-white"] ::-webkit-scrollbar-thumb:hover {
+html[data-theme="ths-white"] ::-webkit-scrollbar-thumb:hover,
+html[data-theme="celadon"] ::-webkit-scrollbar-thumb:hover {
   background: #a0a8b4;
 }
 

@@ -3,7 +3,7 @@ import { ref } from "vue";
 import { ensureDb, db } from "../db/database";
 import { toast } from "./useToast";
 
-export type ThemeId = "gold" | "arctic" | "magma" | "obsidian" | "graphite" | "carbon" | "titanium" | "ths-black" | "ths-white" | "light";
+export type ThemeId = "gold" | "arctic" | "magma" | "obsidian" | "graphite" | "carbon" | "titanium" | "ths-black" | "ths-white" | "light" | "jade" | "amethyst" | "rose" | "celadon" | "cyber";
 
 export interface ThemeMeta {
   id: ThemeId;
@@ -74,6 +74,36 @@ export const THEMES: ThemeMeta[] = [
     name: "晨光白",
     desc: "现代精致亮色，柔和护眼，蓝色强调",
     sw: ["#f4f6f9", "#3b82f6", "#e5484d", "#12a876"],
+  },
+  {
+    id: "jade",
+    name: "翡翠罗盘",
+    desc: "深墨绿底 + 翡翠绿，东方禅意与机构沉稳",
+    sw: ["#08110d", "#3ecf8e", "#f0606d", "#2dd4a0"],
+  },
+  {
+    id: "amethyst",
+    name: "紫晶量化",
+    desc: "深紫罗兰底 + 薰衣草紫，高端机构量化风",
+    sw: ["#0d0a14", "#a78bfa", "#f25b7a", "#20c9a8"],
+  },
+  {
+    id: "rose",
+    name: "玫瑰金夜",
+    desc: "暖深棕底 + 玫瑰金，精致柔和夜间氛围",
+    sw: ["#120c0a", "#e8a090", "#f65a6a", "#20c794"],
+  },
+  {
+    id: "celadon",
+    name: "青瓷白韵",
+    desc: "浅青白底 + 青瓷绿，东方雅致日间护眼",
+    sw: ["#eef2f0", "#2a9d7a", "#d93040", "#00a870"],
+  },
+  {
+    id: "cyber",
+    name: "赛博青蓝",
+    desc: "近黑底 + 霓虹青，量化极客终端风",
+    sw: ["#060a0e", "#00d4ff", "#ff4d6a", "#00e8b0"],
   },
 ];
 
