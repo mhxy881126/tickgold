@@ -101,10 +101,15 @@
         </div>
       </div>
 
-      <!-- Q2：五档盘口 -->
-      <div class="tm-quad tm-q-book">
-        <div class="book-title">五档盘口</div>
-        <template v-if="ob">
+      <!-- Q2+Q4 右侧小窗：五档盘口 / 观望等待（可折叠、可拖拽高度） -->
+      <div class="tm-q-right" ref="rightColEl">
+        <div class="tm-quad tm-q-book">
+          <div class="q-head">
+            <span>五档盘口</span>
+            <button class="q-fold" title="收起 / 展开" @click="bookOpen = !bookOpen">{{ bookOpen ? "▾" : "▸" }}</button>
+          </div>
+          <div class="q-body" v-show="bookOpen" :style="{ height: bookOpen ? bookH + 'px' : '0px' }">
+            <template v-if="ob">
           <!-- 卖5→卖1 -->
           <div v-for="i in 5" :key="'a'+i" class="book-row" :style="barStyle(ob.asks[5-i]?.vol)">
             <span class="bk-lv">卖{{ 6 - i }}</span>
@@ -135,10 +140,15 @@
             {{ tm.loadFailed.value ? "盘口加载失败，点击重试 ↻" : "盘口加载中" }}
           </span>
         </div>
-      </div>
-
-      <!-- Q4：做T决策 -->
-      <div class="tm-quad tm-q-decision">
+          </div>
+        </div>
+        <div class="q-divider" @mousedown="onDividerDown" title="拖拽调整上下高度"></div>
+        <div class="tm-quad tm-q-decision">
+          <div class="q-head">
+            <span>观望等待</span>
+            <button class="q-fold" title="收起 / 展开" @click="decisionOpen = !decisionOpen">{{ decisionOpen ? "▾" : "▸" }}</button>
+          </div>
+          <div class="q-body" v-show="decisionOpen">
         <div class="dc-title" :class="sig.action">{{ sig.title }}</div>
         <div class="dc-meta">
           <span class="dc-chip" :class="regimeClass">市况 · {{ regimeLabel }}</span>
@@ -223,6 +233,8 @@
           </div>
         </div>
         <div v-if="tm.toast.value" class="dc-toast">{{ tm.toast.value }}</div>
+          </div>
+        </div>
       </div>
 
 
@@ -403,6 +415,32 @@ const chartSignals = computed<{ time: number; price: number; dir: "long" | "shor
   }
   return out;
 });
+
+// ===== 右侧小窗：五档盘口 / 观望等待 折叠 + 拖拽高度 =====
+const bookOpen = ref(true);
+const decisionOpen = ref(true);
+const bookH = ref(260);
+const rightColEl = ref<HTMLElement | null>(null);
+let rightRo: ResizeObserver | null = null;
+let dragState: { startY: number; startH: number } | null = null;
+function onDividerDown(e: MouseEvent) {
+  if (!bookOpen.value || !decisionOpen.value) return;
+  dragState = { startY: e.clientY, startH: bookH.value };
+  document.body.style.cursor = "row-resize";
+  window.addEventListener("mousemove", onDividerMove);
+  window.addEventListener("mouseup", onDividerUp);
+}
+function onDividerMove(e: MouseEvent) {
+  if (!dragState) return;
+  const h = rightColEl.value?.clientHeight ?? 400;
+  bookH.value = Math.max(70, Math.min(h - 90, dragState.startH + (e.clientY - dragState.startY)));
+}
+function onDividerUp() {
+  dragState = null;
+  document.body.style.cursor = "";
+  window.removeEventListener("mousemove", onDividerMove);
+  window.removeEventListener("mouseup", onDividerUp);
+}
 
 const statsOpen = ref(false);
 const isDev = import.meta.env.DEV;
@@ -675,6 +713,14 @@ const btArchTxt = computed(() => {
 // 键盘：空格=确认执行 / Esc=取消（仅在弹层打开时生效）
 onMounted(() => {
   window.addEventListener("keydown", onKey);
+  // 右侧小窗默认高度 = 右列 45%，容器尺寸变化时自动跟随
+  rightRo = new ResizeObserver(() => {
+    if (rightColEl.value && !dragState) {
+      const h = rightColEl.value.clientHeight;
+      if (h > 100) bookH.value = Math.max(70, Math.min(Math.round(h * 0.45), h - 90));
+    }
+  });
+  if (rightColEl.value) rightRo.observe(rightColEl.value);
 });
 function onKey(e: KeyboardEvent) {
   if (e.key === "Escape") { cancelAll(); return; }
@@ -809,8 +855,8 @@ function onKey(e: KeyboardEvent) {
   flex: 1; min-height: 0;
   display: grid;
   grid-template-columns: 3fr 1fr;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1.55fr);
-  grid-template-areas: "chart book" "chart decision";
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "chart right";
   gap: 6px;
 }
 .tm-quad {
@@ -822,9 +868,24 @@ function onKey(e: KeyboardEvent) {
   display: flex; flex-direction: column;
   overflow: hidden;
 }
-.tm-q-chart { grid-area: chart; padding: 0; }
-.tm-q-book { grid-area: book; }
-.tm-q-decision { grid-area: decision; overflow-y: auto; }
+.tm-q-chart { grid-area: chart; padding: 0; min-height: 0; }
+/* 右侧小窗：五档盘口（可拖拽高度）+ 观望等待（可折叠） */
+.tm-q-right { grid-area: right; display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 0; }
+.tm-q-book { flex: none; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.tm-q-decision { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
+.q-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11px; font-weight: 700; color: var(--cyan);
+  padding-bottom: 3px; border-bottom: 1px solid var(--line); margin-bottom: 3px;
+}
+.q-fold { background: none; border: none; color: var(--t3); font-size: 13px; cursor: pointer; padding: 0 3px; line-height: 1; }
+.q-fold:hover { color: var(--cyan); }
+.q-body { min-height: 0; }
+.q-divider { flex: none; height: 7px; cursor: row-resize; position: relative; }
+.q-divider::after {
+  content: ""; position: absolute; left: 10px; right: 10px; top: 3px; height: 1px; background: var(--line);
+}
+.q-divider:hover::after { background: var(--cyan); }
 .tm-stats-btn {
   background: rgba(0,232,216,.12); border: 1px solid rgba(0,232,216,.45); color: var(--cyan);
   border-radius: 4px; padding: 3px 10px; font-size: 11px; font-weight: 600; cursor: pointer;

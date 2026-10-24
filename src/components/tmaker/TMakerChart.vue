@@ -34,15 +34,29 @@
       <span v-if="signals.length"><i class="dot d-sig"></i>信号 {{ signals.length }}</span>
       <span v-if="tab !== 'minute'" class="hint">点击蜡烛查看当日分时</span>
     </div>
-    <!-- 当日做T信号记录：指示灯 + 信号列表（实时观测盘中信号，最新在前） -->
+    <!-- 当日做T信号记录：指示灯 + 多空统计 + 信号列表（实时观测盘中信号，最新在前） -->
     <div class="tm-signals">
-      <span class="tm-sig-title">当日做T信号</span>
-      <span class="tm-sig-lamp" :class="lamp.cls">{{ lamp.txt }}</span>
-      <div class="tm-sig-list">
-        <span v-for="(s, i) in signalList" :key="i" class="tm-sig-item" :class="s.dir">
-          {{ fmtHHMM(s.time) }} {{ s.dir === "long" ? "T买" : "T卖" }} {{ s.score }}分 {{ s.price.toFixed(2) }}
+      <div class="tm-sig-head">
+        <span class="tm-sig-title">当日做T信号</span>
+        <span class="tm-sig-stat" v-if="signalList.length">
+          <i class="sig-dot long"></i>T买 <b>{{ longCount }}</b>
+          <i class="sig-dot short"></i>T卖 <b>{{ shortCount }}</b>
+          <i class="sig-dot idle"></i>共 <b>{{ signalList.length }}</b>
         </span>
-        <span v-if="!signalList.length" class="tm-sig-empty">今日暂无信号，等待盘中触发</span>
+      </div>
+      <div class="tm-sig-main">
+        <span class="tm-sig-lamp" :class="lamp.cls">{{ lamp.txt }}</span>
+        <span class="tm-sig-latest" v-if="lamp.s">{{ fmtHHMM(lamp.s.time) }} @ {{ lamp.s.price.toFixed(2) }}</span>
+        <span class="tm-sig-latest" v-else>盘中信号将实时出现在此</span>
+      </div>
+      <div class="tm-sig-list">
+        <div v-for="(s, i) in signalList" :key="i" class="tm-sig-item" :class="s.dir">
+          <b class="sig-dir">{{ s.dir === "long" ? "T买" : "T卖" }}</b>
+          <span class="sig-time">{{ fmtHHMM(s.time) }}</span>
+          <span class="sig-score">{{ s.score }}分</span>
+          <span class="sig-price">{{ s.price.toFixed(2) }}</span>
+        </div>
+        <div v-if="!signalList.length" class="tm-sig-empty">今日暂无信号，等待盘中触发</div>
       </div>
     </div>
     <div v-if="!bars.length" class="tm-chart-empty">
@@ -58,7 +72,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount, computed } from "vue";
-import { init, dispose, ActionType, DomPosition } from "klinecharts";
+import { init, dispose, DomPosition } from "klinecharts";
 import type { KLineData } from "klinecharts";
 import { fetchKLine, fetchArchivedMinuteDays } from "../../api/market";
 import type { KBar } from "../../api/types";
@@ -119,10 +133,12 @@ const axTone = (p: number) => (p > 0.05 ? "up" : p < -0.05 ? "dn" : "zero");
 
 // ===== 当日做T信号记录条：实时观测盘中信号，指示灯取最新信号方向 =====
 const signalList = computed(() => [...props.signals].sort((a, b) => b.time - a.time));
-const lamp = computed(() => {
+const longCount = computed(() => signalList.value.filter((s) => s.dir === "long").length);
+const shortCount = computed(() => signalList.value.filter((s) => s.dir === "short").length);
+const lamp = computed<{ cls: string; txt: string; s: ChartSignalLike | null }>(() => {
   const s = signalList.value[0];
-  if (!s) return { cls: "idle", txt: "观望等待" };
-  return { cls: s.dir, txt: `${s.dir === "long" ? "T买" : "T卖"} ${s.score}分` };
+  if (!s) return { cls: "idle", txt: "观望等待", s: null };
+  return { cls: s.dir, txt: `${s.dir === "long" ? "T买" : "T卖"} ${s.score}分`, s };
 });
 const fmtHHMM = (ts: number) => {
   const d = new Date(ts);
@@ -195,7 +211,6 @@ function render(barsArr: KBar[], minute: boolean) {
     true,
     { id: "candle_pane" }
   );
-  chart.subscribeAction(ActionType.OnCandleBarClick, onBarClick);
   chart.resize();
   // 容器尺寸稳定后二次重排 + 分时全景对齐（getSize 需布局完成，故双 rAF）
   requestAnimationFrame(() => {
@@ -235,12 +250,18 @@ async function refresh() {
 }
 
 // ===== 点击蜡烛 → 回放该日历史分时（本地归档库补充 >5 交易日样本）=====
-function onBarClick(data: any) {
-  // klinecharts 版本差异：OnCandleBarClick 回调参数兼容 {data: KLineData} 与直接 KLineData
-  const kd: KLineData | undefined = data?.data ?? data;
-  if (!kd || typeof kd.timestamp !== "number") return;
-  if (tab.value === "minute") return;
-  void openReplay(kd);
+// 采用 DOM click + convertFromPixel 坐标换算：绕开 klinecharts 内部事件分发的不确定性，点击必有响应
+function onHostClick(e: MouseEvent) {
+  if (tab.value === "minute" || !chart || !host.value) return;
+  const rect = host.value.getBoundingClientRect();
+  const pts = chart.convertFromPixel(
+    [{ x: e.clientX - rect.left, y: e.clientY - rect.top }],
+    { paneId: "candle_pane" }
+  );
+  const p = Array.isArray(pts) ? pts[0] : pts;
+  if (p && typeof p.timestamp === "number") {
+    void openReplay({ timestamp: p.timestamp } as KLineData);
+  }
 }
 const ymdUTC = (ts: number) => {
   const d = new Date(ts);
@@ -305,13 +326,17 @@ onMounted(() => {
   ro = new ResizeObserver(() => {
     if (chart && !disposed) chart.resize();
   });
-  if (host.value) ro.observe(host.value);
+  if (host.value) {
+    ro.observe(host.value);
+    host.value.addEventListener("click", onHostClick);
+  }
   refresh();
 });
 onBeforeUnmount(() => {
   disposed = true;
   ro?.disconnect();
   ro = null;
+  host.value?.removeEventListener("click", onHostClick);
   if (chart) {
     dispose(chart);
     chart = null;
@@ -418,28 +443,41 @@ onBeforeUnmount(() => {
 .tm-legend .hint { color: #6b7488; margin-left: auto; }
 /* 当日做T信号记录条 */
 .tm-signals {
-  flex: none; display: flex; align-items: center; gap: 8px;
-  margin-top: 4px; padding: 3px 6px; min-height: 26px;
-  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07); border-radius: 5px;
+  flex: none; display: flex; flex-direction: column; gap: 4px;
+  margin-top: 4px; padding: 5px 7px;
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 6px;
 }
-.tm-sig-title { font-size: 11px; color: #9aa4b8; flex: none; }
-.tm-sig-lamp { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; flex: none; white-space: nowrap; }
-.tm-sig-lamp::before { content: ""; width: 8px; height: 8px; border-radius: 50%; }
+.tm-sig-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.tm-sig-title { font-size: 11px; color: #9aa4b8; flex: none; font-weight: 600; }
+.tm-sig-stat { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #9aa4b8; flex: none; white-space: nowrap; }
+.tm-sig-stat b { font-family: Consolas, monospace; color: #d5dbe8; }
+.sig-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 2px; vertical-align: middle; }
+.sig-dot.long { background: #ff6478; }
+.sig-dot.short { background: #00e8a0; }
+.sig-dot.idle { background: #6b7488; }
+.tm-sig-main { display: flex; align-items: center; gap: 8px; }
+.tm-sig-lamp { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; flex: none; white-space: nowrap; }
+.tm-sig-lamp::before { content: ""; width: 10px; height: 10px; border-radius: 50%; }
 .tm-sig-lamp.long { color: #ff6478; }
-.tm-sig-lamp.long::before { background: #ff6478; box-shadow: 0 0 6px rgba(255,100,120,.8); }
+.tm-sig-lamp.long::before { background: #ff6478; box-shadow: 0 0 7px rgba(255,100,120,.85); }
 .tm-sig-lamp.short { color: #00e8a0; }
-.tm-sig-lamp.short::before { background: #00e8a0; box-shadow: 0 0 6px rgba(0,232,160,.8); }
+.tm-sig-lamp.short::before { background: #00e8a0; box-shadow: 0 0 7px rgba(0,232,160,.85); }
 .tm-sig-lamp.idle { color: #6b7488; }
 .tm-sig-lamp.idle::before { background: #6b7488; }
-.tm-sig-list { display: flex; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
+.tm-sig-latest { font-size: 11px; color: #9aa4b8; font-family: Consolas, monospace; }
+.tm-sig-list { display: flex; gap: 5px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; padding: 1px 0 1px; }
 .tm-sig-list::-webkit-scrollbar { display: none; }
 .tm-sig-item {
-  flex: none; font-size: 10px; font-family: Consolas, monospace;
-  padding: 1px 6px; border-radius: 3px; white-space: nowrap;
+  flex: none; display: flex; align-items: center; gap: 5px;
+  font-size: 10px; font-family: Consolas, monospace;
+  padding: 2px 7px; border-radius: 4px; white-space: nowrap;
 }
 .tm-sig-item.long { color: #ff6478; background: rgba(255,100,120,.1); }
 .tm-sig-item.short { color: #00e8a0; background: rgba(0,232,160,.1); }
-.tm-sig-empty { font-size: 10px; color: #6b7488; }
+.tm-sig-item .sig-dir { font-weight: 700; font-size: 11px; }
+.tm-sig-item .sig-time { color: #9aa4b8; }
+.tm-sig-item .sig-score { color: #f5d020; font-weight: 600; }
+.tm-sig-empty { font-size: 10px; color: #6b7488; padding: 1px 0; }
 .d-sup { background: #3ecf8e; }
 .d-res { background: #ff5a5a; }
 .d-cost { background: #f5d020; }
